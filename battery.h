@@ -72,14 +72,12 @@ typedef volatile struct batt_status_t
 {
   /* General battery level based on ADC voltage with buffered min/max values */
   uint8_t battStat;
-#if defined(SHIMMER3R)
   /* LED colour to show when undocked based on the latest battStat */
   uint32_t battStatLed;
   /* LED colour to show when docked */
   uint32_t battStatLedCharging;
   /* Lets the LED timer know whether the LED should flash or stay solid */
   uint8_t battStatLedFlash : 1;
-#endif
   /* The ADC value and charger status bytes which are sent via dock/BT */
   BattStatusRaw battStatusRaw;
   /* Latest measured battery voltage in mV */
@@ -92,7 +90,7 @@ typedef volatile struct batt_status_t
 } BattStatus;
 
 void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV);
-void S4_NORM_ADC_rankBatt(void);
+void rankBatt(void);
 void rankBattChargingStatus(void);
 
 void setBatteryInterval(battAlarmInterval_t value);

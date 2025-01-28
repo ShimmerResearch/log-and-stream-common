@@ -6,6 +6,8 @@
  */
 
 #include "battery.h"
+#include "shimmer_externs.h"
+
 #include "hal_Board.h"
 
 uint8_t battCriticalCount = 0;
@@ -19,11 +21,11 @@ void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV)
   batteryStatus.battStatusRaw.STAT1 = LM3658SD_STAT1;
   batteryStatus.battValMV = battValMV;
 
-  S4_ADC_rankBatt();
+  rankBatt();
   rankBattChargingStatus();
 }
 
-void S4_NORM_ADC_rankBatt(void)
+void rankBatt(void)
 {
   if (batteryStatus.battStat == BATT_MID)
   {
@@ -74,16 +76,32 @@ void S4_NORM_ADC_rankBatt(void)
   switch (batteryStatus.battStat)
   {
   case BATT_LOW:
+#if defined(SHIMMER3)
+    batteryStatus.battStatLed = LED_RED;
+#elif defined(SHIMMER3R)
     batteryStatus.battStatLed = LED_RGB_RED;
+#endif
     break;
   case BATT_MID:
+#if defined(SHIMMER3)
+    batteryStatus.battStatLed = LED_YELLOW;
+#elif defined(SHIMMER3R)
     batteryStatus.battStatLed = LED_RGB_YELLOW;
+#endif
     break;
   case BATT_HIGH:
+#if defined(SHIMMER3)
+    batteryStatus.battStatLed = LED_GREEN0;
+#elif defined(SHIMMER3R)
     batteryStatus.battStatLed = LED_RGB_GREEN;
+#endif
     break;
   default:
+#if defined(SHIMMER3)
+    batteryStatus.battStatLed = LED_RED;
+#elif defined(SHIMMER3R)
     batteryStatus.battStatLed = LED_RGB_RED;
+#endif
     break;
   }
 }
@@ -131,27 +149,47 @@ void rankBattChargingStatus(void)
   {
     if (batteryStatus.battChargingStatus == CHARGING_STATUS_SUSPENDED)
     {
+#if defined(SHIMMER3)
+      batteryStatus.battStatLedCharging = LED_YELLOW;
+#elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_YELLOW;
+#endif
     }
     else if (batteryStatus.battChargingStatus == CHARGING_STATUS_UNKNOWN
         || batteryStatus.battChargingStatus == CHARGING_STATUS_BAD_BATTERY
         || batteryStatus.battChargingStatus == CHARGING_STATUS_ERROR)
     {
+#if defined(SHIMMER3)
+      batteryStatus.battStatLedCharging = LED_RED;
+#elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_RED;
+#endif
       batteryStatus.battStatLedFlash = 1;
     }
     else if (batteryStatus.battChargingStatus == CHARGING_STATUS_CHECKING
         || batteryStatus.battChargingStatus == CHARGING_STATUS_CHARGING)
     {
+#if defined(SHIMMER3)
+      batteryStatus.battStatLedCharging = LED_RED;
+#elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_RED;
+#endif
     }
     else if (batteryStatus.battChargingStatus == CHARGING_STATUS_FULLY_CHARGED)
     {
+#if defined(SHIMMER3)
+      batteryStatus.battStatLedCharging = LED_GREEN0;
+#elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_GREEN;
+#endif
     }
     else
     {
+#if defined(SHIMMER3)
+      batteryStatus.battStatLedCharging = LED_ALL_OFF;
+#elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_ALL_OFF;
+#endif
     }
   }
 }

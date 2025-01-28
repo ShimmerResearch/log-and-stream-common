@@ -9,8 +9,7 @@
 #define SHIMMER_EXTERNS_H_
 
 #include "shimmer_definitions.h"
-
-#include "../log-and-stream-app/battery.h"
+#include "battery.h"
 
 extern STATTypeDef shimmerStatus;
 extern BattStatus batteryStatus;
