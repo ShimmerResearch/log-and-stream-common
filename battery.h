@@ -87,6 +87,8 @@ typedef volatile struct batt_status_t
 #if defined(SHIMMER4_SDK)
   uint8_t battDigital[10];
 #endif
+  uint8_t battCritical : 1;
+  uint8_t battCriticalCount;
 } BattStatus;
 
 void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV);
@@ -96,6 +98,8 @@ void rankBattChargingStatus(void);
 void setBatteryInterval(battAlarmInterval_t value);
 battAlarmInterval_t getBatteryInterval(void);
 void resetBatteryCriticalCount(void);
-
+void incrementBatteryCriticalCount(void);
+void setBattCritical(uint8_t state);
+uint8_t checkIfBatteryCritical(void);
 
 #endif /* BATTERY_H_ */

@@ -10,7 +10,6 @@
 
 #include "hal_Board.h"
 
-uint8_t battCriticalCount = 0;
 battAlarmInterval_t battAlarmInterval;
 
 void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV)
@@ -206,6 +205,24 @@ battAlarmInterval_t getBatteryInterval(void)
 
 void resetBatteryCriticalCount(void)
 {
-  battCriticalCount = 0;
+  batteryStatus.battCriticalCount = 0;
 }
 
+void incrementBatteryCriticalCount(void)
+{
+  batteryStatus.battCriticalCount++;
+}
+
+void setBattCritical(uint8_t state)
+{
+  batteryStatus.battCritical = state;
+}
+
+uint8_t checkIfBatteryCritical(void)
+{
+  if (batteryStatus.battCriticalCount > 2)
+  {
+      setBattCritical(1);
+  }
+  return batteryStatus.battCritical;
+}
