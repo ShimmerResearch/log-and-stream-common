@@ -19,16 +19,19 @@ typedef volatile struct STATTypeDef_t
     uint8_t buttonPressed :1;
 
     uint8_t btConnected :1;
-    uint8_t btPoweredOn :1;
+    uint8_t btPowerOn :1;
     uint8_t btSupportEnabled :1;
     uint8_t btStreaming :1;
     uint8_t btstreamReady :1;
     uint8_t btstreamCmd :2;
 
-    uint8_t sdInserted:1;
-    uint8_t sdPowerOn:1;
 #if defined(SHIMMER3R)
-    uint8_t sdMcu0Pc1;
+  uint8_t sdPeripheralInit : 1;
+#endif
+  uint8_t sdInserted : 1;
+  uint8_t sdPowerOn  : 1;
+#if defined(SHIMMER3R)
+  uint8_t sdMcu0Pc1 : 1;
 #endif
     uint8_t sdLogging:1;
     uint8_t sdlogReady:1;

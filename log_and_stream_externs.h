@@ -8,7 +8,7 @@
 #ifndef SHIMMER_EXTERNS_H_
 #define SHIMMER_EXTERNS_H_
 
-#include "shimmer_definitions.h"
+#include "log_and_stream_definitions.h"
 #include "battery.h"
 
 extern STATTypeDef shimmerStatus;
