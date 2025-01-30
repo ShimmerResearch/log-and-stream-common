@@ -10,18 +10,18 @@
 
 #include <stdint.h>
 
-#define BATT_LOW                        0x01
-#define BATT_MID                        0x02
-#define BATT_HIGH                       0x04
+#define BATT_LOW  0x01
+#define BATT_MID  0x02
+#define BATT_HIGH 0x04
 #if defined(SHIMMER4_SDK)
 #define BATT_INTERVAL   600 //600 seconds = 10min interval
 #define BATT_INTERVAL_D 30  //30 seconds
 #endif
 
-#define BATT_LOW_MAX    2618
-#define BATT_MID_MIN    2568
-#define BATT_MID_MAX    2767
-#define BATT_HIGH_MIN   2717
+#define BATT_LOW_MAX              2618
+#define BATT_MID_MIN              2568
+#define BATT_MID_MAX              2767
+#define BATT_HIGH_MIN             2717
 
 #define BATTERY_ERROR_VOLTAGE_MAX 4500 //mV
 #define BATTERY_ERROR_VOLTAGE_MIN 3200 //mV

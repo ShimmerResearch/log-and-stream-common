@@ -232,7 +232,7 @@ uint8_t checkIfBatteryCritical(void)
 {
   if (batteryStatus.battCriticalCount > 2)
   {
-      setBattCritical(1);
+    setBattCritical(1);
   }
   return batteryStatus.battCritical;
 }
