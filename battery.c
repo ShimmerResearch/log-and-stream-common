@@ -12,16 +12,17 @@
 
 battAlarmInterval_t battAlarmInterval;
 
-void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV)
+void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3658sdStat1, uint8_t lm3658sdStat2)
 {
   batteryStatus.battStatusRaw.adcBattVal = adc_battVal;
   batteryStatus.battStatusRaw.rawBytes[2] = 0;
-  batteryStatus.battStatusRaw.STAT2 = LM3658SD_STAT2;
-  batteryStatus.battStatusRaw.STAT1 = LM3658SD_STAT1;
+  batteryStatus.battStatusRaw.STAT1 = lm3658sdStat1;
+  batteryStatus.battStatusRaw.STAT2 = lm3658sdStat2;
   batteryStatus.battValMV = battValMV;
 
   rankBatt();
   rankBattChargingStatus();
+  determineChargingLedState();
 }
 
 void rankBatt(void)
@@ -142,7 +143,10 @@ void rankBattChargingStatus(void)
       break;
     }
   }
+}
 
+void determineChargingLedState(void)
+{
   batteryStatus.battStatLedFlash = 0;
   if (shimmerStatus.docked)
   {
@@ -191,6 +195,12 @@ void rankBattChargingStatus(void)
 #endif
     }
   }
+}
+
+void resetBatteryChargingStatus(void)
+{
+  batteryStatus.battChargingStatus = CHARGING_STATUS_CHECKING;
+  determineChargingLedState();
 }
 
 void setBatteryInterval(battAlarmInterval_t value)
