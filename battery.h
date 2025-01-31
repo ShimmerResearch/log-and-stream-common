@@ -27,8 +27,8 @@
 #define BATTERY_ERROR_VOLTAGE_MIN 3200 //mV
 
 #if defined(SHIMMER3)
-#define BATT_INTERVAL   1966080 // 10min interval
-#define BATT_INTERVAL_D 65535   // 30sec interval
+#define BATT_INTERVAL   1966080 //10min interval
+#define BATT_INTERVAL_D 65535   //30sec interval
 #endif
 
 typedef enum
