@@ -26,6 +26,11 @@
 #define BATTERY_ERROR_VOLTAGE_MAX 4500 //mV
 #define BATTERY_ERROR_VOLTAGE_MIN 3200 //mV
 
+#if defined(SHIMMER3)
+#define BATT_INTERVAL   1966080 // 10min interval
+#define BATT_INTERVAL_D 65535   // 30sec interval
+#endif
+
 typedef enum
 {
   BATT_INTERVAL_UNDOCKED, //10 Minutes
@@ -99,6 +104,9 @@ void determineChargingLedState(void);
 void resetBatteryChargingStatus(void);
 void setBatteryInterval(battAlarmInterval_t value);
 battAlarmInterval_t getBatteryInterval(void);
+#if defined(SHIMMER3)
+uint32_t getBatteryIntervalTicks(void);
+#endif
 void resetBatteryCriticalCount(void);
 void incrementBatteryCriticalCount(void);
 void setBattCritical(uint8_t state);

@@ -14,10 +14,10 @@ battAlarmInterval_t battAlarmInterval;
 
 void batteryInit(void)
 {
-  setBattCritical(0);
-  resetBatteryCriticalCount();
-  /* Reset to battery "charging"/"checking" LED indication on boot */
-  resetBatteryChargingStatus();
+    setBattCritical(0);
+    resetBatteryCriticalCount();
+    /* Reset to battery "charging"/"checking" LED indication on boot */
+    resetBatteryChargingStatus();
 }
 
 void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3658sdStat1, uint8_t lm3658sdStat2)
@@ -220,6 +220,13 @@ battAlarmInterval_t getBatteryInterval(void)
 {
   return battAlarmInterval;
 }
+
+#if defined(SHIMMER3)
+uint32_t getBatteryIntervalTicks(void)
+{
+  return battAlarmInterval == BATT_INTERVAL_DOCKED? BATT_INTERVAL_D:BATT_INTERVAL;
+}
+#endif
 
 void resetBatteryCriticalCount(void)
 {
