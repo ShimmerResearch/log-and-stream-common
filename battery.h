@@ -98,10 +98,12 @@ typedef volatile struct batt_status_t
 
 void batteryInit(void);
 void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3658sdStat1, uint8_t lm3658sdStat2);
-void rankBatt(void);
+void rankBattUndockedVoltage(void);
 void rankBattChargingStatus(void);
 void determineChargingLedState(void);
+void determineUndockedLedState(void);
 void resetBatteryChargingStatus(void);
+void resetBatteryUndockedStatus(void);
 void setBatteryInterval(battAlarmInterval_t value);
 battAlarmInterval_t getBatteryInterval(void);
 #if defined(SHIMMER3)

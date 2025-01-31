@@ -14,10 +14,11 @@ battAlarmInterval_t battAlarmInterval;
 
 void batteryInit(void)
 {
-    setBattCritical(0);
-    resetBatteryCriticalCount();
-    /* Reset to battery "charging"/"checking" LED indication on boot */
-    resetBatteryChargingStatus();
+  setBattCritical(0);
+  resetBatteryCriticalCount();
+  /* Reset to battery "charging"/"checking" LED indication on boot */
+  resetBatteryChargingStatus();
+  resetBatteryUndockedStatus();
 }
 
 void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3658sdStat1, uint8_t lm3658sdStat2)
@@ -28,12 +29,12 @@ void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm365
   batteryStatus.battStatusRaw.STAT2 = lm3658sdStat2;
   batteryStatus.battValMV = battValMV;
 
-  rankBatt();
+  rankBattUndockedVoltage();
   rankBattChargingStatus();
   determineChargingLedState();
 }
 
-void rankBatt(void)
+void rankBattUndockedVoltage(void)
 {
   if (batteryStatus.battStat == BATT_MID)
   {
@@ -81,37 +82,7 @@ void rankBatt(void)
     }
   }
 
-  switch (batteryStatus.battStat)
-  {
-  case BATT_LOW:
-#if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_RED;
-#elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_RED;
-#endif
-    break;
-  case BATT_MID:
-#if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_YELLOW;
-#elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_YELLOW;
-#endif
-    break;
-  case BATT_HIGH:
-#if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_GREEN0;
-#elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_GREEN;
-#endif
-    break;
-  default:
-#if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_RED;
-#elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_RED;
-#endif
-    break;
-  }
+  determineUndockedLedState();
 }
 
 void rankBattChargingStatus(void)
@@ -205,10 +176,51 @@ void determineChargingLedState(void)
   }
 }
 
+void determineUndockedLedState(void)
+{
+  switch (batteryStatus.battStat)
+  {
+  case BATT_LOW:
+#if defined(SHIMMER3)
+    batteryStatus.battStatLed = LED_RED;
+#elif defined(SHIMMER3R)
+    batteryStatus.battStatLed = LED_RGB_RED;
+#endif
+    break;
+  case BATT_MID:
+#if defined(SHIMMER3)
+    batteryStatus.battStatLed = LED_YELLOW;
+#elif defined(SHIMMER3R)
+    batteryStatus.battStatLed = LED_RGB_YELLOW;
+#endif
+    break;
+  case BATT_HIGH:
+#if defined(SHIMMER3)
+    batteryStatus.battStatLed = LED_GREEN0;
+#elif defined(SHIMMER3R)
+    batteryStatus.battStatLed = LED_RGB_GREEN;
+#endif
+    break;
+  default:
+#if defined(SHIMMER3)
+    batteryStatus.battStatLed = LED_RED;
+#elif defined(SHIMMER3R)
+    batteryStatus.battStatLed = LED_RGB_RED;
+#endif
+    break;
+  }
+}
+
 void resetBatteryChargingStatus(void)
 {
   batteryStatus.battChargingStatus = CHARGING_STATUS_CHECKING;
   determineChargingLedState();
+}
+
+void resetBatteryUndockedStatus(void)
+{
+  batteryStatus.battStat = BATT_MID;
+  determineUndockedLedState();
 }
 
 void setBatteryInterval(battAlarmInterval_t value)
