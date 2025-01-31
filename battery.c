@@ -12,6 +12,14 @@
 
 battAlarmInterval_t battAlarmInterval;
 
+void batteryInit(void)
+{
+    setBattCritical(0);
+    resetBatteryCriticalCount();
+    /* Reset to battery "charging"/"checking" LED indication on boot */
+    resetBatteryChargingStatus();
+}
+
 void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3658sdStat1, uint8_t lm3658sdStat2)
 {
   batteryStatus.battStatusRaw.adcBattVal = adc_battVal;

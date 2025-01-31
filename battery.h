@@ -91,6 +91,7 @@ typedef volatile struct batt_status_t
   uint8_t battCriticalCount;
 } BattStatus;
 
+void batteryInit(void);
 void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3658sdStat1, uint8_t lm3658sdStat2);
 void rankBatt(void);
 void rankBattChargingStatus(void);
