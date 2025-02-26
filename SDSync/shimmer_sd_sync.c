@@ -22,8 +22,8 @@
 #include "Comms/shimmer_bt_uart.h"
 #include "log_and_stream_externs.h"
 #elif defined(SHIMMER3R)
-#include "shimmer_bt_comms.h"
 #include "s4_taskList.h"
+#include "shimmer_bt_comms.h"
 #include "shimmer_definitions.h"
 #endif
 
@@ -60,9 +60,7 @@ extern uint8_t sdHeadText[SD_HEAD_SIZE];
 static uint8_t all0xff[7U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 #endif
 
-void sdSyncInit(void (*btStart_cb)(void),
-    void (*btStop_cb)(uint8_t),
-    uint8_t (*taskSet_cb)(uint16_t))
+void sdSyncInit(void (*btStart_cb)(void), void (*btStop_cb)(uint8_t), uint8_t (*taskSet_cb)(uint16_t))
 {
   btSdSyncIsRunning = 0;
 
@@ -522,7 +520,7 @@ void SyncNodeR10(void)
 #elif defined(SHIMMER3R)
       if (S4Ram_getStoredConfig()->singleTouchStart
 #endif
-              && !shimmerStatus.sensing && sd_tolog)
+          && !shimmerStatus.sensing && sd_tolog)
       {
         taskSetCb(TASK_STARTSENSING);
       }
@@ -905,6 +903,7 @@ void startBtForSync(void)
 #endif
   btStartCb();
 }
+
 //Timer2:
 //ccr1: for blink timer
 void CommTimerStart(void)

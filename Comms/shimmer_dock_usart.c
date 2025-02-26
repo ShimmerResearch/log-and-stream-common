@@ -10,8 +10,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "shimmer_bt_uart.h"
 #include "log_and_stream_externs.h"
+#include "shimmer_bt_uart.h"
 
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
