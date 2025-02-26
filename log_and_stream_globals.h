@@ -8,7 +8,7 @@
 #ifndef SHIMMER_GLOBALS_H_
 #define SHIMMER_GLOBALS_H_
 
-#include "battery.h"
+#include "Battery/shimmer_battery.h"
 #include "log_and_stream_definitions.h"
 
 STATTypeDef shimmerStatus;
