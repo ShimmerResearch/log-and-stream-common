@@ -5,7 +5,7 @@
  *      Author: MarkNolan
  */
 
-#include "battery.h"
+#include "shimmer_battery.h"
 #include "log_and_stream_externs.h"
 
 #include "hal_Board.h"
