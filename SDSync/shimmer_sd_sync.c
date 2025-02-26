@@ -7,11 +7,13 @@
  *      Author: Mark Nolan
  */
 
-#include <SDSync/shimmer_sd_sync.h>
+#include "shimmer_sd_sync.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(SHIMMER3)
 #include "msp430.h"
 
 #include "../../shimmer3_common_source/RN4X/RN4X.h"
@@ -19,6 +21,11 @@
 #include "../5xx_HAL/hal_RTC.h"
 #include "Comms/shimmer_bt_uart.h"
 #include "log_and_stream_externs.h"
+#elif defined(SHIMMER3R)
+#include "shimmer_bt_comms.h"
+#include "s4_taskList.h"
+#include "shimmer_definitions.h"
+#endif
 
 uint8_t nodeName[MAX_NODES][MAX_CHARS], shortExpFlag;
 uint8_t syncNodeCnt, syncNodeNum, syncThis, syncNodeSucc, nReboot, currNodeSucc, cReboot;
@@ -40,15 +47,22 @@ uint8_t myTimeDiff[SYNC_PACKET_PAYLOAD_SIZE];
 //TODO figure out how best to do away with the need for externs
 void (*btStartCb)(void);
 void (*btStopCb)(uint8_t);
-uint8_t (*taskSetCb)(TASK_FLAGS);
+uint8_t (*taskSetCb)(uint16_t);
 
+#if defined(SHIMMER3)
 extern uint8_t onSingleTouch, stopLogging;
 extern uint8_t sdHeadText[SDHEAD_LEN];
 extern uint8_t all0xff[7U];
+#elif defined(SHIMMER3R)
+extern SENSINGTypeDef sensing;
+extern STATTypeDef stat;
+extern uint8_t sdHeadText[SD_HEAD_SIZE];
+static uint8_t all0xff[7U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+#endif
 
 void sdSyncInit(void (*btStart_cb)(void),
     void (*btStop_cb)(uint8_t),
-    uint8_t (*taskSet_cb)(TASK_FLAGS))
+    uint8_t (*taskSet_cb)(uint16_t))
 {
   btSdSyncIsRunning = 0;
 
@@ -135,7 +149,11 @@ uint8_t getSyncCnt(void)
 
 void saveLocalTime(void)
 {
+#if defined(SHIMMER3)
   myLocalTimeLong = getRwcTime();
+#elif defined(SHIMMER3R)
+  myLocalTimeLong = RTC_get64();
+#endif
 }
 
 void resetSyncRcNodeR10Cnt(void)
@@ -398,8 +416,8 @@ void SyncCenterT10(void)
 
   *(resPacket + packet_length++) = SET_SD_SYNC_COMMAND;
   *(resPacket + packet_length++) = shimmerStatus.sensing;
-  myLocalTimeLong = getRwcTime();
-  *(uint64_t *) (resPacket + packet_length) = myLocalTimeLong;
+  saveLocalTime();
+  memcpy(resPacket + packet_length, (uint8_t *) (&myLocalTimeLong), 8);
   packet_length += 8;
 
   if (BT_SD_SYNC_CRC_MODE)
@@ -408,7 +426,11 @@ void SyncCenterT10(void)
     packet_length += BT_SD_SYNC_CRC_MODE;
   }
 
+#if defined(SHIMMER3)
   BT_write(resPacket, packet_length, SHIMMER_CMD);
+#elif defined(SHIMMER3R)
+  BT_write(resPacket, packet_length);
+#endif
 }
 
 /* Sync Center only. Called by TASK_RCCENTERR1 when a center receives a byte
@@ -495,7 +517,12 @@ void SyncNodeR10(void)
     }
     else
     {
-      if (onSingleTouch && !shimmerStatus.sensing && sd_tolog)
+#if defined(SHIMMER3)
+      if (onSingleTouch
+#elif defined(SHIMMER3R)
+      if (S4Ram_getStoredConfig()->singleTouchStart
+#endif
+              && !shimmerStatus.sensing && sd_tolog)
       {
         taskSetCb(TASK_STARTSENSING);
       }
@@ -540,7 +567,11 @@ void SyncNodeR10(void)
 void SyncNodeT1(uint8_t val)
 {
   uint8_t syncResponse[] = { ACK_COMMAND_PROCESSED, SD_SYNC_RESPONSE, val };
+#if defined(SHIMMER3)
   BT_write(&syncResponse[0], 3U, SHIMMER_CMD);
+#elif defined(SHIMMER3R)
+  BT_write(&syncResponse[0], 3U);
+#endif
   if (syncNodeWinExpire < (syncCnt + SYNC_EXTEND * SYNC_FACTOR))
   {
     syncNodeWinExpire++;
@@ -687,7 +718,7 @@ void handleSyncTimerTriggerCenter(void)
     {
       //start
       resetSyncVariablesCenter();
-      btStartCb();
+      startBtForSync();
     }
     else if ((syncCnt > SYNC_BOOT * SYNC_FACTOR) && (syncCnt < SYNC_WINDOW_C * SYNC_FACTOR))
     {
@@ -741,7 +772,7 @@ void handleSyncTimerTriggerCenter(void)
             if (cReboot == 1)
             {
               cReboot = 2;
-              btStartCb();
+              startBtForSync();
             }
             else if ((cReboot >= 2) && (cReboot < 5 * SYNC_FACTOR))
             {
@@ -856,31 +887,51 @@ void handleSyncTimerTriggerNode(void)
     }
     else if (syncCnt == (SYNC_CD * (nReboot + 1) + SYNC_WINDOW_N * nReboot) * SYNC_FACTOR)
     {
-      btStartCb();
+      startBtForSync();
       syncNodeWinExpire
           = (SYNC_CD * (nReboot + 1) + SYNC_WINDOW_N * (nReboot + 1)) * SYNC_FACTOR;
     }
   }
 }
 
+void startBtForSync(void)
+{
+#if defined(SHIMMER3)
+  BT_init();
+  BT_rn4xDisableRemoteConfig(1);
+  BT_setUpdateBaudDuringBoot(1);
+#elif defined(SHIMMER3R)
+  //TODO
+#endif
+  btStartCb();
+}
 //Timer2:
 //ccr1: for blink timer
 void CommTimerStart(void)
 {
+#if defined(SHIMMER3)
   TA0CTL = TASSEL_1 + MC_2 + TACLR; //ACLK, continuous mode, clear TAR
   TA0CCTL1 = CCIE;
   TA0CCR1 = GetTA0() + 16384;
+#elif defined(SHIMMER3R)
+  //TODO
+#endif
   shimmerStatus.sdSyncCommTimerRunning = 1;
 }
 
 inline void CommTimerStop(void)
 {
+#if defined(SHIMMER3)
   TA0CTL = MC_0; //StopTb0()
   //rcommStatus=0;
   TA0CCTL1 &= ~CCIE;
+#elif defined(SHIMMER3R)
+  //TODO
+#endif
   shimmerStatus.sdSyncCommTimerRunning = 0;
 }
 
+#if defined(SHIMMER3)
 inline uint16_t GetTA0(void)
 {
   register uint16_t t0, t1;
@@ -944,3 +995,4 @@ __interrupt void TIMER0_A1_ISR(void)
     break; //TAIFG overflow handler
   }
 }
+#endif

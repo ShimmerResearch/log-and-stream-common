@@ -8,10 +8,15 @@
 #ifndef SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SD_SYNC_H_
 #define SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SD_SYNC_H_
 
+#include <stdint.h>
+
+#if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_CRC.h"
 #include "msp430.h"
-#include <stdint.h>
+#elif defined(SHIMMER3R)
+#include "crc.h"
+#endif
 
 #define BT_SD_SYNC_CRC_MODE CRC_1BYTES_ENABLED
 
@@ -58,7 +63,7 @@
 
 void sdSyncInit(void (*btStart_cb)(void),
     void (*btStop_cb)(uint8_t),
-    uint8_t (*taskSet_cb)(TASK_FLAGS));
+    uint8_t (*taskSet_cb)(uint16_t taskflags));
 void resetMyTimeDiff(void);
 void resetMyTimeDiffArrays(void);
 void resetMyTimeDiffLongMin(void);
@@ -100,9 +105,13 @@ uint8_t RcFindSmallest(void);
 void handleSyncTimerTrigger(void);
 void handleSyncTimerTriggerCenter(void);
 void handleSyncTimerTriggerNode(void);
+void startBtForSync(void);
 
 void CommTimerStart(void);
 void CommTimerStop(void);
+
+#if defined(SHIMMER3)
 uint16_t GetTA0(void);
+#endif
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SD_SYNC_H_ */

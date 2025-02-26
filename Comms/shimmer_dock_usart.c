@@ -10,6 +10,9 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "shimmer_bt_uart.h"
+#include "log_and_stream_externs.h"
+
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_CRC.h"
@@ -20,7 +23,6 @@
 #include "../5xx_HAL/hal_UartA0.h"
 #include "../CAT24C16/cat24c16.h"
 #include "../shimmer_boards/shimmer_boards.h"
-#include "log_and_stream_externs.h"
 #else
 #include "s4.h"
 #include "s4_taskList.h"
