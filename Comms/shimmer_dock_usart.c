@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "log_and_stream_externs.h"
+#include "log_and_stream_definitions.h"
 #include "shimmer_bt_uart.h"
 
 #if defined(SHIMMER3)
@@ -24,7 +25,6 @@
 #include "../CAT24C16/cat24c16.h"
 #include "../shimmer_boards/shimmer_boards.h"
 #else
-#include "s4.h"
 #include "s4_taskList.h"
 
 #include "stm32u5xx_hal_uart.h"
@@ -61,6 +61,7 @@ extern uint8_t daughtCardId[CAT24C16_PAGE_SIZE];
 #else
 extern UART_HandleTypeDef *huartDock;
 #endif
+extern STATTypeDef stat;
 
 void DockUart_resetVariables(void)
 {
@@ -192,13 +193,6 @@ uint8_t DockUart_rxCallback(uint8_t data)
 
 void DockUart_processCmd(void)
 {
-#if defined(SHIMMER4_SDK)
-  HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_6); //green
-#elif defined(SHIMMER3R)
-  Board_ledLwrToggleColourRgb(LED_RGB_GREEN);
-#else
-#endif
-
   if (uartAction)
   {
 #if defined(SHIMMER3)
@@ -450,6 +444,7 @@ void DockUart_processCmd(void)
               S4Ram_storedConfigSet(dockRxBuf + UART_RXBUF_DATA + 3,
                   uartInfoMemOffset, uartInfoMemLength);
               S4Ram_storedConfigSet(temp_btMacHex, NV_MAC_ADDRESS, 6);
+              checkAndCorrectConfig(S4Ram_getStoredConfig());
               InfoMem_update();
 #endif
               uartSendRspAck = 1;
@@ -637,8 +632,12 @@ void DockUart_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = 5;
     *(uartRespBuf + uart_resp_len++) = UART_COMP_BAT;
     *(uartRespBuf + uart_resp_len++) = UART_PROP_VALUE;
-    memcpy(uartRespBuf + uart_resp_len, &batteryStatus.battStatusRaw.rawBytes[0], 3);
-    uart_resp_len += 3;
+    uint8_t i = 0;
+    for (i = 0; i < 3; i++)
+    {
+      uartRespBuf[uart_resp_len] = batteryStatus.battStatusRaw.rawBytes[i];
+      uart_resp_len++;
+    }
   }
   else if (uartSendRspRtcConfigTime)
   {
@@ -683,11 +682,6 @@ void DockUart_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_PROP_CARD_ID;
     if ((uartDcMemLength + uart_resp_len) < UART_RSP_PACKET_SIZE)
     {
-      //CAT24C16_init();
-      //CAT24C16_read(uartDcMemOffset, (uint16_t) uartDcMemLength,
-      //  (uartRespBuf + uart_resp_len));
-      //CAT24C16_powerOff();
-
 #if defined(SHIMMER3)
       memcpy(uartRespBuf + uart_resp_len, daughtCardId + uartDcMemOffset, uartDcMemLength);
 #else
@@ -777,13 +771,7 @@ void DockUart_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = 0x0a;
   }
 
-#if defined(SHIMMER3)
   DockUart_writeBlocking(uartRespBuf, uart_resp_len);
-#else
-  //HAL_UART_Transmit_IT(&huart6, uartRespBuf, uart_resp_len);
-  // Takes ~1.2ms to transmit 135 bytes @ 115200 baud therefore setting timeout to be > ~38.4ms
-  HAL_UART_Transmit(huartDock, uartRespBuf, uart_resp_len, 100);
-#endif
 }
 
 uint8_t UartCheckCrc(uint8_t len)
