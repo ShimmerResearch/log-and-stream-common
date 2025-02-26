@@ -15,9 +15,9 @@
 #include "../../shimmer3_common_source/RN4X/RN4X.h"
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_CRC.h"
+#include "../5xx_HAL/hal_DMA.h"
 #include "../5xx_HAL/hal_RTC.h"
 #include "../5xx_HAL/hal_board.h"
-#include "../5xx_HAL/hal_DMA.h"
 
 #include "log_and_stream_externs.h"
 
@@ -84,11 +84,11 @@ uint32_t btDataRateTestCounter;
 /* Return of 1 brings MSP out of low-power mode */
 uint8_t Dma2ConversionDone(void)
 {
-    btRxBuffPtr = &btRxBuff[0];
+  btRxBuffPtr = &btRxBuff[0];
 #else
 uint8_t BtUartDmaConversionDone(uint8_t *rxBuff)
 {
-    btRxBuffPtr = rxBuff;
+  btRxBuffPtr = rxBuff;
 #endif
 #if defined(SHIMMER3)
   uint8_t bt_waitForStartCmd, bt_waitForMacAddress, bt_waitForVersion,
@@ -111,7 +111,8 @@ uint8_t BtUartDmaConversionDone(uint8_t *rxBuff)
     {
       /* RN42 responds with "CMD\r\n" and RN4678 with "CMD> " */
       uint8_t len = strlen((char *) btRxBuffPtr);
-      if (len == 5U && btRxBuffPtr[0] == 'C' && btRxBuffPtr[1] == 'M' && btRxBuffPtr[2] == 'D')
+      if (len == 5U && btRxBuffPtr[0] == 'C' && btRxBuffPtr[1] == 'M'
+          && btRxBuffPtr[2] == 'D')
       {
         BT_setWaitForStartCmd(0);
         setRnCommandModeActive(1U);
@@ -462,7 +463,7 @@ uint8_t BtUartDmaConversionDone(uint8_t *rxBuff)
         case GET_RWC_COMMAND:
         case UPD_SDLOG_CFG_COMMAND:
         case UPD_CALIB_DUMP_COMMAND:
-//        case UPD_FLASH_COMMAND:
+          //case UPD_FLASH_COMMAND:
         case GET_BT_VERSION_STR_COMMAND:
 #if defined(SHIMMER3R)
         case GET_ALT_ACCEL_CALIBRATION_COMMAND:
@@ -2511,10 +2512,10 @@ void BtsdSelfcmd(void)
 void HandleBtRfCommStateChange(uint8_t isConnected)
 {
 #if defined(SHIMMER3)
-    shimmerStatus.btConnected = isConnected;
-    BT_rst_MessageProgress();
+  shimmerStatus.btConnected = isConnected;
+  BT_rst_MessageProgress();
 
-    updateBtConnectionStatusInterruptDirection();
+  updateBtConnectionStatusInterruptDirection();
 #endif
 
   if (isConnected)
@@ -2536,56 +2537,56 @@ void HandleBtRfCommStateChange(uint8_t isConnected)
 
     if (ShimRam_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER)
     {
-        // center sends sync packet and is waiting for response
-        if (isBtSdSyncRunning())
-        {
-#if defined(SHIMMER3)
-            /* Only need to charge up the DMA if status strings aren't enabled. Otherwise this is handled within the setup/DMA code. */
-            setDmaWaitingForResponseIfStatusStrDisabled();
-#endif
-            SyncCenterT10();
-        }
-    }
-    else
-    {
-        resetSyncRcNodeR10Cnt();
-        // node is waiting for 1 byte ROUTINE_COMMUNICATION(0xE0)
+      //center sends sync packet and is waiting for response
+      if (isBtSdSyncRunning())
+      {
 #if defined(SHIMMER3)
         /* Only need to charge up the DMA if status strings aren't enabled. Otherwise this is handled within the setup/DMA code. */
         setDmaWaitingForResponseIfStatusStrDisabled();
+#endif
+        SyncCenterT10();
+      }
+    }
+    else
+    {
+      resetSyncRcNodeR10Cnt();
+      //node is waiting for 1 byte ROUTINE_COMMUNICATION(0xE0)
+#if defined(SHIMMER3)
+      /* Only need to charge up the DMA if status strings aren't enabled. Otherwise this is handled within the setup/DMA code. */
+      setDmaWaitingForResponseIfStatusStrDisabled();
 #endif
     }
   }
   else
   { //BT is disconnected
-      shimmerStatus.btstreamReady = 0;
-      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
+    shimmerStatus.btstreamReady = 0;
+    shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
 
-      setBtDataRateTestState(0);
+    setBtDataRateTestState(0);
 
-      clearBtTxBuf(0);
+    clearBtTxBuf(0);
 
-        setBtCrcMode(CRC_OFF);
-        /* Revert to default state if changed */
-        useAckPrefixForInstreamResponses = 1U;
+    setBtCrcMode(CRC_OFF);
+    /* Revert to default state if changed */
+    useAckPrefixForInstreamResponses = 1U;
 
-        /* Check BT module configuration after disconnection in case
-         * sensor configuration (i.e., BT on vs. BT off vs. SD Sync) was changed
-         *  during the last connection. */
-        checkBtModeConfig();
+    /* Check BT module configuration after disconnection in case
+     * sensor configuration (i.e., BT on vs. BT off vs. SD Sync) was changed
+     *  during the last connection. */
+    checkBtModeConfig();
   }
 
   if (!shimmerStatus.sensing)
   {
 #if defined(SHIMMER3)
-      TaskSet(TASK_SDLOG_CFG_UPDATE);
+    TaskSet(TASK_SDLOG_CFG_UPDATE);
 #else
-      S4_Task_set(TASK_SDLOG_CFG_UPDATE);
+    S4_Task_set(TASK_SDLOG_CFG_UPDATE);
 #endif
   }
 }
 
 void setUseAckPrefixForInstreamResponses(uint8_t state)
 {
-    useAckPrefixForInstreamResponses = state;
+  useAckPrefixForInstreamResponses = state;
 }
