@@ -198,7 +198,6 @@ void ShimmerCalib_singleSensorWriteFromInfoMem(uint16_t id,
     uint8_t range,
     uint8_t data_len,
     uint8_t *ptr);
-#if defined(SHIMMER3R)
 void CalibSaveFromInfoMemToCalibDump(uint8_t id);
 
 void ShimmerCalibInitFromInfoAll(void);
@@ -206,6 +205,5 @@ void ShimmerCalibUpdateFromInfoAll(void);
 void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time);
 void ShimmerCalibSyncFromDumpRamAll(void);
 void ShimmerCalibSyncFromDumpRamSingleSensor(uint8_t sensor);
-#endif
 
 #endif //SHIMMER_CALIBRATION_H
