@@ -12,6 +12,8 @@
 
 #include <stdint.h>
 #include <string.h>
+
+#if defined(SHIMMER3)
 #include "msp430.h"
 
 #include "../5xx_HAL/hal_RTC.h"
@@ -23,6 +25,15 @@
 #include "../BMPX80/bmpX80.h"
 #include "../RN4X/RN4X.h"
 #include "../shimmer_boards/shimmer_boards.h"
+#elif defined(SHIMMER3R)
+#include "shimmer_definitions.h"
+#if USE_FATFS
+#include "ff.h"
+#endif
+#include "hal_Infomem.h"
+
+#include "stm32u5xx.h"
+#endif
 
 uint8_t shimmerCalib_ram[SHIMMER_CALIB_RAM_MAX], shimmerCalib_macId[5],
         shimmerCalib_ramTemp[SHIMMER_CALIB_RAM_MAX];
@@ -32,16 +43,26 @@ uint8_t ShimmerCalib_findLength(sc_t* sc1)
 {
     switch (sc1->id)
     {
+#if defined(SHIMMER3)
     case SC_SENSOR_ANALOG_ACCEL:
         return SC_DATA_LEN_ANALOG_ACCEL;
-    case SC_SENSOR_MPU9150_GYRO:
-        return SC_DATA_LEN_MPU9250_GYRO;
-    case SC_SENSOR_LSM303DLHC_ACCEL:
-        return SC_DATA_LEN_LSM303DLHC_ACCEL;
-    case SC_SENSOR_LSM303DLHC_MAG:
-        return SC_DATA_LEN_LSM303DLHC_MAG;
+    case SC_SENSOR_MPU9X50_ICM20948_GYRO:
+        return SC_DATA_LEN_MPU9X50_ICM20948_GYRO;
+    case SC_SENSOR_LSM303_ACCEL:
+        return SC_DATA_LEN_LSM303_ACCEL;
+    case SC_SENSOR_LSM303_MAG:
+        return SC_DATA_LEN_LSM303_MAG;
     case SC_SENSOR_BMP180_PRESSURE:
         return SC_DATA_LEN_BMP180;
+#elif defined(SHIMMER3R)
+  case SC_SENSOR_LSM6DSV_ACCEL:
+  case SC_SENSOR_LSM6DSV_GYRO:
+  case SC_SENSOR_LIS2DW12_ACCEL:
+  case SC_SENSOR_ADXL371_ACCEL:
+  case SC_SENSOR_LIS3MDL_MAG:
+  case SC_SENSOR_LIS2MDL_MAG:
+    return SC_DATA_LEN_STD_IMU_CALIB;
+#endif
     default:
         return 0;
     }
@@ -59,11 +80,32 @@ void ShimmerCalib_initVer(void)
     shimmerCalib_ram[SC_OFFSET_VER_FW_INTER_L] = FW_VER_REL & 0xff;
 }
 
+void ShimmerCalib_defaultAll(void)
+{
+#if defined(SHIMMER3)
+  ShimmerCalib_default(SC_SENSOR_ANALOG_ACCEL);
+  ShimmerCalib_default(SC_SENSOR_MPU9X50_ICM20948_GYRO);
+  ShimmerCalib_default(SC_SENSOR_LSM303_ACCEL);
+  ShimmerCalib_default(SC_SENSOR_LSM303_MAG);
+#elif defined(SHIMMER3R)
+  ShimmerCalib_default(SC_SENSOR_LSM6DSV_ACCEL);
+  ShimmerCalib_default(SC_SENSOR_LSM6DSV_GYRO);
+  ShimmerCalib_default(SC_SENSOR_LIS2DW12_ACCEL);
+  ShimmerCalib_default(SC_SENSOR_ADXL371_ACCEL);
+  ShimmerCalib_default(SC_SENSOR_LIS3MDL_MAG);
+  ShimmerCalib_default(SC_SENSOR_LIS2MDL_MAG);
+#endif
+}
+
 void ShimmerCalib_init(void)
 {
     shimmerCalib_ramLen = 8;
 
+#if defined(SHIMMER3)
     memcpy(shimmerCalib_macId, getMacIdStrPtr() + 8, 4);
+#elif defined(SHIMMER3R)
+    memcpy(shimmerCalib_macId, S4Ram_getMacIdStrPtr() + 8, 4);
+#endif
     shimmerCalib_macId[4] = 0;
 
     memset(shimmerCalib_ram, 0, SHIMMER_CALIB_RAM_MAX);
@@ -71,17 +113,22 @@ void ShimmerCalib_init(void)
     shimmerCalib_ram[SC_OFFSET_LENGTH_H] = (shimmerCalib_ramLen >> 8) & 0xff;
     ShimmerCalib_initVer();
 
-    ShimmerCalib_default(SC_SENSOR_ANALOG_ACCEL);
-    ShimmerCalib_default(SC_SENSOR_MPU9150_GYRO);
-    ShimmerCalib_default(SC_SENSOR_LSM303DLHC_ACCEL);
-    ShimmerCalib_default(SC_SENSOR_LSM303DLHC_MAG);
+    ShimmerCalib_defaultAll();
+}
+
+uint8_t *ShimmerCalib_getRam(void)
+{
+  return shimmerCalib_ram;
 }
 
 void ShimmerCalib_ram2File(void)
 {
-
     char cal_file_name[48] = "";
+#if defined(SHIMMER3)
     DIRS gdc;
+#elif defined(SHIMMER3R)
+    DIR gdc;
+#endif
     FIL gfc;
     //sc_t sc1;
     UINT bw;
@@ -251,7 +298,7 @@ uint8_t ShimmerCalib_singleSensorRead(sc_t* sc1)
     return 0;
 }
 
-void ShimmerCalib_checkRamLen()
+void ShimmerCalib_checkRamLen(void)
 {
     shimmerCalib_ramLen = min(*(uint16_t* )shimmerCalib_ram,
                               SHIMMER_CALIB_RAM_MAX-2);
@@ -259,7 +306,7 @@ void ShimmerCalib_checkRamLen()
     SHIMMER_CALIB_RAM_MAX - shimmerCalib_ramLen - 2);
 }
 
-void ShimmerCalib_ramTempInit()
+void ShimmerCalib_ramTempInit(void)
 {
     shimmerCalib_ramTempMax = 0;
     shimmerCalib_ramTempLen = 0;
@@ -377,23 +424,23 @@ void ShimmerCalib_default(uint8_t sensor)
             ShimmerCalib_singleSensorWrite(&sc1);
         }
     }
-    else if (sensor == SC_SENSOR_MPU9150_GYRO)
+    else if (sensor == SC_SENSOR_MPU9X50_ICM20948_GYRO)
     {
         sc1.id = sensor;
-        sc1.data_len = SC_DATA_LEN_MPU9250_GYRO;
-        for (sc1.range = 0; sc1.range < SC_SENSOR_RANGE_MAX_MPU9250_GYRO;
+        sc1.data_len = SC_DATA_LEN_MPU9X50_ICM20948_GYRO;
+        for (sc1.range = 0; sc1.range < SC_SENSOR_RANGE_MAX_MPU9X50_ICM20948_GYRO;
                 sc1.range++)
         {
             bias = 0;
-            if (sc1.range == SC_SENSOR_RANGE_MPU9250_GYRO_250DPS)
+            if (sc1.range == SC_SENSOR_RANGE_MPU9X50_ICM20948_GYRO_250DPS)
             {
                 sensitivity = 13100;
             }
-            else if (sc1.range == SC_SENSOR_RANGE_MPU9250_GYRO_500DPS)
+            else if (sc1.range == SC_SENSOR_RANGE_MPU9X50_ICM20948_GYRO_500DPS)
             {
                 sensitivity = 6550;
             }
-            else if (sc1.range == SC_SENSOR_RANGE_MPU9250_GYRO_1000DPS)
+            else if (sc1.range == SC_SENSOR_RANGE_MPU9X50_ICM20948_GYRO_1000DPS)
             {
                 sensitivity = 3280;
             }
@@ -422,23 +469,23 @@ void ShimmerCalib_default(uint8_t sensor)
             ShimmerCalib_singleSensorWrite(&sc1);
         }
     }
-    else if (sensor == SC_SENSOR_LSM303DLHC_ACCEL)
+    else if (sensor == SC_SENSOR_LSM303_ACCEL)
     {
         sc1.id = sensor;
-        sc1.data_len = SC_DATA_LEN_LSM303DLHC_ACCEL;
-        for (sc1.range = 0; sc1.range < SC_SENSOR_RANGE_MAX_LSM303DLHC_ACCEL;
+        sc1.data_len = SC_DATA_LEN_LSM303_ACCEL;
+        for (sc1.range = 0; sc1.range < SC_SENSOR_RANGE_MAX_LSM303_ACCEL;
                 sc1.range++)
         {
             bias = 0;
-            if (sc1.range == SC_SENSOR_RANGE_LSM303DLHC_ACCEL_2G)
+            if (sc1.range == SC_SENSOR_RANGE_LSM303_ACCEL_2G)
             {
                 sensitivity = isWrAccelInUseLsm303dlhc() ? 1631 : 1671;
             }
-            else if (sc1.range == SC_SENSOR_RANGE_LSM303DLHC_ACCEL_4G)
+            else if (sc1.range == SC_SENSOR_RANGE_LSM303_ACCEL_4G)
             {
                 sensitivity = isWrAccelInUseLsm303dlhc() ? 815 : 836;
             }
-            else if (sc1.range == SC_SENSOR_RANGE_LSM303DLHC_ACCEL_8G)
+            else if (sc1.range == SC_SENSOR_RANGE_LSM303_ACCEL_8G)
             {
                 sensitivity = isWrAccelInUseLsm303dlhc() ? 408 : 418;
             }
@@ -467,49 +514,49 @@ void ShimmerCalib_default(uint8_t sensor)
             ShimmerCalib_singleSensorWrite(&sc1);
         }
     }
-    else if (sensor == SC_SENSOR_LSM303DLHC_MAG)
+    else if (sensor == SC_SENSOR_LSM303_MAG)
     {
         sc1.id = sensor;
-        sc1.data_len = SC_DATA_LEN_LSM303DLHC_MAG;
+        sc1.data_len = SC_DATA_LEN_LSM303_MAG;
         sc1.range = 0;
         if (isWrAccelInUseLsm303dlhc())
         {
-            for (sc1.range = 0; sc1.range < SC_SENSOR_RANGE_MAX_LSM303DLHC_MAG;
+            for (sc1.range = 0; sc1.range < SC_SENSOR_RANGE_MAX_LSM303_MAG;
                     sc1.range++)
             {
                 bias = 0;
 
-                if (sc1.range == SC_SENSOR_RANGE_LSM303DLHC_MAG_1_3G)
+                if (sc1.range == SC_SENSOR_RANGE_LSM303_MAG_1_3G)
                 {
                     sc1.data.dd.sens_x = 1100;
                     sc1.data.dd.sens_y = 1100;
                     sc1.data.dd.sens_z = 980;
                 }
-                else if (sc1.range == SC_SENSOR_RANGE_LSM303DLHC_MAG_1_9G)
+                else if (sc1.range == SC_SENSOR_RANGE_LSM303_MAG_1_9G)
                 {
                     sc1.data.dd.sens_x = 855;
                     sc1.data.dd.sens_y = 855;
                     sc1.data.dd.sens_z = 760;
                 }
-                else if (sc1.range == SC_SENSOR_RANGE_LSM303DLHC_MAG_2_5G)
+                else if (sc1.range == SC_SENSOR_RANGE_LSM303_MAG_2_5G)
                 {
                     sc1.data.dd.sens_x = 670;
                     sc1.data.dd.sens_y = 670;
                     sc1.data.dd.sens_z = 600;
                 }
-                else if (sc1.range == SC_SENSOR_RANGE_LSM303DLHC_MAG_4_0G)
+                else if (sc1.range == SC_SENSOR_RANGE_LSM303_MAG_4_0G)
                 {
                     sc1.data.dd.sens_x = 450;
                     sc1.data.dd.sens_y = 450;
                     sc1.data.dd.sens_z = 400;
                 }
-                else if (sc1.range == SC_SENSOR_RANGE_LSM303DLHC_MAG_4_7G)
+                else if (sc1.range == SC_SENSOR_RANGE_LSM303_MAG_4_7G)
                 {
                     sc1.data.dd.sens_x = 400;
                     sc1.data.dd.sens_y = 400;
                     sc1.data.dd.sens_z = 355;
                 }
-                else if (sc1.range == SC_SENSOR_RANGE_LSM303DLHC_MAG_5_6G)
+                else if (sc1.range == SC_SENSOR_RANGE_LSM303_MAG_5_6G)
                 {
                     sc1.data.dd.sens_x = 330;
                     sc1.data.dd.sens_y = 330;
