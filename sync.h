@@ -37,7 +37,7 @@
 //Node to Center Sync Packet - ACK(1 byte):SD_SYNC_RESPONSE(1 byte):Flag(1 byte)
 //Center to Node Sync Packet - SET_SD_SYNC_COMMAND(1 byte):Status(1 byte):Time(8 bytes, LSB order):CRC(0/1/2 bytes, LSB order)
 #define SYNC_PACKET_MAX_SIZE \
-    (SYNC_PACKET_SIZE_CMD + SYNC_PACKET_PAYLOAD_SIZE + CRC_2BYTES_ENABLED)
+  (SYNC_PACKET_SIZE_CMD + SYNC_PACKET_PAYLOAD_SIZE + CRC_2BYTES_ENABLED)
 #define SYNC_PACKET_PAYLOAD_SIZE 9
 #if USE_OLD_SD_SYNC_APPROACH
 #define SYNC_PACKET_ACK_IDX 0
@@ -66,12 +66,13 @@
 #define SYNC_PACKET_RESEND     0x01
 #define SYNC_FINISHED          0xFF
 
-void sdSyncInit(void (*btStart_cb)(void), void (*btStop_cb)(uint8_t),
+void sdSyncInit(void (*btStart_cb)(void),
+    void (*btStop_cb)(uint8_t),
     uint8_t (*taskSet_cb)(uint16_t taskflags)); //have to accommodate S3 TASK_FLAGS
 void resetMyTimeDiff(void);
 void resetMyTimeDiffArrays(void);
 void resetMyTimeDiffLongMin(void);
-uint8_t* getMyTimeDiffPtr(void);
+uint8_t *getMyTimeDiffPtr(void);
 #if USE_OLD_SD_SYNC_APPROACH
 void setRcommVar(uint8_t val);
 uint8_t getRcommVar(void);
@@ -79,8 +80,8 @@ uint8_t getRcommVar(void);
 void setSyncResp(uint8_t *args, uint8_t count);
 uint8_t isBtSdSyncRunning(void);
 uint8_t getSyncNodeNum(void);
-uint8_t* getSyncNodeNamePtrForIndex(uint8_t index);
-uint8_t* getSyncCenterNamePtr(void);
+uint8_t *getSyncNodeNamePtrForIndex(uint8_t index);
+uint8_t *getSyncCenterNamePtr(void);
 uint8_t getRcFirstOffsetRxed(void);
 uint8_t getSyncSuccC(void);
 uint8_t getSyncSuccN(void);
