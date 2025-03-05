@@ -804,13 +804,13 @@ void UpdateSdConfig(void)
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       sprintf(buffer, "exp_power=%d\r\n", storedConfig->expansionBoardPower);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "gyro_range=%d\r\n", get_config_byte_gyro_range());
+      sprintf(buffer, "gyro_range=%d\r\n", ShimConfig_gyroRangeGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       sprintf(buffer, "gyro_samplingrate=%d\r\n", storedConfig->gyroRate);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       sprintf(buffer, "acc_range=%d\r\n", storedConfig->wrAccelRange);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "acc_lpm=%d\r\n", ShimConfig_configByteWrAccelLpModeGet());
+      sprintf(buffer, "acc_lpm=%d\r\n", ShimConfig_wrAccelLpModeGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       sprintf(buffer, "acc_hrm=%d\r\n", storedConfig->wrAccelHrMode);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
@@ -1205,7 +1205,7 @@ void ParseConfig(void)
       }
       else if (strstr(buffer, "acc_lpm="))
       {
-        ShimConfig_configByteWrAccelLpModeSet(&stored_config_temp, atoi(equals));
+        ShimConfig_wrAccelLpModeSet(&stored_config_temp, atoi(equals));
       }
       else if (strstr(buffer, "acc_hrm="))
       {
@@ -1223,11 +1223,11 @@ void ParseConfig(void)
       }
       else if (strstr(buffer, "gyro_samplingrate="))
       {
-        ShimConfig_setConfigByteGyroRate(&stored_config_temp, atoi(equals));
+        ShimConfig_gyroRateSet(&stored_config_temp, atoi(equals));
       }
       else if (strstr(buffer, "gyro_range="))
       {
-        ShimConfig_setConfigByteGyroRange(&stored_config_temp, atoi(equals));
+        ShimConfig_gyroRangeSet(&stored_config_temp, atoi(equals));
       }
 #if defined(SHIMMER3)
       else if (strstr(buffer, "pres_bmp180_prec=") || strstr(buffer, "pres_bmp280_prec="))

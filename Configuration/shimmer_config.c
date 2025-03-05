@@ -43,8 +43,11 @@
 #include <Configuration/shimmer_config.h>
 
 #include <string.h>
+#include <math.h>
 
 #include <Boards/shimmer_boards.h>
+#include <SDCard/shimmer_sd.h>
+#include <SDCard/shimmer_sd_header.h>
 #include <SDSync/shimmer_sd_sync.h>
 #include <log_and_stream_externs.h>
 #if defined(SHIMMER3R)
@@ -52,7 +55,7 @@
 #endif
 
 uint8_t btMacAscii[14], btMacHex[6];
-gConfigBytes storedConfig;
+static gConfigBytes storedConfig;
 uint8_t calibRamFlag = 0;
 
 uint32_t maxLen, maxLenCnt;
@@ -221,13 +224,13 @@ void ShimConfig_setDefaultConfig(void)
   storedConfig.wrAccelRate = LSM303DLHC_ACCEL_100HZ;
   storedConfig.wrAccelRange = ACCEL_2G;
   storedConfig.wrAccelHrMode = 0;
-  ShimConfig_configByteWrAccelLpModeSet(&storedConfig, 0);
+  ShimConfig_wrAccelLpModeSet(&storedConfig, 0);
   /* MPU9X50/ICM20948 sampling rate of 8kHz/(155+1), i.e. 51.282Hz */
-  ShimConfig_setConfigByteGyroRate(&storedConfig, 0x9B);
+  ShimConfig_gyroRateSet(&storedConfig, 0x9B);
   /* LSM303 Mag 75Hz, +/-1.3 Gauss, MPU9150 Gyro +/-500 degrees per second */
   storedConfig.magRange = LSM303DLHC_MAG_1_3G;
   storedConfig.magRateLsb = LSM303DLHC_MAG_75HZ;
-  ShimConfig_setConfigByteGyroRange(&storedConfig, MPU9X50_GYRO_500DPS);
+  ShimConfig_gyroRangeSet(&storedConfig, MPU9X50_GYRO_500DPS);
   /* MPU9X50/ICM20948 Accel +/-2G */
   storedConfig.altAccelRange = ACCEL_2G;
   /* BMP pressure oversampling ratio 1 */
@@ -237,12 +240,12 @@ void ShimConfig_setDefaultConfig(void)
   storedConfig.wrAccelRate = LIS2DW12_XL_ODR_100Hz;
   storedConfig.wrAccelRange = LIS2DW12_2g;
   /* LSM6DSV Gyro sampling rate, next highest to 51.2Hz */
-  ShimConfig_setConfigByteGyroRate(&storedConfig, LSM6DSV_ODR_AT_60Hz);
+  ShimConfig_gyroRateSet(&storedConfig, LSM6DSV_ODR_AT_60Hz);
   /* LIS3MDL Mag 75Hz, +/-4 Gauss, MPU9150 Gyro +/-500 degrees per second */
   storedConfig.magRange = LIS3MDL_4_GAUSS;
   ShimConfig_configByteMagRateSet(&storedConfig, LIS3MDL_UHP_80Hz);
   /* LSM6DSV Gyro +/-500 degrees per second */
-  ShimConfig_setConfigByteGyroRange(&storedConfig, LSM6DSV_500dps);
+  ShimConfig_gyroRangeSet(&storedConfig, LSM6DSV_500dps);
   storedConfig.lnAccelRange = LSM6DSV_2g;
   ShimConfig_configBytePressureOversamplingRatioSet(&storedConfig, BMP3_NO_OVERSAMPLING);
   set_config_byte_wr_accel_mode(&storedConfig, LIS2DW12_HIGH_PERFORMANCE);
@@ -358,7 +361,7 @@ float get_shimmer_sampling_freq(void)
   return 32768.0 / (float) storedConfig.samplingRateTicks;
 }
 
-void ShimConfig_setConfigByteGyroRange(gConfigBytes *storedConfigPtr, uint8_t value)
+void ShimConfig_gyroRangeSet(gConfigBytes *storedConfigPtr, uint8_t value)
 {
 #if defined(SHIMMER3)
   value = (value <= MPU9X50_GYRO_2000DPS) ? value : MPU9X50_GYRO_500DPS;
@@ -371,7 +374,7 @@ void ShimConfig_setConfigByteGyroRange(gConfigBytes *storedConfigPtr, uint8_t va
 #endif
 }
 
-uint8_t get_config_byte_gyro_range(void)
+uint8_t ShimConfig_gyroRangeGet(void)
 {
 #if defined(SHIMMER3)
   return storedConfig.gyroRangeLsb;
@@ -380,7 +383,7 @@ uint8_t get_config_byte_gyro_range(void)
 #endif
 }
 
-void ShimConfig_setConfigByteGyroRate(gConfigBytes *storedConfigPtr, uint8_t value)
+void ShimConfig_gyroRateSet(gConfigBytes *storedConfigPtr, uint8_t value)
 {
 #if defined(SHIMMER3)
 #elif defined(SHIMMER3R)
@@ -389,7 +392,7 @@ void ShimConfig_setConfigByteGyroRate(gConfigBytes *storedConfigPtr, uint8_t val
   storedConfigPtr->gyroRate = value;
 }
 
-void ShimConfig_configByteWrAccelLpModeSet(gConfigBytes *storedConfigPtr, uint8_t value)
+void ShimConfig_wrAccelLpModeSet(gConfigBytes *storedConfigPtr, uint8_t value)
 {
 #if defined(SHIMMER3)
   value = (value == 1) ? 1 : 0;
@@ -402,7 +405,7 @@ void ShimConfig_configByteWrAccelLpModeSet(gConfigBytes *storedConfigPtr, uint8_
 #endif
 }
 
-uint8_t ShimConfig_configByteWrAccelLpModeGet(void)
+uint8_t ShimConfig_wrAccelLpModeGet(void)
 {
 #if defined(SHIMMER3)
   return storedConfig.wrAccelLpModeLsb;
@@ -415,13 +418,13 @@ uint8_t ShimConfig_configByteWrAccelLpModeGet(void)
 void set_config_byte_wr_accel_mode(gConfigBytes *storedConfigPtr, lis2dw12_mode_t value)
 {
   storedConfigPtr->wrAccelHrMode = (value >> 2) & 0x01;
-  ShimConfig_configByteWrAccelLpModeSet(storedConfigPtr, value & 0x03);
+  ShimConfig_wrAccelLpModeSet(storedConfigPtr, value & 0x03);
 }
 
 lis2dw12_mode_t get_config_byte_wr_accel_mode(void)
 {
   lis2dw12_mode_t wrAccelMode = (lis2dw12_mode_t) ((storedConfig.wrAccelHrMode << 2)
-      | ShimConfig_configByteWrAccelLpModeGet());
+      | ShimConfig_wrAccelLpModeGet());
   return wrAccelMode;
 }
 #endif
@@ -574,6 +577,14 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
     settingCorrected = 1;
   }
 
+  /* This used to be used to trigger reset of the Bluetooth advertising name
+   * and pin code but is no longer needed due to BT driver updates. */
+  if (storedConfigPtr->btPinSetup == 0xAA)
+  {
+    storedConfigPtr->btPinSetup = 0xAB;
+    settingCorrected = 1;
+  }
+
   checkSyncCenterName();
 
   return settingCorrected;
@@ -665,6 +676,37 @@ uint8_t ShimConfig_checkAutostopCondition(void)
 uint16_t FreqDiv(float samplingRate)
 {
   return (uint16_t) round(samplingClockFreqGet() / samplingRate);
+}
+
+void checkBtModeConfig(void)
+{
+    if (!shimmerStatus.btConnected)
+    {
+        shimmerStatus.btSupportEnabled =
+                ShimConfig_getStoredConfig()->bluetoothDisable ? 0 : 1;
+
+        // Don't allow sync to be enabled if BT is disabled.
+        shimmerStatus.sdSyncEnabled =
+                (shimmerStatus.btSupportEnabled
+                        && ShimConfig_getStoredConfig()->syncEnable);
+
+        /* Turn off BT if it has been disabled but it's still powered on. Also
+         * turn off if BT module is not in the right configuration for SD sync.
+         * Leave the SD sync code to turn on/off BT later when required. */
+        if ((!shimmerStatus.btSupportEnabled && shimmerStatus.btPowerOn)
+                || (shimmerStatus.sdSyncEnabled != shimmerStatus.btInSyncMode))
+        {
+            BtStop(0);
+        }
+
+        /* Turn on BT if normal LogAndStream mode is turned on */
+        if (shimmerStatus.btSupportEnabled
+                && !shimmerStatus.sdSyncEnabled
+                && !shimmerStatus.btPowerOn)
+        {
+            InitialiseBtAfterBoot();
+        }
+    }
 }
 
 #if defined(SHIMMER3R)

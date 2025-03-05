@@ -45,6 +45,8 @@
 #ifndef SHIMMER_CONFIG_H
 #define SHIMMER_CONFIG_H
 
+#include <log_and_stream_definitions.h>
+
 #if defined(SHIMMER3R)
 #include "lis2dw12_reg.h"
 #include "shimmer_definitions.h"
@@ -536,11 +538,11 @@ uint8_t GetRamCalibFlag(void);
 void SetRamCalibFlag(uint8_t flag);
 float get_shimmer_sampling_freq(void);
 
-void ShimConfig_setConfigByteGyroRange(gConfigBytes *storedConfigPtr, uint8_t value);
-uint8_t get_config_byte_gyro_range(void);
-void ShimConfig_setConfigByteGyroRate(gConfigBytes *storedConfigPtr, uint8_t value);
-void ShimConfig_configByteWrAccelLpModeSet(gConfigBytes *storedConfigPtr, uint8_t value);
-uint8_t ShimConfig_configByteWrAccelLpModeGet(void);
+void ShimConfig_gyroRangeSet(gConfigBytes *storedConfigPtr, uint8_t value);
+uint8_t ShimConfig_gyroRangeGet(void);
+void ShimConfig_gyroRateSet(gConfigBytes *storedConfigPtr, uint8_t value);
+void ShimConfig_wrAccelLpModeSet(gConfigBytes *storedConfigPtr, uint8_t value);
+uint8_t ShimConfig_wrAccelLpModeGet(void);
 #if defined(SHIMMER3R)
 void set_config_byte_wr_accel_mode(gConfigBytes *storedConfigPtr, lis2dw12_mode_t value);
 lis2dw12_mode_t get_config_byte_wr_accel_mode(void);
@@ -558,6 +560,7 @@ uint16_t ShimConfig_experimentLengthSecsMaxGet(void);
 void ShimConfig_experimentLengthCntReset(void);
 uint8_t ShimConfig_checkAutostopCondition(void);
 uint16_t FreqDiv(float samplingRate);
+void checkBtModeConfig(void);
 #if defined(SHIMMER3R)
 uint8_t ShimConfig_isMicrophoneEnabled(void);
 #endif

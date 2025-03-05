@@ -28,6 +28,7 @@ typedef volatile struct STATTypeDef_t
   uint8_t btStreaming      : 1;
   uint8_t btstreamReady    : 1;
   uint8_t btstreamCmd      : 2;
+  uint8_t btInSyncMode     : 1;
 
 #if defined(SHIMMER3R)
   uint8_t sdPeripheralInit : 1;

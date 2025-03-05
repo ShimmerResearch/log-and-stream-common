@@ -284,7 +284,7 @@ uint8_t BT_getMacAddressAscii(char *macAscii);
 uint8_t BT_getMacAddressHex(uint8_t *macHex);
 void BtsdSelfcmd(void);
 void HandleBtRfCommStateChange(uint8_t isConnected);
-uint8_t *getBtActionPtr(void);
+volatile uint8_t *getBtActionPtr(void);
 uint8_t *getBtArgsPtr(void);
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */

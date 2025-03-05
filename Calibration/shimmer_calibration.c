@@ -916,7 +916,7 @@ void CalibSaveFromInfoMemToCalibDump(uint8_t id)
   if (id == 0xFF || id == SC_SENSOR_MPU9X50_ICM20948_GYRO)
   {
     ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_MPU9X50_ICM20948_GYRO,
-        get_config_byte_gyro_range(), SC_DATA_LEN_MPU9X50_ICM20948_GYRO,
+        ShimConfig_gyroRangeGet(), SC_DATA_LEN_MPU9X50_ICM20948_GYRO,
         &configBytes->gyroCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_LSM303_MAG)
@@ -940,7 +940,7 @@ void CalibSaveFromInfoMemToCalibDump(uint8_t id)
   if (id == 0xFF || id == SC_SENSOR_LSM6DSV_GYRO)
   {
     ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM6DSV_GYRO,
-        get_config_byte_gyro_range(), SC_DATA_LEN_STD_IMU_CALIB,
+        ShimConfig_gyroRangeGet(), SC_DATA_LEN_STD_IMU_CALIB,
         &configBytes->gyroCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_LIS2DW12_ACCEL)
@@ -1066,7 +1066,7 @@ void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time)
   {
     offset = NV_GYRO_CALIBRATION;
     sc1.data_len = SC_DATA_LEN_STD_IMU_CALIB;
-    sc1.range = get_config_byte_gyro_range();
+    sc1.range = ShimConfig_gyroRangeGet();
   }
   else if (sc1.id == SC_SENSOR_LIS2DW12_ACCEL)
   {
@@ -1155,7 +1155,7 @@ void ShimmerCalibSyncFromDumpRamSingleSensor(uint8_t sensor)
     scs_infomem_offset = NV_GYRO_CALIBRATION;
     scs_sdhead_offset = SDH_GYRO_CALIBRATION;
     scs_sdhead_ts = SDH_GYRO_CALIB_TS;
-    sc1.range = get_config_byte_gyro_range();
+    sc1.range = ShimConfig_gyroRangeGet();
     break;
   case SC_SENSOR_LSM303_MAG:
     scs_infomem_offset = NV_MAG_CALIBRATION;
@@ -1193,7 +1193,7 @@ void ShimmerCalibSyncFromDumpRamSingleSensor(uint8_t sensor)
     scs_infomem_offset = NV_GYRO_CALIBRATION;
     scs_sdhead_offset = SDH_GYRO_CALIBRATION;
     scs_sdhead_ts = SDH_GYRO_CALIB_TS;
-    sc1.range = get_config_byte_gyro_range();
+    sc1.range = ShimConfig_gyroRangeGet();
     break;
   case SC_SENSOR_LIS2DW12_ACCEL:
     scs_infomem_offset = NV_WR_ACCEL_CALIBRATION;

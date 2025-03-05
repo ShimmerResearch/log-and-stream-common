@@ -1404,7 +1404,7 @@ void BtUart_processCmd(void)
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
     break;
   case SET_WR_ACCEL_LPMODE_COMMAND:
-    ShimConfig_configByteWrAccelLpModeSet(storedConfig, args[0]);
+    ShimConfig_wrAccelLpModeSet(storedConfig, args[0]);
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
     break;
   case SET_WR_ACCEL_HRMODE_COMMAND:
@@ -1412,11 +1412,11 @@ void BtUart_processCmd(void)
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
     break;
   case SET_GYRO_RANGE_COMMAND:
-    ShimConfig_setConfigByteGyroRange(storedConfig, args[0]);
+    ShimConfig_gyroRangeSet(storedConfig, args[0]);
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
     break;
   case SET_GYRO_SAMPLING_RATE_COMMAND:
-    ShimConfig_setConfigByteGyroRate(storedConfig, args[0]);
+    ShimConfig_gyroRateSet(storedConfig, args[0]);
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE1, SDH_CONFIG_SETUP_BYTE1, 1);
     break;
   case SET_ALT_ACCEL_RANGE_COMMAND:
@@ -1795,7 +1795,7 @@ void BtUart_processCmd(void)
     break;
 
   case SET_SD_SYNC_COMMAND:
-    if (isBtModuleRunningInSyncMode() && isBtSdSyncRunning())
+    if (shimmerStatus.btInSyncMode && isBtSdSyncRunning())
     {
       /* Reassemble full packet so that original RcNodeR10() will work without modificiation */
       fullSyncResp[0] = gAction;
@@ -1808,7 +1808,7 @@ void BtUart_processCmd(void)
       sendNack = 1;
     }
   case ACK_COMMAND_PROCESSED:
-    if (isBtModuleRunningInSyncMode() && isBtSdSyncRunning())
+    if (shimmerStatus.btInSyncMode && isBtSdSyncRunning())
     {
       /* Slave response received by Master */
       if (args[0] == SD_SYNC_RESPONSE)
@@ -1922,7 +1922,7 @@ uint8_t BtUart_replySingleSensorCalibCmd(uint8_t cmdWaitingResponse, uint8_t *re
 #elif defined(SHIMMER3R)
     sc1.id = SC_SENSOR_LSM6DSV_GYRO;
 #endif
-    sc1.range = get_config_byte_gyro_range();
+    sc1.range = ShimConfig_gyroRangeGet();
   }
   else if (cmdWaitingResponse == GET_MAG_CALIBRATION_COMMAND)
   {
@@ -2123,7 +2123,7 @@ void BtUart_sendRsp(void)
         break;
       case GET_WR_ACCEL_LPMODE_COMMAND:
         *(resPacket + packet_length++) = WR_ACCEL_LPMODE_RESPONSE;
-        *(resPacket + packet_length++) = ShimConfig_configByteWrAccelLpModeGet();
+        *(resPacket + packet_length++) = ShimConfig_wrAccelLpModeGet();
         break;
       case GET_WR_ACCEL_HRMODE_COMMAND:
         *(resPacket + packet_length++) = WR_ACCEL_HRMODE_RESPONSE;
@@ -2131,7 +2131,7 @@ void BtUart_sendRsp(void)
         break;
       case GET_GYRO_RANGE_COMMAND:
         *(resPacket + packet_length++) = GYRO_RANGE_RESPONSE;
-        *(resPacket + packet_length++) = get_config_byte_gyro_range();
+        *(resPacket + packet_length++) = ShimConfig_gyroRangeGet();
         break;
       case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
         *(resPacket + packet_length++) = BMP180_CALIBRATION_COEFFICIENTS_RESPONSE;
@@ -2662,7 +2662,7 @@ void HandleBtRfCommStateChange(uint8_t isConnected)
   }
 }
 
-uint8_t *getBtActionPtr(void)
+volatile uint8_t *getBtActionPtr(void)
 {
   return &gAction;
 }

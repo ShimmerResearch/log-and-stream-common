@@ -12,5 +12,6 @@
 
 void ShimUtil_ItoaWith0(uint64_t num, uint8_t *buf, uint8_t len);
 void ShimUtil_ItoaNo0(uint64_t num, uint8_t *buf, uint8_t max_len);
+uint64_t ShimUtil_Atol64(uint8_t *buf);
 
 #endif /* LOG_AND_STREAM_COMMON_UTIL_SHIMMER_UTIL_H_ */
