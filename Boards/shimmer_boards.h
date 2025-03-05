@@ -18,36 +18,36 @@ enum SR_HW_IDS
 
 enum SR_BOARD_CODES
 {
-    EXP_BRD_BR_AMP              = 8,
-    EXP_BRD_GSR                 = 14,
-    SHIMMER3_IMU                = 31,
-    EXP_BRD_PROTO3_MINI         = 36,
-    EXP_BRD_EXG                 = 37,
-    EXP_BRD_PROTO3_DELUXE       = 38,
-    EXP_BRD_ADXL377_ACCEL_200G  = 44,
-    EXP_BRD_EXG_UNIFIED         = 47,
-    EXP_BRD_GSR_UNIFIED         = 48,
-    EXP_BRD_BR_AMP_UNIFIED      = 49,
-    EXP_BRD_H3LIS331DL_ACCEL_HIGH_G     = 55,
-    SHIMMER_GQ_LR               = 56,
-    SHIMMER_GQ_SR               = 57,
-    SHIMMER4_SDK = 58,
-    SHIMMER_ECG_MD              = 59
+  EXP_BRD_BR_AMP = 8,
+  EXP_BRD_GSR = 14,
+  SHIMMER3_IMU = 31,
+  EXP_BRD_PROTO3_MINI = 36,
+  EXP_BRD_EXG = 37,
+  EXP_BRD_PROTO3_DELUXE = 38,
+  EXP_BRD_ADXL377_ACCEL_200G = 44,
+  EXP_BRD_EXG_UNIFIED = 47,
+  EXP_BRD_GSR_UNIFIED = 48,
+  EXP_BRD_BR_AMP_UNIFIED = 49,
+  EXP_BRD_H3LIS331DL_ACCEL_HIGH_G = 55,
+  SHIMMER_GQ_LR = 56,
+  SHIMMER_GQ_SR = 57,
+  SHIMMER4_SDK = 58,
+  SHIMMER_ECG_MD = 59
 };
 
 enum WR_ACCEL_AND_MAG_IN_USE
 {
-    WR_ACCEL_AND_MAG_NONE_IN_USE,
-    WR_ACCEL_AND_MAG_LSM303DLHC_IN_USE,
-    WR_ACCEL_AND_MAG_LSM303AHTR_IN_USE,
-    WR_ACCEL_AND_MAG_ICM20948_IN_USE
+  WR_ACCEL_AND_MAG_NONE_IN_USE,
+  WR_ACCEL_AND_MAG_LSM303DLHC_IN_USE,
+  WR_ACCEL_AND_MAG_LSM303AHTR_IN_USE,
+  WR_ACCEL_AND_MAG_ICM20948_IN_USE
 };
 
 enum GYRO_IN_USE
 {
-    GYRO_NONE_IN_USE,
-    GYRO_MPU9X50_IN_USE,
-    GYRO_ICM20948_IN_USE
+  GYRO_NONE_IN_USE,
+  GYRO_MPU9X50_IN_USE,
+  GYRO_ICM20948_IN_USE
 };
 
 typedef struct
@@ -83,7 +83,7 @@ uint8_t areADS1292RClockLinesTied(void);
 void parseDaughterCardId(void);
 shimmer_expansion_brd *getDaughtCardId(void);
 uint8_t *getDaughtCardIdPtr(void);
-char* getDaughtCardIdStrPtr(void);
+char *getDaughtCardIdStrPtr(void);
 uint8_t isDaughterCardIdSet(void);
 
 #if defined(SHIMMER3)

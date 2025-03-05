@@ -12,20 +12,20 @@
 
 #include "ff.h"
 
-#define FATFS_V_0_08B 8237
-#define FATFS_V_0_12C 68300
+#define FATFS_V_0_08B     8237
+#define FATFS_V_0_12C     68300
 
-// sd card write buffer size
-#define SD_WRITE_BUF_SIZE               512
+//sd card write buffer size
+#define SD_WRITE_BUF_SIZE 512
 
 #if defined(SHIMMER3)
-#define NUM_SDWRBUF           1
+#define NUM_SDWRBUF 1
 #elif defined(SHIMMER3R)
-#define NUM_SDWRBUF           64
+#define NUM_SDWRBUF 64
 #endif
 
-#define BIN_FILE_SPLIT_TIME_TICKS (32768 * 3600) // 1 hr
-#define BIN_FILE_SYNC_TIME_TICKS  (32768 * 60)  // 1 minute
+#define BIN_FILE_SPLIT_TIME_TICKS (32768 * 3600) //1 hr
+#define BIN_FILE_SYNC_TIME_TICKS  (32768 * 60)   //1 minute
 
 void SD_init(void);
 uint8_t SD_test1(void);

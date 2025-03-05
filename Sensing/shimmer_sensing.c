@@ -521,7 +521,7 @@ void sensing_stageCompleteCb(uint8_t stage)
   if (currentCbFlags == expectedCbFlags)
   {
     //saveData();
-      ShimTask_set(TASK_SAVEDATA);
+    ShimTask_set(TASK_SAVEDATA);
   }
 }
 
@@ -613,7 +613,7 @@ void saveData(void)
 
   if ((!shimmerStatus.sdLogging) && (!shimmerStatus.btStreaming))
   {
-      ShimTask_set(TASK_STOPSENSING);
+    ShimTask_set(TASK_STOPSENSING);
   }
 }
 

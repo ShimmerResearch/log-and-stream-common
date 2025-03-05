@@ -42,17 +42,17 @@
 
 #include <TaskList/shimmer_taskList.h>
 
-#include <log_and_stream_externs.h>
 #include <Battery/shimmer_battery.h>
 #include <Boards/shimmer_boards.h>
 #include <Calibration/shimmer_calibration.h>
 #include <Comms/shimmer_bt_uart.h>
 #include <Comms/shimmer_dock_usart.h>
 #include <Configuration/shimmer_config.h>
-#include <SDSync/shimmer_sd_sync.h>
 #include <SDCard/shimmer_sd.h>
 #include <SDCard/shimmer_sd_header.h>
+#include <SDSync/shimmer_sd_sync.h>
 #include <Sensing/shimmer_sensing.h>
+#include <log_and_stream_externs.h>
 
 #include "hal_FactoryTest.h"
 
@@ -149,7 +149,7 @@ void ShimTask_NORM_manage(void)
       SyncNodeR10();
       break;
     case TASK_STREAMDATA:
-        //TODO reduce down to one shared function
+      //TODO reduce down to one shared function
 #if defined(SHIMMER3)
       checkStreamData();
 #else
@@ -173,11 +173,11 @@ void ShimTask_NORM_manage(void)
       break;
 #endif
     case TASK_STARTSENSING:
-        //TODO reduce down to one shared function
+      //TODO reduce down to one shared function
 #if defined(SHIMMER3)
-        checkStartSensing();
+      checkStartSensing();
 #elif defined(SHIMMER3R)
-        S4Sens_startSensing();
+      S4Sens_startSensing();
 #endif
       break;
 #if defined(SHIMMER3R)
@@ -186,16 +186,15 @@ void ShimTask_NORM_manage(void)
       break;
 #endif
     case TASK_SDWRITE:
-        //TODO reduce down to one shared function
+      //TODO reduce down to one shared function
 #if defined(SHIMMER3)
-        Write2SD();
+      Write2SD();
 #elif defined(SHIMMER3R)
       SD_writeToCard();
 #endif
       break;
     case TASK_SDLOG_CFG_UPDATE:
-      if (!shimmerStatus.docked && !shimmerStatus.sensing
-          && CheckSdInslot() && GetSdCfgFlag())
+      if (!shimmerStatus.docked && !shimmerStatus.sensing && CheckSdInslot() && GetSdCfgFlag())
       {
         shimmerStatus.configuring = 1;
         ShimConfig_readRam();
@@ -283,42 +282,42 @@ uint8_t ShimTask_setNewBtCmdToProcess(void)
 
 void ShimTask_setStartSensing(void)
 {
-    ShimTask_set(TASK_SDLOG_CFG_UPDATE);
-    ShimTask_set(TASK_STARTSENSING);
+  ShimTask_set(TASK_SDLOG_CFG_UPDATE);
+  ShimTask_set(TASK_STARTSENSING);
 }
 
 void ShimTask_setStopSensing(void)
 {
 #if defined(SHIMMER3)
-    if (shimmerStatus.sensing)
-    {
-        setStopSensingFlag(1U);
-    }
+  if (shimmerStatus.sensing)
+  {
+    setStopSensingFlag(1U);
+  }
 #else
-    ShimTask_set(TASK_STOPSENSING);
+  ShimTask_set(TASK_STOPSENSING);
 #endif
 }
 
 void ShimTask_setStopLogging(void)
 {
 #if defined(SHIMMER3)
-    if (shimmerStatus.sdLogging)
-    {
-        setStopLoggingFlag(1U);
-    }
+  if (shimmerStatus.sdLogging)
+  {
+    setStopLoggingFlag(1U);
+  }
 #else
-    ShimTask_set(TASK_STOPSENSING);
+  ShimTask_set(TASK_STOPSENSING);
 #endif
 }
 
 void ShimTask_setStopStreaming(void)
 {
 #if defined(SHIMMER3)
-    if (shimmerStatus.btStreaming)
-    {
-        setStopStreamingFlag(1U);
-    }
+  if (shimmerStatus.btStreaming)
+  {
+    setStopStreamingFlag(1U);
+  }
 #else
-    ShimTask_set(TASK_STOPSENSING);
+  ShimTask_set(TASK_STOPSENSING);
 #endif
 }

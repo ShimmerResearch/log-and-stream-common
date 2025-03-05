@@ -7,17 +7,17 @@
 
 #include "shimmer_dock_usart.h"
 
+#include <SDCard/shimmer_sd_header.h>
 #include <stdint.h>
 #include <string.h>
-#include <SDCard/shimmer_sd_header.h>
 
-#include <log_and_stream_definitions.h>
-#include <log_and_stream_externs.h>
 #include <Boards/shimmer_boards.h>
 #include <Comms/shimmer_bt_uart.h>
 #include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd.h>
 #include <TaskList/shimmer_taskList.h>
+#include <log_and_stream_definitions.h>
+#include <log_and_stream_externs.h>
 
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
@@ -360,7 +360,8 @@ void DockUart_processCmd(void)
               ShimConfig_getStoredConfig()->rtcSetByBt = 0;
               InfoMem_write(NV_SD_TRIAL_CONFIG0,
                   &ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
-              S4Ram_sdHeadTextSetByte(SDH_TRIAL_CONFIG0, ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0]);
+              S4Ram_sdHeadTextSetByte(SDH_TRIAL_CONFIG0,
+                  ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0]);
 
               uartSendRspAck = 1;
             }
@@ -402,8 +403,7 @@ void DockUart_processCmd(void)
               }
 #endif
               /* Write received UART bytes to infomem */
-              InfoMem_write(uartInfoMemOffset,
-                  dockRxBuf + UART_RXBUF_DATA + 3, uartInfoMemLength);
+              InfoMem_write(uartInfoMemOffset, dockRxBuf + UART_RXBUF_DATA + 3, uartInfoMemLength);
               if (uartInfoMemOffset == (INFOMEM_SEG_C_ADDR - INFOMEM_OFFSET))
               {
                 /* Re-write MAC address to Infomem */
@@ -411,7 +411,8 @@ void DockUart_processCmd(void)
               }
               /* Reload latest infomem bytes to RAM */
               InfoMem_read(uartInfoMemOffset,
-                  &ShimConfig_getStoredConfig()->rawBytes[uartInfoMemOffset], uartInfoMemLength);
+                  &ShimConfig_getStoredConfig()->rawBytes[uartInfoMemOffset],
+                  uartInfoMemLength);
               SD_infomem2Names();
 #else
               uint8_t temp_btMacHex[6];
@@ -503,7 +504,8 @@ void DockUart_processCmd(void)
         { //set test
           if (dockRxBuf[UART_RXBUF_PROP] < FACTORY_TEST_COUNT)
           {
-            setup_factory_test(PRINT_TO_DOCK_UART, (factory_test_t) dockRxBuf[UART_RXBUF_PROP]);
+            setup_factory_test(
+                PRINT_TO_DOCK_UART, (factory_test_t) dockRxBuf[UART_RXBUF_PROP]);
             ShimTask_set(TASK_FACTORY_TEST);
             uartSendRspAck = 1;
           }
@@ -680,7 +682,7 @@ void DockUart_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_PROP_INFOMEM;
     if ((uartInfoMemLength + uart_resp_len) < UART_RSP_PACKET_SIZE)
     {
-        InfoMem_read(uartInfoMemOffset, uartRespBuf + uart_resp_len, uartInfoMemLength);
+      InfoMem_read(uartInfoMemOffset, uartRespBuf + uart_resp_len, uartInfoMemLength);
     }
     uart_resp_len += uartInfoMemLength;
   }

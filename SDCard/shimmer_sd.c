@@ -7,20 +7,20 @@
 
 #include "shimmer_sd.h"
 
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <math.h>
 #include <ctype.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
-#include <log_and_stream_definitions.h>
-#include <log_and_stream_externs.h>
 #include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd_header.h>
 #include <SDSync/shimmer_sd_sync.h>
 #include <Sensing/shimmer_sensing.h>
 #include <TaskList/shimmer_taskList.h>
 #include <Util/shimmer_util.h>
+#include <log_and_stream_definitions.h>
+#include <log_and_stream_externs.h>
 
 #if defined(SHIMMER3)
 #include "ff.h"
@@ -41,8 +41,7 @@
 #endif
 #endif
 
-uint8_t fileName[64], dirName[64], expDirName[32],
-    dataBuf[100],
+uint8_t fileName[64], dirName[64], expDirName[32], dataBuf[100],
     sdWrBuf[NUM_SDWRBUF][SD_WRITE_BUF_SIZE], //btMacHex[6], btMacAscii[14],
     sdBufInQ, expIdName[MAX_CHARS], shimmerName[MAX_CHARS],
     configTimeText[UINT32_LEN], //sdBufInQMax,
@@ -52,11 +51,11 @@ uint64_t sdFileCrTs, sdFileSyncTs;
 #if USE_FATFS
 FRESULT file_status;
 //char file_name_current[128];
-FATFS fatfs;         // File object
+FATFS fatfs; //File object
 #if _FATFS == FATFS_V_0_08B
-DIRS dir;               //Directory object
+DIRS dir; //Directory object
 #elif _FATFS == FATFS_V_0_12C
-DIR dir;               //Directory object
+DIR dir; //Directory object
 #endif
 FIL dataFile;
 FILINFO dataFileInfo;
@@ -154,7 +153,7 @@ uint8_t SD_test2(void)
   uint32_t byteswritten; //, bytesread; /* File write/read counts */
   uint8_t wtext[] = "FATFS works great!"; /* File write buffer */
 #if _USE_MKFS
-  uint8_t rtext[_MAX_SS];                       /* File read buffer */
+  uint8_t rtext[_MAX_SS]; /* File read buffer */
 #endif
   FIL SDFile;
 
@@ -175,7 +174,7 @@ uint8_t SD_test2(void)
       //Open file for writing (Create)
       if (f_open(&SDFile, "test2.TXT", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
       {
-          shimmerStatus.sdBadFile = 1;
+        shimmerStatus.sdBadFile = 1;
       }
       else
       {
@@ -184,7 +183,7 @@ uint8_t SD_test2(void)
         res = f_write(&SDFile, wtext, strlen((char *) wtext), (void *) &byteswritten);
         if ((byteswritten == 0) || (res != FR_OK))
         {
-            shimmerStatus.sdBadFile = 1;
+          shimmerStatus.sdBadFile = 1;
         }
         else
         {
@@ -355,9 +354,9 @@ uint8_t SD_setBasedir(void)
     else if (fno.fattrib & AM_DIR)
     {
 #if _FATFS == FATFS_V_0_08B
-        fname = (*fno.lfname) ? fno.lfname : fno.fname;
+      fname = (*fno.lfname) ? fno.lfname : fno.fname;
 #elif _FATFS == FATFS_V_0_12C
-        fname = (*lfn) ? lfn : fno.fname;
+      fname = (*lfn) ? lfn : fno.fname;
 #endif
 
       if (!strncmp(fname, (char *) shimmerName, strlen(fname) - 4))
@@ -451,7 +450,7 @@ void SD_fileInit(void)
 
   if (!shimmerStatus.sdPowerOn)
   {
-      Board_setSdPower(1);
+    Board_setSdPower(1);
   }
 
   sensing.isSdOperating = 1;
@@ -615,7 +614,7 @@ void SD_writeToCard(void)
   //sdBufInQ--;
   if (--sdBufInQ)
   {
-      ShimTask_set(TASK_SDWRITE);
+    ShimTask_set(TASK_SDWRITE);
   }
 
 #if USE_FATFS
@@ -640,17 +639,17 @@ FRESULT SD_mount(uint8_t val)
   if (1 == val)
   {
 #if _FATFS == FATFS_V_0_08B
-      result = f_mount(0, &fatfs);
+    result = f_mount(0, &fatfs);
 #elif _FATFS == FATFS_V_0_12C
-      result = f_mount(&fatfs, (TCHAR const *) SDPath, 0);
+    result = f_mount(&fatfs, (TCHAR const *) SDPath, 0);
 #endif
   }
   else
   {
 #if _FATFS == FATFS_V_0_08B
-  f_mount(0, NULL);
+    f_mount(0, NULL);
 #elif _FATFS == FATFS_V_0_12C
-  f_mount(&fatfs, (TCHAR const *) NULL, 0);
+    f_mount(&fatfs, (TCHAR const *) NULL, 0);
 #endif
   }
 
@@ -795,13 +794,11 @@ void UpdateSdConfig(void)
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 #if defined(SHIMMER3)
       sprintf(buffer,
-              (isBmp180InUse() ?
-                      ("pres_bmp180_prec=%d\r\n") :
-                      ("pres_bmp280_prec=%d\r\n")),
+          (isBmp180InUse() ? ("pres_bmp180_prec=%d\r\n") : ("pres_bmp280_prec=%d\r\n")),
 #elif defined(SHIMMER3R)
       sprintf(buffer, "pres_bmp390_prec=%d\r\n",
 #endif
-              ShimConfig_configBytePressureOversamplingRatioGet());
+          ShimConfig_configBytePressureOversamplingRatioGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       sprintf(buffer, "gsr_range=%d\r\n", storedConfig->gsrRange);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
@@ -955,7 +952,7 @@ void UpdateSdConfig(void)
       set_file_timestamp(cfgname);
 
 #if defined(SHIMMER3)
-      _delay_cycles(2400000); // 100ms @ 24MHz
+      _delay_cycles(2400000); //100ms @ 24MHz
 #elif defined(SHIMMER3R)
       HAL_Delay(100); //100ms @ 24MHz
 #endif
@@ -990,7 +987,7 @@ void ParseConfig(void)
   file_status = f_open(&cfgFile, cfgname, FA_READ | FA_OPEN_EXISTING);
   if (file_status == FR_NO_FILE)
   {
-      ShimConfig_readRam();
+    ShimConfig_readRam();
     UpdateSdConfig();
     //fileBad = 0;
   }
@@ -1003,7 +1000,8 @@ void ParseConfig(void)
   else
   {
     gConfigBytes stored_config_temp;
-    memset((uint8_t *) (stored_config_temp.rawBytes), 0, sizeof(stored_config_temp.rawBytes)); //0
+    memset((uint8_t *) (stored_config_temp.rawBytes), 0,
+        sizeof(stored_config_temp.rawBytes)); //0
 
     resetSyncVariablesBeforeParseConfig();
     resetSyncNodeArray();
@@ -1020,7 +1018,7 @@ void ParseConfig(void)
 
 #if defined(SHIMMER3)
     stored_config_temp.rawBytes[NV_SD_TRIAL_CONFIG0] &= ~SDH_SET_PMUX; //PMUX reserved as 0
-//    stored_config_temp.rawBytes[NV_SD_TRIAL_CONFIG0] |= SDH_TIME_STAMP; //TIME_STAMP always = 1
+//stored_config_temp.rawBytes[NV_SD_TRIAL_CONFIG0] |= SDH_TIME_STAMP; //TIME_STAMP always = 1
 #endif
     stored_config_temp.gsrRange = GSR_AUTORANGE;
     stored_config_temp.bufferSize = 1;
@@ -1106,31 +1104,31 @@ void ParseConfig(void)
 #if defined(SHIMMER3)
       else if (strstr(buffer, "extch15="))
       {
-          stored_config_temp.chEnExtADC15 = atoi(equals);
+        stored_config_temp.chEnExtADC15 = atoi(equals);
       }
       else if (strstr(buffer, "intch1="))
       {
-          stored_config_temp.chEnIntADC1 = atoi(equals);
+        stored_config_temp.chEnIntADC1 = atoi(equals);
       }
       else if (strstr(buffer, "intch12="))
       {
-          stored_config_temp.chEnIntADC12 = atoi(equals);
+        stored_config_temp.chEnIntADC12 = atoi(equals);
       }
       else if (strstr(buffer, "intch13="))
       {
-          stored_config_temp.chEnIntADC13 = atoi(equals);
+        stored_config_temp.chEnIntADC13 = atoi(equals);
       }
       else if (strstr(buffer, "intch14="))
       {
-          stored_config_temp.chEnIntADC14 = atoi(equals);
+        stored_config_temp.chEnIntADC14 = atoi(equals);
       }
       else if (strstr(buffer, "accel_mpu="))
       {
-          stored_config_temp.chEnAltAccel = atoi(equals);
+        stored_config_temp.chEnAltAccel = atoi(equals);
       }
       else if (strstr(buffer, "mag_mpu="))
       {
-          stored_config_temp.chEnAltMag = atoi(equals);
+        stored_config_temp.chEnAltMag = atoi(equals);
       }
 #elif defined(SHIMMER3R)
       else if (strstr(buffer, "extch2="))
@@ -1207,7 +1205,7 @@ void ParseConfig(void)
       }
       else if (strstr(buffer, "acc_lpm="))
       {
-          ShimConfig_configByteWrAccelLpModeSet(&stored_config_temp, atoi(equals));
+        ShimConfig_configByteWrAccelLpModeSet(&stored_config_temp, atoi(equals));
       }
       else if (strstr(buffer, "acc_hrm="))
       {
@@ -1232,15 +1230,14 @@ void ParseConfig(void)
         ShimConfig_setConfigByteGyroRange(&stored_config_temp, atoi(equals));
       }
 #if defined(SHIMMER3)
-      else if (strstr(buffer, "pres_bmp180_prec=")
-              || strstr(buffer, "pres_bmp280_prec="))
+      else if (strstr(buffer, "pres_bmp180_prec=") || strstr(buffer, "pres_bmp280_prec="))
       {
-          ShimConfig_configBytePressureOversamplingRatioSet(&stored_config_temp, atoi(equals));
+        ShimConfig_configBytePressureOversamplingRatioSet(&stored_config_temp, atoi(equals));
       }
 #elif defined(SHIMMER3R)
       else if (strstr(buffer, "pres_bmp390_prec="))
       {
-          ShimConfig_configBytePressureOversamplingRatioSet(&stored_config_temp, atoi(equals));
+        ShimConfig_configBytePressureOversamplingRatioSet(&stored_config_temp, atoi(equals));
       }
 #endif
 
@@ -1309,14 +1306,14 @@ void ParseConfig(void)
 #if defined(SHIMMER3)
       else if (strstr(buffer, "singletouch="))
       {
-          if (IS_SUPPORTED_SINGLE_TOUCH)
-          {
-              stored_config_temp.singleTouchStart = (atoi(equals) == 0) ? 0 : 1;
-          }
-          else
-          {
-              stored_config_temp.singleTouchStart = 0;
-          }
+        if (IS_SUPPORTED_SINGLE_TOUCH)
+        {
+          stored_config_temp.singleTouchStart = (atoi(equals) == 0) ? 0 : 1;
+        }
+        else
+        {
+          stored_config_temp.singleTouchStart = 0;
+        }
       }
 #endif
       else if (strstr(buffer, "myid="))
@@ -1383,15 +1380,15 @@ void ParseConfig(void)
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_CONFIG2="))
       {
-          stored_config_temp.exgADS1292rRegsCh1.config2 = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh1.config2 = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_LOFF="))
       {
-          stored_config_temp.exgADS1292rRegsCh1.loff = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh1.loff = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_CH1SET="))
       {
-          stored_config_temp.exgADS1292rRegsCh1.ch1set = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh1.ch1set = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_CH2SET="))
       {
@@ -1399,15 +1396,15 @@ void ParseConfig(void)
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_RLD_SENS="))
       {
-          stored_config_temp.exgADS1292rRegsCh1.rldSens = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh1.rldSens = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_LOFF_SENS="))
       {
-          stored_config_temp.exgADS1292rRegsCh1.loffSens = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh1.loffSens = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_LOFF_STAT="))
       {
-          stored_config_temp.exgADS1292rRegsCh1.loffStat = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh1.loffStat = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_RESP1="))
       {
@@ -1420,39 +1417,39 @@ void ParseConfig(void)
 
       else if (strstr(buffer, "EXG_ADS1292R_2_CONFIG1="))
       {
-          stored_config_temp.exgADS1292rRegsCh2.config1 = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh2.config1 = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_CONFIG2="))
       {
-          stored_config_temp.exgADS1292rRegsCh2.config2 = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh2.config2 = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_LOFF="))
       {
-          stored_config_temp.exgADS1292rRegsCh2.loff = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh2.loff = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_CH1SET="))
       {
-          stored_config_temp.exgADS1292rRegsCh2.ch1set = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh2.ch1set = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_CH2SET="))
       {
-          stored_config_temp.exgADS1292rRegsCh2.ch2set = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh2.ch2set = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_RLD_SENS="))
       {
-          stored_config_temp.exgADS1292rRegsCh2.rldSens = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh2.rldSens = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_LOFF_SENS="))
       {
-          stored_config_temp.exgADS1292rRegsCh2.loffSens = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh2.loffSens = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_LOFF_STAT="))
       {
-          stored_config_temp.exgADS1292rRegsCh2.loffStat = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh2.loffStat = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_RESP1="))
       {
-          stored_config_temp.exgADS1292rRegsCh2.resp1 = atoi(equals);
+        stored_config_temp.exgADS1292rRegsCh2.resp1 = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_RESP2="))
       {
@@ -1487,11 +1484,11 @@ void ParseConfig(void)
     HAL_Delay(50); //50ms
 #endif
 
-        sample_period = FreqDiv(sample_rate);
-        stored_config_temp.samplingRateTicks = sample_period;
+    sample_period = FreqDiv(sample_rate);
+    stored_config_temp.samplingRateTicks = sample_period;
 
-        ShimConfig_experimentLengthSecsMaxSet(stored_config_temp.experimentLengthMaxInMinutes);
-        setSyncEstExpLen(stored_config_temp.experimentLengthEstimatedInSec);
+    ShimConfig_experimentLengthSecsMaxSet(stored_config_temp.experimentLengthMaxInMinutes);
+    setSyncEstExpLen(stored_config_temp.experimentLengthEstimatedInSec);
 
     triggerSdCardUpdate |= ShimConfig_checkAndCorrectConfig(&stored_config_temp);
 
@@ -1519,8 +1516,10 @@ void ParseConfig(void)
     InfoMem_write(0, &storedConfig->rawBytes[0], NV_NUM_SETTINGS_BYTES);
     InfoMem_write(NV_SENSORS3, &storedConfig->rawBytes[NV_SENSORS3], 5);
     InfoMem_write(NV_DERIVED_CHANNELS_3, &storedConfig->rawBytes[NV_DERIVED_CHANNELS_3], 5);
-    InfoMem_write(NV_SD_SHIMMER_NAME, &storedConfig->rawBytes[NV_SD_SHIMMER_NAME], NV_NUM_SD_BYTES);
-    InfoMem_write(NV_CENTER, &storedConfig->rawBytes[NV_CENTER], NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
+    InfoMem_write(NV_SD_SHIMMER_NAME,
+        &storedConfig->rawBytes[NV_SD_SHIMMER_NAME], NV_NUM_SD_BYTES);
+    InfoMem_write(NV_CENTER, &storedConfig->rawBytes[NV_CENTER],
+        NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
 #elif defined(SHIMMER3R)
     InfoMem_update();
 #endif
@@ -1590,67 +1589,67 @@ FRESULT set_file_timestamp(char *path)
 
 void FindError(uint8_t err, uint8_t *name)
 {
-    switch (err)
-    {
-    case 0:
-        strcpy((char*) name, "OK");
-        break;
-    case 1:
-        strcpy((char*) name, "DISK_ERR");
-        break;
-    case 2:
-        strcpy((char*) name, "INT_ERR");
-        break;
-    case 3:
-        strcpy((char*) name, "NOT_READY");
-        break;
-    case 4:
-        strcpy((char*) name, "NO_FILE");
-        break;
-    case 5:
-        strcpy((char*) name, "NO_PATH");
-        break;
-    case 6:
-        strcpy((char*) name, "INVALID_NAME");
-        break;
-    case 7:
-        strcpy((char*) name, "DENIED");
-        break;
-    case 8:
-        strcpy((char*) name, "EXIST");
-        break;
-    case 9:
-        strcpy((char*) name, "INVALID_OBJ");
-        break;
-    case 10:
-        strcpy((char*) name, "WRITE_PROTEC");
-        break;
-    case 11:
-        strcpy((char*) name, "INVALID_DRIV");
-        break;
-    case 12:
-        strcpy((char*) name, "NOT_ENABLED");
-        break;
-    case 13:
-        strcpy((char*) name, "NO_FILESYSTE");
-        break;
-    case 14:
-        strcpy((char*) name, "MKFS_ABORTED");
-        break;
-    case 15:
-        strcpy((char*) name, "TIMEOUT");
-        break;
-    case 16:
-        strcpy((char*) name, "LOCKED");
-        break;
-    case 17:
-        strcpy((char*) name, "NOT_ENOUGH_C");
-        break;
-    case 18:
-        strcpy((char*) name, "TOO_MANY_OPE");
-        break;
-    default:
-        strcpy((char*) name, "NO_REASON");
-        break;
-    } //FRESULT;
+  switch (err)
+  {
+  case 0:
+    strcpy((char *) name, "OK");
+    break;
+  case 1:
+    strcpy((char *) name, "DISK_ERR");
+    break;
+  case 2:
+    strcpy((char *) name, "INT_ERR");
+    break;
+  case 3:
+    strcpy((char *) name, "NOT_READY");
+    break;
+  case 4:
+    strcpy((char *) name, "NO_FILE");
+    break;
+  case 5:
+    strcpy((char *) name, "NO_PATH");
+    break;
+  case 6:
+    strcpy((char *) name, "INVALID_NAME");
+    break;
+  case 7:
+    strcpy((char *) name, "DENIED");
+    break;
+  case 8:
+    strcpy((char *) name, "EXIST");
+    break;
+  case 9:
+    strcpy((char *) name, "INVALID_OBJ");
+    break;
+  case 10:
+    strcpy((char *) name, "WRITE_PROTEC");
+    break;
+  case 11:
+    strcpy((char *) name, "INVALID_DRIV");
+    break;
+  case 12:
+    strcpy((char *) name, "NOT_ENABLED");
+    break;
+  case 13:
+    strcpy((char *) name, "NO_FILESYSTE");
+    break;
+  case 14:
+    strcpy((char *) name, "MKFS_ABORTED");
+    break;
+  case 15:
+    strcpy((char *) name, "TIMEOUT");
+    break;
+  case 16:
+    strcpy((char *) name, "LOCKED");
+    break;
+  case 17:
+    strcpy((char *) name, "NOT_ENOUGH_C");
+    break;
+  case 18:
+    strcpy((char *) name, "TOO_MANY_OPE");
+    break;
+  default:
+    strcpy((char *) name, "NO_REASON");
+    break;
+  } //FRESULT;
 }

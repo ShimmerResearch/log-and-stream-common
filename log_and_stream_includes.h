@@ -14,9 +14,9 @@
 #include <Comms/shimmer_bt_uart.h>
 #include <Comms/shimmer_dock_usart.h>
 #include <Configuration/shimmer_config.h>
-#include <SDSync/shimmer_sd_sync.h>
 #include <SDCard/shimmer_sd.h>
 #include <SDCard/shimmer_sd_header.h>
+#include <SDSync/shimmer_sd_sync.h>
 #include <Sensing/shimmer_sensing.h>
 #include <TaskList/shimmer_taskList.h>
 #include <Util/shimmer_util.h>

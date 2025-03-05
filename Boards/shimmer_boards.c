@@ -36,135 +36,130 @@ void setDaugherCardIdPage(uint8_t *pagePtr)
 
 uint8_t isAds1292Present(void)
 {
-    uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
-    return (srId == EXP_BRD_EXG)
-            || (srId == EXP_BRD_EXG_UNIFIED)
-            || (srId == SHIMMER_ECG_MD)
-            || (srId == SHIMMER4_SDK);
+  uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
+  return (srId == EXP_BRD_EXG) || (srId == EXP_BRD_EXG_UNIFIED)
+      || (srId == SHIMMER_ECG_MD) || (srId == SHIMMER4_SDK);
 }
 
 #if defined(SHIMMER3)
 uint8_t isRn4678PresentAndCmdModeSupport(void)
 {
-    uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
-    uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
-    uint8_t srRevMinor = daughterCardIdPage.expansion_brd.exp_brd_minor;
+  uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
+  uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
+  uint8_t srRevMinor = daughterCardIdPage.expansion_brd.exp_brd_minor;
 
-    /* Checking EEPROM here to rule out older sensors in factory test which
-     * don't have EEPROM fitted */
-    return (isEepromIsPresent() && hwId == HW_ID_SHIMMER3
-            && ((srId == SHIMMER3_IMU && srRevMajor >= 10)
-                    || (srId == EXP_BRD_EXG_UNIFIED && srRevMajor >= 6)
-                    || (srId == EXP_BRD_GSR_UNIFIED && srRevMajor >= 5)
-                    || (srId == EXP_BRD_BR_AMP_UNIFIED && srRevMajor >= 3)
-                    || (srId == EXP_BRD_PROTO3_DELUXE && srRevMajor >= 4)
-                    || (srId == EXP_BRD_PROTO3_MINI && srRevMajor >= 4)
-                    || (srId == EXP_BRD_ADXL377_ACCEL_200G && srRevMajor >= 3)
-                    /* This case is added so a sensor under-going factory test before
-                     * it's SR number has been written to it will set the RN4678 in the
-                     * correct mode in order for the FW to boot properly. This will
-                     * conflict with any older sensors that have the TCXO placed */
-                    || (srId == 0xFF && srRevMajor == 0xFF && srRevMinor == 0xFF)));
+  /* Checking EEPROM here to rule out older sensors in factory test which
+   * don't have EEPROM fitted */
+  return (isEepromIsPresent() && hwId == HW_ID_SHIMMER3
+      && ((srId == SHIMMER3_IMU && srRevMajor >= 10)
+          || (srId == EXP_BRD_EXG_UNIFIED && srRevMajor >= 6)
+          || (srId == EXP_BRD_GSR_UNIFIED && srRevMajor >= 5)
+          || (srId == EXP_BRD_BR_AMP_UNIFIED && srRevMajor >= 3)
+          || (srId == EXP_BRD_PROTO3_DELUXE && srRevMajor >= 4)
+          || (srId == EXP_BRD_PROTO3_MINI && srRevMajor >= 4)
+          || (srId == EXP_BRD_ADXL377_ACCEL_200G && srRevMajor >= 3)
+          /* This case is added so a sensor under-going factory test before
+           * it's SR number has been written to it will set the RN4678 in the
+           * correct mode in order for the FW to boot properly. This will
+           * conflict with any older sensors that have the TCXO placed */
+          || (srId == 0xFF && srRevMajor == 0xFF && srRevMinor == 0xFF)));
 }
 
 uint8_t isSubstitutionNeededForWrAccel(void)
 {
-    uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
-    uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
-    uint8_t srRevMinor = daughterCardIdPage.expansion_brd.exp_brd_minor;
+  uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
+  uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
+  uint8_t srRevMinor = daughterCardIdPage.expansion_brd.exp_brd_minor;
 
-    return (hwId == HW_ID_SHIMMER3 && isGyroInUseIcm20948()
-                && ((srId == SHIMMER3_IMU && srRevMajor == 9 && srRevMinor == 1)
-                    || (srId == EXP_BRD_EXG_UNIFIED && srRevMajor == 5 && srRevMinor == 1)
-                    || (srId == EXP_BRD_GSR_UNIFIED && srRevMajor == 4 && srRevMinor == 1)
-                    || (srId == EXP_BRD_GSR_UNIFIED && srRevMajor == 4 && srRevMinor == 2)
-                    || (srId == EXP_BRD_BR_AMP_UNIFIED && srRevMajor == 3 && srRevMinor == 1)
-                    || (srId == EXP_BRD_PROTO3_DELUXE && srRevMajor == 3 && srRevMinor == 1)
-                    || (srId == EXP_BRD_PROTO3_MINI && srRevMajor == 3 && srRevMinor == 1)
-                    || (srId == EXP_BRD_ADXL377_ACCEL_200G && srRevMajor == 2 && srRevMinor == 1)));
+  return (hwId == HW_ID_SHIMMER3 && isGyroInUseIcm20948()
+      && ((srId == SHIMMER3_IMU && srRevMajor == 9 && srRevMinor == 1)
+          || (srId == EXP_BRD_EXG_UNIFIED && srRevMajor == 5 && srRevMinor == 1)
+          || (srId == EXP_BRD_GSR_UNIFIED && srRevMajor == 4 && srRevMinor == 1)
+          || (srId == EXP_BRD_GSR_UNIFIED && srRevMajor == 4 && srRevMinor == 2)
+          || (srId == EXP_BRD_BR_AMP_UNIFIED && srRevMajor == 3 && srRevMinor == 1)
+          || (srId == EXP_BRD_PROTO3_DELUXE && srRevMajor == 3 && srRevMinor == 1)
+          || (srId == EXP_BRD_PROTO3_MINI && srRevMajor == 3 && srRevMinor == 1)
+          || (srId == EXP_BRD_ADXL377_ACCEL_200G && srRevMajor == 2 && srRevMinor == 1)));
 }
 
 uint8_t are2ndGenImuSensorsPresent(void)
 {
-    return (hwId == HW_ID_SHIMMER3 && isWrAccelInUseLsm303ahtr() && isBmp280InUse());
+  return (hwId == HW_ID_SHIMMER3 && isWrAccelInUseLsm303ahtr() && isBmp280InUse());
 }
 
 uint8_t are2ndGenSensorsPresentAndUnknownBoard(void)
 {
-    uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
+  uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
 
-    return (are2ndGenImuSensorsPresent()
-            && !(srId == SHIMMER_ECG_MD
-                    || srId == SHIMMER3_IMU
-                    || srId == EXP_BRD_EXG_UNIFIED
-                    || srId == EXP_BRD_GSR_UNIFIED
-                    || srId == EXP_BRD_BR_AMP_UNIFIED));
+  return (are2ndGenImuSensorsPresent()
+      && !(srId == SHIMMER_ECG_MD || srId == SHIMMER3_IMU || srId == EXP_BRD_EXG_UNIFIED
+          || srId == EXP_BRD_GSR_UNIFIED || srId == EXP_BRD_BR_AMP_UNIFIED));
 }
 
 uint8_t areGsrControlsPinsReversed(void)
 {
-    uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
-    uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
-    uint8_t srRevMinor = daughterCardIdPage.expansion_brd.exp_brd_minor;
+  uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
+  uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
+  uint8_t srRevMinor = daughterCardIdPage.expansion_brd.exp_brd_minor;
 
-    return (hwId == HW_ID_SHIMMER3 && srId == EXP_BRD_GSR_UNIFIED && srRevMajor == 4 && srRevMinor == 1);
+  return (hwId == HW_ID_SHIMMER3 && srId == EXP_BRD_GSR_UNIFIED
+      && srRevMajor == 4 && srRevMinor == 1);
 }
 #endif
 
 uint8_t areADS1292RClockLinesTied(void)
 {
-    uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
-    uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
+  uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
+  uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
 
-    return (hwId == HW_ID_SHIMMER3 && srId == EXP_BRD_EXG_UNIFIED && srRevMajor >= 4)
-            || (hwId == HW_ID_SHIMMER3R && srId == EXP_BRD_EXG_UNIFIED);
+  return (hwId == HW_ID_SHIMMER3 && srId == EXP_BRD_EXG_UNIFIED && srRevMajor >= 4)
+      || (hwId == HW_ID_SHIMMER3R && srId == EXP_BRD_EXG_UNIFIED);
 }
-
 
 void parseDaughterCardId(void)
 {
-    memset(daughtCardIdStr, 0x00, sizeof(daughtCardIdStr));
+  memset(daughtCardIdStr, 0x00, sizeof(daughtCardIdStr));
 
-    uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
-    switch (srId)
-    {
-    case SHIMMER3_IMU:
-        sprintf(daughtCardIdStr, "Shimmer3 IMU");
-        break;
-    case EXP_BRD_GSR:
-    case EXP_BRD_GSR_UNIFIED:
-        sprintf(daughtCardIdStr, "Shimmer3 GSR+");
-        break;
-    case EXP_BRD_EXG:
-    case EXP_BRD_EXG_UNIFIED:
-        sprintf(daughtCardIdStr, "Shimmer3 ExG");
-        break;
-    case EXP_BRD_BR_AMP:
-    case EXP_BRD_BR_AMP_UNIFIED:
-        sprintf(daughtCardIdStr, "Shimmer3 Bridge Amplifier");
-        break;
-    case EXP_BRD_PROTO3_MINI:
-        sprintf(daughtCardIdStr, "Shimmer3 Proto3 Mini");
-        break;
-    case EXP_BRD_PROTO3_DELUXE:
-        sprintf(daughtCardIdStr, "Shimmer3 Proto3 Deluxe");
-        break;
-    case EXP_BRD_ADXL377_ACCEL_200G:
-        sprintf(daughtCardIdStr, "Shimmer3 200G Accel");
-        break;
-    case EXP_BRD_H3LIS331DL_ACCEL_HIGH_G:
-        sprintf(daughtCardIdStr, "Shimmer3 100G Accel");
-        break;
-    case SHIMMER4_SDK:
-      sprintf(daughtCardIdStr, "Shimmer4 SDK");
-      break;
-    case SHIMMER_ECG_MD:
-        sprintf(daughtCardIdStr, "Shimmer3 ECG MD");
-        break;
-    default:
-        sprintf(daughtCardIdStr, "SR%d", srId);
-        break;
-    }
+  uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
+  switch (srId)
+  {
+  case SHIMMER3_IMU:
+    sprintf(daughtCardIdStr, "Shimmer3 IMU");
+    break;
+  case EXP_BRD_GSR:
+  case EXP_BRD_GSR_UNIFIED:
+    sprintf(daughtCardIdStr, "Shimmer3 GSR+");
+    break;
+  case EXP_BRD_EXG:
+  case EXP_BRD_EXG_UNIFIED:
+    sprintf(daughtCardIdStr, "Shimmer3 ExG");
+    break;
+  case EXP_BRD_BR_AMP:
+  case EXP_BRD_BR_AMP_UNIFIED:
+    sprintf(daughtCardIdStr, "Shimmer3 Bridge Amplifier");
+    break;
+  case EXP_BRD_PROTO3_MINI:
+    sprintf(daughtCardIdStr, "Shimmer3 Proto3 Mini");
+    break;
+  case EXP_BRD_PROTO3_DELUXE:
+    sprintf(daughtCardIdStr, "Shimmer3 Proto3 Deluxe");
+    break;
+  case EXP_BRD_ADXL377_ACCEL_200G:
+    sprintf(daughtCardIdStr, "Shimmer3 200G Accel");
+    break;
+  case EXP_BRD_H3LIS331DL_ACCEL_HIGH_G:
+    sprintf(daughtCardIdStr, "Shimmer3 100G Accel");
+    break;
+  case SHIMMER4_SDK:
+    sprintf(daughtCardIdStr, "Shimmer4 SDK");
+    break;
+  case SHIMMER_ECG_MD:
+    sprintf(daughtCardIdStr, "Shimmer3 ECG MD");
+    break;
+  default:
+    sprintf(daughtCardIdStr, "SR%d", srId);
+    break;
+  }
 }
 
 shimmer_expansion_brd *getDaughtCardId(void)
@@ -177,9 +172,9 @@ uint8_t *getDaughtCardIdPtr(void)
   return &daughterCardIdPage.raw[0];
 }
 
-char* getDaughtCardIdStrPtr(void)
+char *getDaughtCardIdStrPtr(void)
 {
-    return &daughtCardIdStr[0];
+  return &daughtCardIdStr[0];
 }
 
 uint8_t isDaughterCardIdSet(void)
@@ -191,55 +186,55 @@ uint8_t isDaughterCardIdSet(void)
 #if defined(SHIMMER3)
 void setWrAccelAndMagInUse(uint8_t wr_accel_and_mag_in_use)
 {
-    wrAccelAndMagInUse = wr_accel_and_mag_in_use;
+  wrAccelAndMagInUse = wr_accel_and_mag_in_use;
 }
 
 uint8_t isWrAccelInUseLsm303dlhc(void)
 {
-    return wrAccelAndMagInUse == WR_ACCEL_AND_MAG_LSM303DLHC_IN_USE;
+  return wrAccelAndMagInUse == WR_ACCEL_AND_MAG_LSM303DLHC_IN_USE;
 }
 
 uint8_t isWrAccelInUseLsm303ahtr(void)
 {
-    return wrAccelAndMagInUse == WR_ACCEL_AND_MAG_LSM303AHTR_IN_USE;
+  return wrAccelAndMagInUse == WR_ACCEL_AND_MAG_LSM303AHTR_IN_USE;
 }
 
 uint8_t isWrAccelInUseIcm20948(void)
 {
-    return wrAccelAndMagInUse == WR_ACCEL_AND_MAG_ICM20948_IN_USE;
+  return wrAccelAndMagInUse == WR_ACCEL_AND_MAG_ICM20948_IN_USE;
 }
 
 void setGyroInUse(uint8_t gyro_in_use)
 {
-    gyroInUse = gyro_in_use;
+  gyroInUse = gyro_in_use;
 }
 
 uint8_t isGyroInUseMpu9x50(void)
 {
-    return gyroInUse == GYRO_MPU9X50_IN_USE;
+  return gyroInUse == GYRO_MPU9X50_IN_USE;
 }
 
 uint8_t isGyroInUseIcm20948(void)
 {
-    return gyroInUse == GYRO_ICM20948_IN_USE;
+  return gyroInUse == GYRO_ICM20948_IN_USE;
 }
 #endif
 
 void setEepromIsPresent(uint8_t eeprom_is_preset)
 {
-    eepromIsPresent = eeprom_is_preset;
+  eepromIsPresent = eeprom_is_preset;
 }
 
 uint8_t isEepromIsPresent(void)
 {
-    return eepromIsPresent;
+  return eepromIsPresent;
 }
 
 #if defined(SHIMMER3)
 uint8_t isLnAccelKxtc9_2050Present(void)
 {
-    // Assuming here that if BMP280 and LSM303AHTR/ICM20948 present, infer low-noise accel is KXTC9-2050 and not KXRB5-2042
-    return ((isWrAccelInUseLsm303ahtr() || isWrAccelInUseIcm20948()) && isBmp280InUse());
+  //Assuming here that if BMP280 and LSM303AHTR/ICM20948 present, infer low-noise accel is KXTC9-2050 and not KXRB5-2042
+  return ((isWrAccelInUseLsm303ahtr() || isWrAccelInUseIcm20948()) && isBmp280InUse());
 }
 #endif
 
@@ -272,4 +267,3 @@ uint8_t isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_b
           && daughterCardIdPage.expansion_brd.exp_brd_minor == exp_brd_minor));
 }
 #endif
-

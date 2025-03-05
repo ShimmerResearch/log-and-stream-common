@@ -6,23 +6,23 @@
  */
 
 #include <Boards/shimmer_boards.h>
-#include <Configuration/shimmer_config.h>
 #include <Calibration/shimmer_calibration.h>
+#include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd_header.h>
 
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
 #include "../BMPX80/bmpX80.h"
 #elif defined(SHIMMER3R)
-#include "shimmer_definitions.h"
 #include "bmp3_defs.h"
+#include "shimmer_definitions.h"
 #endif
 
 uint8_t sdHeadText[SD_HEAD_SIZE];
 
 void ShimSdHead_reset(void)
 {
-    memset(sdHeadText, 0xff, SD_HEAD_SIZE);
+  memset(sdHeadText, 0xff, SD_HEAD_SIZE);
 }
 
 uint8_t *S4Ram_getSdHeadText(void)
@@ -152,15 +152,15 @@ void ShimSdHead_config2SdHead(void)
   sdHeadText[SDH_BROADCAST_INTERVAL] = configBytes->rawBytes[NV_SD_BT_INTERVAL];
 
 #if defined(SHIMMER3)
-  uint64_t * rwcTimeDiffPtr = getRwcTimeDiffPtr();
-  sdHeadText[SDH_RTC_DIFF_7] = *((uint8_t*) rwcTimeDiffPtr);
-  sdHeadText[SDH_RTC_DIFF_6] = *(((uint8_t*) rwcTimeDiffPtr) + 1);
-  sdHeadText[SDH_RTC_DIFF_5] = *(((uint8_t*) rwcTimeDiffPtr) + 2);
-  sdHeadText[SDH_RTC_DIFF_4] = *(((uint8_t*) rwcTimeDiffPtr) + 3);
-  sdHeadText[SDH_RTC_DIFF_3] = *(((uint8_t*) rwcTimeDiffPtr) + 4);
-  sdHeadText[SDH_RTC_DIFF_2] = *(((uint8_t*) rwcTimeDiffPtr) + 5);
-  sdHeadText[SDH_RTC_DIFF_1] = *(((uint8_t*) rwcTimeDiffPtr) + 6);
-  sdHeadText[SDH_RTC_DIFF_0] = *(((uint8_t*) rwcTimeDiffPtr) + 7);
+  uint64_t *rwcTimeDiffPtr = getRwcTimeDiffPtr();
+  sdHeadText[SDH_RTC_DIFF_7] = *((uint8_t *) rwcTimeDiffPtr);
+  sdHeadText[SDH_RTC_DIFF_6] = *(((uint8_t *) rwcTimeDiffPtr) + 1);
+  sdHeadText[SDH_RTC_DIFF_5] = *(((uint8_t *) rwcTimeDiffPtr) + 2);
+  sdHeadText[SDH_RTC_DIFF_4] = *(((uint8_t *) rwcTimeDiffPtr) + 3);
+  sdHeadText[SDH_RTC_DIFF_3] = *(((uint8_t *) rwcTimeDiffPtr) + 4);
+  sdHeadText[SDH_RTC_DIFF_2] = *(((uint8_t *) rwcTimeDiffPtr) + 5);
+  sdHeadText[SDH_RTC_DIFF_1] = *(((uint8_t *) rwcTimeDiffPtr) + 6);
+  sdHeadText[SDH_RTC_DIFF_0] = *(((uint8_t *) rwcTimeDiffPtr) + 7);
 #else
   sdHeadText[SDH_RTC_DIFF_7] = 0;
   sdHeadText[SDH_RTC_DIFF_6] = 0;
@@ -182,22 +182,19 @@ void ShimSdHead_config2SdHead(void)
 
 void saveBmpCalibrationToSdHeader(void)
 {
-    uint8_t *bmpCalibPtr = get_bmp_calib_data_bytes();
+  uint8_t *bmpCalibPtr = get_bmp_calib_data_bytes();
 #if defined(SHIMMER3)
-    /* BMP180 had 22 bytes stored in index SDH_TEMP_PRES_CALIBRATION. BMP280 had
-     * 24 bytes spread across the 22 available bytes in SDH_TEMP_PRES_CALIBRATION
-     * and a further 2 bytes in BMP280_XTRA_CALIB_BYTES. */
-    memcpy(&sdHeadText[SDH_TEMP_PRES_CALIBRATION], bmpCalibPtr,
-    BMP180_CALIB_DATA_SIZE);
-    if (isBmp280InUse())
-    {
-        memcpy(&sdHeadText[SDH_TEMP_PRES_EXTRA_CALIB_BYTES],
-               bmpCalibPtr + BMP180_CALIB_DATA_SIZE,
-               BMP280_CALIB_XTRA_BYTES);
-    }
+  /* BMP180 had 22 bytes stored in index SDH_TEMP_PRES_CALIBRATION. BMP280 had
+   * 24 bytes spread across the 22 available bytes in SDH_TEMP_PRES_CALIBRATION
+   * and a further 2 bytes in BMP280_XTRA_CALIB_BYTES. */
+  memcpy(&sdHeadText[SDH_TEMP_PRES_CALIBRATION], bmpCalibPtr, BMP180_CALIB_DATA_SIZE);
+  if (isBmp280InUse())
+  {
+    memcpy(&sdHeadText[SDH_TEMP_PRES_EXTRA_CALIB_BYTES],
+        bmpCalibPtr + BMP180_CALIB_DATA_SIZE, BMP280_CALIB_XTRA_BYTES);
+  }
 #elif defined(SHIMMER3)
-    /* BMP390 had 21 bytes stored in index SDH_TEMP_PRES_CALIBRATION */
-    memcpy(&sdHeadText[SDH_TEMP_PRES_CALIBRATION], bmpCalibPtr, BMP3_LEN_CALIB_DATA);
+  /* BMP390 had 21 bytes stored in index SDH_TEMP_PRES_CALIBRATION */
+  memcpy(&sdHeadText[SDH_TEMP_PRES_CALIBRATION], bmpCalibPtr, BMP3_LEN_CALIB_DATA);
 #endif
 }
-

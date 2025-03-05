@@ -8,13 +8,13 @@
 #include <stdint.h>
 
 void ShimUtil_ItoaWith0(uint64_t num, uint8_t *buf, uint8_t len)
-{ // len = actual len + 1 extra '\0' at the end
-    memset(buf, 0, len--);
-    while (len--)
-    {
-        buf[len] = '0' + num % 10;
-        num /= 10;
-    }
+{ //len = actual len + 1 extra '\0' at the end
+  memset(buf, 0, len--);
+  while (len--)
+  {
+    buf[len] = '0' + num % 10;
+    num /= 10;
+  }
 }
 
 void ShimUtil_ItoaNo0(uint64_t num, uint8_t *buf, uint8_t max_len)
@@ -35,5 +35,3 @@ void ShimUtil_ItoaNo0(uint64_t num, uint8_t *buf, uint8_t max_len)
     num /= 10;
   }
 }
-
-
