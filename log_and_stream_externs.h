@@ -25,7 +25,7 @@ extern BattStatus batteryStatus;
 #if defined(SHIMMER3)
 extern char *HAL_GetUID(void);
 extern void RwcCheck(void);
-extern uint8_t* getMacIdBytesPtr(void);
+extern uint8_t *getMacIdBytesPtr(void);
 
 /* Task list */
 extern void checkSetupDock(void);

@@ -46,8 +46,8 @@
 #include <stdint.h>
 
 #if defined(SHIMMER3R)
-#include <shimmer_include.h>
 #include "shimmer_definitions.h"
+#include <shimmer_include.h>
 #endif
 
 #if USE_FREERTOS
@@ -78,13 +78,13 @@ typedef enum
   TASK_DOCK_RESPOND = (0x00000001UL << 2U),
   TASK_BT_PROCESS_CMD = (0x00000001UL << 3U),
 #if defined(SHIMMER3)
-  TASK_CFGCH         = (0x00000001UL << 5U),
+  TASK_CFGCH = (0x00000001UL << 5U),
 #endif
   TASK_BT_RESPOND = (0x00000001UL << 4U),
   TASK_RCCENTERR1 = (0x00000001UL << 7U),
   TASK_RCNODER10 = (0x00000001UL << 6U),
 #if defined(SHIMMER3)
-  TASK_SAMPLE_MPU9150_MAG  = (0x00000001UL << 21U),
+  TASK_SAMPLE_MPU9150_MAG = (0x00000001UL << 21U),
   TASK_SAMPLE_BMPX80_PRESS = (0x00000001UL << 22U),
 #endif
   TASK_STREAMDATA = (0x00000001UL << 11U),

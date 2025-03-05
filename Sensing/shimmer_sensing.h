@@ -51,10 +51,11 @@
 #endif
 
 #if defined(SHIMMER3)
-#define MAX_NUM_CHANNELS         45    //3xanalogAccel + 3xdigiGyro + 3xdigiMag +
-                                       //3xLSM303DLHCAccel + 3xMPU9150Accel + 3xMPU9150MAG +
-                                       //BMPX80TEMP + BMPX80PRESS + batteryVoltage +
-                                       //3xexternalADC + 4xinternalADC + (ExG)
+#define MAX_NUM_CHANNELS \
+  45 //3xanalogAccel + 3xdigiGyro + 3xdigiMag +
+     //3xLSM303DLHCAccel + 3xMPU9150Accel + 3xMPU9150MAG +
+     //BMPX80TEMP + BMPX80PRESS + batteryVoltage +
+     //3xexternalADC + 4xinternalADC + (ExG)
 #elif defined(SHIMMER3R)
 //TODO updated with correct number
 #define MAX_NUM_CHANNELS \

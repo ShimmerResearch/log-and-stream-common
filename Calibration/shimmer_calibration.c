@@ -10,14 +10,14 @@
 
 #include <Calibration/shimmer_calibration.h>
 
+#include <SDCard/shimmer_sd.h>
+#include <SDCard/shimmer_sd_header.h>
 #include <stdint.h>
 #include <string.h>
-#include <SDCard/shimmer_sd_header.h>
-#include <SDCard/shimmer_sd.h>
 
-#include "log_and_stream_definitions.h"
 #include "Boards/shimmer_boards.h"
 #include "Configuration/shimmer_config.h"
+#include "log_and_stream_definitions.h"
 
 #if defined(SHIMMER3)
 #include "msp430.h"
@@ -26,10 +26,10 @@
 #include "../5xx_HAL/hal_Board.h"
 #include "../5xx_HAL/hal_RTC.h"
 #include "../BMPX80/bmpX80.h"
-#include "ff.h"
 #include "../LSM303AHTR/lsm303ahtr.h"
 #include "../LSM303DLHC/lsm303dlhc.h"
 #include "../RN4X/RN4X.h"
+#include "ff.h"
 #elif defined(SHIMMER3R)
 #if USE_FATFS
 #include "ff.h"
@@ -259,10 +259,10 @@ uint8_t ShimmerCalib_file2Ram(void)
   shimmerCalib_ramLen = min(*(uint16_t *) shimmerCalib_ram, SHIMMER_CALIB_RAM_MAX - 2);
   f_close(&gfc);
 #if defined(SHIMMER3)
-    _delay_cycles(1200000); //50ms
+  _delay_cycles(1200000); //50ms
 #elif defined(SHIMMER3R)
-    HAL_Delay(50); //50ms
-    set_file_timestamp(cal_file_name);
+  HAL_Delay(50); //50ms
+  set_file_timestamp(cal_file_name);
 #endif
 
 #endif
@@ -415,56 +415,56 @@ void ShimmerCalib_default(uint8_t sensor)
   //uint16_t address;
   //bool align = FALSE;
 
-    sc_t sc1;
-    //uint8_t ts[8];//range, , data_ptr
-    uint16_t bias, sensitivity;
+  sc_t sc1;
+  //uint8_t ts[8];//range, , data_ptr
+  uint16_t bias, sensitivity;
 
-    //*(uint64_t*)(sc1.ts) = rwcTimeDiff64 + RTC_get64();
-    memset(sc1.ts, 0, 8);
+  //*(uint64_t*)(sc1.ts) = rwcTimeDiff64 + RTC_get64();
+  memset(sc1.ts, 0, 8);
 
-  #if defined(SHIMMER3)
-    if (sensor == SC_SENSOR_ANALOG_ACCEL)
-    {
-      setDefaultKionixCalib(&sc1);
-    }
-    else if (sensor == SC_SENSOR_MPU9X50_ICM20948_GYRO)
-    {
-      setDefaultMpu9X50Icm20948GyroCalib(&sc1);
-    }
-    else if (sensor == SC_SENSOR_LSM303_ACCEL)
-    {
-      setDefaultLsm303AccelCalib(&sc1);
-    }
-    else if (sensor == SC_SENSOR_LSM303_MAG)
-    {
-      setDefaultLsm303MagCalib(&sc1);
-    }
-  #elif defined(SHIMMER3R)
-    if (sensor == SC_SENSOR_LSM6DSV_ACCEL)
-    {
-      setDefaultLsm6dsvAccelCalib(&sc1);
-    }
-    else if (sensor == SC_SENSOR_LSM6DSV_GYRO)
-    {
-      setDefaultLsm6dsvGyroCalib(&sc1);
-    }
-    else if (sensor == SC_SENSOR_LIS2DW12_ACCEL)
-    {
-      setDefaultLis2dw12AccelCalib(&sc1);
-    }
-    else if (sensor == SC_SENSOR_ADXL371_ACCEL)
-    {
-      setDefaultAdxl371AccelCalib(&sc1);
-    }
-    else if (sensor == SC_SENSOR_LIS3MDL_MAG)
-    {
-      setDefaultLis3mdlMagCalib(&sc1);
-    }
-    else if (sensor == SC_SENSOR_LIS2MDL_MAG)
-    {
-      setDefaultLis2mdlMagCalib(&sc1);
-    }
-  #endif
+#if defined(SHIMMER3)
+  if (sensor == SC_SENSOR_ANALOG_ACCEL)
+  {
+    setDefaultKionixCalib(&sc1);
+  }
+  else if (sensor == SC_SENSOR_MPU9X50_ICM20948_GYRO)
+  {
+    setDefaultMpu9X50Icm20948GyroCalib(&sc1);
+  }
+  else if (sensor == SC_SENSOR_LSM303_ACCEL)
+  {
+    setDefaultLsm303AccelCalib(&sc1);
+  }
+  else if (sensor == SC_SENSOR_LSM303_MAG)
+  {
+    setDefaultLsm303MagCalib(&sc1);
+  }
+#elif defined(SHIMMER3R)
+  if (sensor == SC_SENSOR_LSM6DSV_ACCEL)
+  {
+    setDefaultLsm6dsvAccelCalib(&sc1);
+  }
+  else if (sensor == SC_SENSOR_LSM6DSV_GYRO)
+  {
+    setDefaultLsm6dsvGyroCalib(&sc1);
+  }
+  else if (sensor == SC_SENSOR_LIS2DW12_ACCEL)
+  {
+    setDefaultLis2dw12AccelCalib(&sc1);
+  }
+  else if (sensor == SC_SENSOR_ADXL371_ACCEL)
+  {
+    setDefaultAdxl371AccelCalib(&sc1);
+  }
+  else if (sensor == SC_SENSOR_LIS3MDL_MAG)
+  {
+    setDefaultLis3mdlMagCalib(&sc1);
+  }
+  else if (sensor == SC_SENSOR_LIS2MDL_MAG)
+  {
+    setDefaultLis2mdlMagCalib(&sc1);
+  }
+#endif
 }
 
 #if defined(SHIMMER3)
@@ -1017,7 +1017,7 @@ void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time)
   else
   {
 #if defined(SHIMMER3)
-    *(uint64_t*) (sc1.ts) = getRwcTime();
+    *(uint64_t *) (sc1.ts) = getRwcTime();
 #elif defined(SHIMMER3R)
     *(uint64_t *) (sc1.ts) = RTC_get64();
 #endif
@@ -1052,7 +1052,7 @@ void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time)
     }
     else
     {
-        sc1.range = 0;
+      sc1.range = 0;
     }
   }
 #elif defined(SHIMMER3R)
@@ -1114,6 +1114,7 @@ void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time)
     ShimmerCalib_singleSensorWrite(&sc1);
   }
 }
+
 //
 void ShimmerCalibSyncFromDumpRamAll(void)
 {
@@ -1162,11 +1163,11 @@ void ShimmerCalibSyncFromDumpRamSingleSensor(uint8_t sensor)
     scs_sdhead_ts = SDH_MAG_CALIB_TS;
     if (isWrAccelInUseLsm303dlhc())
     {
-        sc1.range = configBytes->magRange;
+      sc1.range = configBytes->magRange;
     }
     else
     {
-        sc1.range = 0;
+      sc1.range = 0;
     }
     break;
   case SC_SENSOR_LSM303_ACCEL:

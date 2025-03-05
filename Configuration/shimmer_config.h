@@ -429,13 +429,13 @@ typedef union
 
     //SDTrialConfig1
     uint8_t lowBatteryAutoStop : 1;
-    uint8_t unusedIdx218Bit1 : 1;
-    uint8_t unusedIdx218Bit2 : 1;
-    uint8_t unusedIdx218Bit3 : 1;
-    uint8_t tcxo             : 1;
-    uint8_t unusedIdx218Bit5 : 1;
-    uint8_t unusedIdx218Bit6 : 1;
-    uint8_t singleTouchStart : 1;
+    uint8_t unusedIdx218Bit1   : 1;
+    uint8_t unusedIdx218Bit2   : 1;
+    uint8_t unusedIdx218Bit3   : 1;
+    uint8_t tcxo               : 1;
+    uint8_t unusedIdx218Bit5   : 1;
+    uint8_t unusedIdx218Bit6   : 1;
+    uint8_t singleTouchStart   : 1;
 
     uint8_t btIntervalSecs;
     uint16_t experimentLengthEstimatedInSec; //Used for SD Sync (min = 1)
@@ -545,7 +545,8 @@ uint8_t ShimConfig_configByteWrAccelLpModeGet(void);
 void set_config_byte_wr_accel_mode(gConfigBytes *storedConfigPtr, lis2dw12_mode_t value);
 lis2dw12_mode_t get_config_byte_wr_accel_mode(void);
 #endif
-void ShimConfig_configBytePressureOversamplingRatioSet(gConfigBytes *storedConfigPtr, uint8_t value);
+void ShimConfig_configBytePressureOversamplingRatioSet(gConfigBytes *storedConfigPtr,
+    uint8_t value);
 uint8_t ShimConfig_configBytePressureOversamplingRatioGet(void);
 void ShimConfig_configByteMagRateSet(gConfigBytes *storedConfigPtr, uint8_t value);
 uint8_t ShimConfig_configByteMagRateGet(void);

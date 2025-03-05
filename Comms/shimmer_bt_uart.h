@@ -186,27 +186,27 @@
 #define PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE    0xA6
 #define GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND 0xA7
 #define SET_FACTORY_TEST                              0xA8
-#define SET_ALT_ACCEL_CALIBRATION_COMMAND   0xA9
-#define ALT_ACCEL_CALIBRATION_RESPONSE      0xAA
-#define GET_ALT_ACCEL_CALIBRATION_COMMAND   0xAB
-#define SET_ALT_ACCEL_SAMPLING_RATE_COMMAND 0xAC
-#define ALT_ACCEL_SAMPLING_RATE_RESPONSE    0xAD
-#define GET_ALT_ACCEL_SAMPLING_RATE_COMMAND 0xAE
-#define SET_ALT_MAG_CALIBRATION_COMMAND     0xAF
-#define ALT_MAG_CALIBRATION_RESPONSE        0xB0
-#define GET_ALT_MAG_CALIBRATION_COMMAND     0xB1
-#define SET_ALT_MAG_SAMPLING_RATE_COMMAND   0xB2
-#define ALT_MAG_SAMPLING_RATE_RESPONSE      0xB3
-#define GET_ALT_MAG_SAMPLING_RATE_COMMAND   0xB4
-#define SET_SD_SYNC_COMMAND        0xE0
-#define SD_SYNC_RESPONSE           0xE1
-#define NACK_COMMAND_PROCESSED     0xFE
-#define ACK_COMMAND_PROCESSED      0xFF
+#define SET_ALT_ACCEL_CALIBRATION_COMMAND             0xA9
+#define ALT_ACCEL_CALIBRATION_RESPONSE                0xAA
+#define GET_ALT_ACCEL_CALIBRATION_COMMAND             0xAB
+#define SET_ALT_ACCEL_SAMPLING_RATE_COMMAND           0xAC
+#define ALT_ACCEL_SAMPLING_RATE_RESPONSE              0xAD
+#define GET_ALT_ACCEL_SAMPLING_RATE_COMMAND           0xAE
+#define SET_ALT_MAG_CALIBRATION_COMMAND               0xAF
+#define ALT_MAG_CALIBRATION_RESPONSE                  0xB0
+#define GET_ALT_MAG_CALIBRATION_COMMAND               0xB1
+#define SET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB2
+#define ALT_MAG_SAMPLING_RATE_RESPONSE                0xB3
+#define GET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB4
+#define SET_SD_SYNC_COMMAND                           0xE0
+#define SD_SYNC_RESPONSE                              0xE1
+#define NACK_COMMAND_PROCESSED                        0xFE
+#define ACK_COMMAND_PROCESSED                         0xFF
 
 //#define BT_RX_COMMS_TIMEOUT_TICKS                     3277U /* 32768*0.1s = 3276.8 */
-#define BT_RX_COMMS_TIMEOUT_TICKS  328U /* 32768*0.01s = 327.68  */
+#define BT_RX_COMMS_TIMEOUT_TICKS                     328U /* 32768*0.01s = 327.68  */
 
-#define DATA_RATE_TEST_PACKET_SIZE 5U //1 header byte + uint32_t counter value
+#define DATA_RATE_TEST_PACKET_SIZE                    5U //1 header byte + uint32_t counter value
 
 enum
 {

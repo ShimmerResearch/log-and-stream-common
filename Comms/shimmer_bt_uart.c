@@ -30,15 +30,15 @@
 #include "shimmer_externs.h"
 #endif
 
-#include <log_and_stream_externs.h>
 #include <Boards/shimmer_boards.h>
 #include <Calibration/shimmer_calibration.h>
 #include <Configuration/shimmer_config.h>
-#include <SDSync/shimmer_sd_sync.h>
 #include <SDCard/shimmer_sd.h>
 #include <SDCard/shimmer_sd_header.h>
+#include <SDSync/shimmer_sd_sync.h>
 #include <Sensing/shimmer_sensing.h>
 #include <TaskList/shimmer_taskList.h>
+#include <log_and_stream_externs.h>
 
 uint8_t unwrappedResponse[256] = { 0 };
 volatile uint8_t gAction;
@@ -1130,7 +1130,7 @@ void resetBtResponseVars(void)
   useAckPrefixForInstreamResponses = 1;
 
 #if defined(SHIMMER4_SDK)
-    i2cvBattBtRsp = 0;
+  i2cvBattBtRsp = 0;
 #endif
 }
 
@@ -1238,28 +1238,28 @@ void BtUart_processCmd(void)
     if (!shimmerStatus.sensing)
     {
 #if defined(SHIMMER3)
-        ShimTask_set(TASK_CFGCH);
-        setStartSensing();
+      ShimTask_set(TASK_CFGCH);
+      setStartSensing();
 #elif defined(SHIMMER3)
-        ShimTask_set(TASK_STARTSENSING);
+      ShimTask_set(TASK_STARTSENSING);
 #endif
     }
     break;
   case START_SDBT_COMMAND:
-      if (!shimmerStatus.sensing)
-      {
+    if (!shimmerStatus.sensing)
+    {
 #if defined(SHIMMER3)
-        ShimTask_set(TASK_CFGCH);
-        setStartSensing();
+      ShimTask_set(TASK_CFGCH);
+      setStartSensing();
 #elif defined(SHIMMER3)
-        ShimTask_set(TASK_STARTSENSING);
+      ShimTask_set(TASK_STARTSENSING);
 #endif
-      }
+    }
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
     if (shimmerStatus.sdlogReady && !shimmerStatus.sdBadFile)
     {
-        shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
+      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
     }
     break;
   case START_LOGGING_COMMAND:
@@ -1267,10 +1267,10 @@ void BtUart_processCmd(void)
     if (!shimmerStatus.sensing)
     {
 #if defined(SHIMMER3)
-        setStartSensing();
-        ShimTask_set(TASK_CFGCH);
+      setStartSensing();
+      ShimTask_set(TASK_CFGCH);
 #else
-        ShimTask_set(TASK_STARTSENSING);
+      ShimTask_set(TASK_STARTSENSING);
 #endif
     }
     break;
@@ -1404,7 +1404,7 @@ void BtUart_processCmd(void)
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
     break;
   case SET_WR_ACCEL_LPMODE_COMMAND:
-      ShimConfig_configByteWrAccelLpModeSet(storedConfig, args[0]);
+    ShimConfig_configByteWrAccelLpModeSet(storedConfig, args[0]);
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
     break;
   case SET_WR_ACCEL_HRMODE_COMMAND:
@@ -1412,11 +1412,11 @@ void BtUart_processCmd(void)
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
     break;
   case SET_GYRO_RANGE_COMMAND:
-      ShimConfig_setConfigByteGyroRange(storedConfig, args[0]);
+    ShimConfig_setConfigByteGyroRange(storedConfig, args[0]);
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
     break;
   case SET_GYRO_SAMPLING_RATE_COMMAND:
-      ShimConfig_setConfigByteGyroRate(storedConfig, args[0]);
+    ShimConfig_setConfigByteGyroRate(storedConfig, args[0]);
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE1, SDH_CONFIG_SETUP_BYTE1, 1);
     break;
   case SET_ALT_ACCEL_RANGE_COMMAND:
@@ -1660,9 +1660,9 @@ void BtUart_processCmd(void)
         && (infomemLength + infomemOffset <= NV_NUM_RWMEM_BYTES))
     {
 #if defined(SHIMMER3)
-        if (infomemOffset == (INFOMEM_SEG_C_ADDR - INFOMEM_OFFSET))
+      if (infomemOffset == (INFOMEM_SEG_C_ADDR - INFOMEM_OFFSET))
 #elif defined(SHIMMER3R)
-        if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
+      if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
 #endif
       {
         /* Read MAC address so it is not forgotten */
@@ -1671,9 +1671,9 @@ void BtUart_processCmd(void)
         memcpy(&args[3 + NV_MAC_ADDRESS - 128], &temp_btMacHex[0], 6);
       }
 #if defined(SHIMMER3)
-        if (infomemOffset == (INFOMEM_SEG_D_ADDR - INFOMEM_OFFSET))
+      if (infomemOffset == (INFOMEM_SEG_D_ADDR - INFOMEM_OFFSET))
 #elif defined(SHIMMER3R)
-        if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
+      if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
 #endif
       {
         /* Check if unit is SR47-4 or greater.
@@ -1701,21 +1701,21 @@ void BtUart_processCmd(void)
       InfoMem_read(infomemOffset, &storedConfig->rawBytes[infomemOffset], infomemLength);
 
 #if defined(SHIMMER3)
-        if (infomemOffset == (INFOMEM_SEG_D_ADDR - INFOMEM_OFFSET))
+      if (infomemOffset == (INFOMEM_SEG_D_ADDR - INFOMEM_OFFSET))
 #elif defined(SHIMMER3R)
-        if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
+      if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
 #endif
       {
 #if defined(SHIMMER3)
-          CalibSaveFromInfoMemToCalibDump(SC_SENSOR_ANALOG_ACCEL);
-          CalibSaveFromInfoMemToCalibDump(SC_SENSOR_MPU9X50_ICM20948_GYRO);
-          CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM303_MAG);
-          CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM303_ACCEL);
+        CalibSaveFromInfoMemToCalibDump(SC_SENSOR_ANALOG_ACCEL);
+        CalibSaveFromInfoMemToCalibDump(SC_SENSOR_MPU9X50_ICM20948_GYRO);
+        CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM303_MAG);
+        CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM303_ACCEL);
 #elif defined(SHIMMER3R)
-          CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM6DSV_ACCEL);
-          CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM6DSV_GYRO);
-          CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LIS3MDL_MAG);
-          CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LIS2DW12_ACCEL);
+        CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM6DSV_ACCEL);
+        CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM6DSV_GYRO);
+        CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LIS3MDL_MAG);
+        CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LIS2DW12_ACCEL);
 #endif
       }
 #if defined(SHIMMER3R)
@@ -1753,15 +1753,15 @@ void BtUart_processCmd(void)
     S4Ram_sdHeadTextSetByte(SDH_TRIAL_CONFIG0, storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0]);
 
 #if defined(SHIMMER3R)
-    uint64_t * rwcTimeDiffPtr = getRwcTimeDiffPtr();
-    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_7, *((uint8_t*) rwcTimeDiffPtr));
-    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_6, *(((uint8_t*) rwcTimeDiffPtr) + 1));
-    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_5, *(((uint8_t*) rwcTimeDiffPtr) + 2));
-    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_4, *(((uint8_t*) rwcTimeDiffPtr) + 3));
-    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_3, *(((uint8_t*) rwcTimeDiffPtr) + 4));
-    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_2, *(((uint8_t*) rwcTimeDiffPtr) + 5));
-    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_1, *(((uint8_t*) rwcTimeDiffPtr) + 6));
-    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_0, *(((uint8_t*) rwcTimeDiffPtr) + 7));
+    uint64_t *rwcTimeDiffPtr = getRwcTimeDiffPtr();
+    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_7, *((uint8_t *) rwcTimeDiffPtr));
+    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_6, *(((uint8_t *) rwcTimeDiffPtr) + 1));
+    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_5, *(((uint8_t *) rwcTimeDiffPtr) + 2));
+    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_4, *(((uint8_t *) rwcTimeDiffPtr) + 3));
+    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_3, *(((uint8_t *) rwcTimeDiffPtr) + 4));
+    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_2, *(((uint8_t *) rwcTimeDiffPtr) + 5));
+    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_1, *(((uint8_t *) rwcTimeDiffPtr) + 6));
+    S4Ram_sdHeadTextSetByte(SDH_RTC_DIFF_0, *(((uint8_t *) rwcTimeDiffPtr) + 7));
 
     setupNextRtcMinuteAlarm(); //configure RTC alarm after time set from BT.
 #endif
@@ -1795,33 +1795,33 @@ void BtUart_processCmd(void)
     break;
 
   case SET_SD_SYNC_COMMAND:
-        if (isBtModuleRunningInSyncMode() && isBtSdSyncRunning())
-        {
-    /* Reassemble full packet so that original RcNodeR10() will work without modificiation */
-    fullSyncResp[0] = gAction;
-    memcpy(&fullSyncResp[1], &args[0], SYNC_PACKET_MAX_SIZE - SYNC_PACKET_SIZE_CMD);
-    setSyncResp(&fullSyncResp[0], SYNC_PACKET_MAX_SIZE);
-    ShimTask_set(TASK_RCNODER10);
-        }
-        else
-        {
-            sendNack = 1;
-        }
+    if (isBtModuleRunningInSyncMode() && isBtSdSyncRunning())
+    {
+      /* Reassemble full packet so that original RcNodeR10() will work without modificiation */
+      fullSyncResp[0] = gAction;
+      memcpy(&fullSyncResp[1], &args[0], SYNC_PACKET_MAX_SIZE - SYNC_PACKET_SIZE_CMD);
+      setSyncResp(&fullSyncResp[0], SYNC_PACKET_MAX_SIZE);
+      ShimTask_set(TASK_RCNODER10);
+    }
+    else
+    {
+      sendNack = 1;
+    }
   case ACK_COMMAND_PROCESSED:
-        if (isBtModuleRunningInSyncMode() && isBtSdSyncRunning())
-        {
-            /* Slave response received by Master */
-            if (args[0] == SD_SYNC_RESPONSE)
-            {
-                /* SD Sync Center - get's into this case when the center is waiting for a 0x01 or 0xFF from a node */
-                setSyncResp(&args[1], 1U);
-                ShimTask_set(TASK_RCCENTERR1);
-            }
-        }
-        else
-        {
-            sendNack = 1;
-        }
+    if (isBtModuleRunningInSyncMode() && isBtSdSyncRunning())
+    {
+      /* Slave response received by Master */
+      if (args[0] == SD_SYNC_RESPONSE)
+      {
+        /* SD Sync Center - get's into this case when the center is waiting for a 0x01 or 0xFF from a node */
+        setSyncResp(&args[1], 1U);
+        ShimTask_set(TASK_RCCENTERR1);
+      }
+    }
+    else
+    {
+      sendNack = 1;
+    }
     break;
   default:
     break;
@@ -1829,15 +1829,14 @@ void BtUart_processCmd(void)
 
   /* Send Response back for all commands except when FW has received an ACK */
   /* ACK is sent back as part of SD_SYNC_RESPONSE so no need to send it here */
-  if (!(gAction == ACK_COMMAND_PROCESSED || gAction == SET_SD_SYNC_COMMAND)
-          || sendNack)
+  if (!(gAction == ACK_COMMAND_PROCESSED || gAction == SET_SD_SYNC_COMMAND) || sendNack)
   {
-      if (sendNack == 0)
-      {
-          /* Send ACK back for all commands except when FW is sending a NACK */
-          sendAck = 1;
-      }
-      ShimTask_set(TASK_BT_RESPOND);
+    if (sendNack == 0)
+    {
+      /* Send ACK back for all commands except when FW is sending a NACK */
+      sendAck = 1;
+    }
+    ShimTask_set(TASK_BT_RESPOND);
   }
 
   if (update_sdconfig)
@@ -1978,7 +1977,7 @@ void BtUart_sendRsp(void)
 {
   uint16_t packet_length = 0;
   //STATTypeDef * stat = GetStatus();
-  uint8_t resPacket[RESPONSE_PACKET_SIZE + 2]; // +2 for CRC
+  uint8_t resPacket[RESPONSE_PACKET_SIZE + 2]; //+2 for CRC
   packet_length = 0;
 
   uint64_t temp_rtcCurrentTime = 0;
@@ -2002,8 +2001,8 @@ void BtUart_sendRsp(void)
       {
       case INQUIRY_COMMAND:
 #if defined(SHIMMER3R)
-          /* Channel order/packet structure need to be assembled before sending the inquiry response so that the information is correct. */
-          S4Sens_configureChannels();
+        /* Channel order/packet structure need to be assembled before sending the inquiry response so that the information is correct. */
+        S4Sens_configureChannels();
 #endif
 
         *(resPacket + packet_length++) = INQUIRY_RESPONSE;
@@ -2194,7 +2193,8 @@ void BtUart_sendRsp(void)
         break;
       case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
         *(resPacket + packet_length++) = PRESSURE_OVERSAMPLING_RATIO_RESPONSE;
-        *(resPacket + packet_length++) = ShimConfig_configBytePressureOversamplingRatioGet();
+        *(resPacket + packet_length++)
+            = ShimConfig_configBytePressureOversamplingRatioGet();
         break;
       case GET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
         *(resPacket + packet_length++) = INTERNAL_EXP_POWER_ENABLE_RESPONSE;
@@ -2424,7 +2424,6 @@ void BtUart_sendRsp(void)
 #elif defined(SHIMMER3R)
     BT_write(resPacket, packet_length);
 #endif
-
   }
 }
 
@@ -2659,16 +2658,16 @@ void HandleBtRfCommStateChange(uint8_t isConnected)
 
   if (!shimmerStatus.sensing)
   {
-      ShimTask_set(TASK_SDLOG_CFG_UPDATE);
+    ShimTask_set(TASK_SDLOG_CFG_UPDATE);
   }
 }
 
 uint8_t *getBtActionPtr(void)
 {
-    return &gAction;
+  return &gAction;
 }
 
 uint8_t *getBtArgsPtr(void)
 {
-    return &args[0];
+  return &args[0];
 }
