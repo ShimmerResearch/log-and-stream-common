@@ -39,7 +39,7 @@ extern void setStopLoggingFlag(uint8_t state);
 extern void setStopStreamingFlag(uint8_t state);
 #endif
 
-extern void sleepNoTask(void);
+extern void sleepWhenNoTask(void);
 extern uint8_t CheckSdInslot(void);
 extern uint64_t RTC_get64(void);
 extern uint8_t ShimTask_set(uint32_t task_id);

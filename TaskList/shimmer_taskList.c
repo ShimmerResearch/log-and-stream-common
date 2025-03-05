@@ -80,7 +80,7 @@ void ShimTask_NORM_manage(void)
 
   if (!taskCurrent)
   {
-      sleepNoTask();
+      sleepWhenNoTask();
 //#if defined(SHIMMER3R)
 //      /* Only wake MCU when new Task is set. See corresponding
 //       * HAL_PWR_DisableSleepOnExit() in ShimTask_set() */
@@ -276,18 +276,18 @@ uint32_t ShimTask_NORM_getList()
   return taskList;
 }
 
-uint8_t setTaskNewBtCmdToProcess(void)
+uint8_t ShimTask_setNewBtCmdToProcess(void)
 {
   return ShimTask_set(TASK_BT_PROCESS_CMD);
 }
 
-void setStartSensing(void)
+void ShimTask_setStartSensing(void)
 {
     ShimTask_set(TASK_SDLOG_CFG_UPDATE);
     ShimTask_set(TASK_STARTSENSING);
 }
 
-void setStopSensing(void)
+void ShimTask_setStopSensing(void)
 {
 #if defined(SHIMMER3)
     if (shimmerStatus.sensing)
@@ -299,7 +299,7 @@ void setStopSensing(void)
 #endif
 }
 
-void setStopLogging(void)
+void ShimTask_setStopLogging(void)
 {
 #if defined(SHIMMER3)
     if (shimmerStatus.sdLogging)
@@ -311,7 +311,7 @@ void setStopLogging(void)
 #endif
 }
 
-void setStopStreaming(void)
+void ShimTask_setStopStreaming(void)
 {
 #if defined(SHIMMER3)
     if (shimmerStatus.btStreaming)

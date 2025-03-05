@@ -696,7 +696,7 @@ void handleSyncTimerTrigger(void)
   {
     if (shimmerStatus.docked)
     {
-      setStopLogging();
+      ShimTask_setStopLogging();
       if (shimmerStatus.btPowerOn)
       {
         btStopCb(0);

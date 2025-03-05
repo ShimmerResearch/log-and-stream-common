@@ -1239,7 +1239,7 @@ void BtUart_processCmd(void)
     {
 #if defined(SHIMMER3)
         ShimTask_set(TASK_CFGCH);
-        setStartSensing();
+        ShimTask_setStartSensing();
 #elif defined(SHIMMER3)
         ShimTask_set(TASK_STARTSENSING);
 #endif
@@ -1250,7 +1250,7 @@ void BtUart_processCmd(void)
       {
 #if defined(SHIMMER3)
         ShimTask_set(TASK_CFGCH);
-        setStartSensing();
+        ShimTask_setStartSensing();
 #elif defined(SHIMMER3)
         ShimTask_set(TASK_STARTSENSING);
 #endif
@@ -1267,7 +1267,7 @@ void BtUart_processCmd(void)
     if (!shimmerStatus.sensing)
     {
 #if defined(SHIMMER3)
-        setStartSensing();
+        ShimTask_setStartSensing();
         ShimTask_set(TASK_CFGCH);
 #else
         ShimTask_set(TASK_STARTSENSING);
@@ -1282,16 +1282,16 @@ void BtUart_processCmd(void)
     break;
   case STOP_STREAMING_COMMAND:
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
-    setStopStreaming();
+    ShimTask_setStopStreaming();
     break;
   case STOP_SDBT_COMMAND:
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
-    setStopSensing();
+    ShimTask_setStopSensing();
     break;
   case STOP_LOGGING_COMMAND:
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
-    setStopLogging();
+    ShimTask_setStopLogging();
     break;
   case SET_SENSORS_COMMAND:
     ShimConfig_storedConfigSet(&args[0], NV_SENSORS0, 3);
@@ -1573,8 +1573,8 @@ void BtUart_processCmd(void)
     //restart sensing to use settings
     if (shimmerStatus.sensing)
     {
-      setStopSensing();
-      setStartSensing();
+      ShimTask_setStopSensing();
+      ShimTask_setStartSensing();
     }
     break;
   case RESET_CALIBRATION_VALUE_COMMAND:
@@ -1863,8 +1863,8 @@ void BtUart_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, ui
   //restart sensing to use settings
   if (shimmerStatus.sensing)
   {
-    setStopSensing();
-    setStartSensing();
+    ShimTask_setStopSensing();
+    ShimTask_setStartSensing();
   }
 
   //update sdconfig
