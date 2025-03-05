@@ -12,8 +12,12 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <SDCard/shimmer_sd_header.h>
+#include <SDCard/shimmer_sd.h>
 
 #include "log_and_stream_definitions.h"
+#include "Boards/shimmer_boards.h"
+#include "Configuration/shimmer_config.h"
 
 #if defined(SHIMMER3)
 #include "msp430.h"
@@ -22,11 +26,10 @@
 #include "../5xx_HAL/hal_Board.h"
 #include "../5xx_HAL/hal_RTC.h"
 #include "../BMPX80/bmpX80.h"
-#include "../FatFs/ff.h"
+#include "ff.h"
 #include "../LSM303AHTR/lsm303ahtr.h"
 #include "../LSM303DLHC/lsm303dlhc.h"
 #include "../RN4X/RN4X.h"
-#include "../shimmer_boards/shimmer_boards.h"
 #elif defined(SHIMMER3R)
 #if USE_FATFS
 #include "ff.h"
@@ -125,9 +128,9 @@ uint8_t *ShimmerCalib_getRam(void)
 void ShimmerCalib_ram2File(void)
 {
   char cal_file_name[48] = "";
-#if defined(SHIMMER3)
+#if _FATFS == FATFS_V_0_08B
   DIRS gdc;
-#elif defined(SHIMMER3R)
+#elif _FATFS == FATFS_V_0_12C
   DIR gdc;
 #endif
   FIL gfc;
@@ -188,9 +191,9 @@ uint8_t ShimmerCalib_file2Ram(void)
 {
 #if USE_FATFS
   char cal_file_name[48] = "";
-#if defined(SHIMMER3)
+#if _FATFS == FATFS_V_0_08B
   DIRS gdc;
-#elif defined(SHIMMER3R)
+#elif _FATFS == FATFS_V_0_12C
   DIR gdc;
 #endif
   FIL gfc;
@@ -375,6 +378,7 @@ uint8_t ShimmerCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offse
   if (shimmerCalib_ramTempLen >= shimmerCalib_ramTempMax)
   {
     memcpy(shimmerCalib_ram, shimmerCalib_ramTemp, shimmerCalib_ramTempMax);
+    //TODO why done for Shimmer3R and not Shimmer3?
 #if defined(SHIMMER3R)
     InfoMem_update();
 #endif
@@ -902,7 +906,7 @@ void ShimmerCalib_singleSensorWriteFromInfoMem(uint16_t id, uint8_t range, uint8
 
 void CalibSaveFromInfoMemToCalibDump(uint8_t id)
 {
-  gConfigBytes *configBytes = S4Ram_getStoredConfig();
+  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
 #if defined(SHIMMER3)
   if (id == 0xFF || id == SC_SENSOR_ANALOG_ACCEL)
   {
@@ -1003,7 +1007,7 @@ void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time)
   uint8_t offset;
   int byte_cnt = 0;
   sc_t sc1;
-  gConfigBytes *configBytes = S4Ram_getStoredConfig();
+  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
 
   sc1.id = sensor;
   if (use_sys_time)
@@ -1135,7 +1139,7 @@ void ShimmerCalibSyncFromDumpRamSingleSensor(uint8_t sensor)
   sc1.id = sensor;
   sc1.data_len = ShimmerCalib_findLength(&sc1);
 
-  gConfigBytes *configBytes = S4Ram_getStoredConfig();
+  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
 
   switch (sensor)
   {
@@ -1221,11 +1225,7 @@ void ShimmerCalibSyncFromDumpRamSingleSensor(uint8_t sensor)
 
   ShimmerCalib_singleSensorRead(&sc1);
   memcpy(&configBytes->rawBytes[scs_infomem_offset], sc1.data.raw, sc1.data_len);
-#if defined(SHIMMER3)
-  InfoMem_write((uint8_t*) scs_infomem_offset, sc1.data.raw, sc1.data_len);
-#elif defined(SHIMMER3R)
-  InfoMem_update();
-#endif
+  InfoMem_write(scs_infomem_offset, sc1.data.raw, sc1.data_len);
   memcpy(S4Ram_getSdHeadText() + scs_sdhead_offset, sc1.data.raw, sc1.data_len);
   memcpy(S4Ram_getSdHeadText() + scs_sdhead_ts, sc1.ts, 8);
 }

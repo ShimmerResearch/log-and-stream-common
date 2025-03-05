@@ -9,10 +9,15 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <SDCard/shimmer_sd_header.h>
 
-#include "log_and_stream_definitions.h"
-#include "log_and_stream_externs.h"
-#include "shimmer_bt_uart.h"
+#include <log_and_stream_definitions.h>
+#include <log_and_stream_externs.h>
+#include <Boards/shimmer_boards.h>
+#include <Comms/shimmer_bt_uart.h>
+#include <Configuration/shimmer_config.h>
+#include <SDCard/shimmer_sd.h>
+#include <TaskList/shimmer_taskList.h>
 
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
@@ -23,10 +28,7 @@
 #include "../5xx_HAL/hal_UCA0.h"
 #include "../5xx_HAL/hal_UartA0.h"
 #include "../CAT24C16/cat24c16.h"
-#include "../shimmer_boards/shimmer_boards.h"
 #else
-#include "s4_taskList.h"
-
 #include "stm32u5xx_hal_uart.h"
 #endif
 
@@ -46,22 +48,6 @@ uint8_t uartRespBuf[UART_RSP_PACKET_SIZE];
 uint8_t uartDcMemLength, uartInfoMemLength;
 uint16_t uartDcMemOffset, uartInfoMemOffset;
 uint64_t uartTimeStart, uartTimeEnd;
-
-#if defined(SHIMMER3)
-/* Externs left in main.c */
-extern uint8_t TaskSet(TASK_FLAGS task_id);
-extern void RwcCheck();
-extern void Infomem2Names();
-extern void eepromRead(uint16_t dataAddr, uint16_t dataSize, uint8_t *dataBuf);
-extern void eepromWrite(uint16_t dataAddr, uint16_t dataSize, uint8_t *dataBuf);
-
-extern uint8_t storedConfig[NV_NUM_RWMEM_BYTES];
-extern uint8_t sdHeadText[SDHEAD_LEN];
-extern uint8_t daughtCardId[CAT24C16_PAGE_SIZE];
-#else
-extern UART_HandleTypeDef *huartDock;
-#endif
-extern STATTypeDef stat;
 
 void DockUart_resetVariables(void)
 {
@@ -123,11 +109,7 @@ uint8_t DockUart_rxCallback(uint8_t data)
       default:
         uartSteps = 0;
         uartSendRspBadCmd = 1;
-#if defined(SHIMMER3)
-        TaskSet(TASK_DOCK_RESPOND);
-#else
-        S4_Task_set(TASK_DOCK_RESPOND);
-#endif
+        ShimTask_set(TASK_DOCK_RESPOND);
         return 1;
       }
     }
@@ -156,11 +138,7 @@ uint8_t DockUart_rxCallback(uint8_t data)
       {
         uartSteps = 0;
         uartArgSize = 0;
-#if defined(SHIMMER3)
-        TaskSet(TASK_DOCK_PROCESS_CMD);
-#else
-        S4_Task_set(TASK_DOCK_PROCESS_CMD);
-#endif
+        ShimTask_set(TASK_DOCK_PROCESS_CMD);
         uartTimeStart = 0;
         return 1;
       }
@@ -374,18 +352,16 @@ void DockUart_processCmd(void)
 #if defined(SHIMMER3)
               setRwcTime(dockRxBuf + UART_RXBUF_DATA);
               RwcCheck();
-              storedConfig[NV_SD_TRIAL_CONFIG0] &= ~SDH_RTC_SET_BY_BT;
-              InfoMem_write((uint8_t *) NV_SD_TRIAL_CONFIG0,
-                  &storedConfig[NV_SD_TRIAL_CONFIG0], 1);
-              sdHeadText[SDH_TRIAL_CONFIG0] = storedConfig[NV_SD_TRIAL_CONFIG0];
 #else
               uint64_t temp64;
               memcpy((uint8_t *) (&temp64), dockRxBuf + UART_RXBUF_DATA, 8); //64bits = 8bytes
               RTC_init(temp64);
-              S4Ram_getStoredConfig()->rtcSetByBt = 1;
-              InfoMem_update();
-              //sdHeadText[SDH_TRIAL_CONFIG0] = storedConfig[NV_SD_TRIAL_CONFIG0];
 #endif
+              ShimConfig_getStoredConfig()->rtcSetByBt = 0;
+              InfoMem_write(NV_SD_TRIAL_CONFIG0,
+                  &ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
+              S4Ram_sdHeadTextSetByte(SDH_TRIAL_CONFIG0, ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0]);
+
               uartSendRspAck = 1;
             }
             else
@@ -404,7 +380,7 @@ void DockUart_processCmd(void)
               if (uartInfoMemOffset == (INFOMEM_SEG_C_ADDR - INFOMEM_OFFSET))
               {
                 /* Read MAC address so it is not forgotten */
-                InfoMem_read((uint8_t *) NV_MAC_ADDRESS, getMacIdBytesPtr(), 6);
+                InfoMem_read(NV_MAC_ADDRESS, getMacIdBytesPtr(), 6);
               }
               if (uartInfoMemOffset == (INFOMEM_SEG_D_ADDR - INFOMEM_OFFSET))
               {
@@ -412,8 +388,7 @@ void DockUart_processCmd(void)
                  * If so, amend configuration byte 2 of ADS chip 1 to have bit 3
                  * set to 1. This ensures clock lines on ADS chip are correct
                  */
-                if ((daughtCardId[DAUGHT_CARD_ID] == EXP_BRD_EXG_UNIFIED)
-                    && (daughtCardId[DAUGHT_CARD_REV] >= 4))
+                if (areADS1292RClockLinesTied())
                 {
                   *(dockRxBuf + UART_RXBUF_DATA + 3 + NV_EXG_ADS1292R_1_CONFIG2) |= 8;
                 }
@@ -427,24 +402,24 @@ void DockUart_processCmd(void)
               }
 #endif
               /* Write received UART bytes to infomem */
-              InfoMem_write((uint8_t *) uartInfoMemOffset,
+              InfoMem_write(uartInfoMemOffset,
                   dockRxBuf + UART_RXBUF_DATA + 3, uartInfoMemLength);
               if (uartInfoMemOffset == (INFOMEM_SEG_C_ADDR - INFOMEM_OFFSET))
               {
                 /* Re-write MAC address to Infomem */
-                InfoMem_write((uint8_t *) NV_MAC_ADDRESS, getMacIdBytesPtr(), 6);
+                InfoMem_write(NV_MAC_ADDRESS, getMacIdBytesPtr(), 6);
               }
               /* Reload latest infomem bytes to RAM */
-              InfoMem_read((uint8_t *) uartInfoMemOffset,
-                  storedConfig + uartInfoMemOffset, uartInfoMemLength);
-              Infomem2Names();
+              InfoMem_read(uartInfoMemOffset,
+                  &ShimConfig_getStoredConfig()->rawBytes[uartInfoMemOffset], uartInfoMemLength);
+              SD_infomem2Names();
 #else
               uint8_t temp_btMacHex[6];
-              S4Ram_storedConfigGet(temp_btMacHex, NV_MAC_ADDRESS, 6);
-              S4Ram_storedConfigSet(dockRxBuf + UART_RXBUF_DATA + 3,
+              ShimConfig_storedConfigGet(temp_btMacHex, NV_MAC_ADDRESS, 6);
+              ShimConfig_storedConfigSet(dockRxBuf + UART_RXBUF_DATA + 3,
                   uartInfoMemOffset, uartInfoMemLength);
-              S4Ram_storedConfigSet(temp_btMacHex, NV_MAC_ADDRESS, 6);
-              checkAndCorrectConfig(S4Ram_getStoredConfig());
+              ShimConfig_storedConfigSet(temp_btMacHex, NV_MAC_ADDRESS, 6);
+              ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
               InfoMem_update();
 #endif
               uartSendRspAck = 1;
@@ -494,13 +469,8 @@ void DockUart_processCmd(void)
               eepromWrite(uartDcMemOffset, (uint16_t) uartDcMemLength,
                   dockRxBuf + UART_RXBUF_DATA + 2U);
               //Copy new bytes to active daughter card byte array
-#if defined(SHIMMER3)
-              memcpy(daughtCardId + ((uint8_t) uartDcMemOffset),
-                  dockRxBuf + UART_RXBUF_DATA + 2, uartDcMemLength);
-#else
               memcpy(getDaughtCardId() + ((uint8_t) uartDcMemOffset),
                   dockRxBuf + UART_RXBUF_DATA + 2, uartDcMemLength);
-#endif
               uartSendRspAck = 1;
             }
             else
@@ -533,12 +503,8 @@ void DockUart_processCmd(void)
         { //set test
           if (dockRxBuf[UART_RXBUF_PROP] < FACTORY_TEST_COUNT)
           {
-            setup_factory_test(PRINT_TO_DOCK_UART, dockRxBuf[UART_RXBUF_PROP]);
-#if defined(SHIMMER3)
-            TaskSet(TASK_FACTORY_TEST);
-#else
-            S4_NORM_Task_set(TASK_FACTORY_TEST);
-#endif
+            setup_factory_test(PRINT_TO_DOCK_UART, (factory_test_t) dockRxBuf[UART_RXBUF_PROP]);
+            ShimTask_set(TASK_FACTORY_TEST);
             uartSendRspAck = 1;
           }
           else
@@ -556,11 +522,7 @@ void DockUart_processCmd(void)
     {
       uartSendRspBadCrc = 1;
     }
-#if defined(SHIMMER3)
-    TaskSet(TASK_DOCK_RESPOND);
-#else
-    S4_NORM_Task_set(TASK_DOCK_RESPOND);
-#endif
+    ShimTask_set(TASK_DOCK_RESPOND);
   }
 }
 
@@ -604,7 +566,7 @@ void DockUart_sendRsp(void)
 #if defined(SHIMMER3)
     memcpy(uartRespBuf + uart_resp_len, getMacIdBytesPtr(), 6);
 #else
-    S4Ram_btMacHexGet(uartRespBuf + uart_resp_len);
+    ShimConfig_btMacHexGet(uartRespBuf + uart_resp_len);
 #endif
     uart_resp_len += 6;
   }
@@ -682,11 +644,7 @@ void DockUart_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_PROP_CARD_ID;
     if ((uartDcMemLength + uart_resp_len) < UART_RSP_PACKET_SIZE)
     {
-#if defined(SHIMMER3)
-      memcpy(uartRespBuf + uart_resp_len, daughtCardId + uartDcMemOffset, uartDcMemLength);
-#else
       eepromRead(uartDcMemOffset, (uint16_t) uartDcMemLength, uartRespBuf + uart_resp_len);
-#endif
       uart_resp_len += uartDcMemLength;
     }
   }
@@ -722,11 +680,7 @@ void DockUart_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_PROP_INFOMEM;
     if ((uartInfoMemLength + uart_resp_len) < UART_RSP_PACKET_SIZE)
     {
-#if defined(SHIMMER3)
-      InfoMem_read((void *) uartInfoMemOffset, uartRespBuf + uart_resp_len, uartInfoMemLength);
-#else
-      InfoMem_readRam(uartRespBuf + uart_resp_len, uartInfoMemOffset, uartInfoMemLength);
-#endif
+        InfoMem_read(uartInfoMemOffset, uartRespBuf + uart_resp_len, uartInfoMemLength);
     }
     uart_resp_len += uartInfoMemLength;
   }

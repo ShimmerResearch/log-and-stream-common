@@ -10,6 +10,9 @@
 
 #define IS_SUPPORTED_SINGLE_TOUCH 0
 #define USE_FATFS             1
+#define USE_SD                1
+
+#define FW_IS_LOGANDSTREAM
 
 typedef volatile struct STATTypeDef_t
 { //STATUS

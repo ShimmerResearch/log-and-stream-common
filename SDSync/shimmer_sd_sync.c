@@ -13,6 +13,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <Configuration/shimmer_config.h>
+#include <SDCard/shimmer_sd_header.h>
+#include <TaskList/shimmer_taskList.h>
+
 #if defined(SHIMMER3)
 #include "msp430.h"
 
@@ -51,7 +55,6 @@ uint8_t (*taskSetCb)(uint16_t);
 
 #if defined(SHIMMER3)
 extern uint8_t onSingleTouch, stopLogging;
-extern uint8_t sdHeadText[SDHEAD_LEN];
 extern uint8_t all0xff[7U];
 #elif defined(SHIMMER3R)
 extern SENSINGTypeDef sensing;
@@ -389,7 +392,7 @@ void BtSdSyncStart(void)
     rcNodeReboot = (estLen3 / SYNC_WINDOW_N);
   }
 
-  if (sdHeadText[SDH_TRIAL_CONFIG0] & SDH_IAMMASTER)
+  if (S4Ram_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER)
   {
     firstOutlier = nodeSuccFull;
   }
@@ -680,7 +683,7 @@ void handleSyncTimerTrigger(void)
       syncCnt++;
     }
 
-    if (sdHeadText[SDH_TRIAL_CONFIG0] & SDH_IAMMASTER)
+    if (S4Ram_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER)
     { //i am Center
       handleSyncTimerTriggerCenter();
     }
@@ -693,13 +696,7 @@ void handleSyncTimerTrigger(void)
   {
     if (shimmerStatus.docked)
     {
-      if (shimmerStatus.sensing)
-      {
-        /* Note SDLog calls TASK_STOPSENSING here whereas
-         * LogAndStream could be in the middle of streaming over
-         * Bluetooth */
-        stopLogging = 1;
-      }
+      setStopLogging();
       if (shimmerStatus.btPowerOn)
       {
         btStopCb(0);

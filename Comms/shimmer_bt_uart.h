@@ -186,7 +186,6 @@
 #define PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE    0xA6
 #define GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND 0xA7
 #define SET_FACTORY_TEST                              0xA8
-#if defined(SHIMMER3R)
 #define SET_ALT_ACCEL_CALIBRATION_COMMAND   0xA9
 #define ALT_ACCEL_CALIBRATION_RESPONSE      0xAA
 #define GET_ALT_ACCEL_CALIBRATION_COMMAND   0xAB
@@ -199,7 +198,6 @@
 #define SET_ALT_MAG_SAMPLING_RATE_COMMAND   0xB2
 #define ALT_MAG_SAMPLING_RATE_RESPONSE      0xB3
 #define GET_ALT_MAG_SAMPLING_RATE_COMMAND   0xB4
-#endif
 #define SET_SD_SYNC_COMMAND        0xE0
 #define SD_SYNC_RESPONSE           0xE1
 #define NACK_COMMAND_PROCESSED     0xFE
@@ -215,6 +213,13 @@ enum
   BT_STREAM_CMD_STATE_IDLE = 0,
   BT_STREAM_CMD_STATE_START = 1,
   BT_STREAM_CMD_STATE_STOP = 2
+};
+
+enum
+{
+  SD_LOG_CMD_STATE_IDLE = 0,
+  SD_LOG_CMD_STATE_START = 1,
+  SD_LOG_CMD_STATE_STOP = 2
 };
 
 enum
@@ -242,14 +247,16 @@ void btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void),
 #else
 void btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void));
 #endif
-#if defined(SHIMMER3R)
-void resetBtResponseVars(void);
+#if defined(SHIMMER3)
+void triggerShimmerErrorState(void);
 #endif
+void resetBtResponseVars(void);
 uint8_t isWaitingForArgs(void);
 uint8_t getBtVerStrLen(void);
 char *getBtVerStrPtr(void);
 #if defined(SHIMMER3R)
 void updateBtVer(void);
+#endif
 
 void BtUart_processCmd(void);
 void BtUart_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, uint16_t len);
@@ -263,6 +270,7 @@ uint8_t BtUart_replySingleSensorCalibCmd(uint8_t cmdWaitingResponse, uint8_t *re
 void BtUart_sendRsp(void);
 uint8_t BtUart_getExpectedRspForGetCmd(uint8_t getCmd);
 
+#if defined(SHIMMER3R)
 void setDmaWaitingForResponse(uint16_t count);
 uint16_t getBtRxShimmerCommsWaitByteCount(void);
 #endif
@@ -276,5 +284,7 @@ uint8_t BT_getMacAddressAscii(char *macAscii);
 uint8_t BT_getMacAddressHex(uint8_t *macHex);
 void BtsdSelfcmd(void);
 void HandleBtRfCommStateChange(uint8_t isConnected);
+uint8_t *getBtActionPtr(void);
+uint8_t *getBtArgsPtr(void);
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */
