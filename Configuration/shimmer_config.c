@@ -42,8 +42,8 @@
 
 #include <Configuration/shimmer_config.h>
 
-#include <string.h>
 #include <math.h>
+#include <string.h>
 
 #include <Boards/shimmer_boards.h>
 #include <SDCard/shimmer_sd.h>
@@ -680,33 +680,31 @@ uint16_t FreqDiv(float samplingRate)
 
 void checkBtModeConfig(void)
 {
-    if (!shimmerStatus.btConnected)
+  if (!shimmerStatus.btConnected)
+  {
+    shimmerStatus.btSupportEnabled
+        = ShimConfig_getStoredConfig()->bluetoothDisable ? 0 : 1;
+
+    //Don't allow sync to be enabled if BT is disabled.
+    shimmerStatus.sdSyncEnabled
+        = (shimmerStatus.btSupportEnabled && ShimConfig_getStoredConfig()->syncEnable);
+
+    /* Turn off BT if it has been disabled but it's still powered on. Also
+     * turn off if BT module is not in the right configuration for SD sync.
+     * Leave the SD sync code to turn on/off BT later when required. */
+    if ((!shimmerStatus.btSupportEnabled && shimmerStatus.btPowerOn)
+        || (shimmerStatus.sdSyncEnabled != shimmerStatus.btInSyncMode))
     {
-        shimmerStatus.btSupportEnabled =
-                ShimConfig_getStoredConfig()->bluetoothDisable ? 0 : 1;
-
-        // Don't allow sync to be enabled if BT is disabled.
-        shimmerStatus.sdSyncEnabled =
-                (shimmerStatus.btSupportEnabled
-                        && ShimConfig_getStoredConfig()->syncEnable);
-
-        /* Turn off BT if it has been disabled but it's still powered on. Also
-         * turn off if BT module is not in the right configuration for SD sync.
-         * Leave the SD sync code to turn on/off BT later when required. */
-        if ((!shimmerStatus.btSupportEnabled && shimmerStatus.btPowerOn)
-                || (shimmerStatus.sdSyncEnabled != shimmerStatus.btInSyncMode))
-        {
-            BtStop(0);
-        }
-
-        /* Turn on BT if normal LogAndStream mode is turned on */
-        if (shimmerStatus.btSupportEnabled
-                && !shimmerStatus.sdSyncEnabled
-                && !shimmerStatus.btPowerOn)
-        {
-            InitialiseBtAfterBoot();
-        }
+      BtStop(0);
     }
+
+    /* Turn on BT if normal LogAndStream mode is turned on */
+    if (shimmerStatus.btSupportEnabled && !shimmerStatus.sdSyncEnabled
+        && !shimmerStatus.btPowerOn)
+    {
+      InitialiseBtAfterBoot();
+    }
+  }
 }
 
 #if defined(SHIMMER3R)

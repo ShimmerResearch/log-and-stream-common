@@ -38,32 +38,32 @@ void ShimUtil_ItoaNo0(uint64_t num, uint8_t *buf, uint8_t max_len)
 
 uint64_t ShimUtil_Atol64(uint8_t *buf)
 {
-    uint8_t temp_str_1[6], temp_str_2[6], temp_str_3[6], temp_str_4[6];
-    uint32_t temp_int_1, temp_int_2, temp_int_3, temp_int_4;
-    uint64_t ret_val;
+  uint8_t temp_str_1[6], temp_str_2[6], temp_str_3[6], temp_str_4[6];
+  uint32_t temp_int_1, temp_int_2, temp_int_3, temp_int_4;
+  uint64_t ret_val;
 
-    memcpy(temp_str_1, buf, 5);
-    memcpy(temp_str_2, buf + 5, 5);
-    memcpy(temp_str_3, buf + 10, 5);
-    memcpy(temp_str_4, buf + 15, 5);
+  memcpy(temp_str_1, buf, 5);
+  memcpy(temp_str_2, buf + 5, 5);
+  memcpy(temp_str_3, buf + 10, 5);
+  memcpy(temp_str_4, buf + 15, 5);
 
-    temp_str_1[5] = 0;
-    temp_str_2[5] = 0;
-    temp_str_3[5] = 0;
-    temp_str_4[5] = 0;
+  temp_str_1[5] = 0;
+  temp_str_2[5] = 0;
+  temp_str_3[5] = 0;
+  temp_str_4[5] = 0;
 
-    temp_int_1 = atol((char*) temp_str_1);
-    temp_int_2 = atol((char*) temp_str_2);
-    temp_int_3 = atol((char*) temp_str_3);
-    temp_int_4 = atol((char*) temp_str_4);
+  temp_int_1 = atol((char *) temp_str_1);
+  temp_int_2 = atol((char *) temp_str_2);
+  temp_int_3 = atol((char *) temp_str_3);
+  temp_int_4 = atol((char *) temp_str_4);
 
-    ret_val = temp_int_1;
-    ret_val *= 100000;
-    ret_val += temp_int_2;
-    ret_val *= 100000;
-    ret_val += temp_int_3;
-    ret_val *= 100000;
-    ret_val += temp_int_4;
+  ret_val = temp_int_1;
+  ret_val *= 100000;
+  ret_val += temp_int_2;
+  ret_val *= 100000;
+  ret_val += temp_int_3;
+  ret_val *= 100000;
+  ret_val += temp_int_4;
 
-    return ret_val;
+  return ret_val;
 }
