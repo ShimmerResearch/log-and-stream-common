@@ -1812,8 +1812,8 @@ void BtUart_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, ui
 
   InfoMem_write(configByteIdx, &storedConfig->rawBytes[configByteIdx], len);
   S4Ram_sdHeadTextSet(&storedConfig->rawBytes[configByteIdx], sdHeaderIdx, len);
-  //TODO don't think below is needed because we're specifically changing what's new above
-  //ShimSdHead_config2SdHead();
+  //TODO don't think below is needed because we're specifically changing what's
+  //new above ShimSdHead_config2SdHead();
 
   //restart sensing to use settings
   if (shimmerStatus.sensing)

@@ -42,8 +42,8 @@
 
 #include <Sensing/shimmer_sensing.h>
 
-#include <log_and_stream_externs.h>
 #include <Configuration/shimmer_config.h>
+#include <log_and_stream_externs.h>
 
 #if defined(SHIMMER3R)
 #include "shimmer_definitions.h"
@@ -73,8 +73,9 @@ void ShimSens_init(void)
   memset((uint8_t *) &sensing, 0, sizeof(sensing));
 }
 
-SENSINGTypeDef* ShimSens_getSensing(void){
-   return &sensing;
+SENSINGTypeDef *ShimSens_getSensing(void)
+{
+  return &sensing;
 }
 
 void ShimSens_configureChannels(void)
@@ -90,7 +91,7 @@ void ShimSens_configureChannels(void)
 
 #if defined(SHIMMER3)
   calculateClassicBtTxSampleSetBufferSize(
-          sensing.dataLen, ShimConfig_getStoredConfig()->samplingRateTicks);
+      sensing.dataLen, ShimConfig_getStoredConfig()->samplingRateTicks);
 #endif
 
 #if defined(SHIMMER3R)

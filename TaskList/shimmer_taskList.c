@@ -157,9 +157,9 @@ void ShimTask_NORM_manage(void)
 #endif
       break;
 #if defined(SHIMMER3)
-//    case TASK_CFGCH:
-//      ConfigureChannels();
-//      break;
+      //case TASK_CFGCH:
+      //  ConfigureChannels();
+      //  break;
     case TASK_SAMPLE_MPU9150_MAG:
       MPU9150_startMagMeasurement();
       break;
