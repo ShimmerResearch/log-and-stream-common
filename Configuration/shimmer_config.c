@@ -675,7 +675,7 @@ uint8_t ShimConfig_checkAutostopCondition(void)
       return 1; //Trigger auto-stop
     }
   }
-  return 0; // No action
+  return 0; //No action
 }
 
 /* Note samplingRate can be either a freq or a ticks value */
