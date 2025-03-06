@@ -133,12 +133,12 @@ uint8_t SD_test1(void)
   shimmerStatus.sdBadFile += f_write(&test_file, test_text1, TEST_TEXT_LEN - 1, &bw);
   shimmerStatus.sdBadFile += f_write(&test_file, test_text2, TEST_TEXT_LEN - 1, &bw);
   shimmerStatus.sdBadFile += f_close(&test_file);
-  set_file_timestamp(file_name);
 
   memset(test_text3, 0, 40);
   shimmerStatus.sdBadFile += f_open(&test_file, file_name, FA_OPEN_EXISTING | FA_READ);
   shimmerStatus.sdBadFile += f_read(&test_file, test_text3, TEST_TEXT_LEN - 1, &bw);
   shimmerStatus.sdBadFile += f_close(&test_file);
+  f_unlink(file_name);
 #endif
 
   shimmerStatus.sdBadFile += strcmp(test_text1, test_text3);

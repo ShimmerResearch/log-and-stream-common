@@ -1322,20 +1322,19 @@ void BtUart_processCmd(void)
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
     break;
   case SET_SHIMMERNAME_COMMAND:
-    name_len = args[0] < (MAX_CHARS - 1) ? args[0] : (MAX_CHARS - 1);
-    memset(&storedConfig->rawBytes[NV_SD_SHIMMER_NAME], 0, MAX_CHARS - 1);
-    memcpy(&storedConfig->rawBytes[NV_SD_SHIMMER_NAME], &args[1], name_len);
-    InfoMem_write(NV_SD_SHIMMER_NAME,
-        &storedConfig->rawBytes[NV_SD_SHIMMER_NAME], MAX_CHARS - 1);
+    name_len = (args[0] < sizeof(storedConfig->shimmerName)) ? args[0] : sizeof(storedConfig->shimmerName);
+    memset(&storedConfig->shimmerName[0], 0, sizeof(storedConfig->shimmerName));
+    memcpy(&storedConfig->shimmerName[0], &args[1], name_len);
+    InfoMem_write(NV_SD_SHIMMER_NAME, &storedConfig->shimmerName[0], sizeof(storedConfig->shimmerName));
     SD_setShimmerName();
     update_sdconfig = 1;
     break;
   case SET_EXPID_COMMAND:
-    name_len = args[0] < (MAX_CHARS - 1) ? args[0] : (MAX_CHARS - 1);
-    memset(&storedConfig->rawBytes[NV_SD_EXP_ID_NAME], 0, MAX_CHARS - 1);
-    memcpy(&storedConfig->rawBytes[NV_SD_EXP_ID_NAME], &args[1], name_len);
-    InfoMem_write(NV_SD_EXP_ID_NAME, &storedConfig->rawBytes[NV_SD_EXP_ID_NAME],
-        MAX_CHARS - 1);
+    name_len = (args[0] < sizeof(storedConfig->expIdName)) ? args[0] : sizeof(storedConfig->expIdName);
+    memset(&storedConfig->expIdName[0], 0, sizeof(storedConfig->expIdName));
+    memcpy(&storedConfig->expIdName[0], &args[1], name_len);
+    InfoMem_write(NV_SD_EXP_ID_NAME, &storedConfig->expIdName[0],
+                  sizeof(storedConfig->expIdName));
     SD_setExpIdName();
     update_sdconfig = 1;
     break;
@@ -1659,52 +1658,21 @@ void BtUart_processCmd(void)
     if ((infomemLength <= 128) && (infomemOffset <= (NV_NUM_RWMEM_BYTES - 1))
         && (infomemLength + infomemOffset <= NV_NUM_RWMEM_BYTES))
     {
-#if defined(SHIMMER3)
-      if (infomemOffset == (INFOMEM_SEG_C_ADDR - INFOMEM_OFFSET))
-#elif defined(SHIMMER3R)
-      if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
-#endif
-      {
-        /* Read MAC address so it is not forgotten */
-        InfoMem_read(NV_MAC_ADDRESS, &temp_btMacHex[0], 6);
-        /* Re-write MAC address to Infomem */
-        memcpy(&args[3 + NV_MAC_ADDRESS - 128], &temp_btMacHex[0], 6);
-      }
-#if defined(SHIMMER3)
-      if (infomemOffset == (INFOMEM_SEG_D_ADDR - INFOMEM_OFFSET))
-#elif defined(SHIMMER3R)
-      if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
-#endif
-      {
-        /* Check if unit is SR47-4 or greater.
-         * If so, amend configuration byte 2 of ADS chip 1 to have bit 3 set
-         * to 1. This ensures clock lines on ADS chip are correct
-         */
-        if ((getDaughtCardId()->exp_brd_id == EXP_BRD_EXG_UNIFIED)
-            && (getDaughtCardId()->exp_brd_major >= 4))
-        {
-          args[3 + NV_EXG_ADS1292R_1_CONFIG2] |= 8;
-        }
-      }
-
-#if !IS_SUPPORTED_TCXO
-      //Disable TXCO
-      if (infomemOffset <= NV_SD_TRIAL_CONFIG1 && NV_SD_TRIAL_CONFIG1 <= infomemOffset + infomemLength)
-      {
-        uint8_t tcxoInfomemOffset = NV_SD_TRIAL_CONFIG1 - infomemOffset;
-        args[3 + tcxoInfomemOffset] &= ~SDH_TCXO;
-      }
-#endif
-
       ShimConfig_storedConfigSet(&args[3], infomemOffset, infomemLength);
+
+      /* Overwrite MAC ID as read from BT module */
+      if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
+      {
+          ShimConfig_storedConfigSet(getMacIdBytesPtr(), NV_MAC_ADDRESS, 6);
+      }
+
+      ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
+
       InfoMem_write(infomemOffset, &args[3], infomemLength);
       InfoMem_read(infomemOffset, &storedConfig->rawBytes[infomemOffset], infomemLength);
 
-#if defined(SHIMMER3)
-      if (infomemOffset == (INFOMEM_SEG_D_ADDR - INFOMEM_OFFSET))
-#elif defined(SHIMMER3R)
+      /* Save from infomem to calib dump in memory */
       if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
-#endif
       {
 #if defined(SHIMMER3)
         CalibSaveFromInfoMemToCalibDump(SC_SENSOR_ANALOG_ACCEL);
@@ -1717,12 +1685,14 @@ void BtUart_processCmd(void)
         CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LIS3MDL_MAG);
         CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LIS2DW12_ACCEL);
 #endif
+        update_calib_dump_file = 1;
       }
 #if defined(SHIMMER3R)
       else if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
       {
         CalibSaveFromInfoMemToCalibDump(SC_SENSOR_ADXL371_ACCEL);
         CalibSaveFromInfoMemToCalibDump(SC_SENSOR_LIS2MDL_MAG);
+        update_calib_dump_file = 1;
       }
 #endif
 
@@ -2000,6 +1970,11 @@ void BtUart_sendRsp(void)
       *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
       sendAck = 0;
     }
+    if (sendNack)
+    {
+      *(resPacket + packet_length++) = NACK_COMMAND_PROCESSED;
+      sendNack = 0;
+    }
 
     if (getCmdWaitingResponse)
     {
@@ -2052,11 +2027,11 @@ void BtUart_sendRsp(void)
         *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
         *(resPacket + packet_length++) = STATUS_RESPONSE;
         *(resPacket + packet_length++) = (shimmerStatus.toggleLedRedCmd << 7)
-            + ((shimmerStatus.sdBadFile & 0x01) << 6)
-            + ((shimmerStatus.sdInserted & 0x01) << 5)
-            + ((shimmerStatus.btStreaming & 0x01) << 4)
-            + ((shimmerStatus.sdLogging & 0x01) << 3) + (isRwcTimeSet() << 2)
-            + ((shimmerStatus.sensing & 0x01) << 1) + (shimmerStatus.docked & 0x01);
+            + (shimmerStatus.sdBadFile << 6)
+            + (shimmerStatus.sdInserted << 5)
+            + (shimmerStatus.btStreaming << 4)
+            + (shimmerStatus.sdLogging << 3) + (isRwcTimeSet() << 2)
+            + (shimmerStatus.sensing << 1) + (shimmerStatus.docked);
         break;
       case GET_VBATT_COMMAND:
         manageReadBatt(1);
@@ -2081,8 +2056,7 @@ void BtUart_sendRsp(void)
         break;
       case GET_SHIMMERNAME_COMMAND:
         SD_setShimmerName();
-        uint8_t shimmer_name_len = strlen((char *) storedConfig->shimmerName);
-        shimmer_name_len = shimmer_name_len > (MAX_CHARS - 1) ? (MAX_CHARS - 1) : shimmer_name_len;
+        uint8_t shimmer_name_len = strlen(ShimConfig_getStoredConfig()->shimmerName);
         *(resPacket + packet_length++) = SHIMMERNAME_RESPONSE;
         *(resPacket + packet_length++) = shimmer_name_len;
         memcpy((resPacket + packet_length), &storedConfig->shimmerName[0], shimmer_name_len);
@@ -2091,7 +2065,6 @@ void BtUart_sendRsp(void)
       case GET_EXPID_COMMAND:
         SD_setExpIdName();
         uint8_t exp_id_name_len = strlen((char *) storedConfig->expIdName);
-        exp_id_name_len = exp_id_name_len > (MAX_CHARS - 1) ? (MAX_CHARS - 1) : exp_id_name_len;
         *(resPacket + packet_length++) = EXPID_RESPONSE;
         *(resPacket + packet_length++) = exp_id_name_len;
         memcpy((resPacket + packet_length), &storedConfig->expIdName[0], exp_id_name_len);
@@ -2107,7 +2080,7 @@ void BtUart_sendRsp(void)
         packet_length += cfgtime_name_len;
         break;
       case GET_DIR_COMMAND:
-        *fileNamePtr = getFileNamePtr();
+        fileNamePtr = getFileNamePtr();
         uint8_t dir_len = strlen((char *) fileNamePtr) - 3;
         *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
         *(resPacket + packet_length++) = DIR_RESPONSE;
@@ -2141,27 +2114,27 @@ void BtUart_sendRsp(void)
         break;
       case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
         *(resPacket + packet_length++) = BMP180_CALIBRATION_COEFFICIENTS_RESPONSE;
-        if (!isBmp180InUse())
+        if (isBmp180InUse())
         {
-          //Dummy bytes sent if incorrect calibration bytes requested.
-          memset(resPacket + packet_length, 0x01, BMP180_CALIB_DATA_SIZE);
+          memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP180_CALIB_DATA_SIZE);
         }
         else
         {
-          memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP180_CALIB_DATA_SIZE);
+          //Dummy bytes sent if incorrect calibration bytes requested.
+          memset(resPacket + packet_length, 0x01, BMP180_CALIB_DATA_SIZE);
         }
         packet_length += BMP180_CALIB_DATA_SIZE;
         break;
       case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
         *(resPacket + packet_length++) = BMP280_CALIBRATION_COEFFICIENTS_RESPONSE;
-        if (!isBmp280InUse())
+        if (isBmp280InUse())
         {
-          //Dummy bytes sent if incorrect calibration bytes requested.
-          memset(resPacket + packet_length, 0x01, BMP280_CALIB_DATA_SIZE);
+          memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP280_CALIB_DATA_SIZE);
         }
         else
         {
-          memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP280_CALIB_DATA_SIZE);
+          //Dummy bytes sent if incorrect calibration bytes requested.
+          memset(resPacket + packet_length, 0x01, BMP280_CALIB_DATA_SIZE);
         }
         packet_length += BMP280_CALIB_DATA_SIZE;
         break;
@@ -2220,10 +2193,10 @@ void BtUart_sendRsp(void)
         }
         else
         {
-#endif
           *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
-#if defined(SHIMMER3) || defined(SHIMMER4_SDK)
         }
+#else
+        *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
 #endif
         break;
       case GET_CONFIG_SETUP_BYTES_COMMAND:
@@ -2351,12 +2324,12 @@ void BtUart_sendRsp(void)
           if (exgChip)
           {
             memcpy((resPacket + packet_length),
-                &storedConfig->exgADS1292rRegsCh2.rawBytes[0], exgLength);
+                &storedConfig->exgADS1292rRegsCh2.rawBytes[exgStartAddr], exgLength);
           }
           else
           {
             memcpy((resPacket + packet_length),
-                &storedConfig->exgADS1292rRegsCh1.rawBytes[0], exgLength);
+                &storedConfig->exgADS1292rRegsCh1.rawBytes[exgStartAddr], exgLength);
           }
           packet_length += exgLength;
         }

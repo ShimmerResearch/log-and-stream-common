@@ -547,7 +547,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
   }
 
   //minimum sync broadcast interval is 54 seconds
-  if (storedConfigPtr->btIntervalSecs < SYNC_INT_C)
+  if (storedConfigPtr->syncEnable && storedConfigPtr->btIntervalSecs < SYNC_INT_C)
   {
     storedConfigPtr->btIntervalSecs = SYNC_INT_C;
     settingCorrected = 1;

@@ -240,7 +240,7 @@ uint32_t ShimTask_NORM_getCurrent()
   {
     for (i = 0; i < TASK_SIZE; i++)
     {
-      task = 0x1 << i;
+      task = 0x00000001UL << i;
       if (taskList & task)
       {
         ShimTask_clear(task);

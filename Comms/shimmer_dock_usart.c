@@ -378,12 +378,12 @@ void DockUart_processCmd(void)
                 && (uartInfoMemLength + uartInfoMemOffset <= 0x0200))
             {
 #if defined(SHIMMER3)
-              if (uartInfoMemOffset == (INFOMEM_SEG_C_ADDR - INFOMEM_OFFSET))
+              if (uartInfoMemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
               {
                 /* Read MAC address so it is not forgotten */
                 InfoMem_read(NV_MAC_ADDRESS, getMacIdBytesPtr(), 6);
               }
-              if (uartInfoMemOffset == (INFOMEM_SEG_D_ADDR - INFOMEM_OFFSET))
+              if (uartInfoMemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
               {
                 /* Check if unit is SR47-4 or greater.
                  * If so, amend configuration byte 2 of ADS chip 1 to have bit 3
@@ -404,7 +404,7 @@ void DockUart_processCmd(void)
 #endif
               /* Write received UART bytes to infomem */
               InfoMem_write(uartInfoMemOffset, dockRxBuf + UART_RXBUF_DATA + 3, uartInfoMemLength);
-              if (uartInfoMemOffset == (INFOMEM_SEG_C_ADDR - INFOMEM_OFFSET))
+              if (uartInfoMemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
               {
                 /* Re-write MAC address to Infomem */
                 InfoMem_write(NV_MAC_ADDRESS, getMacIdBytesPtr(), 6);
