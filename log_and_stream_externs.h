@@ -50,8 +50,8 @@ extern void manageReadBatt(uint8_t isBlockingRead);
 extern float samplingClockFreqGet(void);
 extern void Board_setSdPower(uint8_t state);
 extern uint8_t getDefaultBaudForBtVersion(void);
-extern uint8_t InfoMem_write(uint8_t addr, uint8_t *buf, uint16_t size);
-extern uint8_t InfoMem_read(uint8_t addr, uint8_t *buf, uint16_t size);
+extern uint8_t InfoMem_write(uint16_t addr, uint8_t *buf, uint16_t size);
+extern uint8_t InfoMem_read(uint16_t addr, uint8_t *buf, uint16_t size);
 extern float samplingClockFreqGet(void);
 
 extern void setup_factory_test(factory_test_target_t target, factory_test_t testToRun);
