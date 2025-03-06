@@ -61,7 +61,7 @@
 #elif defined(SHIMMER3R)
 //TODO updated with correct number
 #define MAX_NUM_CHANNELS \
-  34 //3xAccel + 3xdigiGyro + 3xdigiMag +
+  60 //3xAccel + 3xdigiGyro + 3xdigiMag +
      //3xLSM303DLHCAccel + 3xMPU9250Accel + 3xMPU9250MAG +
      //BMP180TEMP + BMP180PRESS + batteryVoltage + 5stc3100
      //3xexternalADC + 5xinternalADC
@@ -72,6 +72,9 @@
      //BMP180TEMP + BMP180PRESS + batteryVoltage + 5stc3100
      //3xexternalADC + 5xinternalADC
 #endif
+
+#define FIRST_CH_BYTE_IDX (1 + 3) // 0x00 + timestamp
+
 typedef struct
 { //data ptr (offset)
   uint8_t ts;
@@ -167,7 +170,9 @@ void S4Sens_step5Start(void);
 void S4Sens_stepDone(void);
 
 void saveData(void);
-uint8_t areAnyChannelsEnabled(void);
 #endif
+
+uint8_t areAnyChannelsEnabled(void);
+uint8_t CheckOnDefault(void);
 
 #endif //SHIMMER_SENSING_H

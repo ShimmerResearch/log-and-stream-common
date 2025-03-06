@@ -1956,420 +1956,418 @@ void BtUart_sendRsp(void)
       sendNack = 0;
     }
 
-    if (getCmdWaitingResponse)
+    switch (getCmdWaitingResponse)
     {
-      switch (getCmdWaitingResponse)
+    case 0:
+        break;
+    case INQUIRY_COMMAND:
+      /* Channel order/packet structure need to be assembled before sending the inquiry response so that the information is correct. */
+      ShimSens_configureChannels();
+
+      *(resPacket + packet_length++) = INQUIRY_RESPONSE;
+      *(uint16_t *) (resPacket + packet_length) = storedConfig->samplingRateTicks; //ADC sampling rate
+      packet_length += 2;
+
+      *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE0];
+      *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE1];
+      *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE2];
+      *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE3];
+#if defined(SHIMMER3R)
+      *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE4];
+      *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE5];
+      *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE6];
+#endif
+
+      *(resPacket + packet_length++) = sensing.nbrAdcChans + sensing.nbrDigiChans; //number of data channels
+      *(resPacket + packet_length++) = storedConfig->bufferSize; //buffer size
+      memcpy((resPacket + packet_length), sensing.cc,
+          (sensing.nbrAdcChans + sensing.nbrDigiChans));
+      packet_length += sensing.nbrAdcChans + sensing.nbrDigiChans;
+      break;
+    case GET_SAMPLING_RATE_COMMAND:
+      *(resPacket + packet_length++) = SAMPLING_RATE_RESPONSE;
+      *(uint16_t *) (resPacket + packet_length) = storedConfig->samplingRateTicks; //ADC sampling rate
+      packet_length += 2;
+      break;
+    case GET_WR_ACCEL_RANGE_COMMAND:
+      *(resPacket + packet_length++) = WR_ACCEL_RANGE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->wrAccelRange;
+      break;
+    case GET_MAG_GAIN_COMMAND:
+      *(resPacket + packet_length++) = MAG_GAIN_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->magRange;
+      break;
+    case GET_MAG_SAMPLING_RATE_COMMAND:
+      *(resPacket + packet_length++) = MAG_SAMPLING_RATE_RESPONSE;
+      *(resPacket + packet_length++) = ShimConfig_configByteMagRateGet();
+      break;
+    case GET_STATUS_COMMAND:
+      *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
+      *(resPacket + packet_length++) = STATUS_RESPONSE;
+      *(resPacket + packet_length++) = (shimmerStatus.toggleLedRedCmd << 7)
+          + (shimmerStatus.sdBadFile << 6) + (shimmerStatus.sdInserted << 5)
+          + (shimmerStatus.btStreaming << 4) + (shimmerStatus.sdLogging << 3)
+          + (isRwcTimeSet() << 2) + (shimmerStatus.sensing << 1)
+          + (shimmerStatus.docked);
+      break;
+    case GET_VBATT_COMMAND:
+      manageReadBatt(1);
+      *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
+      *(resPacket + packet_length++) = VBATT_RESPONSE;
+      uint8_t i = 0;
+      for (i = 0; i < 3; i++)
       {
-      case INQUIRY_COMMAND:
-#if defined(SHIMMER3R)
-        /* Channel order/packet structure need to be assembled before sending the inquiry response so that the information is correct. */
-        S4Sens_configureChannels();
-#endif
-
-        *(resPacket + packet_length++) = INQUIRY_RESPONSE;
-        *(uint16_t *) (resPacket + packet_length) = storedConfig->samplingRateTicks; //ADC sampling rate
-        packet_length += 2;
-
-        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE0];
-        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE1];
-        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE2];
-        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE3];
-#if defined(SHIMMER3R)
-        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE4];
-        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE5];
-        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE6];
-#endif
-
-        *(resPacket + packet_length++) = sensing.nbrAdcChans + sensing.nbrDigiChans; //number of data channels
-        *(resPacket + packet_length++) = storedConfig->bufferSize; //buffer size
-        memcpy((resPacket + packet_length), sensing.cc,
-            (sensing.nbrAdcChans + sensing.nbrDigiChans));
-        packet_length += sensing.nbrAdcChans + sensing.nbrDigiChans;
-        break;
-      case GET_SAMPLING_RATE_COMMAND:
-        *(resPacket + packet_length++) = SAMPLING_RATE_RESPONSE;
-        *(uint16_t *) (resPacket + packet_length) = storedConfig->samplingRateTicks; //ADC sampling rate
-        packet_length += 2;
-        break;
-      case GET_WR_ACCEL_RANGE_COMMAND:
-        *(resPacket + packet_length++) = WR_ACCEL_RANGE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->wrAccelRange;
-        break;
-      case GET_MAG_GAIN_COMMAND:
-        *(resPacket + packet_length++) = MAG_GAIN_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->magRange;
-        break;
-      case GET_MAG_SAMPLING_RATE_COMMAND:
-        *(resPacket + packet_length++) = MAG_SAMPLING_RATE_RESPONSE;
-        *(resPacket + packet_length++) = ShimConfig_configByteMagRateGet();
-        break;
-      case GET_STATUS_COMMAND:
-        *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
-        *(resPacket + packet_length++) = STATUS_RESPONSE;
-        *(resPacket + packet_length++) = (shimmerStatus.toggleLedRedCmd << 7)
-            + (shimmerStatus.sdBadFile << 6) + (shimmerStatus.sdInserted << 5)
-            + (shimmerStatus.btStreaming << 4) + (shimmerStatus.sdLogging << 3)
-            + (isRwcTimeSet() << 2) + (shimmerStatus.sensing << 1)
-            + (shimmerStatus.docked);
-        break;
-      case GET_VBATT_COMMAND:
-        manageReadBatt(1);
-        *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
-        *(resPacket + packet_length++) = VBATT_RESPONSE;
-        uint8_t i = 0;
-        for (i = 0; i < 3; i++)
-        {
-          resPacket[packet_length] = batteryStatus.battStatusRaw.rawBytes[i];
-          packet_length++;
-        }
-        break;
-      case GET_TRIAL_CONFIG_COMMAND:
-        *(resPacket + packet_length++) = TRIAL_CONFIG_RESPONSE;
-        //2 trial config bytes + 1 interval byte
-        ShimConfig_storedConfigGet(&resPacket[packet_length], NV_SD_TRIAL_CONFIG0, 3);
-        packet_length += 3;
-        break;
-      case GET_CENTER_COMMAND:
-        *(resPacket + packet_length++) = CENTER_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->masterEnable;
-        break;
-      case GET_SHIMMERNAME_COMMAND:
-        SD_setShimmerName();
-        uint8_t shimmer_name_len = strlen(ShimConfig_getStoredConfig()->shimmerName);
-        *(resPacket + packet_length++) = SHIMMERNAME_RESPONSE;
-        *(resPacket + packet_length++) = shimmer_name_len;
-        memcpy((resPacket + packet_length), &storedConfig->shimmerName[0], shimmer_name_len);
-        packet_length += shimmer_name_len;
-        break;
-      case GET_EXPID_COMMAND:
-        SD_setExpIdName();
-        uint8_t exp_id_name_len = strlen((char *) storedConfig->expIdName);
-        *(resPacket + packet_length++) = EXPID_RESPONSE;
-        *(resPacket + packet_length++) = exp_id_name_len;
-        memcpy((resPacket + packet_length), &storedConfig->expIdName[0], exp_id_name_len);
-        packet_length += exp_id_name_len;
-        break;
-      case GET_CONFIGTIME_COMMAND:
-        SD_setCfgTime();
-        uint8_t *configTimeTextPtr = getConfigTimeTextPtr();
-        uint8_t cfgtime_name_len = strlen((char *) configTimeTextPtr);
-        *(resPacket + packet_length++) = CONFIGTIME_RESPONSE;
-        *(resPacket + packet_length++) = cfgtime_name_len;
-        memcpy((resPacket + packet_length), configTimeTextPtr, cfgtime_name_len);
-        packet_length += cfgtime_name_len;
-        break;
-      case GET_DIR_COMMAND:
-        fileNamePtr = getFileNamePtr();
-        uint8_t dir_len = strlen((char *) fileNamePtr) - 3;
-        *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
-        *(resPacket + packet_length++) = DIR_RESPONSE;
-        *(resPacket + packet_length++) = dir_len;
-        memcpy((resPacket + packet_length), fileNamePtr, dir_len);
-        packet_length += dir_len;
-        break;
-      case GET_NSHIMMER_COMMAND:
-        *(resPacket + packet_length++) = NSHIMMER_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->numberOfShimmers;
-        break;
-      case GET_MYID_COMMAND:
-        *(resPacket + packet_length++) = MYID_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->myTrialID;
-        break;
-      case GET_WR_ACCEL_SAMPLING_RATE_COMMAND:
-        *(resPacket + packet_length++) = WR_ACCEL_SAMPLING_RATE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->wrAccelRate;
-        break;
-      case GET_WR_ACCEL_LPMODE_COMMAND:
-        *(resPacket + packet_length++) = WR_ACCEL_LPMODE_RESPONSE;
-        *(resPacket + packet_length++) = ShimConfig_wrAccelLpModeGet();
-        break;
-      case GET_WR_ACCEL_HRMODE_COMMAND:
-        *(resPacket + packet_length++) = WR_ACCEL_HRMODE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->wrAccelHrMode;
-        break;
-      case GET_GYRO_RANGE_COMMAND:
-        *(resPacket + packet_length++) = GYRO_RANGE_RESPONSE;
-        *(resPacket + packet_length++) = ShimConfig_gyroRangeGet();
-        break;
-      case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
-        *(resPacket + packet_length++) = BMP180_CALIBRATION_COEFFICIENTS_RESPONSE;
-        if (isBmp180InUse())
-        {
-          memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP180_CALIB_DATA_SIZE);
-        }
-        else
-        {
-          //Dummy bytes sent if incorrect calibration bytes requested.
-          memset(resPacket + packet_length, 0x01, BMP180_CALIB_DATA_SIZE);
-        }
-        packet_length += BMP180_CALIB_DATA_SIZE;
-        break;
-      case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
-        *(resPacket + packet_length++) = BMP280_CALIBRATION_COEFFICIENTS_RESPONSE;
-        if (isBmp280InUse())
-        {
-          memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP280_CALIB_DATA_SIZE);
-        }
-        else
-        {
-          //Dummy bytes sent if incorrect calibration bytes requested.
-          memset(resPacket + packet_length, 0x01, BMP280_CALIB_DATA_SIZE);
-        }
-        packet_length += BMP280_CALIB_DATA_SIZE;
-        break;
-      case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
-        bmpCalibByteLen = get_bmp_calib_data_bytes_len();
-        *(resPacket + packet_length++) = PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE;
-        *(resPacket + packet_length++) = 1U + bmpCalibByteLen;
-        if (isBmp180InUse())
-        {
-          *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP180;
-        }
-        else if (isBmp280InUse())
-        {
-          *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP280;
-        }
-        else
-        {
-          *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
-        }
-        memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
-        packet_length += bmpCalibByteLen;
-        break;
-      case GET_GYRO_SAMPLING_RATE_COMMAND:
-        *(resPacket + packet_length++) = GYRO_SAMPLING_RATE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->gyroRate;
-        break;
-      case GET_ALT_ACCEL_RANGE_COMMAND:
+        resPacket[packet_length] = batteryStatus.battStatusRaw.rawBytes[i];
+        packet_length++;
+      }
+      break;
+    case GET_TRIAL_CONFIG_COMMAND:
+      *(resPacket + packet_length++) = TRIAL_CONFIG_RESPONSE;
+      //2 trial config bytes + 1 interval byte
+      ShimConfig_storedConfigGet(&resPacket[packet_length], NV_SD_TRIAL_CONFIG0, 3);
+      packet_length += 3;
+      break;
+    case GET_CENTER_COMMAND:
+      *(resPacket + packet_length++) = CENTER_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->masterEnable;
+      break;
+    case GET_SHIMMERNAME_COMMAND:
+      SD_setShimmerName();
+      uint8_t shimmer_name_len = strlen(ShimConfig_getStoredConfig()->shimmerName);
+      *(resPacket + packet_length++) = SHIMMERNAME_RESPONSE;
+      *(resPacket + packet_length++) = shimmer_name_len;
+      memcpy((resPacket + packet_length), &storedConfig->shimmerName[0], shimmer_name_len);
+      packet_length += shimmer_name_len;
+      break;
+    case GET_EXPID_COMMAND:
+      SD_setExpIdName();
+      uint8_t exp_id_name_len = strlen((char *) storedConfig->expIdName);
+      *(resPacket + packet_length++) = EXPID_RESPONSE;
+      *(resPacket + packet_length++) = exp_id_name_len;
+      memcpy((resPacket + packet_length), &storedConfig->expIdName[0], exp_id_name_len);
+      packet_length += exp_id_name_len;
+      break;
+    case GET_CONFIGTIME_COMMAND:
+      SD_setCfgTime();
+      uint8_t *configTimeTextPtr = getConfigTimeTextPtr();
+      uint8_t cfgtime_name_len = strlen((char *) configTimeTextPtr);
+      *(resPacket + packet_length++) = CONFIGTIME_RESPONSE;
+      *(resPacket + packet_length++) = cfgtime_name_len;
+      memcpy((resPacket + packet_length), configTimeTextPtr, cfgtime_name_len);
+      packet_length += cfgtime_name_len;
+      break;
+    case GET_DIR_COMMAND:
+      fileNamePtr = getFileNamePtr();
+      uint8_t dir_len = strlen((char *) fileNamePtr) - 3;
+      *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
+      *(resPacket + packet_length++) = DIR_RESPONSE;
+      *(resPacket + packet_length++) = dir_len;
+      memcpy((resPacket + packet_length), fileNamePtr, dir_len);
+      packet_length += dir_len;
+      break;
+    case GET_NSHIMMER_COMMAND:
+      *(resPacket + packet_length++) = NSHIMMER_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->numberOfShimmers;
+      break;
+    case GET_MYID_COMMAND:
+      *(resPacket + packet_length++) = MYID_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->myTrialID;
+      break;
+    case GET_WR_ACCEL_SAMPLING_RATE_COMMAND:
+      *(resPacket + packet_length++) = WR_ACCEL_SAMPLING_RATE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->wrAccelRate;
+      break;
+    case GET_WR_ACCEL_LPMODE_COMMAND:
+      *(resPacket + packet_length++) = WR_ACCEL_LPMODE_RESPONSE;
+      *(resPacket + packet_length++) = ShimConfig_wrAccelLpModeGet();
+      break;
+    case GET_WR_ACCEL_HRMODE_COMMAND:
+      *(resPacket + packet_length++) = WR_ACCEL_HRMODE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->wrAccelHrMode;
+      break;
+    case GET_GYRO_RANGE_COMMAND:
+      *(resPacket + packet_length++) = GYRO_RANGE_RESPONSE;
+      *(resPacket + packet_length++) = ShimConfig_gyroRangeGet();
+      break;
+    case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
+      *(resPacket + packet_length++) = BMP180_CALIBRATION_COEFFICIENTS_RESPONSE;
+      if (isBmp180InUse())
+      {
+        memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP180_CALIB_DATA_SIZE);
+      }
+      else
+      {
+        //Dummy bytes sent if incorrect calibration bytes requested.
+        memset(resPacket + packet_length, 0x01, BMP180_CALIB_DATA_SIZE);
+      }
+      packet_length += BMP180_CALIB_DATA_SIZE;
+      break;
+    case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
+      *(resPacket + packet_length++) = BMP280_CALIBRATION_COEFFICIENTS_RESPONSE;
+      if (isBmp280InUse())
+      {
+        memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP280_CALIB_DATA_SIZE);
+      }
+      else
+      {
+        //Dummy bytes sent if incorrect calibration bytes requested.
+        memset(resPacket + packet_length, 0x01, BMP280_CALIB_DATA_SIZE);
+      }
+      packet_length += BMP280_CALIB_DATA_SIZE;
+      break;
+    case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
+      bmpCalibByteLen = get_bmp_calib_data_bytes_len();
+      *(resPacket + packet_length++) = PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE;
+      *(resPacket + packet_length++) = 1U + bmpCalibByteLen;
+      if (isBmp180InUse())
+      {
+        *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP180;
+      }
+      else if (isBmp280InUse())
+      {
+        *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP280;
+      }
+      else
+      {
+        *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
+      }
+      memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
+      packet_length += bmpCalibByteLen;
+      break;
+    case GET_GYRO_SAMPLING_RATE_COMMAND:
+      *(resPacket + packet_length++) = GYRO_SAMPLING_RATE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->gyroRate;
+      break;
+    case GET_ALT_ACCEL_RANGE_COMMAND:
 #if defined(SHIMMER3)
-        *(resPacket + packet_length++) = ALT_ACCEL_RANGE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->altAccelRange;
+      *(resPacket + packet_length++) = ALT_ACCEL_RANGE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->altAccelRange;
 #elif defined(SHIMMER3R)
-        *(resPacket + packet_length++) = ALT_ACCEL_RANGE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->lnAccelRange;
+      *(resPacket + packet_length++) = ALT_ACCEL_RANGE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->lnAccelRange;
 #endif
-        break;
-      case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
-        *(resPacket + packet_length++) = PRESSURE_OVERSAMPLING_RATIO_RESPONSE;
-        *(resPacket + packet_length++)
-            = ShimConfig_configBytePressureOversamplingRatioGet();
-        break;
-      case GET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
-        *(resPacket + packet_length++) = INTERNAL_EXP_POWER_ENABLE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->expansionBoardPower;
-        break;
-      case GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND:
+      break;
+    case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
+      *(resPacket + packet_length++) = PRESSURE_OVERSAMPLING_RATIO_RESPONSE;
+      *(resPacket + packet_length++)
+          = ShimConfig_configBytePressureOversamplingRatioGet();
+      break;
+    case GET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
+      *(resPacket + packet_length++) = INTERNAL_EXP_POWER_ENABLE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->expansionBoardPower;
+      break;
+    case GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND:
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
-        //Mag sensitivity adj feature is not present in ICM-20948
-        if (isGyroInUseMpu9x50())
-        {
-          MPU9150_init();
-          MPU9150_wake(1);
-          MPU9150_wake(0);
-          *(resPacket + packet_length++) = MPU9150_MAG_SENS_ADJ_VALS_RESPONSE;
-          MPU9150_getMagSensitivityAdj(resPacket + packet_length);
-          packet_length += 3;
-        }
-        else
-        {
-          *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
-        }
-#else
-        *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
-#endif
-        break;
-      case GET_CONFIG_SETUP_BYTES_COMMAND:
-        *(resPacket + packet_length++) = CONFIG_SETUP_BYTES_RESPONSE;
-        memcpy(resPacket + packet_length,
-            &storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE0], 4);
-        packet_length += 4;
-        break;
-      case GET_BT_VERSION_STR_COMMAND:
-        btVerStrLen = getBtVerStrLen();
-        *(resPacket + packet_length++) = BT_VERSION_STR_RESPONSE;
-        *(resPacket + packet_length++) = btVerStrLen;
-        memcpy((resPacket + packet_length), getBtVerStrPtr(), btVerStrLen);
-        packet_length += btVerStrLen;
-        break;
-      case GET_GSR_RANGE_COMMAND:
-        *(resPacket + packet_length++) = GSR_RANGE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->gsrRange;
-        break;
-
-      case DEPRECATED_GET_DEVICE_VERSION_COMMAND:
-      case GET_DEVICE_VERSION_COMMAND:
-        *(resPacket + packet_length++) = DEVICE_VERSION_RESPONSE;
-        *(resPacket + packet_length++) = DEVICE_VER;
-        break;
-
-      case GET_FW_VERSION_COMMAND:
-        *(resPacket + packet_length++) = FW_VERSION_RESPONSE;
-        *(resPacket + packet_length++) = FW_IDENTIFIER & 0xFF;
-        *(resPacket + packet_length++) = (FW_IDENTIFIER & 0xFF00) >> 8;
-        *(resPacket + packet_length++) = FW_VER_MAJOR & 0xFF;
-        *(resPacket + packet_length++) = (FW_VER_MAJOR & 0xFF00) >> 8;
-        *(resPacket + packet_length++) = FW_VER_MINOR;
-        *(resPacket + packet_length++) = FW_VER_REL;
-        break;
-      case GET_CHARGE_STATUS_LED_COMMAND:
-        *(resPacket + packet_length++) = CHARGE_STATUS_LED_RESPONSE;
-        *(resPacket + packet_length++) = batteryStatus.battStat;
-        break;
-      case GET_BUFFER_SIZE_COMMAND:
-        *(resPacket + packet_length++) = BUFFER_SIZE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->bufferSize;
-        break;
-      case GET_UNIQUE_SERIAL_COMMAND:
-        *(resPacket + packet_length++) = UNIQUE_SERIAL_RESPONSE;
-#if defined(SHIMMER3)
-        memcpy((resPacket + packet_length), HAL_GetUID(), 8);
-        packet_length += 8;
-#elif defined(SHIMMER3R)
-        uint32_t uid[3];
-        uid[0] = HAL_GetUIDw0();
-        uid[1] = HAL_GetUIDw1();
-        uid[2] = HAL_GetUIDw2();
-        memcpy((resPacket + packet_length), (uint8_t *) &uid[0], 12);
-        packet_length += 12;
-#endif
-        break;
-      case GET_BT_COMMS_BAUD_RATE:
-        *(resPacket + packet_length++) = BT_COMMS_BAUD_RATE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->btCommsBaudRate;
-        break;
-      case GET_DERIVED_CHANNEL_BYTES:
-        *(resPacket + packet_length++) = DERIVED_CHANNEL_BYTES_RESPONSE;
-        ShimConfig_storedConfigGet(&resPacket[packet_length], NV_DERIVED_CHANNELS_0, 3);
+      //Mag sensitivity adj feature is not present in ICM-20948
+      if (isGyroInUseMpu9x50())
+      {
+        MPU9150_init();
+        MPU9150_wake(1);
+        MPU9150_wake(0);
+        *(resPacket + packet_length++) = MPU9150_MAG_SENS_ADJ_VALS_RESPONSE;
+        MPU9150_getMagSensitivityAdj(resPacket + packet_length);
         packet_length += 3;
-        ShimConfig_storedConfigGet(&resPacket[packet_length], NV_DERIVED_CHANNELS_3, 5);
-        packet_length += 5;
-        break;
-      case GET_RWC_COMMAND:
-        temp_rtcCurrentTime = RTC_get64();
-        *(resPacket + packet_length++) = RWC_RESPONSE;
-        memcpy(resPacket + packet_length, (uint8_t *) (&temp_rtcCurrentTime), 8);
-        packet_length += 8;
-        break;
+      }
+      else
+      {
+        *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
+      }
+#else
+      *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
+#endif
+      break;
+    case GET_CONFIG_SETUP_BYTES_COMMAND:
+      *(resPacket + packet_length++) = CONFIG_SETUP_BYTES_RESPONSE;
+      memcpy(resPacket + packet_length,
+          &storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE0], 4);
+      packet_length += 4;
+      break;
+    case GET_BT_VERSION_STR_COMMAND:
+      btVerStrLen = getBtVerStrLen();
+      *(resPacket + packet_length++) = BT_VERSION_STR_RESPONSE;
+      *(resPacket + packet_length++) = btVerStrLen;
+      memcpy((resPacket + packet_length), getBtVerStrPtr(), btVerStrLen);
+      packet_length += btVerStrLen;
+      break;
+    case GET_GSR_RANGE_COMMAND:
+      *(resPacket + packet_length++) = GSR_RANGE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->gsrRange;
+      break;
 
-      case GET_ALL_CALIBRATION_COMMAND:
-        *(resPacket + packet_length++) = ALL_CALIBRATION_RESPONSE;
+    case DEPRECATED_GET_DEVICE_VERSION_COMMAND:
+    case GET_DEVICE_VERSION_COMMAND:
+      *(resPacket + packet_length++) = DEVICE_VERSION_RESPONSE;
+      *(resPacket + packet_length++) = DEVICE_VER;
+      break;
 
-        packet_length += BtUart_replySingleSensorCalibCmd(
-            GET_LN_ACCEL_CALIBRATION_COMMAND, &resPacket[packet_length]);
+    case GET_FW_VERSION_COMMAND:
+      *(resPacket + packet_length++) = FW_VERSION_RESPONSE;
+      *(resPacket + packet_length++) = FW_IDENTIFIER & 0xFF;
+      *(resPacket + packet_length++) = (FW_IDENTIFIER & 0xFF00) >> 8;
+      *(resPacket + packet_length++) = FW_VER_MAJOR & 0xFF;
+      *(resPacket + packet_length++) = (FW_VER_MAJOR & 0xFF00) >> 8;
+      *(resPacket + packet_length++) = FW_VER_MINOR;
+      *(resPacket + packet_length++) = FW_VER_REL;
+      break;
+    case GET_CHARGE_STATUS_LED_COMMAND:
+      *(resPacket + packet_length++) = CHARGE_STATUS_LED_RESPONSE;
+      *(resPacket + packet_length++) = batteryStatus.battStat;
+      break;
+    case GET_BUFFER_SIZE_COMMAND:
+      *(resPacket + packet_length++) = BUFFER_SIZE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->bufferSize;
+      break;
+    case GET_UNIQUE_SERIAL_COMMAND:
+      *(resPacket + packet_length++) = UNIQUE_SERIAL_RESPONSE;
+#if defined(SHIMMER3)
+      memcpy((resPacket + packet_length), HAL_GetUID(), 8);
+      packet_length += 8;
+#elif defined(SHIMMER3R)
+      uint32_t uid[3];
+      uid[0] = HAL_GetUIDw0();
+      uid[1] = HAL_GetUIDw1();
+      uid[2] = HAL_GetUIDw2();
+      memcpy((resPacket + packet_length), (uint8_t *) &uid[0], 12);
+      packet_length += 12;
+#endif
+      break;
+    case GET_BT_COMMS_BAUD_RATE:
+      *(resPacket + packet_length++) = BT_COMMS_BAUD_RATE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->btCommsBaudRate;
+      break;
+    case GET_DERIVED_CHANNEL_BYTES:
+      *(resPacket + packet_length++) = DERIVED_CHANNEL_BYTES_RESPONSE;
+      ShimConfig_storedConfigGet(&resPacket[packet_length], NV_DERIVED_CHANNELS_0, 3);
+      packet_length += 3;
+      ShimConfig_storedConfigGet(&resPacket[packet_length], NV_DERIVED_CHANNELS_3, 5);
+      packet_length += 5;
+      break;
+    case GET_RWC_COMMAND:
+      temp_rtcCurrentTime = RTC_get64();
+      *(resPacket + packet_length++) = RWC_RESPONSE;
+      memcpy(resPacket + packet_length, (uint8_t *) (&temp_rtcCurrentTime), 8);
+      packet_length += 8;
+      break;
 
-        packet_length += BtUart_replySingleSensorCalibCmd(
-            GET_GYRO_CALIBRATION_COMMAND, &resPacket[packet_length]);
+    case GET_ALL_CALIBRATION_COMMAND:
+      *(resPacket + packet_length++) = ALL_CALIBRATION_RESPONSE;
 
-        packet_length += BtUart_replySingleSensorCalibCmd(
-            GET_MAG_CALIBRATION_COMMAND, &resPacket[packet_length]);
+      packet_length += BtUart_replySingleSensorCalibCmd(
+          GET_LN_ACCEL_CALIBRATION_COMMAND, &resPacket[packet_length]);
 
-        packet_length += BtUart_replySingleSensorCalibCmd(
-            GET_WR_ACCEL_CALIBRATION_COMMAND, &resPacket[packet_length]);
+      packet_length += BtUart_replySingleSensorCalibCmd(
+          GET_GYRO_CALIBRATION_COMMAND, &resPacket[packet_length]);
+
+      packet_length += BtUart_replySingleSensorCalibCmd(
+          GET_MAG_CALIBRATION_COMMAND, &resPacket[packet_length]);
+
+      packet_length += BtUart_replySingleSensorCalibCmd(
+          GET_WR_ACCEL_CALIBRATION_COMMAND, &resPacket[packet_length]);
 
 #if defined(SHIMMER3R)
-        packet_length += BtUart_replySingleSensorCalibCmd(
-            GET_ALT_ACCEL_CALIBRATION_COMMAND, &resPacket[packet_length]);
+      packet_length += BtUart_replySingleSensorCalibCmd(
+          GET_ALT_ACCEL_CALIBRATION_COMMAND, &resPacket[packet_length]);
 
-        packet_length += BtUart_replySingleSensorCalibCmd(
-            GET_ALT_MAG_CALIBRATION_COMMAND, &resPacket[packet_length]);
+      packet_length += BtUart_replySingleSensorCalibCmd(
+          GET_ALT_MAG_CALIBRATION_COMMAND, &resPacket[packet_length]);
 #endif
-        break;
+      break;
 
-      case GET_LN_ACCEL_CALIBRATION_COMMAND:
-      case GET_GYRO_CALIBRATION_COMMAND:
-      case GET_MAG_CALIBRATION_COMMAND:
-      case GET_WR_ACCEL_CALIBRATION_COMMAND:
-      case GET_ALT_ACCEL_CALIBRATION_COMMAND:
-      case GET_ALT_MAG_CALIBRATION_COMMAND:
-        *(resPacket + packet_length++)
-            = BtUart_getExpectedRspForGetCmd(getCmdWaitingResponse);
-        packet_length += BtUart_replySingleSensorCalibCmd(
-            getCmdWaitingResponse, &resPacket[packet_length]);
-        break;
-      case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
-        *(resPacket + packet_length++) = ALT_ACCEL_SAMPLING_RATE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->altAccelRate;
-        break;
-      case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
-        *(resPacket + packet_length++) = ALT_MAG_SAMPLING_RATE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->altMagRate;
-        break;
+    case GET_LN_ACCEL_CALIBRATION_COMMAND:
+    case GET_GYRO_CALIBRATION_COMMAND:
+    case GET_MAG_CALIBRATION_COMMAND:
+    case GET_WR_ACCEL_CALIBRATION_COMMAND:
+    case GET_ALT_ACCEL_CALIBRATION_COMMAND:
+    case GET_ALT_MAG_CALIBRATION_COMMAND:
+      *(resPacket + packet_length++)
+          = BtUart_getExpectedRspForGetCmd(getCmdWaitingResponse);
+      packet_length += BtUart_replySingleSensorCalibCmd(
+          getCmdWaitingResponse, &resPacket[packet_length]);
+      break;
+    case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
+      *(resPacket + packet_length++) = ALT_ACCEL_SAMPLING_RATE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->altAccelRate;
+      break;
+    case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
+      *(resPacket + packet_length++) = ALT_MAG_SAMPLING_RATE_RESPONSE;
+      *(resPacket + packet_length++) = storedConfig->altMagRate;
+      break;
 
-      case GET_EXG_REGS_COMMAND:
-        *(resPacket + packet_length++) = EXG_REGS_RESPONSE;
-        *(resPacket + packet_length++) = exgLength;
-        if (exgLength)
+    case GET_EXG_REGS_COMMAND:
+      *(resPacket + packet_length++) = EXG_REGS_RESPONSE;
+      *(resPacket + packet_length++) = exgLength;
+      if (exgLength)
+      {
+        if (exgChip)
         {
-          if (exgChip)
-          {
-            memcpy((resPacket + packet_length),
-                &storedConfig->exgADS1292rRegsCh2.rawBytes[exgStartAddr], exgLength);
-          }
-          else
-          {
-            memcpy((resPacket + packet_length),
-                &storedConfig->exgADS1292rRegsCh1.rawBytes[exgStartAddr], exgLength);
-          }
-          packet_length += exgLength;
-        }
-        break;
-      case GET_CALIB_DUMP_COMMAND:
-        *(resPacket + packet_length++) = RSP_CALIB_DUMP_COMMAND;
-        *(resPacket + packet_length++) = calibRamLength;
-        *(resPacket + packet_length++) = calibRamOffset & 0xff;
-        *(resPacket + packet_length++) = (calibRamOffset >> 8) & 0xff;
-        ShimmerCalib_ramRead(resPacket + packet_length, calibRamLength, calibRamOffset);
-        packet_length += calibRamLength;
-        break;
-      case SET_DATA_RATE_TEST:
-        /* Start test after ACK is sent - this will be handled by the
-         * interrupt after ACK byte is transmitted */
-        if (args[0] != 0)
-        {
-          setBtDataRateTestState(1);
-        }
-        break;
-
-      case GET_DAUGHTER_CARD_ID_COMMAND:
-        *(resPacket + packet_length++) = DAUGHTER_CARD_ID_RESPONSE;
-        *(resPacket + packet_length++) = dcMemLength;
-        eepromRead(dcMemOffset, dcMemLength, resPacket + packet_length);
-        packet_length += dcMemLength;
-        break;
-      case GET_DAUGHTER_CARD_MEM_COMMAND:
-        *(resPacket + packet_length++) = DAUGHTER_CARD_MEM_RESPONSE;
-        *(resPacket + packet_length++) = dcMemLength;
-        if (!shimmerStatus.sensing)
-        {
-          eepromRead(dcMemOffset + 16U, dcMemLength, resPacket + packet_length);
+          memcpy((resPacket + packet_length),
+              &storedConfig->exgADS1292rRegsCh2.rawBytes[exgStartAddr], exgLength);
         }
         else
         {
-          memset(resPacket + packet_length, 0xff, dcMemLength);
+          memcpy((resPacket + packet_length),
+              &storedConfig->exgADS1292rRegsCh1.rawBytes[exgStartAddr], exgLength);
         }
-        packet_length += dcMemLength;
-        break;
-      case GET_INFOMEM_COMMAND:
-        *(resPacket + packet_length++) = INFOMEM_RESPONSE;
-        *(resPacket + packet_length++) = infomemLength;
-        ShimConfig_storedConfigGet(&resPacket[packet_length], infomemOffset, infomemLength);
-        packet_length += infomemLength;
-        break;
+        packet_length += exgLength;
+      }
+      break;
+    case GET_CALIB_DUMP_COMMAND:
+      *(resPacket + packet_length++) = RSP_CALIB_DUMP_COMMAND;
+      *(resPacket + packet_length++) = calibRamLength;
+      *(resPacket + packet_length++) = calibRamOffset & 0xff;
+      *(resPacket + packet_length++) = (calibRamOffset >> 8) & 0xff;
+      ShimmerCalib_ramRead(resPacket + packet_length, calibRamLength, calibRamOffset);
+      packet_length += calibRamLength;
+      break;
+    case SET_DATA_RATE_TEST:
+      /* Start test after ACK is sent - this will be handled by the
+       * interrupt after ACK byte is transmitted */
+      if (args[0] != 0)
+      {
+        setBtDataRateTestState(1);
+      }
+      break;
+
+    case GET_DAUGHTER_CARD_ID_COMMAND:
+      *(resPacket + packet_length++) = DAUGHTER_CARD_ID_RESPONSE;
+      *(resPacket + packet_length++) = dcMemLength;
+      eepromRead(dcMemOffset, dcMemLength, resPacket + packet_length);
+      packet_length += dcMemLength;
+      break;
+    case GET_DAUGHTER_CARD_MEM_COMMAND:
+      *(resPacket + packet_length++) = DAUGHTER_CARD_MEM_RESPONSE;
+      *(resPacket + packet_length++) = dcMemLength;
+      if (!shimmerStatus.sensing)
+      {
+        eepromRead(dcMemOffset + 16U, dcMemLength, resPacket + packet_length);
+      }
+      else
+      {
+        memset(resPacket + packet_length, 0xff, dcMemLength);
+      }
+      packet_length += dcMemLength;
+      break;
+    case GET_INFOMEM_COMMAND:
+      *(resPacket + packet_length++) = INFOMEM_RESPONSE;
+      *(resPacket + packet_length++) = infomemLength;
+      ShimConfig_storedConfigGet(&resPacket[packet_length], infomemOffset, infomemLength);
+      packet_length += infomemLength;
+      break;
 
 #if defined(SHIMMER4_SDK)
-      case GET_I2C_BATT_STATUS_COMMAND:
-        *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
-        *(resPacket + packet_length++) = RSP_I2C_BATT_STATUS_COMMAND;
-        memcpy((resPacket + packet_length),
-            (uint8_t *) shimmerStatus.battDigital, STC3100_DATA_LEN);
-        packet_length += STC3100_DATA_LEN;
-        break
+    case GET_I2C_BATT_STATUS_COMMAND:
+      *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
+      *(resPacket + packet_length++) = RSP_I2C_BATT_STATUS_COMMAND;
+      memcpy((resPacket + packet_length),
+          (uint8_t *) shimmerStatus.battDigital, STC3100_DATA_LEN);
+      packet_length += STC3100_DATA_LEN;
+      break
 #endif
 
-            default: break;
-      }
-      getCmdWaitingResponse = 0;
+      default:
+        break;
     }
+    getCmdWaitingResponse = 0;
 
     uint8_t crcMode = getBtCrcMode();
     if (crcMode != CRC_OFF)

@@ -56,5 +56,6 @@ uint8_t *getShimmerNamePtr(void);
 uint8_t *getExpIdPtr(void);
 FRESULT set_file_timestamp(char *path);
 void FindError(uint8_t err, uint8_t *name);
+void SdInfoSync();
 
 #endif /* SHIMMER_SD_H_ */

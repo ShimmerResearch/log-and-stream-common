@@ -42,8 +42,10 @@
 
 #include <Sensing/shimmer_sensing.h>
 
-#include <Configuration/shimmer_config.h>
 #include <log_and_stream_externs.h>
+#include <Configuration/shimmer_config.h>
+#include <Comms/shimmer_bt_uart.h>
+#include <TaskList/shimmer_taskList.h>
 
 #if defined(SHIMMER3R)
 #include "shimmer_definitions.h"
@@ -83,7 +85,7 @@ void ShimSens_configureChannels(void)
   sensing.nbrAdcChans = sensing.nbrDigiChans = 0;
   sensing.ccLen = 0;
   sensing.ptr.ts = 1;
-  sensing.dataLen = 1 + 3; //0x00 + timestamp
+  sensing.dataLen = FIRST_CH_BYTE_IDX;
 
   ADC_configureChannels();
   I2C_configureChannels();
@@ -578,13 +580,37 @@ void saveData(void)
     ShimTask_set(TASK_STOPSENSING);
   }
 }
+#endif
 
 uint8_t areAnyChannelsEnabled(void)
 {
-  if (sensing.nbrAdcChans > 0 || sensing.nbrDigiChans > 0 || isMicrophoneEnabled())
+  if (sensing.nbrAdcChans > 0
+          || sensing.nbrDigiChans > 0
+#if defined(SHIMMER3R)
+          || isMicrophoneEnabled()
+#endif
+      )
+
   {
     return 1;
   }
   return 0;
 }
-#endif
+
+uint8_t CheckOnDefault(void)
+{
+  gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
+
+  if (!storedConfigPtr->singleTouchStart && !storedConfigPtr->userButtonEnable
+      && shimmerStatus.sdlogReady && !shimmerStatus.sensing && !shimmerStatus.sdBadFile)
+  { //state == BTSD_IDLESD
+    ShimTask_setStartSensing();
+    shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
+    shimmerStatus.sensing = 1;
+    BtsdSelfcmd();
+    shimmerStatus.sensing = 0;
+    return 1;
+  }
+  return 0;
+}
+
