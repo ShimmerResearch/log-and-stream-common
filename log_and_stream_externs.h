@@ -14,8 +14,8 @@
 #include "hal_FactoryTest.h"
 
 #if defined(SHIMMER3)
-#include "../shimmer3_common_source/BMPX80/bmpX80.h"
-#include "../shimmer3_common_source/MPU9150/mpu9150.h"
+#include "../Shimmer_Driver/BMPX80/bmpX80.h"
+#include "../Shimmer_Driver/MPU9150/mpu9150.h"
 #include "hal_InfoMem.h"
 #endif
 

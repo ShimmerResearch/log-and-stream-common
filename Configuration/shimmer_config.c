@@ -257,6 +257,9 @@ void ShimConfig_setDefaultConfig(void)
   /* EXP_RESET_N pin set low */
   storedConfig.expansionBoardPower = 0;
 
+  storedConfig.sdErrorEnable = 1;
+  storedConfig.rtcErrorEnable = 1;
+
   //set all ExG registers to their reset values
   //setExgConfigForTestSignal(&storedConfig);
   ShimConfig_setExgConfigForEcg(&storedConfig);
@@ -385,8 +388,7 @@ uint8_t ShimConfig_gyroRangeGet(void)
 
 void ShimConfig_gyroRateSet(gConfigBytes *storedConfigPtr, uint8_t value)
 {
-#if defined(SHIMMER3)
-#elif defined(SHIMMER3R)
+#if defined(SHIMMER3R)
   value = (value < LSM6DSV_ODR_AT_7680Hz) ? value : LSM6DSV_ODR_AT_60Hz;
 #endif
   storedConfigPtr->gyroRate = value;
@@ -432,7 +434,7 @@ lis2dw12_mode_t get_config_byte_wr_accel_mode(void)
 void ShimConfig_configBytePressureOversamplingRatioSet(gConfigBytes *storedConfigPtr, uint8_t value)
 {
 #if defined(SHIMMER3)
-  value = (value < 4) ? (value & 0x03) : BMPX80_OSS_1;
+  value = (value <= BMPX80_OSS_8) ? (value & 0x03) : BMPX80_OSS_1;
 #elif defined(SHIMMER3R)
   value = (value <= BMP3_OVERSAMPLING_32X) ? value : BMP3_NO_OVERSAMPLING;
 #endif
@@ -455,7 +457,7 @@ uint8_t ShimConfig_configBytePressureOversamplingRatioGet(void)
 void ShimConfig_configByteMagRateSet(gConfigBytes *storedConfigPtr, uint8_t value)
 {
 #if defined(SHIMMER3)
-  value = (value < 4) ? (value & 0x03) : BMPX80_OSS_1;
+  value = (value < LSM303DLHC_MAG_220HZ) ? value : LSM303DLHC_MAG_75HZ;
 #elif defined(SHIMMER3R)
   value = value <= (LIS3MDL_UHP_80Hz) ? value : LIS3MDL_UHP_80Hz;
 #endif

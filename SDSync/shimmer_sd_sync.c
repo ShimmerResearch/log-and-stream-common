@@ -20,7 +20,7 @@
 #if defined(SHIMMER3)
 #include "msp430.h"
 
-#include "../../shimmer3_common_source/RN4X/RN4X.h"
+#include "../../Shimmer_Driver/RN4X/RN4X.h"
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_RTC.h"
 #include "Comms/shimmer_bt_uart.h"
