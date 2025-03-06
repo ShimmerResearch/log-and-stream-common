@@ -234,7 +234,8 @@ uint8_t ShimBrd_isEepromIsPresent(void)
 uint8_t ShimBrd_isLnAccelKxtc9_2050Present(void)
 {
   //Assuming here that if BMP280 and LSM303AHTR/ICM20948 present, infer low-noise accel is KXTC9-2050 and not KXRB5-2042
-  return ((ShimBrd_isWrAccelInUseLsm303ahtr() || ShimBrd_isWrAccelInUseIcm20948()) && isBmp280InUse());
+  return ((ShimBrd_isWrAccelInUseLsm303ahtr() || ShimBrd_isWrAccelInUseIcm20948())
+      && isBmp280InUse());
 }
 #endif
 

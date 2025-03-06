@@ -194,10 +194,7 @@ void ShimCalib_setDefaultLis3mdlMagCalib(sc_t *sc1Ptr);
 #endif
 
 void ShimCalib_defaultAll(void);
-void ShimCalib_singleSensorWriteFromInfoMem(uint16_t id,
-    uint8_t range,
-    uint8_t data_len,
-    uint8_t *ptr);
+void ShimCalib_singleSensorWriteFromInfoMem(uint16_t id, uint8_t range, uint8_t data_len, uint8_t *ptr);
 void ShimCalib_calibSaveFromInfoMemToCalibDump(uint8_t id);
 
 void ShimCalib_initFromInfoAll(void);

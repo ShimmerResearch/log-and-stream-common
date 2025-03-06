@@ -918,16 +918,14 @@ void ShimCalib_calibSaveFromInfoMemToCalibDump(uint8_t id)
   }
   if (id == 0xFF || id == SC_SENSOR_LSM303_ACCEL)
   {
-    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM303_ACCEL,
-        configBytes->wrAccelRange, SC_DATA_LEN_LSM303_ACCEL,
-        &configBytes->wrAccelCalib.rawBytes[0]);
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM303_ACCEL, configBytes->wrAccelRange,
+        SC_DATA_LEN_LSM303_ACCEL, &configBytes->wrAccelCalib.rawBytes[0]);
   }
 #elif defined(SHIMMER3R)
   if (id == 0xFF || id == SC_SENSOR_LSM6DSV_ACCEL)
   {
-    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM6DSV_ACCEL,
-        configBytes->lnAccelRange, SC_DATA_LEN_STD_IMU_CALIB,
-        &configBytes->lnAccelCalib.rawBytes[0]);
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM6DSV_ACCEL, configBytes->lnAccelRange,
+        SC_DATA_LEN_STD_IMU_CALIB, &configBytes->lnAccelCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_LSM6DSV_GYRO)
   {
@@ -937,9 +935,8 @@ void ShimCalib_calibSaveFromInfoMemToCalibDump(uint8_t id)
   }
   if (id == 0xFF || id == SC_SENSOR_LIS2DW12_ACCEL)
   {
-    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LIS2DW12_ACCEL,
-        configBytes->wrAccelRange, SC_DATA_LEN_STD_IMU_CALIB,
-        &configBytes->wrAccelCalib.rawBytes[0]);
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LIS2DW12_ACCEL, configBytes->wrAccelRange,
+        SC_DATA_LEN_STD_IMU_CALIB, &configBytes->wrAccelCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_ADXL371_ACCEL)
   {

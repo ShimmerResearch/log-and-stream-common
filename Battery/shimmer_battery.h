@@ -97,7 +97,10 @@ typedef volatile struct batt_status_t
 } BattStatus;
 
 void ShimBatt_init(void);
-void ShimBatt_updateStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3658sdStat1, uint8_t lm3658sdStat2);
+void ShimBatt_updateStatus(uint16_t adc_battVal,
+    uint16_t battValMV,
+    uint8_t lm3658sdStat1,
+    uint8_t lm3658sdStat2);
 void ShimBatt_rankBattUndockedVoltage(void);
 void ShimBatt_rankBattChargingStatus(void);
 void ShimBatt_determineChargingLedState(void);

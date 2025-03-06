@@ -30,7 +30,6 @@
 #include "shimmer_externs.h"
 #endif
 
-#include <log_and_stream_externs.h>
 #include <Boards/shimmer_boards.h>
 #include <Calibration/shimmer_calibration.h>
 #include <Configuration/shimmer_config.h>
@@ -39,6 +38,7 @@
 #include <SDSync/shimmer_sd_sync.h>
 #include <Sensing/shimmer_sensing.h>
 #include <TaskList/shimmer_taskList.h>
+#include <log_and_stream_externs.h>
 
 uint8_t unwrappedResponse[256] = { 0 };
 volatile uint8_t gAction;
@@ -1508,7 +1508,8 @@ void ShimBt_processCmd(void)
 
       InfoMem_write(exgConfigOffset + exgStartAddr,
           &storedConfig->rawBytes[exgConfigOffset + exgStartAddr], exgLength);
-      ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[exgConfigOffset], exgSdHeadOffset, exgLength);
+      ShimSdHead_sdHeadTextSet(
+          &storedConfig->rawBytes[exgConfigOffset], exgSdHeadOffset, exgLength);
 
       update_sdconfig = 1;
     }
@@ -1679,7 +1680,8 @@ void ShimBt_processCmd(void)
   case SET_RWC_COMMAND:
     storedConfig->rtcSetByBt = 1;
     InfoMem_write(NV_SD_TRIAL_CONFIG0, &storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
-    ShimSdHead_sdHeadTextSetByte(SDH_TRIAL_CONFIG0, storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0]);
+    ShimSdHead_sdHeadTextSetByte(
+        SDH_TRIAL_CONFIG0, storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0]);
 #if defined(SHIMMER3)
     setRwcTime(&args[0]);
     RwcCheck();

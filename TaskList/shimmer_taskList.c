@@ -194,7 +194,8 @@ void ShimTask_NORM_manage(void)
 #endif
       break;
     case TASK_SDLOG_CFG_UPDATE:
-      if (!shimmerStatus.docked && !shimmerStatus.sensing && CheckSdInslot() && ShimConfig_getSdCfgFlag())
+      if (!shimmerStatus.docked && !shimmerStatus.sensing && CheckSdInslot()
+          && ShimConfig_getSdCfgFlag())
       {
         shimmerStatus.configuring = 1;
         ShimConfig_readRam();
