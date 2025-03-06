@@ -1240,18 +1240,12 @@ void BtUart_processCmd(void)
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
     if (!shimmerStatus.sensing)
     {
-#if defined(SHIMMER3)
-      ShimTask_set(TASK_CFGCH);
-#endif
       ShimTask_setStartSensing();
     }
     break;
   case START_SDBT_COMMAND:
     if (!shimmerStatus.sensing)
     {
-#if defined(SHIMMER3)
-      ShimTask_set(TASK_CFGCH);
-#endif
       ShimTask_setStartSensing();
     }
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
@@ -1265,9 +1259,6 @@ void BtUart_processCmd(void)
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
     if (!shimmerStatus.sensing)
     {
-#if defined(SHIMMER3)
-      ShimTask_set(TASK_CFGCH);
-#endif
       ShimTask_setStartSensing();
     }
     break;
@@ -1293,12 +1284,6 @@ void BtUart_processCmd(void)
   case SET_SENSORS_COMMAND:
     ShimConfig_storedConfigSet(&args[0], NV_SENSORS0, 3);
     BtUart_settingChangeCommon(NV_SENSORS0, SDH_SENSORS0, 3);
-
-    //TODO remove
-#if defined(SHIMMER3)
-    ShimTask_set(TASK_CFGCH);
-#endif
-
     break;
 #if defined(SHIMMER4_SDK)
   case GET_I2C_BATT_STATUS_COMMAND:
@@ -1571,11 +1556,6 @@ void BtUart_processCmd(void)
     ShimSdHead_config2SdHead();
     update_sdconfig = 1;
 
-    //TODO remove
-#if defined(SHIMMER3)
-    ShimTask_set(TASK_CFGCH);
-#endif
-
     //restart sensing to use settings
     if (shimmerStatus.sensing)
     {
@@ -1839,9 +1819,6 @@ void BtUart_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, ui
   if (shimmerStatus.sensing)
   {
     ShimTask_setStopSensing();
-#if defined(SHIMMER3)
-    ShimTask_set(TASK_CFGCH);
-#endif
     ShimTask_setStartSensing();
   }
 
@@ -1997,7 +1974,7 @@ void BtUart_sendRsp(void)
         *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE1];
         *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE2];
         *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE3];
-#if defined(SHIMMER3R) && !OLD_CONSENSYS_SUPPORT
+#if defined(SHIMMER3R)
         *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE4];
         *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE5];
         *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE6];

@@ -45,6 +45,8 @@
 
 #include <stdint.h>
 
+#include <log_and_stream_externs.h>
+
 #if defined(SHIMMER3R)
 #include "shimmer_definitions.h"
 #include "shimmer_include.h"
@@ -132,13 +134,10 @@ typedef struct
 
 extern SENSINGTypeDef sensing;
 
-void S4Sens_init(void);
+void ShimSens_init(void);
+SENSINGTypeDef *ShimSens_getSensing(void);
+void ShimSens_configureChannels(void);
 #if defined(SHIMMER3R)
-SENSINGTypeDef *S4Sens_getSensing(void);
-void S4Sens_configureChannels(void);
-#if OLD_CONSENSYS_SUPPORT
-void overwriteDefaultConfig(void);
-#endif
 uint8_t S4Sens_checkStartSensorConditions(void);
 uint8_t S4Sens_checkStartLoggingConditions(void);
 uint8_t S4Sens_checkStartStreamingConditions(void);

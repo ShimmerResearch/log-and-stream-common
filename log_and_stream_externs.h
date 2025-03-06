@@ -32,7 +32,6 @@ void BtStop(uint8_t isCalledFromMain);
 
 /* Task list */
 extern void checkSetupDock(void);
-extern void ConfigureChannels(void);
 extern void MPU9150_startMagMeasurement(void);
 extern void BMPX80_startMeasurement(void);
 extern void checkStreamData(void);
@@ -57,5 +56,13 @@ extern float samplingClockFreqGet(void);
 extern void setup_factory_test(factory_test_target_t target, factory_test_t testToRun);
 extern void eepromRead(uint16_t dataAddr, uint16_t dataSize, uint8_t *dataBuf);
 extern void eepromWrite(uint16_t dataAddr, uint16_t dataSize, uint8_t *dataBuf);
+
+/* Sensing */
+extern void ADC_configureChannels(void);
+extern void I2C_configureChannels(void);
+extern void SPI_configureChannels(void);
+#if defined(SHIMMER3)
+extern void calculateClassicBtTxSampleSetBufferSize(uint8_t len, uint16_t samplingRateTicks);
+#endif
 
 #endif /* SHIMMER_EXTERNS_H_ */

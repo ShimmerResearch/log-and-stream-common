@@ -42,6 +42,9 @@
 
 #include <Sensing/shimmer_sensing.h>
 
+#include <log_and_stream_externs.h>
+#include <Configuration/shimmer_config.h>
+
 #if defined(SHIMMER3R)
 #include "shimmer_definitions.h"
 #endif
@@ -65,35 +68,30 @@ uint32_t temp_cnt1, temp_cnt2, temp_cnt3, temp_cnt4;
 
 //uint8_t cc[MAX_NUM_CHANNELS], nbrAdcChans, nbrDigiChans;
 
-void S4Sens_init(void)
+void ShimSens_init(void)
 {
-
-  //sensing.en = 0;
-  //sensing.nbrAdcChans = 0;
-  //sensing.nbrDigiChans = 0;
-  //sensing.ccLen = 0;
   memset((uint8_t *) &sensing, 0, sizeof(sensing));
 }
 
-//SENSINGTypeDef* S4Sens_getSensing(void){
-//   return &sensing;
-//}
+SENSINGTypeDef* ShimSens_getSensing(void){
+   return &sensing;
+}
 
-#if defined(SHIMMER3R)
-void S4Sens_configureChannels(void)
+void ShimSens_configureChannels(void)
 {
   sensing.nbrAdcChans = sensing.nbrDigiChans = 0;
   sensing.ccLen = 0;
   sensing.ptr.ts = 1;
   sensing.dataLen = 1 + 3; //0x00 + timestamp
 
-#if OLD_CONSENSYS_SUPPORT
-  overwriteDefaultConfig();
-#endif
-
-  S4_ADC_configureChannels();
+  ADC_configureChannels();
   I2C_configureChannels();
   SPI_configureChannels();
+
+#if defined(SHIMMER3)
+  calculateClassicBtTxSampleSetBufferSize(
+          sensing.dataLen, ShimConfig_getStoredConfig()->samplingRateTicks);
+#endif
 
 #if defined(SHIMMER3R)
   expectedCbFlags = 0;
@@ -112,44 +110,7 @@ void S4Sens_configureChannels(void)
 #endif
 }
 
-#if OLD_CONSENSYS_SUPPORT
-//TODO Remove below. Overwriting settings here as these are supported yet in Consensys.
-void overwriteDefaultConfig(void)
-{
-  gConfigBytes *storedConfigPtr = S4Ram_getStoredConfig();
-
-  storedConfigPtr->bluetoothDisable = 0;
-
-  if (storedConfigPtr->chEnLnAccel)
-  {
-    storedConfigPtr->altAccelRange = LSM6DSV_2g;
-  }
-  if (storedConfigPtr->chEnWrAccel)
-  {
-    set_config_byte_wr_accel_mode(storedConfigPtr, LIS2DW12_HIGH_PERFORMANCE);
-  }
-  if (storedConfigPtr->chEnMag)
-  {
-    set_config_byte_mag_rate(storedConfigPtr, LIS3MDL_UHP_155Hz);
-  }
-  if (storedConfigPtr->chEnAltMag)
-  {
-    storedConfigPtr->altMagRate = LIS2MDL_ODR_100Hz;
-  }
-  if (storedConfigPtr->chEnGyro)
-  {
-    set_config_byte_gyro_range(storedConfigPtr, LSM6DSV_500dps);
-    set_config_byte_gyro_rate(storedConfigPtr, LSM6DSV_ODR_AT_1920Hz);
-  }
-  if (storedConfigPtr->chEnPressureAndTemperature)
-  {
-    set_config_byte_pressure_oversampling_ratio(storedConfigPtr, BMP3_NO_OVERSAMPLING);
-    //set_config_byte_pressure_oversampling_ratio(storedConfigPtr,BMP3_OVERSAMPLING_32X);
-    //storedConfigPtr->pressureRate = BMP3_ODR_200_HZ;
-  }
-}
-#endif
-
+#if defined(SHIMMER3R)
 uint8_t S4Sens_checkStartSensorConditions(void)
 {
   if (shimmerStatus.sensing)
@@ -223,7 +184,7 @@ void S4Sens_startSensing(void)
   {
     shimmerStatus.sensing = 1;
     sensing.isFileCreated = 0;
-    S4Sens_configureChannels();
+    ShimSens_configureChannels();
 
     if (areAnyChannelsEnabled())
     {
