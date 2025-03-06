@@ -18,6 +18,7 @@
 #include "Boards/shimmer_boards.h"
 #include "Configuration/shimmer_config.h"
 #include "log_and_stream_definitions.h"
+#include "log_and_stream_externs.h"
 
 #if defined(SHIMMER3)
 #include "msp430.h"
@@ -29,14 +30,14 @@
 #include "../LSM303AHTR/lsm303ahtr.h"
 #include "../LSM303DLHC/lsm303dlhc.h"
 #include "../RN4X/RN4X.h"
-#include "ff.h"
 #elif defined(SHIMMER3R)
-#if USE_FATFS
-#include "ff.h"
-#endif
 #include "hal_Infomem.h"
 
 #include "stm32u5xx.h"
+#endif
+
+#if USE_FATFS
+#include "ff.h"
 #endif
 
 uint8_t shimmerCalib_ram[SHIMMER_CALIB_RAM_MAX], shimmerCalib_macId[5],
@@ -409,18 +410,9 @@ uint8_t ShimmerCalib_ramRead(uint8_t *buf, uint8_t length, uint16_t offset)
 
 void ShimmerCalib_default(uint8_t sensor)
 {
-  //int16_t bias, sensitivity, sensitivity_x, sensitivity_y, sensitivity_z;
-  //uint8_t bias_byte_one, bias_byte_two, sens_byte_one, sens_byte_two, number_axes = 1;
-  //int8_t align_xx, align_xy, align_xz, align_yx, align_yy, align_yz, align_zx, align_zy, align_zz, i = 0;
-  //uint16_t address;
-  //bool align = FALSE;
-
   sc_t sc1;
-  //uint8_t ts[8];//range, , data_ptr
-  uint16_t bias, sensitivity;
 
-  //*(uint64_t*)(sc1.ts) = rwcTimeDiff64 + RTC_get64();
-  memset(sc1.ts, 0, 8);
+  memset(sc1.ts, 0, sizeof(sc1.ts));
 
 #if defined(SHIMMER3)
   if (sensor == SC_SENSOR_ANALOG_ACCEL)
@@ -587,12 +579,15 @@ void setDefaultLsm303AccelCalib(sc_t *sc1Ptr)
 
 void setDefaultLsm303MagCalib(sc_t *sc1Ptr)
 {
-  uint16_t bias, sensitivity;
+  uint16_t bias;
   sc1Ptr->id = SC_SENSOR_LSM303_MAG;
   sc1Ptr->data_len = SC_DATA_LEN_LSM303_MAG;
   for (sc1Ptr->range = 0; sc1Ptr->range < SC_SENSOR_RANGE_MAX_LSM303_MAG; sc1Ptr->range++)
   {
     bias = 0;
+    sc1Ptr->data.dd.bias_x = bias;
+    sc1Ptr->data.dd.bias_y = bias;
+    sc1Ptr->data.dd.bias_z = bias;
     if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_1_3G)
     {
       sc1Ptr->data.dd.sens_x = 1100;
@@ -635,9 +630,6 @@ void setDefaultLsm303MagCalib(sc_t *sc1Ptr)
       sc1Ptr->data.dd.sens_y = 230;
       sc1Ptr->data.dd.sens_z = 205;
     }
-    sc1Ptr->data.dd.bias_x = bias;
-    sc1Ptr->data.dd.bias_y = bias;
-    sc1Ptr->data.dd.bias_z = bias;
     sc1Ptr->data.dd.align_xx = -100;
     sc1Ptr->data.dd.align_xy = 0;
     sc1Ptr->data.dd.align_xz = 0;
@@ -1003,7 +995,7 @@ void ShimmerCalibUpdateFromInfoAll(void)
 
 void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time)
 {
-  uint8_t info_config, info_valid = 0;
+  uint8_t info_valid = 0;
   uint8_t offset;
   int byte_cnt = 0;
   sc_t sc1;
@@ -1012,7 +1004,7 @@ void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time)
   sc1.id = sensor;
   if (use_sys_time)
   {
-    memset(sc1.ts, 0, 8);
+    memset(sc1.ts, 0, sizeof(sc1.ts));
   }
   else
   {
