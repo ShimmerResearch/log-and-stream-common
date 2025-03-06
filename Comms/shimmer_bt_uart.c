@@ -1322,19 +1322,24 @@ void BtUart_processCmd(void)
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
     break;
   case SET_SHIMMERNAME_COMMAND:
-    name_len = (args[0] < sizeof(storedConfig->shimmerName)) ? args[0] : sizeof(storedConfig->shimmerName);
+    name_len = (args[0] < sizeof(storedConfig->shimmerName)) ?
+        args[0] :
+        sizeof(storedConfig->shimmerName);
     memset(&storedConfig->shimmerName[0], 0, sizeof(storedConfig->shimmerName));
     memcpy(&storedConfig->shimmerName[0], &args[1], name_len);
-    InfoMem_write(NV_SD_SHIMMER_NAME, &storedConfig->shimmerName[0], sizeof(storedConfig->shimmerName));
+    InfoMem_write(NV_SD_SHIMMER_NAME, &storedConfig->shimmerName[0],
+        sizeof(storedConfig->shimmerName));
     SD_setShimmerName();
     update_sdconfig = 1;
     break;
   case SET_EXPID_COMMAND:
-    name_len = (args[0] < sizeof(storedConfig->expIdName)) ? args[0] : sizeof(storedConfig->expIdName);
+    name_len = (args[0] < sizeof(storedConfig->expIdName)) ?
+        args[0] :
+        sizeof(storedConfig->expIdName);
     memset(&storedConfig->expIdName[0], 0, sizeof(storedConfig->expIdName));
     memcpy(&storedConfig->expIdName[0], &args[1], name_len);
     InfoMem_write(NV_SD_EXP_ID_NAME, &storedConfig->expIdName[0],
-                  sizeof(storedConfig->expIdName));
+        sizeof(storedConfig->expIdName));
     SD_setExpIdName();
     update_sdconfig = 1;
     break;
@@ -1402,7 +1407,7 @@ void BtUart_processCmd(void)
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
     break;
   case SET_WR_ACCEL_LPMODE_COMMAND:
-    ShimConfig_wrAccelLpModeSet(storedConfig, args[0] == 1? 1 : 0);
+    ShimConfig_wrAccelLpModeSet(storedConfig, args[0] == 1 ? 1 : 0);
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
     break;
   case SET_WR_ACCEL_HRMODE_COMMAND:
@@ -1438,8 +1443,8 @@ void BtUart_processCmd(void)
     BtUart_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 4);
     break;
   case SET_SAMPLING_RATE_COMMAND:
-    storedConfig->samplingRateTicks = *(uint16_t*) args;
-//    ShimConfig_storedConfigSet(&args[0], NV_SAMPLING_RATE, 2);
+    storedConfig->samplingRateTicks = *(uint16_t *) args;
+    //ShimConfig_storedConfigSet(&args[0], NV_SAMPLING_RATE, 2);
     BtUart_settingChangeCommon(NV_SAMPLING_RATE, SDH_SAMPLE_RATE_0, 2);
     break;
   case GET_CALIB_DUMP_COMMAND:
@@ -1468,11 +1473,11 @@ void BtUart_processCmd(void)
   case UPD_SDLOG_CFG_COMMAND:
     ShimTask_set(TASK_SDLOG_CFG_UPDATE);
     break;
-//case UPD_FLASH_COMMAND:
-//   InfoMem_update();
-//   //ShimmerCalibSyncFromDumpRamAll();
-//   //update_calib_dump_file = 1;
-//   break;
+    //case UPD_FLASH_COMMAND:
+    //   InfoMem_update();
+    //   //ShimmerCalibSyncFromDumpRamAll();
+    //   //update_calib_dump_file = 1;
+    //   break;
   case SET_LN_ACCEL_CALIBRATION_COMMAND:
 #if defined(SHIMMER3)
     sensorCalibId = SC_SENSOR_ANALOG_ACCEL;
@@ -1521,9 +1526,9 @@ void BtUart_processCmd(void)
       exgLength = args[2];
 
       uint16_t exgConfigOffset = (exgChip == 0) ? NV_EXG_ADS1292R_1_CONFIG1 :
-              NV_EXG_ADS1292R_2_CONFIG1;
+                                                  NV_EXG_ADS1292R_2_CONFIG1;
       uint16_t exgSdHeadOffset = (exgChip == 0) ? SDH_EXG_ADS1292R_1_CONFIG1 :
-              SDH_EXG_ADS1292R_2_CONFIG1;
+                                                  SDH_EXG_ADS1292R_2_CONFIG1;
 
       ShimConfig_storedConfigSet(&args[3], exgConfigOffset + exgStartAddr, exgLength);
 
@@ -1531,8 +1536,7 @@ void BtUart_processCmd(void)
        * If so, amend configuration byte 2 of ADS chip 1 to have bit 3 set
        * to 1. This ensures clock lines on ADS chip are correct
        */
-      if (exgChip == 0
-          && (getDaughtCardId()->exp_brd_id == EXP_BRD_EXG_UNIFIED)
+      if (exgChip == 0 && (getDaughtCardId()->exp_brd_id == EXP_BRD_EXG_UNIFIED)
           && (getDaughtCardId()->exp_brd_major >= 4))
       {
         storedConfig->exgADS1292rRegsCh1.config2 |= 8;
@@ -1540,8 +1544,7 @@ void BtUart_processCmd(void)
 
       InfoMem_write(exgConfigOffset + exgStartAddr,
           &storedConfig->rawBytes[exgConfigOffset + exgStartAddr], exgLength);
-      S4Ram_sdHeadTextSet(&storedConfig->rawBytes[exgConfigOffset],
-                          exgSdHeadOffset, exgLength);
+      S4Ram_sdHeadTextSet(&storedConfig->rawBytes[exgConfigOffset], exgSdHeadOffset, exgLength);
 
       update_sdconfig = 1;
     }
@@ -1620,17 +1623,17 @@ void BtUart_processCmd(void)
     break;
   case SET_BT_COMMS_BAUD_RATE:
     //TODO changing BAUD rate is not going to be supported
-//    if (btArgs[0] != storedConfig->btCommsBaudRate)
-//    {
-//      if (args[0] <= BAUD_1000000)
-//      {
-//        changeBtBaudRate = args[0];
-//      }
-//      else
-//      {
-//        changeBtBaudRate = DEFAULT_BT_BAUD_RATE;
-//      }
-//    }
+    //if (btArgs[0] != storedConfig->btCommsBaudRate)
+    //{
+    //  if (args[0] <= BAUD_1000000)
+    //  {
+    //    changeBtBaudRate = args[0];
+    //  }
+    //  else
+    //  {
+    //    changeBtBaudRate = DEFAULT_BT_BAUD_RATE;
+    //  }
+    //}
     break;
   case SET_DERIVED_CHANNEL_BYTES:
     memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_0], &args[0], 3);
@@ -1663,7 +1666,7 @@ void BtUart_processCmd(void)
       /* Overwrite MAC ID as read from BT module */
       if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
       {
-          ShimConfig_storedConfigSet(getMacIdBytesPtr(), NV_MAC_ADDRESS, 6);
+        ShimConfig_storedConfigSet(getMacIdBytesPtr(), NV_MAC_ADDRESS, 6);
       }
 
       ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
@@ -1830,14 +1833,14 @@ void BtUart_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, ui
   InfoMem_write(configByteIdx, &storedConfig->rawBytes[configByteIdx], len);
   S4Ram_sdHeadTextSet(&storedConfig->rawBytes[configByteIdx], sdHeaderIdx, len);
   //TODO don't think below is needed because we're specifically changing what's new above
-//  ShimSdHead_config2SdHead();
+  //ShimSdHead_config2SdHead();
 
   //restart sensing to use settings
   if (shimmerStatus.sensing)
   {
     ShimTask_setStopSensing();
 #if defined(SHIMMER3)
-      ShimTask_set(TASK_CFGCH);
+    ShimTask_set(TASK_CFGCH);
 #endif
     ShimTask_setStartSensing();
   }
@@ -2027,11 +2030,10 @@ void BtUart_sendRsp(void)
         *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
         *(resPacket + packet_length++) = STATUS_RESPONSE;
         *(resPacket + packet_length++) = (shimmerStatus.toggleLedRedCmd << 7)
-            + (shimmerStatus.sdBadFile << 6)
-            + (shimmerStatus.sdInserted << 5)
-            + (shimmerStatus.btStreaming << 4)
-            + (shimmerStatus.sdLogging << 3) + (isRwcTimeSet() << 2)
-            + (shimmerStatus.sensing << 1) + (shimmerStatus.docked);
+            + (shimmerStatus.sdBadFile << 6) + (shimmerStatus.sdInserted << 5)
+            + (shimmerStatus.btStreaming << 4) + (shimmerStatus.sdLogging << 3)
+            + (isRwcTimeSet() << 2) + (shimmerStatus.sensing << 1)
+            + (shimmerStatus.docked);
         break;
       case GET_VBATT_COMMAND:
         manageReadBatt(1);
