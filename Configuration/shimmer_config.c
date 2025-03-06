@@ -100,13 +100,13 @@ void ShimConfig_readRam(void)
 
 #if defined(SHIMMER3)
   ShimSdHead_config2SdHead();
-  SD_infomem2Names();
+  ShimSd_infomem2Names();
 #endif
 
   /* Check BT module configuration after sensor configuration read from
    * infomem to see if it is in the correct state (i.e., BT on vs. BT off vs.
    * SD Sync) */
-  checkBtModeConfig();
+  ShimConfig_checkBtModeFromConfig();
 }
 
 gConfigBytes *ShimConfig_getStoredConfig(void)
@@ -214,7 +214,7 @@ void ShimConfig_setDefaultConfig(void)
 
   ShimConfig_btMacHexGet(storedConfig.macAddr);
 
-  storedConfig.samplingRateTicks = FreqDiv(51.2); //51.2Hz
+  storedConfig.samplingRateTicks = ShimConfig_freqDiv(51.2); //51.2Hz
   storedConfig.bufferSize = 1;
   /* core sensors enabled */
   storedConfig.chEnLnAccel = 1;
@@ -275,9 +275,9 @@ void ShimConfig_setDefaultConfig(void)
 
   //sd config
   //shimmername
-  setDefaultShimmerName();
+  ShimConfig_setDefaultShimmerName();
   //exp_id
-  setDefaultTrialId();
+  ShimConfig_setDefaultTrialId();
   storedConfig.configTime = 0;
 
   storedConfig.myTrialID = 0;
@@ -290,7 +290,7 @@ void ShimConfig_setDefaultConfig(void)
   storedConfig.experimentLengthMaxInMinutes = 0;
 
   storedConfig.experimentLengthEstimatedInSec = 1;
-  setSyncEstExpLen((uint32_t) storedConfig.experimentLengthEstimatedInSec);
+  ShimSdSync_setSyncEstExpLen((uint32_t) storedConfig.experimentLengthEstimatedInSec);
 
   ShimConfig_checkAndCorrectConfig(&storedConfig);
 
@@ -307,23 +307,23 @@ void ShimConfig_setDefaultConfig(void)
 #endif
 }
 
-void setDefaultShimmerName(void)
+void ShimConfig_setDefaultShimmerName(void)
 {
   strcpy(&storedConfig.shimmerName[0], "Shimmer_XXXX");
   memcpy(&storedConfig.shimmerName[8], btMacAscii + 8, 4);
 }
 
-void setDefaultTrialId(void)
+void ShimConfig_setDefaultTrialId(void)
 {
   memcpy(&storedConfig.expIdName[0], "DefaultTrial", 12);
 }
 
-uint8_t GetSdCfgFlag(void)
+uint8_t ShimConfig_getSdCfgFlag(void)
 {
   return (!storedConfig.sdCfgFlag && storedConfig.infoSdcfg);
 }
 
-void SetSdCfgFlag(uint8_t flag)
+void ShimConfig_setSdCfgFlag(uint8_t flag)
 {
   if (flag)
   {
@@ -334,12 +334,12 @@ void SetSdCfgFlag(uint8_t flag)
       &storedConfig.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
 }
 
-uint8_t GetCalibFlag()
+uint8_t ShimConfig_getCalibFlag()
 {
   return (!storedConfig.sdCfgFlag && storedConfig.infoCalib);
 }
 
-void SetCalibFlag(uint8_t flag)
+void ShimConfig_setCalibFlag(uint8_t flag)
 {
   if (flag)
   {
@@ -350,19 +350,19 @@ void SetCalibFlag(uint8_t flag)
       &storedConfig.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
 }
 
-uint8_t GetRamCalibFlag(void)
+uint8_t ShimConfig_getRamCalibFlag(void)
 {
   return calibRamFlag;
 }
 
-void SetRamCalibFlag(uint8_t flag)
+void ShimConfig_setRamCalibFlag(uint8_t flag)
 {
   //flag == 1: Ram>File, ShimmerCalib_ram2File()
   //        0: File>Ram, ShimmerCalib_file2Ram()
   calibRamFlag = flag;
 }
 
-float get_shimmer_sampling_freq(void)
+float ShimConfig_getShimmerSamplingFreq(void)
 {
   return 32768.0 / (float) storedConfig.samplingRateTicks;
 }
@@ -420,13 +420,13 @@ uint8_t ShimConfig_wrAccelLpModeGet(void)
 }
 
 #if defined(SHIMMER3R)
-void set_config_byte_wr_accel_mode(gConfigBytes *storedConfigPtr, lis2dw12_mode_t value)
+void ShimConfig_wrAccelModeSet(gConfigBytes *storedConfigPtr, lis2dw12_mode_t value)
 {
   storedConfigPtr->wrAccelHrMode = (value >> 2) & 0x01;
   ShimConfig_wrAccelLpModeSet(storedConfigPtr, value & 0x03);
 }
 
-lis2dw12_mode_t get_config_byte_wr_accel_mode(void)
+lis2dw12_mode_t ShimConfig_wrAccelModeSet(void)
 {
   lis2dw12_mode_t wrAccelMode = (lis2dw12_mode_t) ((storedConfig.wrAccelHrMode << 2)
       | ShimConfig_wrAccelLpModeGet());
@@ -574,7 +574,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
     settingCorrected = 1;
   }
 
-  if (areADS1292RClockLinesTied() && !(storedConfigPtr->exgADS1292rRegsCh1.config2 & 0x08))
+  if (ShimBrd_areADS1292RClockLinesTied() && !(storedConfigPtr->exgADS1292rRegsCh1.config2 & 0x08))
   {
     /* Amend configuration byte 2 of ADS chip 1 to have bit 3 set to 1.
      * This ensures clock lines on ADS chip are correct */
@@ -590,7 +590,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
     settingCorrected = 1;
   }
 
-  checkSyncCenterName();
+  ShimSdSync_checkSyncCenterName();
 
   return settingCorrected;
 }
@@ -679,12 +679,12 @@ uint8_t ShimConfig_checkAutostopCondition(void)
 }
 
 /* Note samplingRate can be either a freq or a ticks value */
-uint16_t FreqDiv(float samplingRate)
+uint16_t ShimConfig_freqDiv(float samplingRate)
 {
   return (uint16_t) round(samplingClockFreqGet() / samplingRate);
 }
 
-void checkBtModeConfig(void)
+void ShimConfig_checkBtModeFromConfig(void)
 {
   if (!shimmerStatus.btConnected)
   {

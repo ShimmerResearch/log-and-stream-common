@@ -230,61 +230,58 @@ enum
 };
 
 #if defined(SHIMMER3)
-uint8_t Dma2ConversionDone(void);
-uint8_t parseRn4678Status(void);
+uint8_t ShimBt_dmaConversionDone(void);
+uint8_t ShimBt_parseRn4678Status(void);
 #elif defined(SHIMMER3R)
-uint8_t BtUartDmaConversionDone(uint8_t *rxBuff);
+uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff);
 #endif
-void resetBtRxVariablesOnConnect(void);
+void ShimBt_resetBtRxVariablesOnConnect(void);
 #if defined(SHIMMER3)
-void resetBtRxBuff(void);
+void ShimBt_resetBtRxBuff(void);
 #endif
 #if defined(SHIMMER3)
-void btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void),
+void ShimBt_btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void),
     void (*setMacIdCb)(uint8_t *),
     uint8_t *actionPtr,
     uint8_t *argsPtr);
 #else
-void btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void));
+void ShimBt_btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void));
 #endif
-#if defined(SHIMMER3)
-void triggerShimmerErrorState(void);
-#endif
-void resetBtResponseVars(void);
-uint8_t isWaitingForArgs(void);
-uint8_t getBtVerStrLen(void);
-char *getBtVerStrPtr(void);
+void ShimBt_resetBtResponseVars(void);
+uint8_t ShimBt_isWaitingForArgs(void);
+uint8_t ShimBt_getBtVerStrLen(void);
+char *ShimBt_getBtVerStrPtr(void);
 #if defined(SHIMMER3R)
-void updateBtVer(void);
+void ShimBt_updateBtVer(void);
 #endif
 
-void BtUart_processCmd(void);
-void BtUart_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, uint16_t len);
-void BtUart_calibrationChangeCommon(uint16_t configByteIdx,
+void ShimBt_processCmd(void);
+void ShimBt_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, uint16_t len);
+void ShimBt_calibrationChangeCommon(uint16_t configByteIdx,
     uint16_t sdHeaderIdx,
     uint8_t *configBytePtr,
     uint8_t *newCalibPtr,
     uint8_t sensorCalibId);
-void BtUart_updateCalibDumpFile(void);
-uint8_t BtUart_replySingleSensorCalibCmd(uint8_t cmdWaitingResponse, uint8_t *resPacketPtr);
-void BtUart_sendRsp(void);
-uint8_t BtUart_getExpectedRspForGetCmd(uint8_t getCmd);
+void ShimBt_updateCalibDumpFile(void);
+uint8_t ShimBt_replySingleSensorCalibCmd(uint8_t cmdWaitingResponse, uint8_t *resPacketPtr);
+void ShimBt_sendRsp(void);
+uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd);
 
 #if defined(SHIMMER3R)
-void setDmaWaitingForResponse(uint16_t count);
-uint16_t getBtRxShimmerCommsWaitByteCount(void);
+void ShimBt_setDmaWaitingForResponse(uint16_t count);
+uint16_t ShimBt_getBtRxShimmerCommsWaitByteCount(void);
 #endif
 
-void setBtCrcMode(COMMS_CRC_MODE btCrcModeNew);
-COMMS_CRC_MODE getBtCrcMode(void);
+void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew);
+COMMS_CRC_MODE ShimBt_getCrcMode(void);
 
-void setBtDataRateTestState(uint8_t state);
-void loadBtTxBufForDataRateTest(void);
-uint8_t BT_getMacAddressAscii(char *macAscii);
-uint8_t BT_getMacAddressHex(uint8_t *macHex);
-void BtsdSelfcmd(void);
-void HandleBtRfCommStateChange(uint8_t isConnected);
-volatile uint8_t *getBtActionPtr(void);
-uint8_t *getBtArgsPtr(void);
+void ShimBt_setBtDataRateTestState(uint8_t state);
+void ShimBt_loadBtTxBufForDataRateTest(void);
+uint8_t ShimBt_getMacAddressAscii(char *macAscii);
+uint8_t ShimBt_getMacAddressHex(uint8_t *macHex);
+void ShimBt_btsdSelfcmd(void);
+void ShimBt_handleBtRfCommStateChange(uint8_t isConnected);
+volatile uint8_t *ShimBt_getBtActionPtr(void);
+uint8_t *ShimBt_getBtArgsPtr(void);
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */

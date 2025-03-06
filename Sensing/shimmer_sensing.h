@@ -141,38 +141,38 @@ void ShimSens_init(void);
 SENSINGTypeDef *ShimSens_getSensing(void);
 void ShimSens_configureChannels(void);
 #if defined(SHIMMER3R)
-uint8_t S4Sens_checkStartSensorConditions(void);
-uint8_t S4Sens_checkStartLoggingConditions(void);
-uint8_t S4Sens_checkStartStreamingConditions(void);
-uint8_t S4Sens_checkStopSensorConditions(void);
-uint8_t S4Sens_checkStopLoggingConditions(void);
-void S4Sens_startSensing(void);
-void S4Sens_stopSensing(void);
-void S4Sens_stopPeripherals(void);
-void S4Sens_streamData(void);
-void S4Sens_bufPoll(void);
-void S4Sens_gatherData(void);
+uint8_t ShimSens_checkStartSensorConditions(void);
+uint8_t ShimSens_checkStartLoggingConditions(void);
+uint8_t ShimSens_checkStartStreamingConditions(void);
+uint8_t ShimSens_checkStopSensorConditions(void);
+uint8_t ShimSens_checkStopLoggingConditions(void);
+void ShimSens_startSensing(void);
+void ShimSens_stopSensing(void);
+void ShimSens_stopPeripherals(void);
+void ShimSens_streamData(void);
+void ShimSens_bufPoll(void);
+void ShimSens_gatherData(void);
 
-void S4Sens_stepInit(void);
+void ShimSens_stepInit(void);
 #if defined(SHIMMER3R)
-void sensing_start(void);
+void ShimSens_sensingStart(void);
 void sensing_adcCompleteCb(void);
 void sensing_i2cCompleteCb(void);
 void sensing_spiCompleteCb(void);
 void sensing_stageCompleteCb(uint8_t stage);
 #elif defined(SHIMMER4_SDK)
-void S4Sens_step1Start(void);
-void S4Sens_step2Start(void);
-void S4Sens_step3Start(void);
-void S4Sens_step4Start(void);
-void S4Sens_step5Start(void);
+void ShimSens_step1Start(void);
+void ShimSens_step2Start(void);
+void ShimSens_step3Start(void);
+void ShimSens_step4Start(void);
+void ShimSens_step5Start(void);
 #endif
-void S4Sens_stepDone(void);
+void ShimSens_stepDone(void);
 
-void saveData(void);
+void ShimSens_saveData(void);
 #endif
 
-uint8_t areAnyChannelsEnabled(void);
-uint8_t CheckOnDefault(void);
+uint8_t ShimSens_areAnyChannelsEnabled(void);
+uint8_t ShimSens_checkOnDefault(void);
 
 #endif //SHIMMER_SENSING_H

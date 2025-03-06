@@ -114,7 +114,7 @@ void ShimSens_configureChannels(void)
 }
 
 #if defined(SHIMMER3R)
-uint8_t S4Sens_checkStartSensorConditions(void)
+uint8_t ShimSens_checkStartSensorConditions(void)
 {
   if (shimmerStatus.sensing)
   {
@@ -130,7 +130,7 @@ uint8_t S4Sens_checkStartSensorConditions(void)
   return 1;
 }
 
-uint8_t S4Sens_checkStartLoggingConditions(void)
+uint8_t ShimSens_checkStartLoggingConditions(void)
 {
   if (shimmerStatus.sdInserted)
   {
@@ -154,7 +154,7 @@ uint8_t S4Sens_checkStartLoggingConditions(void)
   return 0;
 }
 
-uint8_t S4Sens_checkStartStreamingConditions(void)
+uint8_t ShimSens_checkStartStreamingConditions(void)
 {
   if (shimmerStatus.btConnected)
   {
@@ -176,20 +176,20 @@ uint8_t S4Sens_checkStartStreamingConditions(void)
   return 0;
 }
 
-void S4Sens_startSensing(void)
+void ShimSens_startSensing(void)
 {
   //if(shimmerStatus.isDocked){
   //   return;
   //}
 
   shimmerStatus.configuring = 1;
-  if (S4Sens_checkStartSensorConditions())
+  if (ShimSens_checkStartSensorConditions())
   {
     shimmerStatus.sensing = 1;
     sensing.isFileCreated = 0;
     ShimSens_configureChannels();
 
-    if (areAnyChannelsEnabled())
+    if (ShimSens_areAnyChannelsEnabled())
     {
       Board_enableSensingPower(SENSE_PWR_SENSING, 1);
     }
@@ -213,7 +213,7 @@ void S4Sens_startSensing(void)
     sensing.clkInterval16k = samplingRateTicks / 2;
 
     DockUart_disable();
-    S4Sens_stepInit();
+    ShimSens_stepInit();
 
     if (areAdcChannelsEnabled())
     {
@@ -250,7 +250,7 @@ void S4Sens_startSensing(void)
 
     sensing.startTs = RTC_get64();
 
-    if (S4Sens_checkStartLoggingConditions())
+    if (ShimSens_checkStartLoggingConditions())
     {
       SD_fileInit();
     }
@@ -259,7 +259,7 @@ void S4Sens_startSensing(void)
   shimmerStatus.configuring = 0;
 }
 
-uint8_t S4Sens_checkStopSensorConditions(void)
+uint8_t ShimSens_checkStopSensorConditions(void)
 {
   if (!shimmerStatus.sdLogging && shimmerStatus.btStreaming)
   { //streaming only case
@@ -290,7 +290,7 @@ uint8_t S4Sens_checkStopSensorConditions(void)
   return 1;
 }
 
-uint8_t S4Sens_checkStopLoggingConditions(void)
+uint8_t ShimSens_checkStopLoggingConditions(void)
 {
   if (shimmerStatus.sdlogCmd != SD_LOG_CMD_STATE_STOP)
   {
@@ -304,25 +304,25 @@ uint8_t S4Sens_checkStopLoggingConditions(void)
   }
 }
 
-void S4Sens_stopSensing(void)
+void ShimSens_stopSensing(void)
 {
   if (!shimmerStatus.sensing)
   {
     return;
   }
-  if (S4Sens_checkStopLoggingConditions())
+  if (ShimSens_checkStopLoggingConditions())
   {
     SD_close();
     HAL_Delay(10);
   }
-  if (S4Sens_checkStopSensorConditions())
+  if (ShimSens_checkStopSensorConditions())
   {
     shimmerStatus.configuring = 1;
     shimmerStatus.sensing = 0;
     shimmerStatus.btStreaming = 0;
     sensing.startTs = 0;
     //sensing.isSampling = 0;
-    S4Sens_stopPeripherals();
+    ShimSens_stopPeripherals();
     DockUart_enable();
   }
 
@@ -337,7 +337,7 @@ void S4Sens_stopSensing(void)
   shimmerStatus.configuring = 0;
 }
 
-void S4Sens_stopPeripherals(void)
+void ShimSens_stopPeripherals(void)
 {
 
 #if SENS_CLK_RTC0TIM1
@@ -369,7 +369,7 @@ void S4Sens_stopPeripherals(void)
   }
 }
 
-void S4Sens_streamData(void)
+void ShimSens_streamData(void)
 {
 #if SKIP_50MS
   if (sensing.startTs == 0xffffffffffffffff)
@@ -386,7 +386,7 @@ void S4Sens_streamData(void)
   }
 #endif
 
-  S4Sens_bufPoll();
+  ShimSens_bufPoll();
 
   //ExpUart_TxIT(sensing.dataBuf, sensing.dataLen);
 
@@ -398,7 +398,7 @@ void S4Sens_streamData(void)
   //sensing.isSampling = 0;
 }
 
-void S4Sens_bufPoll()
+void ShimSens_bufPoll()
 {
   if (areAdcChannelsEnabled())
   {
@@ -417,7 +417,7 @@ void S4Sens_bufPoll()
 }
 
 //this is to be called in the ISR
-void S4Sens_gatherData(void)
+void ShimSens_gatherData(void)
 {
   if (shimmerStatus.sensing)
   {
@@ -429,57 +429,57 @@ void S4Sens_gatherData(void)
 
     //Task_set(TASK_STREAMDATA);//
 #if defined(SHIMMER3R)
-    sensing_start();
+    ShimSens_sensingStart();
 #elif defined(SHIMMER4_SDK)
-    S4Sens_step1Start();
+    ShimSens_step1Start();
 #endif
 
-    //S4Sens_streamData();
+    //ShimSens_streamData();
 
     //I2cSensing(1);
   }
 }
 
-void S4Sens_stepInit(void)
+void ShimSens_stepInit(void)
 {
 #if defined(SHIMMER3R)
-  S4_ADC_gatherDataCb(sensing_adcCompleteCb);
-  I2cSens_gatherDataCb(sensing_i2cCompleteCb);
-  SPI_gatherDataCb(sensing_spiCompleteCb);
+  S4_ADC_gatherDataCb(ShimSens_adcCompleteCb);
+  I2cSens_gatherDataCb(ShimSens_i2cCompleteCb);
+  SPI_gatherDataCb(ShimSens_spiCompleteCb);
 #elif defined(SHIMMER4_SDK)
-  S4_ADC_gatherDataCb(S4Sens_step2Start);
-  //I2C_gatherDataInit(S4Sens_step3Start);
-  //I2C2_gatherDataInit(S4Sens_step4Start);
-  I2cSens_gatherDataCb(S4Sens_step3Start);
-  I2cBatt_gatherDataCb(S4Sens_step4Start);
-  SPI_gatherDataCb(S4Sens_step5Start);
+  S4_ADC_gatherDataCb(ShimSens_step2Start);
+  //I2C_gatherDataInit(ShimSens_step3Start);
+  //I2C2_gatherDataInit(ShimSens_step4Start);
+  I2cSens_gatherDataCb(ShimSens_step3Start);
+  I2cBatt_gatherDataCb(ShimSens_step4Start);
+  SPI_gatherDataCb(ShimSens_step5Start);
   temp_cnt1 = temp_cnt2 = temp_cnt3 = temp_cnt4 = 0;
 #endif
 }
 
 #if defined(SHIMMER3R)
-void sensing_start(void)
+void ShimSens_sensingStart(void)
 {
   currentCbFlags = 0;
-  S4Sens_streamData();
+  ShimSens_streamData();
 }
 
-void sensing_adcCompleteCb(void)
+void ShimSens_adcCompleteCb(void)
 {
   sensing_stageCompleteCb(STAT_PERI_ADC);
 }
 
-void sensing_i2cCompleteCb(void)
+void ShimSens_i2cCompleteCb(void)
 {
   sensing_stageCompleteCb(STAT_PERI_I2C_SENS);
 }
 
-void sensing_spiCompleteCb(void)
+void ShimSens_spiCompleteCb(void)
 {
   sensing_stageCompleteCb(STAT_PERI_SPI_SENS);
 }
 
-void sensing_stageCompleteCb(uint8_t stage)
+void ShimSens_stageCompleteCb(uint8_t stage)
 {
   currentCbFlags |= stage;
   if (currentCbFlags == expectedCbFlags)
@@ -490,10 +490,10 @@ void sensing_stageCompleteCb(uint8_t stage)
 }
 
 #elif defined(SHIMMER4_SDK)
-void S4Sens_step1Start(void)
+void ShimSens_step1Start(void)
 {
   PeriStat_Set(STAT_PERI_ADC | STAT_PERI_I2C_SENS | STAT_PERI_I2C_BATT | STAT_PERI_SPI_SENS);
-  S4Sens_streamData();
+  ShimSens_streamData();
   S4_ADC_gatherDataStart();
   if (temp_cnt2 == 1000)
   {
@@ -503,7 +503,7 @@ void S4Sens_step1Start(void)
   }
 }
 
-void S4Sens_step2Start(void)
+void ShimSens_step2Start(void)
 {
   PeriStat_Clr(STAT_PERI_ADC);
   temp_cnt2++;
@@ -511,29 +511,29 @@ void S4Sens_step2Start(void)
   I2cSens_gatherDataStart();
 }
 
-void S4Sens_step3Start(void)
+void ShimSens_step3Start(void)
 {
   PeriStat_Clr(STAT_PERI_I2C_SENS);
   temp_cnt3++;
   I2cBatt_gatherDataStart();
 }
 
-void S4Sens_step4Start(void)
+void ShimSens_step4Start(void)
 {
   PeriStat_Clr(STAT_PERI_I2C_BATT);
   //SPI_gatherDataStart();
-  S4Sens_step5Start();
+  ShimSens_step5Start();
 }
 
-void S4Sens_step5Start(void)
+void ShimSens_step5Start(void)
 {
   PeriStat_Clr(STAT_PERI_SPI_SENS);
   temp_cnt4++;
-  //S4Sens_streamData();
-  S4Sens_stepDone();
+  //ShimSens_streamData();
+  ShimSens_stepDone();
 }
 #endif
-void S4Sens_stepDone(void)
+void ShimSens_stepDone(void)
 {
 #if defined(SHIMMER3R)
 
@@ -541,15 +541,15 @@ void S4Sens_stepDone(void)
 }
 
 #if defined(SHIMMER4_SDK)
-//void S4Sens_step1End(void){S4Sens_step2Start();}
-//void S4Sens_step2End(void){S4Sens_step3Start();}
-//void S4Sens_step3End(void){S4Sens_step4Start();}
-//void S4Sens_step4End(void){S4Sens_step5Start();}
-//void S4Sens_step5End(void){S4Sens_step6Start();}
-//void S4Sens_step6End(void){}
+//void ShimSens_step1End(void){ShimSens_step2Start();}
+//void ShimSens_step2End(void){ShimSens_step3Start();}
+//void ShimSens_step3End(void){ShimSens_step4Start();}
+//void ShimSens_step4End(void){ShimSens_step5Start();}
+//void ShimSens_step5End(void){ShimSens_step6Start();}
+//void ShimSens_step6End(void){}
 #endif
 
-void saveData(void)
+void ShimSens_saveData(void)
 {
 #if USE_SD
   if (shimmerStatus.sdLogging)
@@ -560,7 +560,7 @@ void saveData(void)
   }
 #endif
 #if USE_BT
-  S4Sens_checkStartStreamingConditions();
+  ShimSens_checkStartStreamingConditions();
   if (shimmerStatus.btStreaming)
   {
     uint8_t crcMode = getBtCrcMode();
@@ -582,7 +582,7 @@ void saveData(void)
 }
 #endif
 
-uint8_t areAnyChannelsEnabled(void)
+uint8_t ShimSens_(void)
 {
   if (sensing.nbrAdcChans > 0 || sensing.nbrDigiChans > 0
 #if defined(SHIMMER3R)
@@ -596,7 +596,7 @@ uint8_t areAnyChannelsEnabled(void)
   return 0;
 }
 
-uint8_t CheckOnDefault(void)
+uint8_t ShimSens_checkOnDefault(void)
 {
   gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
 
@@ -606,7 +606,7 @@ uint8_t CheckOnDefault(void)
     ShimTask_setStartSensing();
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
     shimmerStatus.sensing = 1;
-    BtsdSelfcmd();
+    ShimBt_btsdSelfcmd();
     shimmerStatus.sensing = 0;
     return 1;
   }

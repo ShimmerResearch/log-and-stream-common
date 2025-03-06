@@ -44,7 +44,7 @@ uint8_t shimmerCalib_ram[SHIMMER_CALIB_RAM_MAX], shimmerCalib_macId[5],
     shimmerCalib_ramTemp[SHIMMER_CALIB_RAM_MAX];
 uint16_t shimmerCalib_ramLen, shimmerCalib_ramTempLen, shimmerCalib_ramTempMax;
 
-uint8_t ShimmerCalib_findLength(sc_t *sc1)
+uint8_t ShimCalib_findLength(sc_t *sc1)
 {
   switch (sc1->id)
   {
@@ -85,24 +85,24 @@ void ShimmerCalib_initVer(void)
   shimmerCalib_ram[SC_OFFSET_VER_FW_INTER_L] = FW_VER_REL & 0xff;
 }
 
-void ShimmerCalib_defaultAll(void)
+void ShimCalib_defaultAll(void)
 {
 #if defined(SHIMMER3)
-  ShimmerCalib_default(SC_SENSOR_ANALOG_ACCEL);
-  ShimmerCalib_default(SC_SENSOR_MPU9X50_ICM20948_GYRO);
-  ShimmerCalib_default(SC_SENSOR_LSM303_ACCEL);
-  ShimmerCalib_default(SC_SENSOR_LSM303_MAG);
+  ShimCalib_default(SC_SENSOR_ANALOG_ACCEL);
+  ShimCalib_default(SC_SENSOR_MPU9X50_ICM20948_GYRO);
+  ShimCalib_default(SC_SENSOR_LSM303_ACCEL);
+  ShimCalib_default(SC_SENSOR_LSM303_MAG);
 #elif defined(SHIMMER3R)
-  ShimmerCalib_default(SC_SENSOR_LSM6DSV_ACCEL);
-  ShimmerCalib_default(SC_SENSOR_LSM6DSV_GYRO);
-  ShimmerCalib_default(SC_SENSOR_LIS2DW12_ACCEL);
-  ShimmerCalib_default(SC_SENSOR_ADXL371_ACCEL);
-  ShimmerCalib_default(SC_SENSOR_LIS3MDL_MAG);
-  ShimmerCalib_default(SC_SENSOR_LIS2MDL_MAG);
+  ShimCalib_default(SC_SENSOR_LSM6DSV_ACCEL);
+  ShimCalib_default(SC_SENSOR_LSM6DSV_GYRO);
+  ShimCalib_default(SC_SENSOR_LIS2DW12_ACCEL);
+  ShimCalib_default(SC_SENSOR_ADXL371_ACCEL);
+  ShimCalib_default(SC_SENSOR_LIS3MDL_MAG);
+  ShimCalib_default(SC_SENSOR_LIS2MDL_MAG);
 #endif
 }
 
-void ShimmerCalib_init(void)
+void ShimCalib_init(void)
 {
   shimmerCalib_ramLen = 8;
 
@@ -118,15 +118,15 @@ void ShimmerCalib_init(void)
   shimmerCalib_ram[SC_OFFSET_LENGTH_H] = (shimmerCalib_ramLen >> 8) & 0xff;
   ShimmerCalib_initVer();
 
-  ShimmerCalib_defaultAll();
+  ShimCalib_defaultAll();
 }
 
-uint8_t *ShimmerCalib_getRam(void)
+uint8_t *ShimCalib_getRam(void)
 {
   return shimmerCalib_ram;
 }
 
-void ShimmerCalib_ram2File(void)
+void ShimCalib_ram2File(void)
 {
   char cal_file_name[48] = "";
 #if _FATFS == FATFS_V_0_08B
@@ -188,7 +188,7 @@ void ShimmerCalib_ram2File(void)
  * if there wasn't a calibration/calibration file, new file won't be created.
  * ram buffer will use 0 as length, 00000 as content
  */
-uint8_t ShimmerCalib_file2Ram(void)
+uint8_t ShimCalib_file2Ram(void)
 {
 #if USE_FATFS
   char cal_file_name[48] = "";
@@ -270,7 +270,7 @@ uint8_t ShimmerCalib_file2Ram(void)
   return 0;
 }
 
-uint8_t ShimmerCalib_singleSensorWrite(const sc_t *sc1)
+uint8_t ShimCalib_singleSensorWrite(const sc_t *sc1)
 {
   sc_t curr_sc;
   uint16_t cnt = SC_OFFSET_FIRST_SENSOR;
@@ -308,7 +308,7 @@ uint8_t ShimmerCalib_singleSensorWrite(const sc_t *sc1)
   return 0;
 }
 
-uint8_t ShimmerCalib_singleSensorRead(sc_t *sc1)
+uint8_t ShimCalib_singleSensorRead(sc_t *sc1)
 {
   sc_t curr_sc;
   uint16_t cnt = SC_OFFSET_FIRST_SENSOR;
@@ -335,14 +335,14 @@ uint8_t ShimmerCalib_singleSensorRead(sc_t *sc1)
   return 0;
 }
 
-void ShimmerCalib_checkRamLen(void)
+void ShimCalib_checkRamLen(void)
 {
   shimmerCalib_ramLen = min(*(uint16_t *) shimmerCalib_ram, SHIMMER_CALIB_RAM_MAX - 2);
   memset(shimmerCalib_ram + shimmerCalib_ramLen + 2, 0,
       SHIMMER_CALIB_RAM_MAX - shimmerCalib_ramLen - 2);
 }
 
-void ShimmerCalib_ramTempInit(void)
+void ShimCalib_ramTempInit(void)
 {
   shimmerCalib_ramTempMax = 0;
   shimmerCalib_ramTempLen = 0;
@@ -350,7 +350,7 @@ void ShimmerCalib_ramTempInit(void)
 
 //return 0 : success on this write; 1: successfully finished all;  0xff: fail
 //the calib dump write operation starts with offset = 0, ends with shimmerCalib_ramTempMax bytes received.
-uint8_t ShimmerCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
+uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
 {
   if ((length <= 128) && (offset <= (SHIMMER_CALIB_RAM_MAX - 1))
       && (length + offset <= SHIMMER_CALIB_RAM_MAX))
@@ -384,7 +384,7 @@ uint8_t ShimmerCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offse
     InfoMem_update();
 #endif
     ShimmerCalib_initVer();
-    ShimmerCalib_ramTempInit();
+    ShimCalib_ramTempInit();
     return 1;
   }
 
@@ -392,7 +392,7 @@ uint8_t ShimmerCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offse
 }
 
 //return 0 : success; 1: fail
-uint8_t ShimmerCalib_ramRead(uint8_t *buf, uint8_t length, uint16_t offset)
+uint8_t ShimCalib_ramRead(uint8_t *buf, uint8_t length, uint16_t offset)
 {
   shimmerCalib_ramLen = min(*(uint16_t *) shimmerCalib_ram, SHIMMER_CALIB_RAM_MAX - 2);
   if ((length <= 128) && (offset <= (SHIMMER_CALIB_RAM_MAX - 1))
@@ -408,7 +408,7 @@ uint8_t ShimmerCalib_ramRead(uint8_t *buf, uint8_t length, uint16_t offset)
   }
 }
 
-void ShimmerCalib_default(uint8_t sensor)
+void ShimCalib_default(uint8_t sensor)
 {
   sc_t sc1;
 
@@ -417,50 +417,50 @@ void ShimmerCalib_default(uint8_t sensor)
 #if defined(SHIMMER3)
   if (sensor == SC_SENSOR_ANALOG_ACCEL)
   {
-    setDefaultKionixCalib(&sc1);
+    ShimCalib_setDefaultKionixCalib(&sc1);
   }
   else if (sensor == SC_SENSOR_MPU9X50_ICM20948_GYRO)
   {
-    setDefaultMpu9X50Icm20948GyroCalib(&sc1);
+    ShimCalib_setDefaultMpu9X50Icm20948GyroCalib(&sc1);
   }
   else if (sensor == SC_SENSOR_LSM303_ACCEL)
   {
-    setDefaultLsm303AccelCalib(&sc1);
+    ShimCalib_setDefaultLsm303AccelCalib(&sc1);
   }
   else if (sensor == SC_SENSOR_LSM303_MAG)
   {
-    setDefaultLsm303MagCalib(&sc1);
+    ShimCalib_setDefaultLsm303MagCalib(&sc1);
   }
 #elif defined(SHIMMER3R)
   if (sensor == SC_SENSOR_LSM6DSV_ACCEL)
   {
-    setDefaultLsm6dsvAccelCalib(&sc1);
+    ShimCalib_setDefaultLsm6dsvAccelCalib(&sc1);
   }
   else if (sensor == SC_SENSOR_LSM6DSV_GYRO)
   {
-    setDefaultLsm6dsvGyroCalib(&sc1);
+    ShimCalib_setDefaultLsm6dsvGyroCalib(&sc1);
   }
   else if (sensor == SC_SENSOR_LIS2DW12_ACCEL)
   {
-    setDefaultLis2dw12AccelCalib(&sc1);
+    ShimCalib_setDefaultLis2dw12AccelCalib(&sc1);
   }
   else if (sensor == SC_SENSOR_ADXL371_ACCEL)
   {
-    setDefaultAdxl371AccelCalib(&sc1);
+    ShimCalib_setDefaultAdxl371AccelCalib(&sc1);
   }
   else if (sensor == SC_SENSOR_LIS3MDL_MAG)
   {
-    setDefaultLis3mdlMagCalib(&sc1);
+    ShimCalib_setDefaultLis3mdlMagCalib(&sc1);
   }
   else if (sensor == SC_SENSOR_LIS2MDL_MAG)
   {
-    setDefaultLis2mdlMagCalib(&sc1);
+    ShimCalib_ setDefaultLis2mdlMagCalib(&sc1);
   }
 #endif
 }
 
 #if defined(SHIMMER3)
-void setDefaultKionixCalib(sc_t *sc1Ptr)
+void ShimCalib_setDefaultKionixCalib(sc_t *sc1Ptr)
 {
   uint16_t bias, sensitivity;
   sc1Ptr->id = SC_SENSOR_ANALOG_ACCEL;
@@ -485,11 +485,11 @@ void setDefaultKionixCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
-    ShimmerCalib_singleSensorWrite(sc1Ptr);
+    ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
 
-void setDefaultMpu9X50Icm20948GyroCalib(sc_t *sc1Ptr)
+void ShimCalib_setDefaultMpu9X50Icm20948GyroCalib(sc_t *sc1Ptr)
 {
   uint16_t bias, sensitivity;
   sc1Ptr->id = SC_SENSOR_MPU9X50_ICM20948_GYRO;
@@ -529,11 +529,11 @@ void setDefaultMpu9X50Icm20948GyroCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
-    ShimmerCalib_singleSensorWrite(sc1Ptr);
+    ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
 
-void setDefaultLsm303AccelCalib(sc_t *sc1Ptr)
+void ShimCalib_setDefaultLsm303AccelCalib(sc_t *sc1Ptr)
 {
   uint16_t bias, sensitivity;
   sc1Ptr->id = SC_SENSOR_LSM303_ACCEL;
@@ -573,11 +573,11 @@ void setDefaultLsm303AccelCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
-    ShimmerCalib_singleSensorWrite(sc1Ptr);
+    ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
 
-void setDefaultLsm303MagCalib(sc_t *sc1Ptr)
+void ShimCalib_setDefaultLsm303MagCalib(sc_t *sc1Ptr)
 {
   uint16_t bias;
   sc1Ptr->id = SC_SENSOR_LSM303_MAG;
@@ -639,12 +639,12 @@ void setDefaultLsm303MagCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
-    ShimmerCalib_singleSensorWrite(sc1Ptr);
+    ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
 
 #elif defined(SHIMMER3R)
-void setDefaultLsm6dsvAccelCalib(sc_t *sc1Ptr)
+void ShimCalib_setDefaultLsm6dsvAccelCalib(sc_t *sc1Ptr)
 {
   uint16_t bias, sensitivity;
   sc1Ptr->id = SC_SENSOR_LSM6DSV_ACCEL;
@@ -683,11 +683,11 @@ void setDefaultLsm6dsvAccelCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
-    ShimmerCalib_singleSensorWrite(sc1Ptr);
+    ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
 
-void setDefaultLsm6dsvGyroCalib(sc_t *sc1Ptr)
+void ShimCalib_setDefaultLsm6dsvGyroCalib(sc_t *sc1Ptr)
 {
   uint16_t bias, sensitivity;
   sc1Ptr->id = SC_SENSOR_LSM6DSV_GYRO;
@@ -734,11 +734,11 @@ void setDefaultLsm6dsvGyroCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
-    ShimmerCalib_singleSensorWrite(sc1Ptr);
+    ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
 
-void setDefaultAdxl371AccelCalib(sc_t *sc1Ptr)
+void ShimCalib_setDefaultAdxl371AccelCalib(sc_t *sc1Ptr)
 {
   uint16_t bias, sensitivity;
   sc1Ptr->id = SC_SENSOR_ADXL371_ACCEL;
@@ -763,10 +763,10 @@ void setDefaultAdxl371AccelCalib(sc_t *sc1Ptr)
   sc1Ptr->data.dd.align_zx = 0;
   sc1Ptr->data.dd.align_zy = 0;
   sc1Ptr->data.dd.align_zz = -100;
-  ShimmerCalib_singleSensorWrite(sc1Ptr);
+  ShimCalib_singleSensorWrite(sc1Ptr);
 }
 
-void setDefaultLis2dw12AccelCalib(sc_t *sc1Ptr)
+void ShimCalib_setDefaultLis2dw12AccelCalib(sc_t *sc1Ptr)
 {
   uint16_t bias, sensitivity;
   sc1Ptr->id = SC_SENSOR_LIS2DW12_ACCEL;
@@ -805,11 +805,11 @@ void setDefaultLis2dw12AccelCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
-    ShimmerCalib_singleSensorWrite(sc1Ptr);
+    ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
 
-void setDefaultLis2mdlMagCalib(sc_t *sc1Ptr)
+void ShimCalib_setDefaultLis2mdlMagCalib(sc_t *sc1Ptr)
 {
   uint16_t bias, sensitivity;
   sc1Ptr->id = SC_SENSOR_LIS2MDL_MAG;
@@ -834,10 +834,10 @@ void setDefaultLis2mdlMagCalib(sc_t *sc1Ptr)
   sc1Ptr->data.dd.align_zx = 0;
   sc1Ptr->data.dd.align_zy = 0;
   sc1Ptr->data.dd.align_zz = -100;
-  ShimmerCalib_singleSensorWrite(sc1Ptr);
+  ShimCalib_singleSensorWrite(sc1Ptr);
 }
 
-void setDefaultLis3mdlMagCalib(sc_t *sc1Ptr)
+void ShimCalib_setDefaultLis3mdlMagCalib(sc_t *sc1Ptr)
 {
   uint16_t bias, sensitivity;
   sc1Ptr->id = SC_SENSOR_LIS3MDL_MAG;
@@ -876,12 +876,12 @@ void setDefaultLis3mdlMagCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
-    ShimmerCalib_singleSensorWrite(sc1Ptr);
+    ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
 #endif
 
-void ShimmerCalib_singleSensorWriteFromInfoMem(uint16_t id, uint8_t range, uint8_t data_len, uint8_t *ptr)
+void ShimCalib_singleSensorWriteFromInfoMem(uint16_t id, uint8_t range, uint8_t data_len, uint8_t *ptr)
 {
   sc_t sc1;
   sc1.id = id;
@@ -893,107 +893,107 @@ void ShimmerCalib_singleSensorWriteFromInfoMem(uint16_t id, uint8_t range, uint8
   *(uint64_t *) (sc1.ts) = RTC_get64();
 #endif
   memcpy(sc1.data.raw, ptr, sc1.data_len);
-  ShimmerCalib_singleSensorWrite(&sc1);
+  ShimCalib_singleSensorWrite(&sc1);
 }
 
-void CalibSaveFromInfoMemToCalibDump(uint8_t id)
+void ShimCalib_calibSaveFromInfoMemToCalibDump(uint8_t id)
 {
   gConfigBytes *configBytes = ShimConfig_getStoredConfig();
 #if defined(SHIMMER3)
   if (id == 0xFF || id == SC_SENSOR_ANALOG_ACCEL)
   {
-    ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_ANALOG_ACCEL, SC_SENSOR_RANGE_ANALOG_ACCEL,
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_ANALOG_ACCEL, SC_SENSOR_RANGE_ANALOG_ACCEL,
         SC_DATA_LEN_ANALOG_ACCEL, &configBytes->lnAccelCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_MPU9X50_ICM20948_GYRO)
   {
-    ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_MPU9X50_ICM20948_GYRO,
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_MPU9X50_ICM20948_GYRO,
         ShimConfig_gyroRangeGet(), SC_DATA_LEN_MPU9X50_ICM20948_GYRO,
         &configBytes->gyroCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_LSM303_MAG)
   {
-    ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM303_MAG, configBytes->magRange,
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM303_MAG, configBytes->magRange,
         SC_DATA_LEN_LSM303_MAG, &configBytes->magCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_LSM303_ACCEL)
   {
-    ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM303_ACCEL,
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM303_ACCEL,
         configBytes->wrAccelRange, SC_DATA_LEN_LSM303_ACCEL,
         &configBytes->wrAccelCalib.rawBytes[0]);
   }
 #elif defined(SHIMMER3R)
   if (id == 0xFF || id == SC_SENSOR_LSM6DSV_ACCEL)
   {
-    ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM6DSV_ACCEL,
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM6DSV_ACCEL,
         configBytes->lnAccelRange, SC_DATA_LEN_STD_IMU_CALIB,
         &configBytes->lnAccelCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_LSM6DSV_GYRO)
   {
-    ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM6DSV_GYRO,
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LSM6DSV_GYRO,
         ShimConfig_gyroRangeGet(), SC_DATA_LEN_STD_IMU_CALIB,
         &configBytes->gyroCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_LIS2DW12_ACCEL)
   {
-    ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LIS2DW12_ACCEL,
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LIS2DW12_ACCEL,
         configBytes->wrAccelRange, SC_DATA_LEN_STD_IMU_CALIB,
         &configBytes->wrAccelCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_ADXL371_ACCEL)
   {
-    ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_ADXL371_ACCEL, 0,
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_ADXL371_ACCEL, 0,
         SC_DATA_LEN_STD_IMU_CALIB, &configBytes->altAccelCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_LIS3MDL_MAG)
   {
-    ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LIS3MDL_MAG, configBytes->magRange,
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LIS3MDL_MAG, configBytes->magRange,
         SC_DATA_LEN_STD_IMU_CALIB, &configBytes->magCalib.rawBytes[0]);
   }
   if (id == 0xFF || id == SC_SENSOR_LIS2MDL_MAG)
   {
-    ShimmerCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LIS2MDL_MAG, 0,
+    ShimCalib_singleSensorWriteFromInfoMem(SC_SENSOR_LIS2MDL_MAG, 0,
         SC_DATA_LEN_STD_IMU_CALIB, &configBytes->altMagCalib.rawBytes[0]);
   }
 #endif
 }
 
-void ShimmerCalibInitFromInfoAll(void)
+void ShimCalib_initFromInfoAll(void)
 {
 #if defined(SHIMMER3)
-  ShimmerCalibFromInfo(SC_SENSOR_ANALOG_ACCEL, 0);
-  ShimmerCalibFromInfo(SC_SENSOR_MPU9X50_ICM20948_GYRO, 0);
-  ShimmerCalibFromInfo(SC_SENSOR_LSM303_ACCEL, 0);
-  ShimmerCalibFromInfo(SC_SENSOR_LSM303_MAG, 0);
+  ShimCalib_fromInfo(SC_SENSOR_ANALOG_ACCEL, 0);
+  ShimCalib_fromInfo(SC_SENSOR_MPU9X50_ICM20948_GYRO, 0);
+  ShimCalib_fromInfo(SC_SENSOR_LSM303_ACCEL, 0);
+  ShimCalib_fromInfo(SC_SENSOR_LSM303_MAG, 0);
 #elif defined(SHIMMER3R)
-  ShimmerCalibFromInfo(SC_SENSOR_LSM6DSV_ACCEL, 0);
-  ShimmerCalibFromInfo(SC_SENSOR_LSM6DSV_GYRO, 0);
-  ShimmerCalibFromInfo(SC_SENSOR_LIS2DW12_ACCEL, 0);
-  ShimmerCalibFromInfo(SC_SENSOR_ADXL371_ACCEL, 0);
-  ShimmerCalibFromInfo(SC_SENSOR_LIS3MDL_MAG, 0);
-  ShimmerCalibFromInfo(SC_SENSOR_LIS2MDL_MAG, 0);
+  ShimCalib_fromInfo(SC_SENSOR_LSM6DSV_ACCEL, 0);
+  ShimCalib_fromInfo(SC_SENSOR_LSM6DSV_GYRO, 0);
+  ShimCalib_fromInfo(SC_SENSOR_LIS2DW12_ACCEL, 0);
+  ShimCalib_fromInfo(SC_SENSOR_ADXL371_ACCEL, 0);
+  ShimCalib_fromInfo(SC_SENSOR_LIS3MDL_MAG, 0);
+  ShimCalib_fromInfo(SC_SENSOR_LIS2MDL_MAG, 0);
 #endif
 }
 
-void ShimmerCalibUpdateFromInfoAll(void)
+void ShimCalib_updateFromInfoAll(void)
 {
 #if defined(SHIMMER3)
-  ShimmerCalibFromInfo(SC_SENSOR_ANALOG_ACCEL, 1);
-  ShimmerCalibFromInfo(SC_SENSOR_MPU9X50_ICM20948_GYRO, 1);
-  ShimmerCalibFromInfo(SC_SENSOR_LSM303_ACCEL, 1);
-  ShimmerCalibFromInfo(SC_SENSOR_LSM303_MAG, 1);
+  ShimCalib_fromInfo(SC_SENSOR_ANALOG_ACCEL, 1);
+  ShimCalib_fromInfo(SC_SENSOR_MPU9X50_ICM20948_GYRO, 1);
+  ShimCalib_fromInfo(SC_SENSOR_LSM303_ACCEL, 1);
+  ShimCalib_fromInfo(SC_SENSOR_LSM303_MAG, 1);
 #elif defined(SHIMMER3R)
-  ShimmerCalibFromInfo(SC_SENSOR_LSM6DSV_ACCEL, 1);
-  ShimmerCalibFromInfo(SC_SENSOR_LSM6DSV_GYRO, 1);
-  ShimmerCalibFromInfo(SC_SENSOR_LIS2DW12_ACCEL, 1);
-  ShimmerCalibFromInfo(SC_SENSOR_ADXL371_ACCEL, 1);
-  ShimmerCalibFromInfo(SC_SENSOR_LIS3MDL_MAG, 1);
-  ShimmerCalibFromInfo(SC_SENSOR_LIS2MDL_MAG, 1);
+  ShimCalib_fromInfo(SC_SENSOR_LSM6DSV_ACCEL, 1);
+  ShimCalib_fromInfo(SC_SENSOR_LSM6DSV_GYRO, 1);
+  ShimCalib_fromInfo(SC_SENSOR_LIS2DW12_ACCEL, 1);
+  ShimCalib_fromInfo(SC_SENSOR_ADXL371_ACCEL, 1);
+  ShimCalib_fromInfo(SC_SENSOR_LIS3MDL_MAG, 1);
+  ShimCalib_fromInfo(SC_SENSOR_LIS2MDL_MAG, 1);
 #endif
 }
 
-void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time)
+void ShimCalib_fromInfo(uint8_t sensor, uint8_t use_sys_time)
 {
   uint8_t info_valid = 0;
   uint8_t offset;
@@ -1038,7 +1038,7 @@ void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time)
   {
     offset = NV_MAG_CALIBRATION;
     sc1.data_len = SC_DATA_LEN_LSM303_MAG;
-    if (isWrAccelInUseLsm303dlhc())
+    if (ShimBrd_isWrAccelInUseLsm303dlhc())
     {
       sc1.range = configBytes->magRange;
     }
@@ -1103,34 +1103,34 @@ void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time)
   {
     /* if not all 0xff in infomem */
     memcpy(sc1.data.raw, &configBytes->rawBytes[offset], sc1.data_len);
-    ShimmerCalib_singleSensorWrite(&sc1);
+    ShimCalib_singleSensorWrite(&sc1);
   }
 }
 
 //
-void ShimmerCalibSyncFromDumpRamAll(void)
+void ShimCalib_syncFromDumpRamAll(void)
 {
 #if defined(SHIMMER3)
-  ShimmerCalibSyncFromDumpRamSingleSensor(SC_SENSOR_ANALOG_ACCEL);
-  ShimmerCalibSyncFromDumpRamSingleSensor(SC_SENSOR_MPU9X50_ICM20948_GYRO);
-  ShimmerCalibSyncFromDumpRamSingleSensor(SC_SENSOR_LSM303_MAG);
-  ShimmerCalibSyncFromDumpRamSingleSensor(SC_SENSOR_LSM303_ACCEL);
+  ShimCalib_syncFromDumpRamSingleSensor(SC_SENSOR_ANALOG_ACCEL);
+  ShimCalib_syncFromDumpRamSingleSensor(SC_SENSOR_MPU9X50_ICM20948_GYRO);
+  ShimCalib_syncFromDumpRamSingleSensor(SC_SENSOR_LSM303_MAG);
+  ShimCalib_syncFromDumpRamSingleSensor(SC_SENSOR_LSM303_ACCEL);
 #elif defined(SHIMMER3R)
-  ShimmerCalibSyncFromDumpRamSingleSensor(SC_SENSOR_LSM6DSV_ACCEL);
-  ShimmerCalibSyncFromDumpRamSingleSensor(SC_SENSOR_LSM6DSV_GYRO);
-  ShimmerCalibSyncFromDumpRamSingleSensor(SC_SENSOR_LIS2DW12_ACCEL);
-  ShimmerCalibSyncFromDumpRamSingleSensor(SC_SENSOR_ADXL371_ACCEL);
-  ShimmerCalibSyncFromDumpRamSingleSensor(SC_SENSOR_LIS3MDL_MAG);
-  ShimmerCalibSyncFromDumpRamSingleSensor(SC_SENSOR_LIS2MDL_MAG);
+  ShimCalib_syncFromDumpRamSingleSensor(SC_SENSOR_LSM6DSV_ACCEL);
+  ShimCalib_syncFromDumpRamSingleSensor(SC_SENSOR_LSM6DSV_GYRO);
+  ShimCalib_syncFromDumpRamSingleSensor(SC_SENSOR_LIS2DW12_ACCEL);
+  ShimCalib_syncFromDumpRamSingleSensor(SC_SENSOR_ADXL371_ACCEL);
+  ShimCalib_syncFromDumpRamSingleSensor(SC_SENSOR_LIS3MDL_MAG);
+  ShimCalib_syncFromDumpRamSingleSensor(SC_SENSOR_LIS2MDL_MAG);
 #endif
 }
 
-void ShimmerCalibSyncFromDumpRamSingleSensor(uint8_t sensor)
+void ShimCalib_syncFromDumpRamSingleSensor(uint8_t sensor)
 {
   sc_t sc1;
   uint16_t scs_infomem_offset, scs_sdhead_offset, scs_sdhead_ts;
   sc1.id = sensor;
-  sc1.data_len = ShimmerCalib_findLength(&sc1);
+  sc1.data_len = ShimCalib_findLength(&sc1);
 
   gConfigBytes *configBytes = ShimConfig_getStoredConfig();
 
@@ -1153,7 +1153,7 @@ void ShimmerCalibSyncFromDumpRamSingleSensor(uint8_t sensor)
     scs_infomem_offset = NV_MAG_CALIBRATION;
     scs_sdhead_offset = SDH_MAG_CALIBRATION;
     scs_sdhead_ts = SDH_MAG_CALIB_TS;
-    if (isWrAccelInUseLsm303dlhc())
+    if (ShimBrd_isWrAccelInUseLsm303dlhc())
     {
       sc1.range = configBytes->magRange;
     }
@@ -1216,9 +1216,9 @@ void ShimmerCalibSyncFromDumpRamSingleSensor(uint8_t sensor)
 #endif
   }
 
-  ShimmerCalib_singleSensorRead(&sc1);
+  ShimCalib_singleSensorRead(&sc1);
   memcpy(&configBytes->rawBytes[scs_infomem_offset], sc1.data.raw, sc1.data_len);
   InfoMem_write(scs_infomem_offset, sc1.data.raw, sc1.data_len);
-  memcpy(S4Ram_getSdHeadText() + scs_sdhead_offset, sc1.data.raw, sc1.data_len);
-  memcpy(S4Ram_getSdHeadText() + scs_sdhead_ts, sc1.ts, 8);
+  memcpy(ShimSdHead_getSdHeadText() + scs_sdhead_offset, sc1.data.raw, sc1.data_len);
+  memcpy(ShimSdHead_getSdHeadText() + scs_sdhead_ts, sc1.ts, 8);
 }

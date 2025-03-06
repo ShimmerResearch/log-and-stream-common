@@ -19,22 +19,22 @@ daughter_card_id_page daughterCardIdPage;
 char daughtCardIdStr[26];
 uint8_t wrAccelAndMagInUse, gyroInUse, eepromIsPresent;
 
-void resetDaughterCardId(void)
+void ShimBrd_resetDaughterCardId(void)
 {
   memset(daughterCardIdPage.raw, 0, sizeof(daughterCardIdPage.raw));
 }
 
-void setHwId(uint8_t hwIdToSet)
+void ShimBrd_setHwId(uint8_t hwIdToSet)
 {
   hwId = hwIdToSet;
 }
 
-void setDaugherCardIdPage(uint8_t *pagePtr)
+void ShimBrd_setDaugherCardIdPage(uint8_t *pagePtr)
 {
   memcpy(daughterCardIdPage.raw, pagePtr, sizeof(daughterCardIdPage.raw));
 }
 
-uint8_t isAds1292Present(void)
+uint8_t ShimBrd_isAds1292Present(void)
 {
   uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
   return (srId == EXP_BRD_EXG) || (srId == EXP_BRD_EXG_UNIFIED)
@@ -42,7 +42,7 @@ uint8_t isAds1292Present(void)
 }
 
 #if defined(SHIMMER3)
-uint8_t isRn4678PresentAndCmdModeSupport(void)
+uint8_t ShimBrd_isRn4678PresentAndCmdModeSupport(void)
 {
   uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
   uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
@@ -50,7 +50,7 @@ uint8_t isRn4678PresentAndCmdModeSupport(void)
 
   /* Checking EEPROM here to rule out older sensors in factory test which
    * don't have EEPROM fitted */
-  return (isEepromIsPresent() && hwId == HW_ID_SHIMMER3
+  return (ShimBrd_isEepromIsPresent() && hwId == HW_ID_SHIMMER3
       && ((srId == SHIMMER3_IMU && srRevMajor >= 10)
           || (srId == EXP_BRD_EXG_UNIFIED && srRevMajor >= 6)
           || (srId == EXP_BRD_GSR_UNIFIED && srRevMajor >= 5)
@@ -65,13 +65,13 @@ uint8_t isRn4678PresentAndCmdModeSupport(void)
           || (srId == 0xFF && srRevMajor == 0xFF && srRevMinor == 0xFF)));
 }
 
-uint8_t isSubstitutionNeededForWrAccel(void)
+uint8_t ShimBrd_isSubstitutionNeededForWrAccel(void)
 {
   uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
   uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
   uint8_t srRevMinor = daughterCardIdPage.expansion_brd.exp_brd_minor;
 
-  return (hwId == HW_ID_SHIMMER3 && isGyroInUseIcm20948()
+  return (hwId == HW_ID_SHIMMER3 && ShimBrd_isGyroInUseIcm20948()
       && ((srId == SHIMMER3_IMU && srRevMajor == 9 && srRevMinor == 1)
           || (srId == EXP_BRD_EXG_UNIFIED && srRevMajor == 5 && srRevMinor == 1)
           || (srId == EXP_BRD_GSR_UNIFIED && srRevMajor == 4 && srRevMinor == 1)
@@ -82,21 +82,21 @@ uint8_t isSubstitutionNeededForWrAccel(void)
           || (srId == EXP_BRD_ADXL377_ACCEL_200G && srRevMajor == 2 && srRevMinor == 1)));
 }
 
-uint8_t are2ndGenImuSensorsPresent(void)
+uint8_t ShimBrd_are2ndGenImuSensorsPresent(void)
 {
-  return (hwId == HW_ID_SHIMMER3 && isWrAccelInUseLsm303ahtr() && isBmp280InUse());
+  return (hwId == HW_ID_SHIMMER3 && ShimBrd_isWrAccelInUseLsm303ahtr() && isBmp280InUse());
 }
 
-uint8_t are2ndGenSensorsPresentAndUnknownBoard(void)
+uint8_t ShimBrd_are2ndGenSensorsPresentAndUnknownBoard(void)
 {
   uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
 
-  return (are2ndGenImuSensorsPresent()
+  return (ShimBrd_are2ndGenImuSensorsPresent()
       && !(srId == SHIMMER_ECG_MD || srId == SHIMMER3_IMU || srId == EXP_BRD_EXG_UNIFIED
           || srId == EXP_BRD_GSR_UNIFIED || srId == EXP_BRD_BR_AMP_UNIFIED));
 }
 
-uint8_t areGsrControlsPinsReversed(void)
+uint8_t ShimBrd_areGsrControlsPinsReversed(void)
 {
   uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
   uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
@@ -107,7 +107,7 @@ uint8_t areGsrControlsPinsReversed(void)
 }
 #endif
 
-uint8_t areADS1292RClockLinesTied(void)
+uint8_t ShimBrd_areADS1292RClockLinesTied(void)
 {
   uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
   uint8_t srRevMajor = daughterCardIdPage.expansion_brd.exp_brd_major;
@@ -116,7 +116,7 @@ uint8_t areADS1292RClockLinesTied(void)
       || (hwId == HW_ID_SHIMMER3R && srId == EXP_BRD_EXG_UNIFIED);
 }
 
-void parseDaughterCardId(void)
+void ShimBrd_parseDaughterCardId(void)
 {
   memset(daughtCardIdStr, 0x00, sizeof(daughtCardIdStr));
 
@@ -162,108 +162,108 @@ void parseDaughterCardId(void)
   }
 }
 
-shimmer_expansion_brd *getDaughtCardId(void)
+shimmer_expansion_brd *ShimBrd_getDaughtCardId(void)
 {
   return &daughterCardIdPage.expansion_brd;
 }
 
-uint8_t *getDaughtCardIdPtr(void)
+uint8_t *ShimBrd_getDaughtCardIdPtr(void)
 {
   return &daughterCardIdPage.raw[0];
 }
 
-char *getDaughtCardIdStrPtr(void)
+char *ShimBrd_getDaughtCardIdStrPtr(void)
 {
   return &daughtCardIdStr[0];
 }
 
-uint8_t isDaughterCardIdSet(void)
+uint8_t ShimBrd_isDaughterCardIdSet(void)
 {
   return (daughterCardIdPage.expansion_brd.exp_brd_id != 0x00
       && daughterCardIdPage.expansion_brd.exp_brd_id != 0xFF);
 }
 
 #if defined(SHIMMER3)
-void setWrAccelAndMagInUse(uint8_t wr_accel_and_mag_in_use)
+void ShimBrd_setWrAccelAndMagInUse(uint8_t wr_accel_and_mag_in_use)
 {
   wrAccelAndMagInUse = wr_accel_and_mag_in_use;
 }
 
-uint8_t isWrAccelInUseLsm303dlhc(void)
+uint8_t ShimBrd_isWrAccelInUseLsm303dlhc(void)
 {
   return wrAccelAndMagInUse == WR_ACCEL_AND_MAG_LSM303DLHC_IN_USE;
 }
 
-uint8_t isWrAccelInUseLsm303ahtr(void)
+uint8_t ShimBrd_isWrAccelInUseLsm303ahtr(void)
 {
   return wrAccelAndMagInUse == WR_ACCEL_AND_MAG_LSM303AHTR_IN_USE;
 }
 
-uint8_t isWrAccelInUseIcm20948(void)
+uint8_t ShimBrd_isWrAccelInUseIcm20948(void)
 {
   return wrAccelAndMagInUse == WR_ACCEL_AND_MAG_ICM20948_IN_USE;
 }
 
-void setGyroInUse(uint8_t gyro_in_use)
+void ShimBrd_setGyroInUse(uint8_t gyro_in_use)
 {
   gyroInUse = gyro_in_use;
 }
 
-uint8_t isGyroInUseMpu9x50(void)
+uint8_t ShimBrd_isGyroInUseMpu9x50(void)
 {
   return gyroInUse == GYRO_MPU9X50_IN_USE;
 }
 
-uint8_t isGyroInUseIcm20948(void)
+uint8_t ShimBrd_isGyroInUseIcm20948(void)
 {
   return gyroInUse == GYRO_ICM20948_IN_USE;
 }
 #endif
 
-void setEepromIsPresent(uint8_t eeprom_is_preset)
+void ShimBrd_setEepromIsPresent(uint8_t eeprom_is_preset)
 {
   eepromIsPresent = eeprom_is_preset;
 }
 
-uint8_t isEepromIsPresent(void)
+uint8_t ShimBrd_isEepromIsPresent(void)
 {
   return eepromIsPresent;
 }
 
 #if defined(SHIMMER3)
-uint8_t isLnAccelKxtc9_2050Present(void)
+uint8_t ShimBrd_isLnAccelKxtc9_2050Present(void)
 {
   //Assuming here that if BMP280 and LSM303AHTR/ICM20948 present, infer low-noise accel is KXTC9-2050 and not KXRB5-2042
-  return ((isWrAccelInUseLsm303ahtr() || isWrAccelInUseIcm20948()) && isBmp280InUse());
+  return ((ShimBrd_isWrAccelInUseLsm303ahtr() || ShimBrd_isWrAccelInUseIcm20948()) && isBmp280InUse());
 }
 #endif
 
 #if defined(SHIMMER3R)
-uint8_t isAdxl371Present(void)
+uint8_t ShimBrd_isAdxl371Present(void)
 {
-  return (isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R
+  return (ShimBrd_isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R
       && (daughterCardIdPage.expansion_brd.exp_brd_id == SHIMMER3_IMU
           || (daughterCardIdPage.expansion_brd.exp_brd_id == EXP_BRD_GSR_UNIFIED
               && daughterCardIdPage.expansion_brd.exp_brd_major == 6
               && daughterCardIdPage.expansion_brd.exp_brd_minor == 0)));
 }
 
-uint8_t isI2c4Supported(void)
+uint8_t ShimBrd_isI2c4Supported(void)
 {
-  return (isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R
+  return (ShimBrd_isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R
       && daughterCardIdPage.expansion_brd.exp_brd_id == EXP_BRD_GSR_UNIFIED);
 }
 
-uint8_t isBoardSr48_6_0(void)
+uint8_t ShimBrd_isBoardSr48_6_0(void)
 {
   return isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0);
 }
+#endif
 
-uint8_t isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_brd_minor)
+uint8_t ShimBrd_isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_brd_minor)
 {
-  return (isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R
+  return (ShimBrd_isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R
       && (daughterCardIdPage.expansion_brd.exp_brd_id == exp_brd_id
           && daughterCardIdPage.expansion_brd.exp_brd_major == exp_brd_major
           && daughterCardIdPage.expansion_brd.exp_brd_minor == exp_brd_minor));
 }
-#endif

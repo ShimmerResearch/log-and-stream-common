@@ -27,8 +27,9 @@ extern char *HAL_GetUID(void);
 extern void RwcCheck(void);
 extern uint8_t *getMacIdBytesPtr(void);
 
-void InitialiseBtAfterBoot(void);
-void BtStop(uint8_t isCalledFromMain);
+extern void InitialiseBtAfterBoot(void);
+extern void BtStop(uint8_t isCalledFromMain);
+extern void triggerShimmerErrorState(void);
 
 /* Task list */
 extern void checkSetupDock(void);

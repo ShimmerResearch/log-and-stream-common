@@ -68,47 +68,47 @@ typedef union
   };
 } daughter_card_id_page;
 
-void resetDaughterCardId(void);
-void setHwId(uint8_t hwIdToSet);
-void setDaugherCardIdPage(uint8_t *pagePtr);
-uint8_t isAds1292Present(void);
+void ShimBrd_resetDaughterCardId(void);
+void ShimBrd_setHwId(uint8_t hwIdToSet);
+void ShimBrd_setDaugherCardIdPage(uint8_t *pagePtr);
+uint8_t ShimBrd_isAds1292Present(void);
 #if defined(SHIMMER3)
-uint8_t isRn4678PresentAndCmdModeSupport(void);
-uint8_t isSubstitutionNeededForWrAccel(void);
-uint8_t are2ndGenImuSensorsPresent(void);
-uint8_t are2ndGenSensorsPresentAndUnknownBoard(void);
-uint8_t areGsrControlsPinsReversed(void);
+uint8_t ShimBrd_isRn4678PresentAndCmdModeSupport(void);
+uint8_t ShimBrd_isSubstitutionNeededForWrAccel(void);
+uint8_t ShimBrd_are2ndGenImuSensorsPresent(void);
+uint8_t ShimBrd_are2ndGenSensorsPresentAndUnknownBoard(void);
+uint8_t ShimBrd_areGsrControlsPinsReversed(void);
 #endif
-uint8_t areADS1292RClockLinesTied(void);
-void parseDaughterCardId(void);
-shimmer_expansion_brd *getDaughtCardId(void);
-uint8_t *getDaughtCardIdPtr(void);
-char *getDaughtCardIdStrPtr(void);
-uint8_t isDaughterCardIdSet(void);
+uint8_t ShimBrd_areADS1292RClockLinesTied(void);
+void ShimBrd_parseDaughterCardId(void);
+shimmer_expansion_brd *ShimBrd_getDaughtCardId(void);
+uint8_t *ShimBrd_getDaughtCardIdPtr(void);
+char *ShimBrd_getDaughtCardIdStrPtr(void);
+uint8_t ShimBrd_isDaughterCardIdSet(void);
 
 #if defined(SHIMMER3)
-void setWrAccelAndMagInUse(uint8_t wr_accel_and_mag_in_use);
-uint8_t isWrAccelInUseLsm303dlhc(void);
-uint8_t isWrAccelInUseLsm303ahtr(void);
-uint8_t isWrAccelInUseIcm20948(void);
+void ShimBrd_setWrAccelAndMagInUse(uint8_t wr_accel_and_mag_in_use);
+uint8_t ShimBrd_isWrAccelInUseLsm303dlhc(void);
+uint8_t ShimBrd_isWrAccelInUseLsm303ahtr(void);
+uint8_t ShimBrd_isWrAccelInUseIcm20948(void);
 
-void setGyroInUse(uint8_t gyro_in_use);
-uint8_t isGyroInUseMpu9x50(void);
-uint8_t isGyroInUseIcm20948(void);
+void ShimBrd_setGyroInUse(uint8_t gyro_in_use);
+uint8_t ShimBrd_isGyroInUseMpu9x50(void);
+uint8_t ShimBrd_isGyroInUseIcm20948(void);
 #endif
 
-void setEepromIsPresent(uint8_t eeprom_is_preset);
-uint8_t isEepromIsPresent(void);
+void ShimBrd_setEepromIsPresent(uint8_t eeprom_is_preset);
+uint8_t ShimBrd_isEepromIsPresent(void);
 
 #if defined(SHIMMER3)
-uint8_t isLnAccelKxtc9_2050Present(void);
+uint8_t ShimBrd_isLnAccelKxtc9_2050Present(void);
 #endif
 
 #if defined(SHIMMER3R)
-uint8_t isAdxl371Present(void);
-uint8_t isI2c4Supported(void);
-uint8_t isBoardSr48_6_0(void);
-uint8_t isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_brd_minor);
+uint8_t ShimBrd_isAdxl371Present(void);
+uint8_t ShimBrd_isI2c4Supported(void);
+uint8_t ShimBrd_isBoardSr48_6_0(void);
 #endif
+uint8_t ShimBrd_isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_brd_minor);
 
 #endif /* LOG_AND_STREAM_COMMON_BOARDS_SHIMMER_BOARDS_H_ */

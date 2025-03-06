@@ -49,7 +49,7 @@ uint8_t uartDcMemLength, uartInfoMemLength;
 uint16_t uartDcMemOffset, uartInfoMemOffset;
 uint64_t uartTimeStart, uartTimeEnd;
 
-void DockUart_resetVariables(void)
+void ShimDock_resetVariables(void)
 {
   uartSteps = 0;
   uartArgSize = 0;
@@ -77,7 +77,7 @@ void DockUart_resetVariables(void)
   uartTimeStart = uartTimeEnd = 0;
 }
 
-uint8_t DockUart_rxCallback(uint8_t data)
+uint8_t ShimDock_rxCallback(uint8_t data)
 {
   if (shimmerStatus.initialising)
   {
@@ -169,12 +169,12 @@ uint8_t DockUart_rxCallback(uint8_t data)
   return 0;
 }
 
-void DockUart_processCmd(void)
+void ShimDock_processCmd(void)
 {
   if (uartAction)
   {
 #if defined(SHIMMER3)
-    if (UartCheckCrc(dockRxBuf[UART_RXBUF_LEN] + 3))
+    if (ShimDock_uartCheckCrc(dockRxBuf[UART_RXBUF_LEN] + 3))
 #else
     if (S4Calc_crcCheck(dockRxBuf, dockRxBuf[UART_RXBUF_LEN] + 5))
 #endif
@@ -360,7 +360,7 @@ void DockUart_processCmd(void)
               ShimConfig_getStoredConfig()->rtcSetByBt = 0;
               InfoMem_write(NV_SD_TRIAL_CONFIG0,
                   &ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
-              S4Ram_sdHeadTextSetByte(SDH_TRIAL_CONFIG0,
+              ShimSdHead_sdHeadTextSetByte(SDH_TRIAL_CONFIG0,
                   ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0]);
 
               uartSendRspAck = 1;
@@ -389,7 +389,7 @@ void DockUart_processCmd(void)
                  * If so, amend configuration byte 2 of ADS chip 1 to have bit 3
                  * set to 1. This ensures clock lines on ADS chip are correct
                  */
-                if (areADS1292RClockLinesTied())
+                if (ShimBrd_areADS1292RClockLinesTied())
                 {
                   *(dockRxBuf + UART_RXBUF_DATA + 3 + NV_EXG_ADS1292R_1_CONFIG2) |= 8;
                 }
@@ -413,7 +413,7 @@ void DockUart_processCmd(void)
               InfoMem_read(uartInfoMemOffset,
                   &ShimConfig_getStoredConfig()->rawBytes[uartInfoMemOffset],
                   uartInfoMemLength);
-              SD_infomem2Names();
+              ShimSd_infomem2Names();
 #else
               uint8_t temp_btMacHex[6];
               ShimConfig_storedConfigGet(temp_btMacHex, NV_MAC_ADDRESS, 6);
@@ -470,7 +470,7 @@ void DockUart_processCmd(void)
               eepromWrite(uartDcMemOffset, (uint16_t) uartDcMemLength,
                   dockRxBuf + UART_RXBUF_DATA + 2U);
               //Copy new bytes to active daughter card byte array
-              memcpy(getDaughtCardId() + ((uint8_t) uartDcMemOffset),
+              memcpy(ShimBrd_getDaughtCardId() + ((uint8_t) uartDcMemOffset),
                   dockRxBuf + UART_RXBUF_DATA + 2, uartDcMemLength);
               uartSendRspAck = 1;
             }
@@ -528,7 +528,7 @@ void DockUart_processCmd(void)
   }
 }
 
-void DockUart_sendRsp(void)
+void ShimDock_sendRsp(void)
 {
   uint8_t uart_resp_len = 0, cr = 0;
   uint16_t uartRespCrc;
@@ -706,7 +706,7 @@ void DockUart_sendRsp(void)
   {
     uartSendRspBtVer = 0;
 
-    uint8_t btVerStrLen = getBtVerStrLen();
+    uint8_t btVerStrLen = ShimBt_getBtVerStrLen();
 
     *(uartRespBuf + uart_resp_len++) = '$';
     *(uartRespBuf + uart_resp_len++) = UART_RESPONSE;
@@ -714,7 +714,7 @@ void DockUart_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_COMP_BT;
     *(uartRespBuf + uart_resp_len++) = UART_PROP_VER;
 
-    memcpy(uartRespBuf + uart_resp_len, getBtVerStrPtr(), btVerStrLen);
+    memcpy(uartRespBuf + uart_resp_len, ShimBt_getBtVerStrPtr(), btVerStrLen);
     uart_resp_len += btVerStrLen;
   }
 
@@ -730,7 +730,7 @@ void DockUart_sendRsp(void)
   DockUart_writeBlocking(uartRespBuf, uart_resp_len);
 }
 
-uint8_t UartCheckCrc(uint8_t len)
+uint8_t ShimDock_uartCheckCrc(uint8_t len)
 {
   if (len > UART_DATA_LEN_MAX)
   {

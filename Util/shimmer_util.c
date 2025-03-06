@@ -6,6 +6,8 @@
  */
 
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 void ShimUtil_ItoaWith0(uint64_t num, uint8_t *buf, uint8_t len)
 { //len = actual len + 1 extra '\0' at the end

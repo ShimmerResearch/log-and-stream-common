@@ -155,55 +155,55 @@ typedef struct shimmer_calib_t
 #define SC_SENSOR_RANGE_ADXL371_RANGE 0
 #endif
 
-extern void ShimmerCalib_init(void);
+void ShimCalib_init(void);
 
-uint8_t *ShimmerCalib_getRam(void);
+uint8_t *ShimCalib_getRam(void);
 
-extern uint8_t ShimmerCalib_findLength(sc_t *sc1);
+uint8_t ShimCalib_findLength(sc_t *sc1);
 
-extern void ShimmerCalib_ram2File(void);
+void ShimCalib_ram2File(void);
 
-extern uint8_t ShimmerCalib_file2Ram(void);
-
-//return 0: success, 1: fail
-extern uint8_t ShimmerCalib_singleSensorWrite(const sc_t *sc1);
+uint8_t ShimCalib_file2Ram(void);
 
 //return 0: success, 1: fail
-extern uint8_t ShimmerCalib_singleSensorRead(sc_t *sc1);
+uint8_t ShimCalib_singleSensorWrite(const sc_t *sc1);
 
-extern void ShimmerCalib_checkRamLen(void);
-extern void ShimmerCalib_ramTempInit(void);
+//return 0: success, 1: fail
+uint8_t ShimCalib_singleSensorRead(sc_t *sc1);
 
-extern uint8_t ShimmerCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset);
+void ShimCalib_checkRamLen(void);
+void ShimCalib_ramTempInit(void);
 
-extern uint8_t ShimmerCalib_ramRead(uint8_t *buf, uint8_t length, uint16_t offset);
+uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset);
 
-void ShimmerCalib_default(uint8_t sensor);
+uint8_t ShimCalib_ramRead(uint8_t *buf, uint8_t length, uint16_t offset);
+
+void ShimCalib_default(uint8_t sensor);
 #if defined(SHIMMER3)
-void setDefaultKionixCalib(sc_t *sc1Ptr);
-void setDefaultMpu9X50Icm20948GyroCalib(sc_t *sc1Ptr);
-void setDefaultLsm303AccelCalib(sc_t *sc1Ptr);
-void setDefaultLsm303MagCalib(sc_t *sc1Ptr);
+void ShimCalib_setDefaultKionixCalib(sc_t *sc1Ptr);
+void ShimCalib_setDefaultMpu9X50Icm20948GyroCalib(sc_t *sc1Ptr);
+void ShimCalib_setDefaultLsm303AccelCalib(sc_t *sc1Ptr);
+void ShimCalib_setDefaultLsm303MagCalib(sc_t *sc1Ptr);
 #elif defined(SHIMMER3R)
-void setDefaultLsm6dsvAccelCalib(sc_t *sc1Ptr);
-void setDefaultLsm6dsvGyroCalib(sc_t *sc1Ptr);
-void setDefaultAdxl371AccelCalib(sc_t *sc1Ptr);
-void setDefaultLis2dw12AccelCalib(sc_t *sc1Ptr);
-void setDefaultLis2mdlMagCalib(sc_t *sc1Ptr);
-void setDefaultLis3mdlMagCalib(sc_t *sc1Ptr);
+void ShimCalib_setDefaultLsm6dsvAccelCalib(sc_t *sc1Ptr);
+void ShimCalib_setDefaultLsm6dsvGyroCalib(sc_t *sc1Ptr);
+void ShimCalib_setDefaultAdxl371AccelCalib(sc_t *sc1Ptr);
+void ShimCalib_setDefaultLis2dw12AccelCalib(sc_t *sc1Ptr);
+void ShimCalib_setDefaultLis2mdlMagCalib(sc_t *sc1Ptr);
+void ShimCalib_setDefaultLis3mdlMagCalib(sc_t *sc1Ptr);
 #endif
 
-void ShimmerCalib_defaultAll(void);
-void ShimmerCalib_singleSensorWriteFromInfoMem(uint16_t id,
+void ShimCalib_defaultAll(void);
+void ShimCalib_singleSensorWriteFromInfoMem(uint16_t id,
     uint8_t range,
     uint8_t data_len,
     uint8_t *ptr);
-void CalibSaveFromInfoMemToCalibDump(uint8_t id);
+void ShimCalib_calibSaveFromInfoMemToCalibDump(uint8_t id);
 
-void ShimmerCalibInitFromInfoAll(void);
-void ShimmerCalibUpdateFromInfoAll(void);
-void ShimmerCalibFromInfo(uint8_t sensor, uint8_t use_sys_time);
-void ShimmerCalibSyncFromDumpRamAll(void);
-void ShimmerCalibSyncFromDumpRamSingleSensor(uint8_t sensor);
+void ShimCalib_initFromInfoAll(void);
+void ShimCalib_updateFromInfoAll(void);
+void ShimCalib_fromInfo(uint8_t sensor, uint8_t use_sys_time);
+void ShimCalib_syncFromDumpRamAll(void);
+void ShimCalib_syncFromDumpRamSingleSensor(uint8_t sensor);
 
 #endif //SHIMMER_CALIBRATION_H

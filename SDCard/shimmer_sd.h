@@ -27,35 +27,34 @@
 #define BIN_FILE_SPLIT_TIME_TICKS (32768 * 3600) //1 hr
 #define BIN_FILE_SYNC_TIME_TICKS  (32768 * 60)   //1 minute
 
-void SD_init(void);
-uint8_t SD_test1(void);
-uint8_t SD_test2(void);
-void SD_setShimmerName(void);
-void SD_setExpIdName(void);
-void SD_setCfgTime(void);
-void SetName(void);
-void SD_infomem2Names(void);
-uint8_t SD_setBasedir(void);
-uint8_t SD_makeBasedir(void);
-void SD_makeFileName(char *name_buf);
-void SD_fileInit(void);
-void SD_close(void);
-void SD_writeToBuff(uint8_t *buf, uint16_t len);
-void SD_writeToCard(void);
-//void SD_config2SdHead(void);
-FRESULT SD_mount(uint8_t val);
-void UpdateSdConfig(void);
-void ParseConfig(void);
+void ShimSd_init(void);
+uint8_t ShimSd_test1(void);
+uint8_t ShimSd_test2(void);
+void ShimSd_setShimmerName(void);
+void ShimSd_setExpIdName(void);
+void ShimSd_setCfgTime(void);
+void ShimSd_setName(void);
+void ShimSd_infomem2Names(void);
+uint8_t ShimSd_setBasedir(void);
+uint8_t ShimSd_makeBasedir(void);
+void ShimSd_makeFileName(char *name_buf);
+void ShimSd_fileInit(void);
+void ShimSd_close(void);
+void ShimSd_writeToBuff(uint8_t *buf, uint16_t len);
+void ShimSd_writeToCard(void);
+FRESULT ShimSd_mount(uint8_t val);
+void ShimSd_updateSdConfig(void);
+void ShimSd_parseConfig(void);
 
-uint8_t isFileStatusOk(void);
-uint8_t isSdInfoSyncDelayed(void);
-void setSdInfoSyncDelayed(uint8_t state);
-uint8_t *getConfigTimeTextPtr(void);
-uint8_t *getFileNamePtr(void);
-uint8_t *getShimmerNamePtr(void);
-uint8_t *getExpIdPtr(void);
-FRESULT set_file_timestamp(char *path);
-void FindError(uint8_t err, uint8_t *name);
-void SdInfoSync();
+uint8_t ShimSd_isFileStatusOk(void);
+uint8_t ShimSd_isSdInfoSyncDelayed(void);
+void ShimSd_setSdInfoSyncDelayed(uint8_t state);
+uint8_t *ShimSd_configTimeTextPtrGet(void);
+uint8_t *ShimSd_fileNamePtrGet(void);
+uint8_t *ShimSd_shimmerNamePtrGet(void);
+uint8_t *ShimSd_expIdPtrGet(void);
+FRESULT ShimSd_setFileTimestamp(char *path);
+void ShimSd_findError(uint8_t err, uint8_t *name);
+void ShimSd_sdInfoSync();
 
 #endif /* SHIMMER_SD_H_ */

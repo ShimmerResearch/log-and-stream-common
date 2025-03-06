@@ -25,7 +25,7 @@ void ShimSdHead_reset(void)
   memset(sdHeadText, 0xff, SD_HEAD_SIZE);
 }
 
-uint8_t *S4Ram_getSdHeadText(void)
+uint8_t *ShimSdHead_getSdHeadText(void)
 {
   return sdHeadText;
 }
@@ -33,7 +33,7 @@ uint8_t *S4Ram_getSdHeadText(void)
 /*
  * sdHeadText: Set(), Get() and GetByte(), S4Ram_sdHeadTextSetByte()
  */
-uint8_t S4Ram_sdHeadTextSet(const uint8_t *buf, uint16_t offset, uint16_t length)
+uint8_t ShimSdHead_sdHeadTextSet(const uint8_t *buf, uint16_t offset, uint16_t length)
 {
   if ((offset > SD_HEAD_SIZE - 1) || (offset + length > SD_HEAD_SIZE) || (length == 0))
   {
@@ -43,7 +43,7 @@ uint8_t S4Ram_sdHeadTextSet(const uint8_t *buf, uint16_t offset, uint16_t length
   return 0;
 }
 
-uint8_t S4Ram_sdHeadTextGet(uint8_t *buf, uint16_t offset, uint16_t length)
+uint8_t ShimSdHead_sdHeadTextGet(uint8_t *buf, uint16_t offset, uint16_t length)
 {
   if ((offset > SD_HEAD_SIZE - 1) || (offset + length > SD_HEAD_SIZE) || (length == 0))
   {
@@ -53,7 +53,7 @@ uint8_t S4Ram_sdHeadTextGet(uint8_t *buf, uint16_t offset, uint16_t length)
   return 0;
 }
 
-uint8_t S4Ram_sdHeadTextGetByte(uint16_t offset)
+uint8_t ShimSdHead_sdHeadTextGetByte(uint16_t offset)
 {
   if (offset > SD_HEAD_SIZE - 1)
   {
@@ -62,7 +62,7 @@ uint8_t S4Ram_sdHeadTextGetByte(uint16_t offset)
   return sdHeadText[offset];
 }
 
-uint8_t S4Ram_sdHeadTextSetByte(uint16_t offset, uint8_t val)
+uint8_t ShimSdHead_sdHeadTextSetByte(uint16_t offset, uint8_t val)
 {
   if (offset > SD_HEAD_SIZE - 1)
   {
@@ -174,13 +174,13 @@ void ShimSdHead_config2SdHead(void)
 
   memcpy(&sdHeadText[SDH_MAC_ADDR], &configBytes->rawBytes[NV_MAC_ADDRESS], 6);
   memcpy(&sdHeadText[SDH_CONFIG_TIME_0], &configBytes->rawBytes[NV_SD_CONFIG_TIME], 4);
-  saveBmpCalibrationToSdHeader();
+  ShimSdHead_saveBmpCalibrationToSdHeader();
 
-  ShimmerCalibSyncFromDumpRamAll();
-  memcpy(&sdHeadText[SDH_DAUGHTER_CARD_ID_BYTE0], getDaughtCardIdPtr(), 3);
+  ShimCalib_syncFromDumpRamAll();
+  memcpy(&sdHeadText[SDH_DAUGHTER_CARD_ID_BYTE0], ShimBrd_getDaughtCardIdPtr(), 3);
 }
 
-void saveBmpCalibrationToSdHeader(void)
+void ShimSdHead_saveBmpCalibrationToSdHeader(void)
 {
   uint8_t *bmpCalibPtr = get_bmp_calib_data_bytes();
 #if defined(SHIMMER3)

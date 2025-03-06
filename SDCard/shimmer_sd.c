@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <Calibration/shimmer_calibration.h>
 #include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd_header.h>
 #include <SDSync/shimmer_sd_sync.h>
@@ -74,9 +75,9 @@ uint8_t sdInfoSyncDelayed = 0;
 
 #endif
 
-void SD_init(void)
+void ShimSd_init(void)
 {
-  setSdInfoSyncDelayed(0);
+  ShimSd_setSdInfoSyncDelayed(0);
   //fileNum = 0;
 
   //*configTimeText = '\0';
@@ -115,7 +116,7 @@ void SD_init(void)
 
 #define TEST_TEXT_LEN 40
 
-uint8_t SD_test1(void)
+uint8_t ShimSd_test1(void)
 {
 #if USE_FATFS
   FIL test_file;
@@ -146,7 +147,7 @@ uint8_t SD_test1(void)
   return shimmerStatus.sdBadFile;
 }
 
-uint8_t SD_test2(void)
+uint8_t ShimSd_test2(void)
 {
   FRESULT res = FR_OK; /* FatFs function common result code */
 #if USE_FATFS
@@ -157,7 +158,7 @@ uint8_t SD_test2(void)
 #endif
   FIL SDFile;
 
-  if (SD_mount(1) != FR_OK)
+  if (ShimSd_mount(1) != FR_OK)
   {
     shimmerStatus.sdBadFile = 1;
   }
@@ -194,12 +195,12 @@ uint8_t SD_test2(void)
     }
 #endif
   }
-  SD_mount(0);
+  ShimSd_mount(0);
 #endif
   return res;
 }
 
-void SD_setShimmerName(void)
+void ShimSd_setShimmerName(void)
 {
   uint8_t i;
   gConfigBytes *configBytes = ShimConfig_getStoredConfig();
@@ -210,13 +211,13 @@ void SD_setShimmerName(void)
     ;
   if (i == 0)
   {
-    setDefaultShimmerName();
+    ShimConfig_setDefaultShimmerName();
   }
   memcpy((char *) shimmerName, &(configBytes->shimmerName[0]),
       sizeof(configBytes->shimmerName));
 }
 
-void SD_setExpIdName(void)
+void ShimSd_setExpIdName(void)
 {
   uint8_t i;
   gConfigBytes *configBytes = ShimConfig_getStoredConfig();
@@ -227,14 +228,14 @@ void SD_setExpIdName(void)
     ;
   if (i == 0)
   {
-    setDefaultTrialId();
+    ShimConfig_setDefaultTrialId();
     i = 12;
   }
   memcpy((char *) expIdName, &(configBytes->expIdName[0]), i);
   //strcpy((char*)expIdName,"DefaultTrial");
 }
 
-void SD_setCfgTime(void)
+void ShimSd_setCfgTime(void)
 {
   uint32_t cfg_time_temp = 0;
   uint8_t i;
@@ -256,7 +257,7 @@ void SD_setCfgTime(void)
   }
 }
 
-void SetName(void)
+void ShimSd_setName(void)
 {
   if (strlen((char *) configTimeText) == 0)
   {
@@ -268,14 +269,14 @@ void SetName(void)
   }
 }
 
-void SD_infomem2Names(void)
+void ShimSd_infomem2Names(void)
 {
-  SD_setShimmerName();
-  SD_setExpIdName();
-  SD_setCfgTime();
+  ShimSd_setShimmerName();
+  ShimSd_setExpIdName();
+  ShimSd_setCfgTime();
 }
 
-uint8_t SD_setBasedir(void)
+uint8_t ShimSd_setBasedir(void)
 {
 #if USE_FATFS
   FILINFO fno;
@@ -283,7 +284,7 @@ uint8_t SD_setBasedir(void)
   uint16_t tmp_counter = 0;
   char lfn[_MAX_LFN + 1], *fname, *scout, *dash, dirnum[8];
 
-  SD_infomem2Names();
+  ShimSd_infomem2Names();
 
 #if _FATFS == FATFS_V_0_08B
   fno.lfname = lfn;
@@ -310,7 +311,7 @@ uint8_t SD_setBasedir(void)
   }
 #if _FATFS != FATFS_V_0_08B
   file_status = f_closedir(&dir);
-  set_file_timestamp("/data");
+  ShimSd_setFileTimestamp("/data");
 #endif
 
   strcpy((char *) expDirName, "data/");
@@ -388,7 +389,7 @@ uint8_t SD_setBasedir(void)
   }
 #if _FATFS != FATFS_V_0_08B
   file_status = f_closedir(&dir);
-  set_file_timestamp((char *) expDirName);
+  ShimSd_setFileTimestamp((char *) expDirName);
 #endif
 
   //at this point, we have the id string and the counter, so we can make a directory name
@@ -396,7 +397,7 @@ uint8_t SD_setBasedir(void)
 #endif
 }
 
-uint8_t SD_makeBasedir(void)
+uint8_t ShimSd_makeBasedir(void)
 {
   memset(dirName, 0, 64);
 
@@ -412,7 +413,7 @@ uint8_t SD_makeBasedir(void)
 #if USE_FATFS
   if (file_status = f_mkdir((char *) dirName))
   {
-    FindError(file_status, dirName);
+    ShimSd_findError(file_status, dirName);
     return 0; //FAIL;
   }
 
@@ -425,12 +426,12 @@ uint8_t SD_makeBasedir(void)
   fileNum = 0;
   //sprintf((char*)fileName, "/%03d", fileNum++);
 
-  set_file_timestamp((char *) dirName);
+  ShimSd_setFileTimestamp((char *) dirName);
 
   return 1; //SUCCESS;
 }
 
-void SD_makeFileName(char *name_buf)
+void ShimSd_makeFileName(char *name_buf)
 {
   //strcpy(file_name, "this_is_a_very_long_name_for_the_dataFile");
   uint8_t temp_str[7];
@@ -440,7 +441,7 @@ void SD_makeFileName(char *name_buf)
   strcat((char *) name_buf, (char *) temp_str);
 }
 
-void SD_fileInit(void)
+void ShimSd_fileInit(void)
 {
 #if USE_SD
 #if USE_FATFS
@@ -454,12 +455,12 @@ void SD_fileInit(void)
   }
 
   sensing.isSdOperating = 1;
-  SD_setBasedir();
-  SD_makeBasedir();
+  ShimSd_setBasedir();
+  ShimSd_makeBasedir();
   ShimSdHead_config2SdHead();
-  SD_makeFileName(dataFileName);
+  ShimSd_makeFileName(dataFileName);
 
-  S4Ram_sdHeadTextGet(temp_sdHeadText, 0, SD_HEAD_SIZE);
+  ShimSdHead_sdHeadTextGet(temp_sdHeadText, 0, SD_HEAD_SIZE);
 
 #if USE_FATFS
   file_status = f_open(&dataFile, dataFileName, FA_WRITE | FA_CREATE_NEW);
@@ -483,13 +484,13 @@ void SD_fileInit(void)
 #endif //USE_SD
 }
 
-void SD_close(void)
+void ShimSd_close(void)
 {
 #if USE_SD
 #if USE_FATFS
   f_sync(&dataFile);
   f_close(&dataFile);
-  set_file_timestamp(dataFileName);
+  ShimSd_setFileTimestamp(dataFileName);
   file_status = FR_OK;
 #endif
   //Board_sdPower(0);
@@ -498,7 +499,7 @@ void SD_close(void)
 #endif //USE_SD
 }
 
-void SD_writeToBuff(uint8_t *buf, uint16_t len)
+void ShimSd_writeToBuff(uint8_t *buf, uint16_t len)
 {
 #if USE_SD
   //uint8_t *sensing_buf;
@@ -525,7 +526,7 @@ void SD_writeToBuff(uint8_t *buf, uint16_t len)
 #endif //USE_SD
 }
 
-void SD_writeToCard(void)
+void ShimSd_writeToCard(void)
 {
   //__disable_irq();
 #if USE_FATFS
@@ -567,15 +568,15 @@ void SD_writeToCard(void)
     assert_param(file_status == FR_OK);
     file_status = f_close(&dataFile);
     assert_param(file_status == FR_OK);
-    set_file_timestamp(dataFileName);
+    ShimSd_setFileTimestamp(dataFileName);
 #endif
-    SD_makeFileName(dataFileName);
+    ShimSd_makeFileName(dataFileName);
 #if USE_FATFS
     file_status = f_open(&dataFile, dataFileName, FA_WRITE | FA_CREATE_NEW);
     assert_param(file_status == FR_OK);
 #endif
     uint8_t temp_sdHeadText[SD_HEAD_SIZE];
-    S4Ram_sdHeadTextGet(temp_sdHeadText, 0, SD_HEAD_SIZE);
+    ShimSdHead_sdHeadTextGet(temp_sdHeadText, 0, SD_HEAD_SIZE);
 #if USE_8BYTES_INIT_TS
     *(uint64_t *) (temp_sdHeadText + SDH_MY_LOCALTIME_0TH) = sdFileSyncTs;
 #else
@@ -633,7 +634,7 @@ void SD_writeToCard(void)
   //__enable_irq();
 }
 
-FRESULT SD_mount(uint8_t val)
+FRESULT ShimSd_mount(uint8_t val)
 {
   FRESULT result;
   if (1 == val)
@@ -660,7 +661,7 @@ FRESULT SD_mount(uint8_t val)
   return result;
 }
 
-void UpdateSdConfig(void)
+void ShimSd_updateSdConfig(void)
 {
   FIL cfgFile;
 
@@ -678,7 +679,7 @@ void UpdateSdConfig(void)
     uint64_t temp64;
 
     uint8_t i;
-    resetSyncVariablesBeforeParseConfig();
+    ShimSdSync_resetSyncVariablesBeforeParseConfig();
 
     UINT bw;
 
@@ -761,7 +762,7 @@ void UpdateSdConfig(void)
       sprintf(buffer, "pres=%d\r\n", storedConfig->chEnPressureAndTemperature);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       //sample_rate
-      val_num = FreqDiv(storedConfig->samplingRateTicks);
+      val_num = ShimConfig_freqDiv(storedConfig->samplingRateTicks);
       val_int = (uint16_t) floor(val_num); //the compiler can't handle sprintf %f here
       val_f = (uint16_t) round((val_num - floor(val_num)) * 100);
       if (val_f == 100)
@@ -845,17 +846,17 @@ void UpdateSdConfig(void)
       sprintf(buffer, "est_exp_len=%d\r\n", storedConfig->experimentLengthEstimatedInSec);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      parseSyncNodeNamesFromConfig(&storedConfig->rawBytes[0]);
-      for (i = 0; i < getSyncNodeNum(); i++)
+      ShimSdSync_parseSyncNodeNamesFromConfig(&storedConfig->rawBytes[0]);
+      for (i = 0; i < ShimSdSync_syncNodeNumGet(); i++)
       {
-        sprintf(buffer, "node=%s\r\n", (char *) getSyncNodeNamePtrForIndex(i));
+        sprintf(buffer, "node=%s\r\n", (char *) ShimSdSync_syncNodeNamePtrForIndexGet(i));
         f_write(&cfgFile, buffer, strlen(buffer), &bw);
       }
 
       if (memcmp(all0xff, storedConfig + NV_CENTER, 6))
       {
-        parseSyncCenterNameFromConfig(&storedConfig->rawBytes[0]);
-        sprintf(buffer, "center=%s\r\n", (char *) getSyncCenterNamePtr());
+        ShimSdSync_parseSyncCenterNameFromConfig(&storedConfig->rawBytes[0]);
+        sprintf(buffer, "center=%s\r\n", (char *) ShimSdSync_syncCenterNamePtrGet());
         f_write(&cfgFile, buffer, strlen(buffer), &bw);
       }
 
@@ -867,7 +868,7 @@ void UpdateSdConfig(void)
       sprintf(buffer, "Nshimmer=%d\r\n", storedConfig->numberOfShimmers);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      SD_infomem2Names();
+      ShimSd_infomem2Names();
       sprintf(buffer, "shimmername=%s\r\n", shimmerName);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       sprintf(buffer, "experimentid=%s\r\n", expIdName);
@@ -949,7 +950,7 @@ void UpdateSdConfig(void)
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
       file_status = f_close(&cfgFile);
-      set_file_timestamp(cfgname);
+      ShimSd_setFileTimestamp(cfgname);
 
 #if defined(SHIMMER3)
       _delay_cycles(2400000); //100ms @ 24MHz
@@ -968,7 +969,7 @@ void UpdateSdConfig(void)
   }
 }
 
-void ParseConfig(void)
+void ShimSd_parseConfig(void)
 {
   FIL cfgFile;
 
@@ -988,7 +989,7 @@ void ParseConfig(void)
   if (file_status == FR_NO_FILE)
   {
     ShimConfig_readRam();
-    UpdateSdConfig();
+    ShimSd_updateSdConfig();
     //fileBad = 0;
   }
   else if (file_status != FR_OK)
@@ -1003,8 +1004,8 @@ void ParseConfig(void)
     memset((uint8_t *) (stored_config_temp.rawBytes), 0,
         sizeof(stored_config_temp.rawBytes)); //0
 
-    resetSyncVariablesBeforeParseConfig();
-    resetSyncNodeArray();
+    ShimSdSync_resetSyncVariablesBeforeParseConfig();
+    ShimSdSync_resetSyncNodeArray();
 
     memset((uint8_t *) (stored_config_temp.rawBytes), 0, NV_LN_ACCEL_CALIBRATION); //0
     memset((uint8_t *) (stored_config_temp.rawBytes + NV_LN_ACCEL_CALIBRATION), 0xFF, 84);
@@ -1289,11 +1290,11 @@ void ParseConfig(void)
       }
       else if (strstr(buffer, "center="))
       {
-        parseSyncCenterNameFromCfgFile(&stored_config_temp.rawBytes[0], equals);
+        ShimSdSync_parseSyncCenterNameFromCfgFile(&stored_config_temp.rawBytes[0], equals);
       }
       else if (strstr(buffer, "node"))
       {
-        parseSyncNodeNameFromCfgFile(&stored_config_temp.rawBytes[0], equals);
+        ShimSdSync_parseSyncNodeNameFromCfgFile(&stored_config_temp.rawBytes[0], equals);
       }
       else if (strstr(buffer, "est_exp_len="))
       {
@@ -1484,11 +1485,11 @@ void ParseConfig(void)
     HAL_Delay(50); //50ms
 #endif
 
-    sample_period = FreqDiv(sample_rate);
+    sample_period = ShimConfig_freqDiv(sample_rate);
     stored_config_temp.samplingRateTicks = sample_period;
 
     ShimConfig_experimentLengthSecsMaxSet(stored_config_temp.experimentLengthMaxInMinutes);
-    setSyncEstExpLen(stored_config_temp.experimentLengthEstimatedInSec);
+    ShimSdSync_setSyncEstExpLen(stored_config_temp.experimentLengthEstimatedInSec);
 
     triggerSdCardUpdate |= ShimConfig_checkAndCorrectConfig(&stored_config_temp);
 
@@ -1510,7 +1511,7 @@ void ParseConfig(void)
         &stored_config_temp.rawBytes[NV_CENTER], NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
 
     ShimSdHead_config2SdHead();
-    SetName();
+    ShimSd_setName();
 
 #if defined(SHIMMER3)
     InfoMem_write(0, &storedConfig->rawBytes[0], NV_NUM_SETTINGS_BYTES);
@@ -1527,37 +1528,37 @@ void ParseConfig(void)
     /* If the configuration needed to be corrected, update the config file */
     if (triggerSdCardUpdate)
     {
-      UpdateSdConfig();
+      ShimSd_updateSdConfig();
     }
   }
 }
 
-uint8_t isFileStatusOk(void)
+uint8_t ShimSd_isFileStatusOk(void)
 {
   return file_status == FR_OK;
 }
 
-uint8_t isSdInfoSyncDelayed(void)
+uint8_t ShimSd_isSdInfoSyncDelayed(void)
 {
   return sdInfoSyncDelayed;
 }
 
-void setSdInfoSyncDelayed(uint8_t state)
+void ShimSd_setSdInfoSyncDelayed(uint8_t state)
 {
   sdInfoSyncDelayed = state;
 }
 
-uint8_t *getConfigTimeTextPtr(void)
+uint8_t *ShimSd_configTimeTextPtrGet(void)
 {
   return &configTimeText[0];
 }
 
-uint8_t *getFileNamePtr(void)
+uint8_t *ShimSd_fileNamePtrGet(void)
 {
   return &fileName[0];
 }
 
-FRESULT set_file_timestamp(char *path)
+FRESULT ShimSd_setFileTimestamp(char *path)
 {
 #if defined(SHIMMER3R)
   FILINFO fno;
@@ -1587,7 +1588,7 @@ FRESULT set_file_timestamp(char *path)
 #endif
 }
 
-void FindError(uint8_t err, uint8_t *name)
+void ShimSd_findError(uint8_t err, uint8_t *name)
 {
   switch (err)
   {
@@ -1654,38 +1655,38 @@ void FindError(uint8_t err, uint8_t *name)
   } //FRESULT;
 }
 
-void SdInfoSync()
+void ShimSd_sdInfoSync()
 {
-  setSdInfoSyncDelayed(0);
-  if (GetSdCfgFlag())
+  ShimSd_setSdInfoSyncDelayed(0);
+  if (ShimConfig_getSdCfgFlag())
   { //info > sdcard
     ShimConfig_readRam();
-    UpdateSdConfig();
-    SetSdCfgFlag(0);
+    ShimSd_updateSdConfig();
+    ShimConfig_setSdCfgFlag(0);
   }
   else
   {
     ReadSdConfiguration();
   }
 
-  if (GetRamCalibFlag())
+  if (ShimConfig_getRamCalibFlag())
   {
-    ShimmerCalib_ram2File();
-    SetRamCalibFlag(0);
+    ShimCalib_ram2File();
+    ShimConfig_setRamCalibFlag(0);
   }
   else
   {
-    if (ShimmerCalib_file2Ram())
+    if (ShimCalib_file2Ram())
     {
-      ShimmerCalib_ram2File();
+      ShimCalib_ram2File();
     }
     else
     {
       //only need to do this when file2Ram succeeds
-      ShimmerCalibSyncFromDumpRamAll();
+      ShimCalib_syncFromDumpRamAll();
     }
   }
 
   ShimSens_configureChannels();
-  CheckOnDefault();
+  ShimSens_checkOnDefault();
 }

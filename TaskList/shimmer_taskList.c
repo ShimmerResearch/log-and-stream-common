@@ -129,24 +129,24 @@ void ShimTask_NORM_manage(void)
 #endif
       break;
     case TASK_DOCK_PROCESS_CMD:
-      DockUart_processCmd();
+      ShimDock_processCmd();
       break;
     case TASK_DOCK_RESPOND:
-      DockUart_sendRsp();
+      ShimDock_sendRsp();
       break;
     case TASK_BT_PROCESS_CMD:
-      BtUart_processCmd();
+      ShimBt_processCmd();
       break;
     case TASK_BT_RESPOND:
-      BtUart_sendRsp();
+      ShimBt_sendRsp();
       break;
     case TASK_RCCENTERR1:
       /* SD Sync - Center */
-      SyncCenterR1();
+      ShimSdSync_centerR1();
       break;
     case TASK_RCNODER10:
       /* SD Sync - Node */
-      SyncNodeR10();
+      ShimSdSync_nodeR10();
       break;
     case TASK_STREAMDATA:
       //TODO reduce down to one shared function
@@ -194,12 +194,12 @@ void ShimTask_NORM_manage(void)
 #endif
       break;
     case TASK_SDLOG_CFG_UPDATE:
-      if (!shimmerStatus.docked && !shimmerStatus.sensing && CheckSdInslot() && GetSdCfgFlag())
+      if (!shimmerStatus.docked && !shimmerStatus.sensing && CheckSdInslot() && ShimConfig_getSdCfgFlag())
       {
         shimmerStatus.configuring = 1;
         ShimConfig_readRam();
-        UpdateSdConfig();
-        SetSdCfgFlag(0);
+        ShimSd_updateSdConfig();
+        ShimConfig_setSdCfgFlag(0);
         shimmerStatus.configuring = 0;
       }
       break;

@@ -61,54 +61,54 @@
 #define SYNC_PACKET_RESEND       0x01
 #define SYNC_FINISHED            0xFF
 
-void sdSyncInit(void (*btStart_cb)(void),
+void ShimSdSync_init(void (*btStart_cb)(void),
     void (*btStop_cb)(uint8_t),
     uint8_t (*taskSet_cb)(uint16_t taskflags));
-void resetMyTimeDiff(void);
-void resetMyTimeDiffArrays(void);
-void resetMyTimeDiffLongMin(void);
-uint8_t *getMyTimeDiffPtr(void);
-void setSyncResp(uint8_t *args, uint8_t count);
-uint8_t isBtSdSyncRunning(void);
-uint8_t getSyncNodeNum(void);
-uint8_t *getSyncNodeNamePtrForIndex(uint8_t index);
-uint8_t *getSyncCenterNamePtr(void);
-uint8_t getRcFirstOffsetRxed(void);
-uint8_t getSyncSuccC(void);
-uint8_t getSyncSuccN(void);
-uint8_t getSyncCnt(void);
-void saveLocalTime(void);
-void resetSyncRcNodeR10Cnt(void);
-void resetSyncVariablesBeforeParseConfig(void);
-void resetSyncVariablesDuringSyncStart(void);
-void resetSyncVariablesCenter(void);
-void resetSyncVariablesNode(void);
-void resetSyncNodeArray(void);
-uint16_t parseSyncEstExpLen(uint8_t estExpLenLsb, uint8_t estExpLenMsb);
-void setSyncEstExpLen(uint32_t est_exp_len);
-void parseSyncNodeNamesFromConfig(uint8_t *storedConfigPtr);
-void parseSyncCenterNameFromConfig(uint8_t *storedConfigPtr);
-void parseSyncCenterNameFromCfgFile(uint8_t *storedConfigPtr, char *equals);
-void parseSyncNodeNameFromCfgFile(uint8_t *storedConfigPtr, char *equals);
-void checkSyncCenterName(void);
+void ShimSdSync_resetMyTimeDiff(void);
+void ShimSdSync_resetMyTimeDiffArrays(void);
+void ShimSdSync_resetMyTimeDiffLongMin(void);
+uint8_t *ShimSdSync_myTimeDiffPtrGet(void);
+void ShimSdSync_syncRespSet(uint8_t *args, uint8_t count);
+uint8_t ShimSdSync_isBtSdSyncRunning(void);
+uint8_t ShimSdSync_syncNodeNumGet(void);
+uint8_t *ShimSdSync_syncNodeNamePtrForIndexGet(uint8_t index);
+uint8_t *ShimSdSync_syncCenterNamePtrGet(void);
+uint8_t ShimSdSync_rcFirstOffsetRxedGet(void);
+uint8_t ShimSdSync_syncSuccCenterGet(void);
+uint8_t ShimSdSync_syncSuccNodeGet(void);
+uint8_t ShimSdSync_syncCntGet(void);
+void ShimSdSync_saveLocalTime(void);
+void ShimSdSync_resetSyncRcNodeR10Cnt(void);
+void ShimSdSync_resetSyncVariablesBeforeParseConfig(void);
+void ShimSdSync_resetSyncVariablesDuringSyncStart(void);
+void ShimSdSync_resetSyncVariablesCenter(void);
+void ShimSdSync_resetSyncVariablesNode(void);
+void ShimSdSync_resetSyncNodeArray(void);
+uint16_t ShimSdSync_parseSyncEstExpLen(uint8_t estExpLenLsb, uint8_t estExpLenMsb);
+void ShimSdSync_setSyncEstExpLen(uint32_t est_exp_len);
+void ShimSdSync_parseSyncNodeNamesFromConfig(uint8_t *storedConfigPtr);
+void ShimSdSync_parseSyncCenterNameFromConfig(uint8_t *storedConfigPtr);
+void ShimSdSync_parseSyncCenterNameFromCfgFile(uint8_t *storedConfigPtr, char *equals);
+void ShimSdSync_parseSyncNodeNameFromCfgFile(uint8_t *storedConfigPtr, char *equals);
+void ShimSdSync_checkSyncCenterName(void);
 
-void BtSdSyncStop(void);
-void BtSdSyncStart(void);
+void ShimSdSync_stop(void);
+void ShimSdSync_start(void);
 
-void SyncCenterT10(void);
-void SyncCenterR1(void);
-uint32_t SyncNodeShift(uint8_t shift_value);
-void SyncNodeR10(void);
-void SyncNodeT1(uint8_t val);
-uint8_t RcFindSmallest(void);
+void ShimSdSync_centerT10(void);
+void ShimSdSync_centerR1(void);
+uint32_t ShimSdSync_nodeShift(uint8_t shift_value);
+void ShimSdSync_nodeR10(void);
+void ShimSdSync_nodeT1(uint8_t val);
+uint8_t ShimSdSync_rcFindSmallest(void);
 
-void handleSyncTimerTrigger(void);
-void handleSyncTimerTriggerCenter(void);
-void handleSyncTimerTriggerNode(void);
-void startBtForSync(void);
+void ShimSdSync_handleSyncTimerTrigger(void);
+void ShimSdSync_handleSyncTimerTriggerCenter(void);
+void ShimSdSync_handleSyncTimerTriggerNode(void);
+void ShimSdSync_startBtForSync(void);
 
-void CommTimerStart(void);
-void CommTimerStop(void);
+void ShimSdSync_CommTimerStart(void);
+void ShimSdSync_CommTimerStop(void);
 
 #if defined(SHIMMER3)
 uint16_t GetTA0(void);

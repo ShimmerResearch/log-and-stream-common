@@ -164,15 +164,15 @@
 #endif
 
 void ShimSdHead_reset(void);
-uint8_t *S4Ram_getSdHeadText(void);
+uint8_t *ShimSdHead_getSdHeadText(void);
 
-uint8_t S4Ram_sdHeadTextSet(const uint8_t *buf, uint16_t offset, uint16_t length);
-uint8_t S4Ram_sdHeadTextGet(uint8_t *buf, uint16_t offset, uint16_t length);
-uint8_t S4Ram_sdHeadTextGetByte(uint16_t offset);
-uint8_t S4Ram_sdHeadTextSetByte(uint16_t offset, uint8_t val);
+uint8_t ShimSdHead_sdHeadTextSet(const uint8_t *buf, uint16_t offset, uint16_t length);
+uint8_t ShimSdHead_sdHeadTextGet(uint8_t *buf, uint16_t offset, uint16_t length);
+uint8_t ShimSdHead_sdHeadTextGetByte(uint16_t offset);
+uint8_t ShimSdHead_sdHeadTextSetByte(uint16_t offset, uint8_t val);
 
 void ShimSdHead_config2SdHead(void);
 
-void saveBmpCalibrationToSdHeader(void);
+void ShimSdHead_saveBmpCalibrationToSdHeader(void);
 
 #endif /* LOG_AND_STREAM_COMMON_SDCARD_SHIMMER_SD_HEADER_H_ */
