@@ -1656,36 +1656,36 @@ void FindError(uint8_t err, uint8_t *name)
 
 void SdInfoSync()
 {
-    setSdInfoSyncDelayed(0);
-    if (GetSdCfgFlag())
-    { // info > sdcard
-        ShimConfig_readRam();
-        UpdateSdConfig();
-        SetSdCfgFlag(0);
+  setSdInfoSyncDelayed(0);
+  if (GetSdCfgFlag())
+  { //info > sdcard
+    ShimConfig_readRam();
+    UpdateSdConfig();
+    SetSdCfgFlag(0);
+  }
+  else
+  {
+    ReadSdConfiguration();
+  }
+
+  if (GetRamCalibFlag())
+  {
+    ShimmerCalib_ram2File();
+    SetRamCalibFlag(0);
+  }
+  else
+  {
+    if (ShimmerCalib_file2Ram())
+    {
+      ShimmerCalib_ram2File();
     }
     else
     {
-        ReadSdConfiguration();
+      //only need to do this when file2Ram succeeds
+      ShimmerCalibSyncFromDumpRamAll();
     }
+  }
 
-    if (GetRamCalibFlag())
-    {
-        ShimmerCalib_ram2File();
-        SetRamCalibFlag(0);
-    }
-    else
-    {
-        if (ShimmerCalib_file2Ram())
-        {
-            ShimmerCalib_ram2File();
-        }
-        else
-        {
-            // only need to do this when file2Ram succeeds
-            ShimmerCalibSyncFromDumpRamAll();
-        }
-    }
-
-    ShimSens_configureChannels();
-    CheckOnDefault();
+  ShimSens_configureChannels();
+  CheckOnDefault();
 }

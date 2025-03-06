@@ -42,10 +42,10 @@
 
 #include <Sensing/shimmer_sensing.h>
 
-#include <log_and_stream_externs.h>
-#include <Configuration/shimmer_config.h>
 #include <Comms/shimmer_bt_uart.h>
+#include <Configuration/shimmer_config.h>
 #include <TaskList/shimmer_taskList.h>
+#include <log_and_stream_externs.h>
 
 #if defined(SHIMMER3R)
 #include "shimmer_definitions.h"
@@ -584,12 +584,11 @@ void saveData(void)
 
 uint8_t areAnyChannelsEnabled(void)
 {
-  if (sensing.nbrAdcChans > 0
-          || sensing.nbrDigiChans > 0
+  if (sensing.nbrAdcChans > 0 || sensing.nbrDigiChans > 0
 #if defined(SHIMMER3R)
-          || isMicrophoneEnabled()
+      || isMicrophoneEnabled()
 #endif
-      )
+  )
 
   {
     return 1;
@@ -613,4 +612,3 @@ uint8_t CheckOnDefault(void)
   }
   return 0;
 }
-

@@ -1959,7 +1959,7 @@ void BtUart_sendRsp(void)
     switch (getCmdWaitingResponse)
     {
     case 0:
-        break;
+      break;
     case INQUIRY_COMMAND:
       /* Channel order/packet structure need to be assembled before sending the inquiry response so that the information is correct. */
       ShimSens_configureChannels();
@@ -2178,8 +2178,7 @@ void BtUart_sendRsp(void)
       break;
     case GET_CONFIG_SETUP_BYTES_COMMAND:
       *(resPacket + packet_length++) = CONFIG_SETUP_BYTES_RESPONSE;
-      memcpy(resPacket + packet_length,
-          &storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE0], 4);
+      memcpy(resPacket + packet_length, &storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE0], 4);
       packet_length += 4;
       break;
     case GET_BT_VERSION_STR_COMMAND:
@@ -2279,8 +2278,7 @@ void BtUart_sendRsp(void)
     case GET_WR_ACCEL_CALIBRATION_COMMAND:
     case GET_ALT_ACCEL_CALIBRATION_COMMAND:
     case GET_ALT_MAG_CALIBRATION_COMMAND:
-      *(resPacket + packet_length++)
-          = BtUart_getExpectedRspForGetCmd(getCmdWaitingResponse);
+      *(resPacket + packet_length++) = BtUart_getExpectedRspForGetCmd(getCmdWaitingResponse);
       packet_length += BtUart_replySingleSensorCalibCmd(
           getCmdWaitingResponse, &resPacket[packet_length]);
       break;
@@ -2358,14 +2356,12 @@ void BtUart_sendRsp(void)
     case GET_I2C_BATT_STATUS_COMMAND:
       *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
       *(resPacket + packet_length++) = RSP_I2C_BATT_STATUS_COMMAND;
-      memcpy((resPacket + packet_length),
-          (uint8_t *) shimmerStatus.battDigital, STC3100_DATA_LEN);
+      memcpy((resPacket + packet_length), (uint8_t *) shimmerStatus.battDigital, STC3100_DATA_LEN);
       packet_length += STC3100_DATA_LEN;
       break
 #endif
 
-      default:
-        break;
+          default: break;
     }
     getCmdWaitingResponse = 0;
 

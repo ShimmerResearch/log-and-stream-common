@@ -73,7 +73,7 @@
      //3xexternalADC + 5xinternalADC
 #endif
 
-#define FIRST_CH_BYTE_IDX (1 + 3) // 0x00 + timestamp
+#define FIRST_CH_BYTE_IDX (1 + 3) //0x00 + timestamp
 
 typedef struct
 { //data ptr (offset)
