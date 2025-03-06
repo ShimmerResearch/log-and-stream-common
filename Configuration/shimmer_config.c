@@ -62,14 +62,17 @@ uint32_t maxLen, maxLenCnt;
 
 void ShimConfig_reset(void)
 {
-  calibRamFlag = 0;
+  memset(btMacAscii, 0x00, sizeof(btMacAscii));
+  memset(btMacHex, 0x00, sizeof(btMacHex));
 
-  memset(storedConfig.rawBytes, 0xff, NV_NUM_RWMEM_BYTES);
+  memset(storedConfig.rawBytes, 0xFF, NV_NUM_RWMEM_BYTES);
   storedConfig.rawBytes[NV_SD_SHIMMER_NAME] = '\0';
   storedConfig.rawBytes[NV_SD_EXP_ID_NAME] = '\0';
 
-  memset(btMacAscii, 0x00, sizeof(btMacAscii));
-  memset(btMacHex, 0x00, sizeof(btMacHex));
+  calibRamFlag = 0;
+
+  maxLen = 0;
+  maxLenCnt = 0;
 }
 
 void ShimConfig_readRam(void)
@@ -672,6 +675,7 @@ uint8_t ShimConfig_checkAutostopCondition(void)
       return 1; //Trigger auto-stop
     }
   }
+  return 0; // No action
 }
 
 /* Note samplingRate can be either a freq or a ticks value */
