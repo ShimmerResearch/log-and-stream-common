@@ -46,6 +46,7 @@
 #include <string.h>
 
 #include <Boards/shimmer_boards.h>
+#include <Calibration/shimmer_calibration.h>
 #include <SDCard/shimmer_sd.h>
 #include <SDCard/shimmer_sd_header.h>
 #include <SDSync/shimmer_sd_sync.h>
@@ -728,7 +729,7 @@ void ShimConfig_loadSensorConfigAndCalib(void)
 
   if (!shimmerStatus.docked && CheckSdInslot())
   { //sd card ready to access
-    if (!isSdPowerOn())
+    if (!shimmerStatus.sdPowerOn)
     {
       //Hits here when undocked
       Board_setSdPower(1);
