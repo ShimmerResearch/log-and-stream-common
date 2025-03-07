@@ -10,20 +10,20 @@
 
 #include <stdint.h>
 
-#define FW_IS_LOGANDSTREAM  1
+#define FW_IS_LOGANDSTREAM        1
 
 #define IS_SUPPORTED_SINGLE_TOUCH 0
 #define USE_FATFS                 1
 #define USE_SD                    1
 
-#define MAX_NODES       20
-#define MAX_CHARS       13
-#define UINT32_LEN      11 // 10+1, where the last byte should be 0x00
-#define UINT64_LEN      21 // 20+1, where the last byte should be 0x00
+#define MAX_NODES                 20
+#define MAX_CHARS                 13
+#define UINT32_LEN                11 //10+1, where the last byte should be 0x00
+#define UINT64_LEN                21 //20+1, where the last byte should be 0x00
 #if defined(SHIMMER3)
 #define RESPONSE_PACKET_SIZE 133
 #else
-#define RESPONSE_PACKET_SIZE            1024 //133
+#define RESPONSE_PACKET_SIZE 1024 //133
 #endif
 
 typedef volatile struct STATTypeDef_t
