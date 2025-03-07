@@ -200,7 +200,7 @@ void ShimSens_startSensing(void)
       return;
     }
 
-    uint16_t samplingRateTicks = S4Ram_getStoredConfig()->samplingRateTicks;
+    uint16_t samplingRateTicks = ShimConfig_getStoredConfig()->samplingRateTicks;
     sensing.freq = get_shimmer_sampling_freq();
     if (sensing.freq > 4096.0)
     { //Please don't go too fast, Thx, Best Regards.
@@ -312,7 +312,7 @@ void ShimSens_stopSensing(void)
   }
   if (ShimSens_checkStopLoggingConditions())
   {
-    SD_close();
+    ShimSd_close();
     HAL_Delay(10);
   }
   if (ShimSens_checkStopSensorConditions())
@@ -329,9 +329,9 @@ void ShimSens_stopSensing(void)
   //shimmerStatus.sdlogCmd = 0;
   shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
 
-  if (isSdInfoSyncDelayed())
+  if (ShimSd_isSdInfoSyncDelayed())
   {
-    SdInfoSync();
+    ShimSd_sdInfoSync();
   }
 
   shimmerStatus.configuring = 0;
@@ -363,7 +363,7 @@ void ShimSens_stopPeripherals(void)
 
   Board_enableSensingPower(SENSE_PWR_SENSING, 0);
 
-  if (isMicrophoneEnabled())
+  if (ShimConfig_isMicrophoneEnabled())
   {
     micStopSensing();
   }
@@ -466,17 +466,17 @@ void ShimSens_sensingStart(void)
 
 void ShimSens_adcCompleteCb(void)
 {
-  sensing_stageCompleteCb(STAT_PERI_ADC);
+  ShimSens_stageCompleteCb(STAT_PERI_ADC);
 }
 
 void ShimSens_i2cCompleteCb(void)
 {
-  sensing_stageCompleteCb(STAT_PERI_I2C_SENS);
+  ShimSens_stageCompleteCb(STAT_PERI_I2C_SENS);
 }
 
 void ShimSens_spiCompleteCb(void)
 {
-  sensing_stageCompleteCb(STAT_PERI_SPI_SENS);
+  ShimSens_stageCompleteCb(STAT_PERI_SPI_SENS);
 }
 
 void ShimSens_stageCompleteCb(uint8_t stage)
@@ -555,7 +555,7 @@ void ShimSens_saveData(void)
   if (shimmerStatus.sdLogging)
   {
     PeriStat_Set(STAT_PERI_SDMMC);
-    SD_writeToBuff(sensing.dataBuf + 1, sensing.dataLen - 1);
+    ShimSd_writeToBuff(sensing.dataBuf + 1, sensing.dataLen - 1);
     PeriStat_Clr(STAT_PERI_SDMMC);
   }
 #endif
@@ -563,7 +563,7 @@ void ShimSens_saveData(void)
   ShimSens_checkStartStreamingConditions();
   if (shimmerStatus.btStreaming)
   {
-    uint8_t crcMode = getBtCrcMode();
+    uint8_t crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
     {
       calculateCrcAndInsert(crcMode, sensing.dataBuf, sensing.dataLen);

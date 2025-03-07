@@ -109,7 +109,7 @@ void ShimCalib_init(void)
 #if defined(SHIMMER3)
   memcpy(shimmerCalib_macId, getMacIdStrPtr() + 8, 4);
 #elif defined(SHIMMER3R)
-  memcpy(shimmerCalib_macId, S4Ram_getMacIdStrPtr() + 8, 4);
+  memcpy(shimmerCalib_macId, ShimConfig_getMacIdStrPtr() + 8, 4);
 #endif
   shimmerCalib_macId[4] = 0;
 
@@ -145,9 +145,11 @@ void ShimCalib_ram2File(void)
   if (shimmerCalib_ramLen > 0)
   {
     strcpy((char *) cal_file_name, "/Calibration");
-    if (res = f_opendir(&gdc, "/Calibration"))
+    res = f_opendir(&gdc, "/Calibration");
+    if (res)
     {
-      if (res = f_opendir(&gdc, "/calibration"))
+      res = f_opendir(&gdc, "/calibration");
+      if (res)
       {
         if (res == FR_NO_PATH)
         { //we'll have to make /Calibration first
@@ -179,7 +181,7 @@ void ShimCalib_ram2File(void)
     _delay_cycles(1200000); //50ms
 #elif defined(SHIMMER3R)
     HAL_Delay(50); //50ms
-    set_file_timestamp(cal_file_name);
+    ShimSd_setFileTimestamp(cal_file_name);
 #endif
   }
 }
@@ -196,6 +198,7 @@ uint8_t ShimCalib_file2Ram(void)
   DIRS gdc;
 #elif _FATFS == FATFS_V_0_12C
   DIR gdc;
+  FILINFO calibFileInfo;
 #endif
   FIL gfc;
   UINT bw;
@@ -263,7 +266,7 @@ uint8_t ShimCalib_file2Ram(void)
   _delay_cycles(1200000); //50ms
 #elif defined(SHIMMER3R)
   HAL_Delay(50); //50ms
-  set_file_timestamp(cal_file_name);
+  ShimSd_setFileTimestamp(cal_file_name);
 #endif
 
 #endif
@@ -454,7 +457,7 @@ void ShimCalib_default(uint8_t sensor)
   }
   else if (sensor == SC_SENSOR_LIS2MDL_MAG)
   {
-    ShimCalib_ setDefaultLis2mdlMagCalib(&sc1);
+    ShimCalib_setDefaultLis2mdlMagCalib(&sc1);
   }
 #endif
 }

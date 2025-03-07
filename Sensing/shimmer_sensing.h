@@ -52,6 +52,8 @@
 #include "shimmer_include.h"
 #endif
 
+#define FIRST_CH_BYTE_IDX (1 + 3) //0x00 + timestamp
+
 #if defined(SHIMMER3)
 #define MAX_NUM_CHANNELS \
   45 //3xanalogAccel + 3xdigiGyro + 3xdigiMag +
@@ -73,7 +75,75 @@
      //3xexternalADC + 5xinternalADC
 #endif
 
-#define FIRST_CH_BYTE_IDX (1 + 3) //0x00 + timestamp
+//Streaming Channel contents
+#define X_LN_ACCEL 0x00
+#define Y_LN_ACCEL 0x01
+#define Z_LN_ACCEL 0x02
+#define VBATT      0x03
+#define X_WR_ACCEL 0x04
+#define Y_WR_ACCEL 0x05
+#define Z_WR_ACCEL 0x06
+#define X_MAG      0x07
+#define Y_MAG      0x08
+#define Z_MAG      0x09
+#define X_GYRO     0x0A
+#define Y_GYRO     0x0B
+#define Z_GYRO     0x0C
+#if defined(SHIMMER3R)
+#define EXTERNAL_ADC_0 0x0D
+#define EXTERNAL_ADC_1 0x0E
+#define EXTERNAL_ADC_2 0x0F
+#define INTERNAL_ADC_3 0x10
+#define INTERNAL_ADC_0 0x11
+#define INTERNAL_ADC_1 0x12
+#define INTERNAL_ADC_2 0x13
+#elif defined(SHIMMER3)
+#define EXTERNAL_ADC_7  0x0D
+#define EXTERNAL_ADC_6  0x0E
+#define EXTERNAL_ADC_15 0x0F
+#define INTERNAL_ADC_1  0x10
+#define INTERNAL_ADC_12 0x11
+#define INTERNAL_ADC_13 0x12
+#define INTERNAL_ADC_14 0x13
+#endif
+#define X_ALT_ACCEL              0x14
+#define Y_ALT_ACCEL              0x15
+#define Z_ALT_ACCEL              0x16
+#define X_ALT_MAG                0x17
+#define Y_ALT_MAG                0x18
+#define Z_ALT_MAG                0x19
+#define BMP_TEMPERATURE          0x1A
+#define BMP_PRESSURE             0x1B
+#define GSR_RAW                  0x1C
+#define EXG_ADS1292R_1_STATUS    0x1D
+#define EXG_ADS1292R_1_CH1_24BIT 0x1E
+#define EXG_ADS1292R_1_CH2_24BIT 0x1F
+#define EXG_ADS1292R_2_STATUS    0x20
+#define EXG_ADS1292R_2_CH1_24BIT 0x21
+#define EXG_ADS1292R_2_CH2_24BIT 0x22
+#define EXG_ADS1292R_1_CH1_16BIT 0x23
+#define EXG_ADS1292R_1_CH2_16BIT 0x24
+#define EXG_ADS1292R_2_CH1_16BIT 0x25
+#define EXG_ADS1292R_2_CH2_16BIT 0x26
+#define STRAIN_HIGH              0x27
+#define STRAIN_LOW               0x28
+#if defined(SHIMMER4_SDK)
+#define STC3100_CH_1    0x29
+#define STC3100_CH_2    0x2A
+#define STC3100_CH_3    0x2B
+#define STC3100_CH_4    0x2C
+#define STC3100_CH_5    0x2D
+#define EXTERNAL_ADC_0  0x2E
+#define EXTERNAL_ADC_1  0x2F
+#define EXTERNAL_ADC_15 0x30
+#define INTERNAL_ADC_1  0x31
+#define INTERNAL_ADC_12 0x32
+#define INTERNAL_ADC_13 0x33
+#define INTERNAL_ADC_14 0x34
+#define INT_ADC_3       0x35
+#define PPG_1           0x36
+#define PPG_2           0x37
+#endif
 
 typedef struct
 { //data ptr (offset)
@@ -156,10 +226,10 @@ void ShimSens_gatherData(void);
 void ShimSens_stepInit(void);
 #if defined(SHIMMER3R)
 void ShimSens_sensingStart(void);
-void sensing_adcCompleteCb(void);
-void sensing_i2cCompleteCb(void);
-void sensing_spiCompleteCb(void);
-void sensing_stageCompleteCb(uint8_t stage);
+void ShimSens_adcCompleteCb(void);
+void ShimSens_i2cCompleteCb(void);
+void ShimSens_spiCompleteCb(void);
+void ShimSens_stageCompleteCb(uint8_t stage);
 #elif defined(SHIMMER4_SDK)
 void ShimSens_step1Start(void);
 void ShimSens_step2Start(void);

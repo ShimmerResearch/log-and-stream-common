@@ -16,6 +16,7 @@
 #include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd_header.h>
 #include <TaskList/shimmer_taskList.h>
+#include <log_and_stream_externs.h>
 
 #if defined(SHIMMER3)
 #include "msp430.h"
@@ -24,10 +25,7 @@
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_RTC.h"
 #include "Comms/shimmer_bt_uart.h"
-#include "log_and_stream_externs.h"
 #elif defined(SHIMMER3R)
-#include "s4_taskList.h"
-#include "shimmer_bt_comms.h"
 #include "shimmer_definitions.h"
 #endif
 
@@ -54,12 +52,9 @@ void (*btStopCb)(uint8_t);
 uint8_t (*taskSetCb)(uint16_t);
 
 #if defined(SHIMMER3)
-extern uint8_t onSingleTouch, stopLogging;
+extern uint8_t stopLogging;
 extern uint8_t all0xff[7U];
 #elif defined(SHIMMER3R)
-extern SENSINGTypeDef sensing;
-extern STATTypeDef stat;
-extern uint8_t sdHeadText[SD_HEAD_SIZE];
 static uint8_t all0xff[7U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 #endif
 
@@ -520,11 +515,7 @@ void ShimSdSync_nodeR10(void)
     }
     else
     {
-#if defined(SHIMMER3)
-      if (onSingleTouch
-#elif defined(SHIMMER3R)
-      if (S4Ram_getStoredConfig()->singleTouchStart
-#endif
+      if (ShimConfig_getStoredConfig()->singleTouchStart
           && !shimmerStatus.sensing && sd_tolog)
       {
         taskSetCb(TASK_STARTSENSING);

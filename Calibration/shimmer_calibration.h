@@ -1,9 +1,9 @@
 #ifndef SHIMMER_CALIBRATION_H
 #define SHIMMER_CALIBRATION_H
 
-#if defined(SHIMMER3)
 #include <stdint.h>
-#elif defined(SHIMMER3R)
+
+#if defined(SHIMMER3R)
 #include "shimmer_definitions.h"
 #include <shimmer_include.h>
 #endif

@@ -257,7 +257,7 @@ uint8_t ShimBrd_isI2c4Supported(void)
 
 uint8_t ShimBrd_isBoardSr48_6_0(void)
 {
-  return isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0);
+  return ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0);
 }
 #endif
 

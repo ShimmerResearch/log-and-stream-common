@@ -105,10 +105,12 @@
 //#define SDH_MY_LOCALTIME_0TH             248
 #define SDH_MY_LOCALTIME_5TH            251
 #define SDH_MY_LOCALTIME                252 //252-255
+#if defined(SHIMMER3R)
 #define SDH_ALT_ACCEL_CALIBRATION       256 //+21
 #define SDH_ALT_ACCEL_CALIB_TS          277 //+8
 #define SDH_ALT_MAG_CALIBRATION         285 //+21
 #define SDH_ALT_MAG_CALIB_TS            306 //+8
+#endif
 
 #if defined(SHIMMER3)
 //SENSORS0

@@ -251,7 +251,7 @@ void ShimConfig_setDefaultConfig(void)
   ShimConfig_gyroRangeSet(&storedConfig, LSM6DSV_500dps);
   storedConfig.lnAccelRange = LSM6DSV_2g;
   ShimConfig_configBytePressureOversamplingRatioSet(&storedConfig, BMP3_NO_OVERSAMPLING);
-  set_config_byte_wr_accel_mode(&storedConfig, LIS2DW12_HIGH_PERFORMANCE);
+  ShimConfig_wrAccelModeSet(&storedConfig, LIS2DW12_HIGH_PERFORMANCE);
   storedConfig.altMagRate = LIS2MDL_ODR_100Hz;
 #endif
   /* GSR auto range */
@@ -426,7 +426,7 @@ void ShimConfig_wrAccelModeSet(gConfigBytes *storedConfigPtr, lis2dw12_mode_t va
   ShimConfig_wrAccelLpModeSet(storedConfigPtr, value & 0x03);
 }
 
-lis2dw12_mode_t ShimConfig_wrAccelModeSet(void)
+lis2dw12_mode_t ShimConfig_wrAccelModeGet(void)
 {
   lis2dw12_mode_t wrAccelMode = (lis2dw12_mode_t) ((storedConfig.wrAccelHrMode << 2)
       | ShimConfig_wrAccelLpModeGet());
@@ -486,14 +486,14 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
   if (storedConfigPtr->chEnGsr
 #if defined(SHIMMER3)
       && storedConfigPtr->chEnIntADC1)
-#elif defined(SHIMMER3)
-      && (storedConfigPtr->chEnIntADC3)
+#elif defined(SHIMMER3R)
+      && storedConfigPtr->chEnIntADC3)
 #endif
   {
 #if defined(SHIMMER3)
     //they are sharing Shimmer3 adc1, so ban intch1 when gsr is on
     storedConfigPtr->chEnIntADC1 = 0;
-#elif defined(SHIMMER3)
+#elif defined(SHIMMER3R)
     storedConfigPtr->chEnIntADC3 = 0;
 #endif
     settingCorrected = 1;
@@ -501,7 +501,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
   if (storedConfigPtr->chEnBridgeAmp
 #if defined(SHIMMER3)
       && (storedConfigPtr->chEnIntADC13 || storedConfigPtr->chEnIntADC14))
-#elif defined(SHIMMER3)
+#elif defined(SHIMMER3R)
       && (storedConfigPtr->chEnIntADC1 || storedConfigPtr->chEnIntADC2))
 #endif
   {
@@ -509,7 +509,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
     //they are sharing adc13 and adc14
     storedConfigPtr->chEnIntADC13 = 0;
     storedConfigPtr->chEnIntADC14 = 0;
-#elif defined(SHIMMER3)
+#elif defined(SHIMMER3R)
     storedConfigPtr->chEnIntADC1 = 0;
     storedConfigPtr->chEnIntADC2 = 0;
 #endif
@@ -529,14 +529,14 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
           || storedConfigPtr->chEnExg1_16Bit || storedConfigPtr->chEnExg2_16Bit)
 #if defined(SHIMMER3)
       && (storedConfigPtr->chEnIntADC1 || storedConfigPtr->chEnIntADC14))
-#elif defined(SHIMMER3)
+#elif defined(SHIMMER3R)
       && (storedConfigPtr->chEnIntADC3 || storedConfigPtr->chEnIntADC2))
 #endif
   {
 #if defined(SHIMMER3)
     storedConfigPtr->chEnIntADC1 = 0;
     storedConfigPtr->chEnIntADC14 = 0;
-#elif defined(SHIMMER3)
+#elif defined(SHIMMER3R)
     storedConfigPtr->chEnIntADC3 = 0;
     storedConfigPtr->chEnIntADC2 = 0;
 #endif
@@ -587,7 +587,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
    * and pin code but is no longer needed due to BT driver updates. */
   if (storedConfigPtr->btPinSetup == 0xAA)
   {
-    storedConfigPtr->btPinSetup = 0xAB;
+    storedConfigPtr->btPinSetup = (uint8_t) 0xAB;
     settingCorrected = 1;
   }
 
@@ -720,3 +720,48 @@ uint8_t ShimConfig_isMicrophoneEnabled(void)
   return storedConfig.chEnMicrophone;
 }
 #endif
+
+void ShimConfig_loadSensorConfigAndCalib(void)
+{
+  ShimCalib_init();
+  ShimCalib_initFromInfoAll();
+
+  if (!shimmerStatus.docked && CheckSdInslot())
+  { //sd card ready to access
+    if (!isSdPowerOn())
+    {
+      //Hits here when undocked
+      Board_setSdPower(1);
+    }
+    if (ShimConfig_getSdCfgFlag())
+    { //info > sdcard
+      ShimConfig_readRam();
+      ShimSd_updateSdConfig();
+      ShimConfig_setSdCfgFlag(0);
+      if (!ShimSd_isFileStatusOk())
+      {
+        shimmerStatus.sdlogReady = 0;
+        shimmerStatus.sdBadFile = 1;
+      }
+    }
+    else
+    {
+      //Hits here when undocked
+      ReadSdConfiguration();
+    }
+
+    if (ShimCalib_file2Ram())
+    {
+      //fail, i.e. no such file. use current DumpRam to generate a file
+      ShimCalib_ram2File();
+      ShimConfig_readRam();
+    }
+  }
+  else
+  { //sd card not available
+    ShimConfig_readRam();
+    //CalibFromInfoAll();
+  }
+
+  ShimCalib_syncFromDumpRamAll();
+}

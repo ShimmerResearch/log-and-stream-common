@@ -24,10 +24,7 @@
 #elif defined(SHIMMER3R) || defined(SHIMMER4_SDK)
 #include "bmp3_defs.h"
 #include "hal_FactoryTest.h"
-#include "s4_sensing.h"
-#include "s4_taskList.h"
 #include "shimmer_definitions.h"
-#include "shimmer_externs.h"
 #endif
 
 #include <Boards/shimmer_boards.h>
@@ -76,10 +73,6 @@ uint16_t infomemOffset, dcMemOffset, calibRamOffset;
 
 //ExG
 uint8_t exgLength, exgChip, exgStartAddr;
-
-#if defined(SHIMMER3R)
-uint16_t btRxWaitByteCount = 0;
-#endif
 
 uint8_t btDataRateTestState;
 uint32_t btDataRateTestCounter;
@@ -2071,6 +2064,7 @@ void ShimBt_sendRsp(void)
       *(resPacket + packet_length++) = ShimConfig_gyroRangeGet();
       break;
     case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
+#if defined(SHIMMER3)
       *(resPacket + packet_length++) = BMP180_CALIBRATION_COEFFICIENTS_RESPONSE;
       if (isBmp180InUse())
       {
@@ -2082,8 +2076,12 @@ void ShimBt_sendRsp(void)
         memset(resPacket + packet_length, 0x01, BMP180_CALIB_DATA_SIZE);
       }
       packet_length += BMP180_CALIB_DATA_SIZE;
+#elif defined(SHIMMER3R)
+      sendNack = 1;
+#endif
       break;
     case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
+#if defined(SHIMMER3)
       *(resPacket + packet_length++) = BMP280_CALIBRATION_COEFFICIENTS_RESPONSE;
       if (isBmp280InUse())
       {
@@ -2095,11 +2093,15 @@ void ShimBt_sendRsp(void)
         memset(resPacket + packet_length, 0x01, BMP280_CALIB_DATA_SIZE);
       }
       packet_length += BMP280_CALIB_DATA_SIZE;
+#elif defined(SHIMMER3R)
+      sendNack = 1;
+#endif
       break;
     case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       bmpCalibByteLen = get_bmp_calib_data_bytes_len();
       *(resPacket + packet_length++) = PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE;
       *(resPacket + packet_length++) = 1U + bmpCalibByteLen;
+#if defined(SHIMMER3)
       if (isBmp180InUse())
       {
         *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP180;
@@ -2112,6 +2114,9 @@ void ShimBt_sendRsp(void)
       {
         *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
       }
+#elif defined(SHIMMER3R)
+      *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
+#endif
       memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
       packet_length += bmpCalibByteLen;
       break;
@@ -2380,18 +2385,6 @@ uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd)
     return 0;
   }
 }
-
-#if defined(SHIMMER3R)
-void ShimBt_setDmaWaitingForResponse(uint16_t count)
-{
-  btRxWaitByteCount = count;
-}
-
-uint16_t ShimBt_getBtRxShimmerCommsWaitByteCount(void)
-{
-  return btRxWaitByteCount;
-}
-#endif
 
 void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew)
 {

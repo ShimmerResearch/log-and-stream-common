@@ -267,11 +267,6 @@ uint8_t ShimBt_replySingleSensorCalibCmd(uint8_t cmdWaitingResponse, uint8_t *re
 void ShimBt_sendRsp(void);
 uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd);
 
-#if defined(SHIMMER3R)
-void ShimBt_setDmaWaitingForResponse(uint16_t count);
-uint16_t ShimBt_getBtRxShimmerCommsWaitByteCount(void);
-#endif
-
 void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew);
 COMMS_CRC_MODE ShimBt_getCrcMode(void);
 

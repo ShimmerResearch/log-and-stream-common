@@ -335,7 +335,6 @@ typedef union
     uint8_t unusedIdx126;
     uint8_t unusedIdx127;
 
-#if defined(FW_IS_LOGANDSTREAM)
     //Idx 128: Sensors3
     uint8_t unusedIdx128;
 
@@ -360,58 +359,11 @@ typedef union
 
     //Idx 132: Config setup byte 6
     uint8_t unusedIdx132;
-#else
-    //cfg for sd
-    //Idx 128: Sensors3
-    uint8_t chEnMplMotionOrient : 1;
-    uint8_t chEnMplTap          : 1;
-    uint8_t chEnMplPedometer    : 1;
-    uint8_t chEnMplHeading      : 1;
-    uint8_t chEnMplEuler_9Dof   : 1;
-    uint8_t chEnMplEuler_6Dof   : 1;
-    uint8_t chEnMplQuat9Dof     : 1;
-    uint8_t chEnMplQuat6Dof     : 1;
-
-    //Idx 129: Sensors4
-    uint8_t unusedIdx129Bit0    : 1;
-    uint8_t unusedIdx129Bit1    : 1;
-    uint8_t unusedIdx129Bit2    : 1;
-    uint8_t unusedIdx129Bit3    : 1;
-    uint8_t chEnMplQuat6DofRaw  : 1;
-    uint8_t chEnMpu9x50MagCal   : 1;
-    uint8_t chEnMpu9x50AccelCal : 1;
-    uint8_t chEnMpu9x50GyroCal  : 1;
-
-    //Idx 130: Config setup byte 4
-    uint8_t mpu9x50MotCalCfg    : 3;
-    uint8_t mpu9x50Lfp          : 3;
-    uint8_t mpu9x50MplUseLsmMag : 1;
-    uint8_t mpu9x50Dmp          : 1;
-
-    //Idx 131: Config setup byte 5
-    uint8_t mpu9x50MplMagMix       : 2;
-    uint8_t altMagSamplingRate     : 3;
-    uint8_t mpu9x50MplSamplingRate : 3;
-
-    //Idx 132: Config setup byte 6
-    uint8_t unusedIdx132Bit0       : 1;
-    uint8_t unusedIdx132Bit1       : 1;
-    uint8_t unusedIdx132Bit2       : 1;
-    uint8_t mpu9x50MplEnable       : 1;
-    uint8_t mpu9x50MplMagDistCal   : 1;
-    uint8_t mpu9x50MplVectCompCal  : 1;
-    uint8_t mpu9x50MplGyroCalTc    : 1;
-    uint8_t mpu9x50MplSensorFusion : 1;
-#endif
 
     gImuConfig altAccelCalib;
     gImuConfig altMagCalib;
 
-#if defined(FW_IS_LOGANDSTREAM)
     uint8_t unusedIdx175To186[12];
-#else
-    uint8_t mpu9x50MplGyroCalibration[12];
-#endif
 
     char shimmerName[12];
     char expIdName[12];
@@ -545,7 +497,7 @@ void ShimConfig_wrAccelLpModeSet(gConfigBytes *storedConfigPtr, uint8_t value);
 uint8_t ShimConfig_wrAccelLpModeGet(void);
 #if defined(SHIMMER3R)
 void ShimConfig_wrAccelModeSet(gConfigBytes *storedConfigPtr, lis2dw12_mode_t value);
-lis2dw12_mode_t ShimConfig_wrAccelModeSet(void);
+lis2dw12_mode_t ShimConfig_wrAccelModeGet(void);
 #endif
 void ShimConfig_configBytePressureOversamplingRatioSet(gConfigBytes *storedConfigPtr,
     uint8_t value);
@@ -564,5 +516,6 @@ void ShimConfig_checkBtModeFromConfig(void);
 #if defined(SHIMMER3R)
 uint8_t ShimConfig_isMicrophoneEnabled(void);
 #endif
+void ShimConfig_loadSensorConfigAndCalib(void);
 
 #endif //SHIMMER_CONFIG_H

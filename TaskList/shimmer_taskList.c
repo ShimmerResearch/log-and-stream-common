@@ -81,41 +81,6 @@ void ShimTask_NORM_manage(void)
   if (!taskCurrent)
   {
     sleepWhenNoTask();
-    //#if defined(SHIMMER3R)
-    //      /* Only wake MCU when new Task is set. See corresponding
-    //       * HAL_PWR_DisableSleepOnExit() in ShimTask_set() */
-    //      HAL_PWR_EnableSleepOnExit();
-    //
-    //      Power_SleepUntilInterrupt();
-    //
-    //      //if(shimmerStatus.isBtConnected && !shimmerStatus.isSensing){
-    //      //   Power_SleepUntilInterrupt();
-    //      //
-    //      //   __NOP();
-    //      //   __NOP();
-    //      //   __NOP();
-    //      //}else{
-    //      //   if(shimmerStatus.periStat == 0)
-    //      //   {
-    //      ////            static uint8_t green1_cnt = 0;
-    //      ////            if(!green1_cnt++){
-    //      ////               Board_ledToggle(LED_GREEN1);
-    //      ////            }
-    //      //Power_StopUntilInterrupt();
-    //      //}
-    //      //else
-    //      //{
-    //      //static uint8_t blue_cnt = 0;
-    //      //if(!blue_cnt++){
-    //      //   Board_ledToggle(LED_BLUE);
-    //      //}
-    //      //__NOP();
-    //      //__NOP();
-    //      //__NOP();
-    //      //Power_SleepUntilInterrupt();
-    //      //}
-    //      //}
-    //#endif
   }
   else
   {
@@ -153,7 +118,7 @@ void ShimTask_NORM_manage(void)
 #if defined(SHIMMER3)
       checkStreamData();
 #else
-      S4Sens_streamData();
+      ShimSens_streamData();
 #endif
       break;
 #if defined(SHIMMER3)
@@ -169,7 +134,7 @@ void ShimTask_NORM_manage(void)
 #endif
 #if defined(SHIMMER3R)
     case TASK_SAVEDATA:
-      saveData();
+      ShimSens_saveData();
       break;
 #endif
     case TASK_STARTSENSING:
@@ -177,12 +142,12 @@ void ShimTask_NORM_manage(void)
 #if defined(SHIMMER3)
       checkStartSensing();
 #elif defined(SHIMMER3R)
-      S4Sens_startSensing();
+      ShimSens_startSensing();
 #endif
       break;
 #if defined(SHIMMER3R)
     case TASK_STOPSENSING:
-      S4Sens_stopSensing();
+      ShimSens_stopSensing();
       break;
 #endif
     case TASK_SDWRITE:
@@ -190,7 +155,7 @@ void ShimTask_NORM_manage(void)
 #if defined(SHIMMER3)
       Write2SD();
 #elif defined(SHIMMER3R)
-      SD_writeToCard();
+      ShimSd_writeToCard();
 #endif
       break;
     case TASK_SDLOG_CFG_UPDATE:
