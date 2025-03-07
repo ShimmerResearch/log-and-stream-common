@@ -515,8 +515,7 @@ void ShimSdSync_nodeR10(void)
     }
     else
     {
-      if (ShimConfig_getStoredConfig()->singleTouchStart
-          && !shimmerStatus.sensing && sd_tolog)
+      if (ShimConfig_getStoredConfig()->singleTouchStart && !shimmerStatus.sensing && sd_tolog)
       {
         taskSetCb(TASK_STARTSENSING);
       }
