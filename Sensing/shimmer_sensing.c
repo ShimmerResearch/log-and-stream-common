@@ -201,7 +201,7 @@ void ShimSens_startSensing(void)
     }
 
     uint16_t samplingRateTicks = ShimConfig_getStoredConfig()->samplingRateTicks;
-    sensing.freq = get_shimmer_sampling_freq();
+    sensing.freq = ShimConfig_getShimmerSamplingFreq();
     if (sensing.freq > 4096.0)
     { //Please don't go too fast, Thx, Best Regards.
       shimmerStatus.configuring = 0;
@@ -222,7 +222,7 @@ void ShimSens_startSensing(void)
     I2C_startSensing();
     SPI_startSensing();
 
-    if (isMicrophoneEnabled())
+    if (ShimConfig_isMicrophoneEnabled())
     {
       //TODO remove IF when fully switched from eval board to BGA variant
 #ifdef S3R_NUCLEO
@@ -252,7 +252,7 @@ void ShimSens_startSensing(void)
 
     if (ShimSens_checkStartLoggingConditions())
     {
-      SD_fileInit();
+      ShimSd_fileInit();
     }
   }
 
@@ -582,11 +582,11 @@ void ShimSens_saveData(void)
 }
 #endif
 
-uint8_t ShimSens_(void)
+uint8_t ShimSens_areAnyChannelsEnabled(void)
 {
   if (sensing.nbrAdcChans > 0 || sensing.nbrDigiChans > 0
 #if defined(SHIMMER3R)
-      || isMicrophoneEnabled()
+      || ShimConfig_isMicrophoneEnabled()
 #endif
   )
 

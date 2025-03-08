@@ -1023,11 +1023,7 @@ void ShimSd_parseConfig(void)
 #endif
     stored_config_temp.gsrRange = GSR_AUTORANGE;
     stored_config_temp.bufferSize = 1;
-#if defined(SHIMMER3)
     stored_config_temp.btCommsBaudRate = getDefaultBaudForBtVersion();
-#elif defined(SHIMMER3R)
-    stored_config_temp.btCommsBaudRate = 0xFF;
-#endif
     stored_config_temp.bluetoothDisable = 0;
     stored_config_temp.btIntervalSecs = SYNC_INT_C;
 

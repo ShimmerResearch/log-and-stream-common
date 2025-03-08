@@ -1284,7 +1284,7 @@ void ShimBt_processCmd(void)
         sizeof(storedConfig->shimmerName);
     memset(&storedConfig->shimmerName[0], 0, sizeof(storedConfig->shimmerName));
     memcpy(&storedConfig->shimmerName[0], &args[1], name_len);
-    InfoMem_write(NV_SD_SHIMMER_NAME, &storedConfig->shimmerName[0],
+    InfoMem_write(NV_SD_SHIMMER_NAME, (uint8_t *)&storedConfig->shimmerName[0],
         sizeof(storedConfig->shimmerName));
     ShimSd_setShimmerName();
     update_sdconfig = 1;
@@ -1295,7 +1295,7 @@ void ShimBt_processCmd(void)
         sizeof(storedConfig->expIdName);
     memset(&storedConfig->expIdName[0], 0, sizeof(storedConfig->expIdName));
     memcpy(&storedConfig->expIdName[0], &args[1], name_len);
-    InfoMem_write(NV_SD_EXP_ID_NAME, &storedConfig->expIdName[0],
+    InfoMem_write(NV_SD_EXP_ID_NAME, (uint8_t *)&storedConfig->expIdName[0],
         sizeof(storedConfig->expIdName));
     ShimSd_setExpIdName();
     update_sdconfig = 1;
