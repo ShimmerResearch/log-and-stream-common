@@ -199,7 +199,7 @@ typedef union
     uint8_t chEnExtADC1 : 1; //S3 = ADC6, S3R = ADC11, S4_SDK = ADC8
     uint8_t chEnExtADC0 : 1; //S3 = ADC7, S3R = ADC9, S4_SDK = ADC9
 #endif
-    uint8_t chEnGsr        : 1;
+    uint8_t chEnGsr        : 1; //S3 = IntADC1, S3R = IntADC3
     uint8_t chEnExg2_24Bit : 1;
     uint8_t chEnExg1_24Bit : 1;
     uint8_t chEnMag  : 1; //S3/S4_SDK = LSM303DLHC/LSM303AH, S3R = LIS3MDL Mag
@@ -227,7 +227,7 @@ typedef union
 #else
     uint8_t unusedIdx4Bit6 : 1;
 #endif
-    uint8_t chEnBridgeAmp : 1;
+    uint8_t chEnBridgeAmp : 1; //S3 = IntADC13 & IntADC14, S3R = IntADC1 & IntADC2
 
     //Idx 5: Sensors 2
 #if defined(SHIMMER3)
