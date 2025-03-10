@@ -304,7 +304,8 @@ uint8_t ShimSd_setBasedir(void)
     }
 
     //try one more time
-    if (file_status = f_opendir(&dir, "/data"))
+    file_status = f_opendir(&dir, "/data");
+    if (file_status)
     {
       return 0; //FAIL;
     }
@@ -411,7 +412,8 @@ uint8_t ShimSd_makeBasedir(void)
   strcat((char *) dirName, dir_counter_text);
 
 #if USE_FATFS
-  if (file_status = f_mkdir((char *) dirName))
+  file_status = f_mkdir((char *) dirName);
+  if (file_status)
   {
     ShimSd_findError(file_status, dirName);
     return 0; //FAIL;
