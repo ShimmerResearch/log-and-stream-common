@@ -243,10 +243,9 @@ uint8_t ShimBrd_isLnAccelKxtc9_2050Present(void)
 uint8_t ShimBrd_isAdxl371Present(void)
 {
   return (ShimBrd_isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R
-      && (daughterCardIdPage.expansion_brd.exp_brd_id == SHIMMER3_IMU
-          || (daughterCardIdPage.expansion_brd.exp_brd_id == EXP_BRD_GSR_UNIFIED
-              && daughterCardIdPage.expansion_brd.exp_brd_major == 6
-              && daughterCardIdPage.expansion_brd.exp_brd_minor == 0)));
+          && (daughterCardIdPage.expansion_brd.exp_brd_id == SHIMMER3_IMU
+              || isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0)
+              || isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0)));
 }
 
 uint8_t ShimBrd_isI2c4Supported(void)
@@ -257,7 +256,8 @@ uint8_t ShimBrd_isI2c4Supported(void)
 
 uint8_t ShimBrd_isBoardSr48_6_0(void)
 {
-  return ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0);
+  return ShimBrd_isDaughterCardIdSet()
+          && ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0);
 }
 #endif
 
