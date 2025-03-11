@@ -49,18 +49,12 @@ uint8_t btRxBuff[MAX_COMMAND_ARG_SIZE], *btRxExp;
 uint8_t *btRxBuffPtr;
 volatile COMMS_CRC_MODE btCrcMode;
 
-uint8_t *gActionPtr;
-uint8_t *gArgsPtr;
-
 #if defined(SHIMMER3)
 uint8_t btStatusStrIndex;
 char btVerStrResponse[BT_VER_RESPONSE_LARGEST + 1U]; /* +1 to always have a null char */
 #else
 char btVerStrResponse[100U]; //CYW20820 app=v01.04.16.16 requires size = 76 chars
 #endif
-
-uint8_t (*newBtCmdToProcess_cb)(void);
-void (*setMacId_cb)(uint8_t *);
 
 uint16_t numBytesInBtRxBufWhenLastProcessed = 0;
 uint16_t indexOfFirstEol;
@@ -76,6 +70,8 @@ uint8_t exgLength, exgChip, exgStartAddr;
 
 uint8_t btDataRateTestState;
 uint32_t btDataRateTestCounter;
+
+uint8_t macIdStr[14], macIdBytes[6];
 
 #if defined(SHIMMER3)
 /* Return of 1 brings MSP out of low-power mode */
@@ -181,7 +177,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
     }
     else if (bt_waitForMacAddress)
     {
-      setMacId_cb(btRxBuffPtr);
+      ShimBt_macIdSetAndUpdateConfig(btRxBuffPtr);
 
       expectedlen = 14U;
       if (isBtDeviceRn4678())
@@ -308,63 +304,63 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
       if (waitingForArgs)
       {
         if ((!waitingForArgsLength) && (waitingForArgs == 3)
-            && (*(gActionPtr) == SET_INFOMEM_COMMAND || *(gActionPtr) == SET_CALIB_DUMP_COMMAND
-                || *(gActionPtr) == SET_DAUGHTER_CARD_MEM_COMMAND
-                || *(gActionPtr) == SET_EXG_REGS_COMMAND))
+            && (gAction == SET_INFOMEM_COMMAND || gAction == SET_CALIB_DUMP_COMMAND
+                || gAction == SET_DAUGHTER_CARD_MEM_COMMAND
+                || gAction == SET_EXG_REGS_COMMAND))
         {
-          gArgsPtr[0] = btRxBuffPtr[0];
-          gArgsPtr[1] = btRxBuffPtr[1];
-          gArgsPtr[2] = btRxBuffPtr[2];
-          if (*(gActionPtr) == SET_EXG_REGS_COMMAND)
+          args[0] = btRxBuffPtr[0];
+          args[1] = btRxBuffPtr[1];
+          args[2] = btRxBuffPtr[2];
+          if (gAction == SET_EXG_REGS_COMMAND)
           {
-            waitingForArgsLength = gArgsPtr[2];
+            waitingForArgsLength = args[2];
           }
           else
           {
-            waitingForArgsLength = gArgsPtr[0];
+            waitingForArgsLength = args[0];
           }
           setDmaWaitingForResponse(waitingForArgsLength);
           return 0;
         }
         else if ((!waitingForArgsLength) && (waitingForArgs == 2)
-            && (*(gActionPtr) == SET_DAUGHTER_CARD_ID_COMMAND))
+            && (gAction == SET_DAUGHTER_CARD_ID_COMMAND))
         {
-          gArgsPtr[0] = btRxBuffPtr[0];
-          gArgsPtr[1] = btRxBuffPtr[1];
-          if (gArgsPtr[0])
+          args[0] = btRxBuffPtr[0];
+          args[1] = btRxBuffPtr[1];
+          if (args[0])
           {
-            waitingForArgsLength = gArgsPtr[0];
+            waitingForArgsLength = args[0];
             setDmaWaitingForResponse(waitingForArgsLength);
           }
           return 0;
         }
         else if ((!waitingForArgsLength) && (waitingForArgs == 1)
-            && (*(gActionPtr) == SET_CENTER_COMMAND || *(gActionPtr) == SET_CONFIGTIME_COMMAND
-                || *(gActionPtr) == SET_EXPID_COMMAND || *(gActionPtr) == SET_SHIMMERNAME_COMMAND))
+            && (gAction == SET_CENTER_COMMAND || gAction == SET_CONFIGTIME_COMMAND
+                || gAction == SET_EXPID_COMMAND || gAction == SET_SHIMMERNAME_COMMAND))
         {
-          gArgsPtr[0] = btRxBuffPtr[0];
-          if (gArgsPtr[0])
+          args[0] = btRxBuffPtr[0];
+          if (args[0])
           {
-            waitingForArgsLength = gArgsPtr[0];
+            waitingForArgsLength = args[0];
             setDmaWaitingForResponse(waitingForArgsLength);
             return 0;
           }
         }
 
 #if defined(SHIMMER3)
-        else if (*(gActionPtr) == RN4678_STATUS_STRING_SEPARATOR)
+        else if (gAction == RN4678_STATUS_STRING_SEPARATOR)
         {
           return ShimBt_parseRn4678Status();
         }
 #endif
 
-        else if (*(gActionPtr) == ACK_COMMAND_PROCESSED)
+        else if (gAction == ACK_COMMAND_PROCESSED)
         {
           /* If waiting for command byte */
           if (!waitingForArgsLength)
           {
             /* Save command byte */
-            gArgsPtr[0] = btRxBuffPtr[0];
+            args[0] = btRxBuffPtr[0];
 
             if (btRxBuffPtr[0] == SD_SYNC_RESPONSE)
             {
@@ -378,25 +374,18 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 
         if (waitingForArgsLength)
         {
-          memcpy(gArgsPtr + waitingForArgs, btRxBuffPtr, waitingForArgsLength);
+          memcpy(&args[waitingForArgs], btRxBuffPtr, waitingForArgsLength);
         }
         else
         {
-          memcpy(gArgsPtr, btRxBuffPtr, waitingForArgs);
+          memcpy(&args[0], btRxBuffPtr, waitingForArgs);
         }
 
         waitingForArgsLength = 0;
         waitingForArgs = 0;
         argsSize = 0;
         setDmaWaitingForResponse(1U);
-        if (newBtCmdToProcess_cb)
-        {
-          return newBtCmdToProcess_cb();
-        }
-        else
-        {
-          return 1;
-        }
+        return ShimTask_set(TASK_BT_PROCESS_CMD);
       }
       else
       {
@@ -466,11 +455,8 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
         case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
         case GET_ALT_MAG_CALIBRATION_COMMAND:
         case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
-          *(gActionPtr) = data;
-          if (newBtCmdToProcess_cb)
-          {
-            newBtCmdToProcess_cb();
-          }
+          gAction = data;
+          ShimTask_set(TASK_BT_PROCESS_CMD);
           setDmaWaitingForResponse(1U);
           /* Wake-up MCU so that the get command can be processed */
           wakeupMcu = 1U;
@@ -501,13 +487,13 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
         case SET_FACTORY_TEST:
         case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
         case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
-          *(gActionPtr) = data;
+          gAction = data;
           waitingForArgs = 1U;
           break;
         case SET_SAMPLING_RATE_COMMAND:
         case GET_DAUGHTER_CARD_ID_COMMAND:
         case SET_DAUGHTER_CARD_ID_COMMAND:
-          *(gActionPtr) = data;
+          gAction = data;
           waitingForArgs = 2U;
           break;
         case SET_SENSORS_COMMAND:
@@ -520,16 +506,16 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
         case SET_INFOMEM_COMMAND:
         case GET_CALIB_DUMP_COMMAND:
         case SET_CALIB_DUMP_COMMAND:
-          *(gActionPtr) = data;
+          gAction = data;
           waitingForArgs = 3U;
           break;
         case SET_CONFIG_SETUP_BYTES_COMMAND:
-          *(gActionPtr) = data;
+          gAction = data;
           waitingForArgs = 4U;
           break;
         case SET_RWC_COMMAND:
         case SET_DERIVED_CHANNEL_BYTES:
-          *(gActionPtr) = data;
+          gAction = data;
           waitingForArgs = 8U;
           break;
         case SET_LN_ACCEL_CALIBRATION_COMMAND:
@@ -538,7 +524,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
         case SET_WR_ACCEL_CALIBRATION_COMMAND:
         case SET_ALT_ACCEL_CALIBRATION_COMMAND:
         case SET_ALT_MAG_CALIBRATION_COMMAND:
-          *(gActionPtr) = data;
+          gAction = data;
           //TODO change to SC_DATA_LEN_STD_IMU_CALIB when calib code goes to common
           waitingForArgs = 21;
           break;
@@ -547,21 +533,21 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           memset(btStatusStr, 0, sizeof(btStatusStr));
           btStatusStr[0U] = RN4678_STATUS_STRING_SEPARATOR;
           btStatusStrIndex = 1U;
-          *(gActionPtr) = data;
+          gAction = data;
           /* Minus 1 because we've already received 1 x RN4678_STATUS_STRING_SEPARATOR */
           waitingForArgs = BT_STAT_STR_LEN_SMALLEST - 1U;
           break;
 #endif
         case ACK_COMMAND_PROCESSED:
           /* Wait for command byte */
-          *(gActionPtr) = data;
+          gAction = data;
           waitingForArgs = 1U;
           break;
         case SET_SD_SYNC_COMMAND:
           /* Store local time as early as possible after sync bytes have been received */
           ShimSdSync_saveLocalTime();
 
-          *(gActionPtr) = data;
+          gAction = data;
           waitingForArgs = SYNC_PACKET_PAYLOAD_SIZE + BT_SD_SYNC_CRC_MODE;
           break;
         default:
@@ -1029,7 +1015,7 @@ uint8_t ShimBt_parseRn4678Status(void)
 void ShimBt_resetBtRxVariablesOnConnect(void)
 {
   /* Reset to unsupported command */
-  *(gActionPtr) = ACK_COMMAND_PROCESSED - 1U;
+  gAction = ACK_COMMAND_PROCESSED - 1U;
   waitingForArgs = 0;
   waitingForArgsLength = 0;
 }
@@ -1041,31 +1027,17 @@ void ShimBt_resetBtRxBuff(void)
 }
 #endif
 
-#if defined(SHIMMER3)
-void ShimBt_btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void),
-    void (*setMacIdCb)(uint8_t *),
-    uint8_t *actionPtr,
-    uint8_t *argsPtr)
-#else
-void ShimBt_btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void))
-#endif
+//ShimTask_setNewBtCmdToProcess,
+//                               ShimBt_macIdSetAndUpdateConfig,
+//                               ShimBt_getBtActionPtr(), ShimBt_getBtArgsPtr()
+
+void ShimBt_btCommsProtocolInit(void)
 {
   ShimBt_setCrcMode(CRC_OFF);
   numBytesInBtRxBufWhenLastProcessed = 0;
   indexOfFirstEol = 0;
   firstProcessFailTicks = 0;
   memset(unwrappedResponse, 0, sizeof(unwrappedResponse));
-
-  newBtCmdToProcess_cb = newBtCmdToProcessCb;
-#if defined(SHIMMER3)
-  setMacId_cb = setMacIdCb;
-
-  gActionPtr = actionPtr;
-  gArgsPtr = argsPtr;
-#else
-  gActionPtr = &gAction;
-  gArgsPtr = &args[0];
-#endif
 
 #if defined(SHIMMER3)
   btRxExp = BT_getExpResp();
@@ -1094,6 +1066,7 @@ void ShimBt_btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void))
   ShimBt_setBtDataRateTestState(0);
 
   ShimBt_resetBtResponseVars();
+  ShimBt_macIdVarsReset();
 }
 
 void ShimBt_resetBtResponseVars(void)
@@ -1619,7 +1592,7 @@ void ShimBt_processCmd(void)
       /* Overwrite MAC ID as read from BT module */
       if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
       {
-        ShimConfig_storedConfigSet(getMacIdBytesPtr(), NV_MAC_ADDRESS, 6);
+        ShimConfig_storedConfigSet(ShimBt_macIdBytesPtrGet(), NV_MAC_ADDRESS, 6);
       }
 
       ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
@@ -2426,10 +2399,10 @@ void ShimBt_loadBtTxBufForDataRateTest(void)
   }
 }
 
-uint8_t ShimBt_getMacAddressAscii(char *macAscii)
+uint8_t ShimBt_macAddressAsciiGet(char *macAscii)
 {
 #if defined(SHIMMER3)
-  memcpy(macAscii, getMacIdStrPtr(), 12);
+  memcpy(macAscii, ShimBt_macIdStrPtrGet(), 12);
   return 0;
 #elif defined(SHIMMER3R)
   //MAC is stored as 6 byte array in CYW20820 library
@@ -2450,7 +2423,7 @@ uint8_t ShimBt_getMacAddressAscii(char *macAscii)
 #endif
 }
 
-uint8_t ShimBt_getMacAddressHex(uint8_t *macHex)
+uint8_t ShimBt_macAddressHexGet(uint8_t *macHex)
 {
 #if defined(SHIMMER3R)
   uint8_t *ptr = BT_getCyw20820MacAddressPtr();
@@ -2463,7 +2436,7 @@ uint8_t ShimBt_getMacAddressHex(uint8_t *macHex)
   return 1;
 #elif defined(SHIMMER3)
   uint8_t i, pchar[3];
-  uint8_t *macAddrPtr = getMacIdBytesPtr();
+  uint8_t *macAddrPtr = ShimBt_macIdBytesPtrGet();
   if (*macAddrPtr)
   {
     pchar[2] = 0;
@@ -2480,6 +2453,42 @@ uint8_t ShimBt_getMacAddressHex(uint8_t *macHex)
     return 1;
   }
 #endif
+}
+
+void ShimBt_macIdSetAndUpdateConfig(uint8_t *buf)
+{
+    ShimBt_macIdSet(buf);
+    memcpy(&ShimConfig_getStoredConfig()->rawBytes[NV_MAC_ADDRESS], ShimBt_macIdBytesPtrGet(), 6);
+    InfoMem_write(NV_MAC_ADDRESS, ShimBt_macIdBytesPtrGet(), 6);
+}
+
+void ShimBt_macIdSet(uint8_t *buf)
+{
+    memcpy(macIdStr, buf, 14);
+    uint8_t i, pchar[3];
+    pchar[2] = 0;
+    for (i = 0; i < 6; i++)
+    {
+        pchar[0] = macIdStr[i * 2];
+        pchar[1] = macIdStr[i * 2 + 1];
+        macIdBytes[i] = strtoul((char*) pchar, 0, 16);
+    }
+}
+
+uint8_t* ShimBt_macIdStrPtrGet(void)
+{
+    return &macIdStr[0];
+}
+
+uint8_t* ShimBt_macIdBytesPtrGet(void)
+{
+    return &macIdBytes[0];
+}
+
+void ShimBt_macIdVarsReset(void)
+{
+    memset(macIdStr, 0x00, sizeof(macIdStr) / sizeof(macIdStr[0]));
+    memset(macIdBytes, 0x00, sizeof(macIdBytes) / sizeof(macIdBytes[0]));
 }
 
 void ShimBt_btsdSelfcmd(void)

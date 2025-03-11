@@ -239,14 +239,7 @@ void ShimBt_resetBtRxVariablesOnConnect(void);
 #if defined(SHIMMER3)
 void ShimBt_resetBtRxBuff(void);
 #endif
-#if defined(SHIMMER3)
-void ShimBt_btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void),
-    void (*setMacIdCb)(uint8_t *),
-    uint8_t *actionPtr,
-    uint8_t *argsPtr);
-#else
-void ShimBt_btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void));
-#endif
+void ShimBt_btCommsProtocolInit(void);
 void ShimBt_resetBtResponseVars(void);
 uint8_t ShimBt_isWaitingForArgs(void);
 uint8_t ShimBt_getBtVerStrLen(void);
@@ -272,8 +265,13 @@ COMMS_CRC_MODE ShimBt_getCrcMode(void);
 
 void ShimBt_setBtDataRateTestState(uint8_t state);
 void ShimBt_loadBtTxBufForDataRateTest(void);
-uint8_t ShimBt_getMacAddressAscii(char *macAscii);
-uint8_t ShimBt_getMacAddressHex(uint8_t *macHex);
+uint8_t ShimBt_macAddressAsciiGet(char *macAscii);
+uint8_t ShimBt_macAddressHexGet(uint8_t *macHex);
+void ShimBt_macIdSetAndUpdateConfig(uint8_t *buf);
+void ShimBt_macIdSet(uint8_t *buf);
+uint8_t* ShimBt_macIdStrPtrGet(void);
+uint8_t* ShimBt_macIdBytesPtrGet(void);
+void ShimBt_macIdVarsReset(void);
 void ShimBt_btsdSelfcmd(void);
 void ShimBt_handleBtRfCommStateChange(uint8_t isConnected);
 volatile uint8_t *ShimBt_getBtActionPtr(void);

@@ -381,7 +381,7 @@ void ShimDock_processCmd(void)
               if (uartInfoMemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
               {
                 /* Read MAC address so it is not forgotten */
-                InfoMem_read(NV_MAC_ADDRESS, getMacIdBytesPtr(), 6);
+                InfoMem_read(NV_MAC_ADDRESS, ShimBt_macIdBytesPtrGet(), 6);
               }
               if (uartInfoMemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
               {
@@ -407,7 +407,7 @@ void ShimDock_processCmd(void)
               if (uartInfoMemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
               {
                 /* Re-write MAC address to Infomem */
-                InfoMem_write(NV_MAC_ADDRESS, getMacIdBytesPtr(), 6);
+                InfoMem_write(NV_MAC_ADDRESS, ShimBt_macIdBytesPtrGet(), 6);
               }
               /* Reload latest infomem bytes to RAM */
               InfoMem_read(uartInfoMemOffset,
@@ -566,7 +566,7 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_COMP_SHIMMER;
     *(uartRespBuf + uart_resp_len++) = UART_PROP_MAC;
 #if defined(SHIMMER3)
-    memcpy(uartRespBuf + uart_resp_len, getMacIdBytesPtr(), 6);
+    memcpy(uartRespBuf + uart_resp_len, ShimBt_macIdBytesPtrGet(), 6);
 #else
     ShimConfig_btMacHexGet(uartRespBuf + uart_resp_len);
 #endif

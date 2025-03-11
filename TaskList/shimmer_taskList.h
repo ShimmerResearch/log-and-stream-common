@@ -120,7 +120,6 @@ uint8_t ShimTask_NORM_set(uint32_t task_id);
 //return the whole tasklist
 uint32_t ShimTask_NORM_getList(void);
 
-uint8_t ShimTask_setNewBtCmdToProcess(void);
 void ShimTask_setStartSensing(void);
 void ShimTask_setStopSensing(void);
 void ShimTask_setStopLogging(void);

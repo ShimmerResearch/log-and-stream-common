@@ -106,11 +106,7 @@ void ShimCalib_init(void)
 {
   shimmerCalib_ramLen = 8;
 
-#if defined(SHIMMER3)
-  memcpy(shimmerCalib_macId, getMacIdStrPtr() + 8, 4);
-#elif defined(SHIMMER3R)
-  memcpy(shimmerCalib_macId, ShimConfig_getMacIdStrPtr() + 8, 4);
-#endif
+  memcpy(&shimmerCalib_macId[0], ShimBt_macIdStrPtrGet() + 8, 4);
   shimmerCalib_macId[4] = 0;
 
   memset(shimmerCalib_ram, 0, SHIMMER_CALIB_RAM_MAX);

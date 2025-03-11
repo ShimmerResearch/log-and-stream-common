@@ -49,7 +49,6 @@ uint8_t myTimeDiff[SYNC_PACKET_PAYLOAD_SIZE];
 //TODO figure out how best to do away with the need for externs
 void (*btStartCb)(void);
 void (*btStopCb)(uint8_t);
-uint8_t (*taskSetCb)(uint16_t);
 
 #if defined(SHIMMER3)
 extern uint8_t stopLogging;
@@ -59,14 +58,12 @@ static uint8_t all0xff[7U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 #endif
 
 void ShimSdSync_init(void (*btStart_cb)(void),
-    void (*btStop_cb)(uint8_t),
-    uint8_t (*taskSet_cb)(uint16_t))
+    void (*btStop_cb)(uint8_t))
 {
   btSdSyncIsRunning = 0;
 
   btStartCb = btStart_cb;
   btStopCb = btStop_cb;
-  taskSetCb = taskSet_cb;
 
   firstOutlier = 1;
 
@@ -517,7 +514,7 @@ void ShimSdSync_nodeR10(void)
     {
       if (ShimConfig_getStoredConfig()->singleTouchStart && !shimmerStatus.sensing && sd_tolog)
       {
-        taskSetCb(TASK_STARTSENSING);
+        ShimTask_set(TASK_STARTSENSING);
       }
       syncNodeSucc = 1;
       if (!firstOutlier)

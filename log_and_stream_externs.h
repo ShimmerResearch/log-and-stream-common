@@ -25,7 +25,6 @@ extern BattStatus batteryStatus;
 #if defined(SHIMMER3)
 extern char *HAL_GetUID(void);
 extern void RwcCheck(void);
-extern uint8_t *getMacIdBytesPtr(void);
 
 extern void InitialiseBtAfterBoot(void);
 extern void BtStop(uint8_t isCalledFromMain);

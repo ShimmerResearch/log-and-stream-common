@@ -241,11 +241,6 @@ uint32_t ShimTask_NORM_getList()
   return taskList;
 }
 
-uint8_t ShimTask_setNewBtCmdToProcess(void)
-{
-  return ShimTask_set(TASK_BT_PROCESS_CMD);
-}
-
 void ShimTask_setStartSensing(void)
 {
   ShimTask_set(TASK_SDLOG_CFG_UPDATE);
