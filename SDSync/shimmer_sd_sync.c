@@ -57,8 +57,7 @@ extern uint8_t all0xff[7U];
 static uint8_t all0xff[7U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 #endif
 
-void ShimSdSync_init(void (*btStart_cb)(void),
-    void (*btStop_cb)(uint8_t))
+void ShimSdSync_init(void (*btStart_cb)(void), void (*btStop_cb)(uint8_t))
 {
   btSdSyncIsRunning = 0;
 

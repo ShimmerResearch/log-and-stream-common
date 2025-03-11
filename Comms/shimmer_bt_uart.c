@@ -305,8 +305,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
       {
         if ((!waitingForArgsLength) && (waitingForArgs == 3)
             && (gAction == SET_INFOMEM_COMMAND || gAction == SET_CALIB_DUMP_COMMAND
-                || gAction == SET_DAUGHTER_CARD_MEM_COMMAND
-                || gAction == SET_EXG_REGS_COMMAND))
+                || gAction == SET_DAUGHTER_CARD_MEM_COMMAND || gAction == SET_EXG_REGS_COMMAND))
         {
           args[0] = btRxBuffPtr[0];
           args[1] = btRxBuffPtr[1];
@@ -2457,38 +2456,39 @@ uint8_t ShimBt_macAddressHexGet(uint8_t *macHex)
 
 void ShimBt_macIdSetAndUpdateConfig(uint8_t *buf)
 {
-    ShimBt_macIdSet(buf);
-    memcpy(&ShimConfig_getStoredConfig()->rawBytes[NV_MAC_ADDRESS], ShimBt_macIdBytesPtrGet(), 6);
-    InfoMem_write(NV_MAC_ADDRESS, ShimBt_macIdBytesPtrGet(), 6);
+  ShimBt_macIdSet(buf);
+  memcpy(&ShimConfig_getStoredConfig()->rawBytes[NV_MAC_ADDRESS],
+      ShimBt_macIdBytesPtrGet(), 6);
+  InfoMem_write(NV_MAC_ADDRESS, ShimBt_macIdBytesPtrGet(), 6);
 }
 
 void ShimBt_macIdSet(uint8_t *buf)
 {
-    memcpy(macIdStr, buf, 14);
-    uint8_t i, pchar[3];
-    pchar[2] = 0;
-    for (i = 0; i < 6; i++)
-    {
-        pchar[0] = macIdStr[i * 2];
-        pchar[1] = macIdStr[i * 2 + 1];
-        macIdBytes[i] = strtoul((char*) pchar, 0, 16);
-    }
+  memcpy(macIdStr, buf, 14);
+  uint8_t i, pchar[3];
+  pchar[2] = 0;
+  for (i = 0; i < 6; i++)
+  {
+    pchar[0] = macIdStr[i * 2];
+    pchar[1] = macIdStr[i * 2 + 1];
+    macIdBytes[i] = strtoul((char *) pchar, 0, 16);
+  }
 }
 
-uint8_t* ShimBt_macIdStrPtrGet(void)
+uint8_t *ShimBt_macIdStrPtrGet(void)
 {
-    return &macIdStr[0];
+  return &macIdStr[0];
 }
 
-uint8_t* ShimBt_macIdBytesPtrGet(void)
+uint8_t *ShimBt_macIdBytesPtrGet(void)
 {
-    return &macIdBytes[0];
+  return &macIdBytes[0];
 }
 
 void ShimBt_macIdVarsReset(void)
 {
-    memset(macIdStr, 0x00, sizeof(macIdStr) / sizeof(macIdStr[0]));
-    memset(macIdBytes, 0x00, sizeof(macIdBytes) / sizeof(macIdBytes[0]));
+  memset(macIdStr, 0x00, sizeof(macIdStr) / sizeof(macIdStr[0]));
+  memset(macIdBytes, 0x00, sizeof(macIdBytes) / sizeof(macIdBytes[0]));
 }
 
 void ShimBt_btsdSelfcmd(void)

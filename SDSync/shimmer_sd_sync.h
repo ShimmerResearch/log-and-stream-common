@@ -61,8 +61,7 @@
 #define SYNC_PACKET_RESEND       0x01
 #define SYNC_FINISHED            0xFF
 
-void ShimSdSync_init(void (*btStart_cb)(void),
-    void (*btStop_cb)(uint8_t));
+void ShimSdSync_init(void (*btStart_cb)(void), void (*btStop_cb)(uint8_t));
 void ShimSdSync_resetMyTimeDiff(void);
 void ShimSdSync_resetMyTimeDiffArrays(void);
 void ShimSdSync_resetMyTimeDiffLongMin(void);
