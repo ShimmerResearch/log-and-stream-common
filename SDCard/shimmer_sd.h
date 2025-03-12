@@ -56,5 +56,6 @@ uint8_t *ShimSd_expIdPtrGet(void);
 FRESULT ShimSd_setFileTimestamp(char *path);
 void ShimSd_findError(uint8_t err, uint8_t *name);
 void ShimSd_sdInfoSync();
+void ShimSd_readSdConfiguration(void);
 
 #endif /* SHIMMER_SD_H_ */

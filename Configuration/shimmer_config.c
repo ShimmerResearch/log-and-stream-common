@@ -748,7 +748,7 @@ void ShimConfig_loadSensorConfigAndCalib(void)
     else
     {
       //Hits here when undocked
-      ReadSdConfiguration();
+      ShimSd_readSdConfiguration();
     }
 
     if (ShimCalib_file2Ram())

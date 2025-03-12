@@ -249,6 +249,12 @@ uint8_t ShimBrd_isAdxl371Present(void)
           || isBoardSrNumber(EXP_BRD_BR_AMP_UNIFIED, 4, 0)));
 }
 
+uint8_t isAds7028Present(void)
+{
+  return (isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R
+      && !isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0));
+}
+
 uint8_t ShimBrd_isI2c4Supported(void)
 {
   return (ShimBrd_isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R

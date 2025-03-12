@@ -1664,7 +1664,7 @@ void ShimSd_sdInfoSync()
   }
   else
   {
-    ReadSdConfiguration();
+    ShimSd_readSdConfiguration();
   }
 
   if (ShimConfig_getRamCalibFlag())
@@ -1687,4 +1687,17 @@ void ShimSd_sdInfoSync()
 
   ShimSens_configureChannels();
   ShimSens_checkOnDefault();
+}
+
+void ShimSd_readSdConfiguration(void)
+{
+    ShimTask_clear(TASK_STREAMDATA); // this will skip one sample
+    sensing.isFileCreated = 0;
+    Board_setSdPower(1);
+    ShimSd_parseConfig();
+
+    /* Check BT module configuration after sensor configuration read from SD
+     * card to see if it is in the correct state (i.e., BT on vs. BT off vs. SD
+     * Sync) */
+    ShimConfig_checkBtModeFromConfig();
 }
