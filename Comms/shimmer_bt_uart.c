@@ -68,8 +68,10 @@ uint16_t infomemOffset, dcMemOffset, calibRamOffset;
 //ExG
 uint8_t exgLength, exgChip, exgStartAddr;
 
+#if defined(SHIMMER3)
 uint8_t btDataRateTestState;
 uint32_t btDataRateTestCounter;
+#endif
 
 uint8_t macIdStr[14], macIdBytes[6];
 
@@ -1062,7 +1064,7 @@ void ShimBt_btCommsProtocolInit(void)
 
   memset(btVerStrResponse, 0x00, sizeof(btVerStrResponse) / sizeof(btVerStrResponse[0]));
 
-  ShimBt_setBtDataRateTestState(0);
+  setBtDataRateTestState(0);
 
   ShimBt_resetBtResponseVars();
   ShimBt_macIdVarsReset();
@@ -1483,7 +1485,7 @@ void ShimBt_processCmd(void)
     /* Stop test before ACK is sent */
     if (args[0] == 0)
     {
-      ShimBt_setBtDataRateTestState(0);
+      setBtDataRateTestState(0);
       clearBtTxBuf(1);
     }
     getCmdWaitingResponse = gAction;
@@ -2280,7 +2282,7 @@ void ShimBt_sendRsp(void)
        * interrupt after ACK byte is transmitted */
       if (args[0] != 0)
       {
-        ShimBt_setBtDataRateTestState(1);
+        setBtDataRateTestState(1);
       }
       break;
 
@@ -2379,15 +2381,16 @@ COMMS_CRC_MODE ShimBt_getCrcMode(void)
   return btCrcMode;
 }
 
-void ShimBt_setBtDataRateTestState(uint8_t state)
+#if defined(SHIMMER3)
+void setBtDataRateTestState(uint8_t state)
 {
   btDataRateTestState = state;
   btDataRateTestCounter = 0;
 
-  BT_setSendNextChar_cb(btDataRateTestState == 1 ? ShimBt_loadBtTxBufForDataRateTest : 0);
+  BT_setSendNextChar_cb(btDataRateTestState == 1 ? loadBtTxBufForDataRateTest : 0);
 }
 
-void ShimBt_loadBtTxBufForDataRateTest(void)
+void loadBtTxBufForDataRateTest(void)
 {
   uint16_t spaceInTxBuf = getSpaceInBtTxBuf();
   if (spaceInTxBuf > DATA_RATE_TEST_PACKET_SIZE)
@@ -2397,6 +2400,7 @@ void ShimBt_loadBtTxBufForDataRateTest(void)
     btDataRateTestCounter++;
   }
 }
+#endif
 
 uint8_t ShimBt_macAddressAsciiGet(char *macAscii)
 {
@@ -2577,7 +2581,7 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
     shimmerStatus.btstreamReady = 0;
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
 
-    ShimBt_setBtDataRateTestState(0);
+    setBtDataRateTestState(0);
 
     clearBtTxBuf(0);
 

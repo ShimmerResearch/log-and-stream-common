@@ -263,8 +263,10 @@ uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd);
 void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew);
 COMMS_CRC_MODE ShimBt_getCrcMode(void);
 
-void ShimBt_setBtDataRateTestState(uint8_t state);
-void ShimBt_loadBtTxBufForDataRateTest(void);
+#if defined(SHIMMER3)
+void setBtDataRateTestState(uint8_t state);
+void loadBtTxBufForDataRateTest(void);
+#endif
 uint8_t ShimBt_macAddressAsciiGet(char *macAscii);
 uint8_t ShimBt_macAddressHexGet(uint8_t *macHex);
 void ShimBt_macIdSetAndUpdateConfig(uint8_t *buf);

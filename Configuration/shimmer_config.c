@@ -586,9 +586,9 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
 
   /* This used to be used to trigger reset of the Bluetooth advertising name
    * and pin code but is no longer needed due to BT driver updates. */
-  if (storedConfigPtr->btPinSetup == 0xAA)
+  if (storedConfigPtr->btPinSetup)
   {
-    storedConfigPtr->btPinSetup = (uint8_t) 0xAB;
+    storedConfigPtr->btPinSetup = 0;
     settingCorrected = 1;
   }
 
