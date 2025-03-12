@@ -29,7 +29,7 @@ extern void RwcCheck(void);
 extern void InitialiseBtAfterBoot(void);
 extern void BtStop(uint8_t isCalledFromMain);
 extern void triggerShimmerErrorState(void);
-uint64_t * getRwcTimeDiffPtr(void);
+uint64_t *getRwcTimeDiffPtr(void);
 
 /* Task list */
 extern void checkSetupDock(void);
