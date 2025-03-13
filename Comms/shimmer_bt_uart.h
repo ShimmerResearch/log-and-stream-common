@@ -234,9 +234,9 @@ enum
 
 typedef enum
 {
-    BT_SETUP,
-    SHIMMER_CMD,
-    SENSOR_DATA
+  BT_SETUP,
+  SHIMMER_CMD,
+  SENSOR_DATA
 } btResponseType;
 
 typedef struct

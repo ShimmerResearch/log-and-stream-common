@@ -2616,10 +2616,10 @@ void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain)
     RINGFIFO_RESET(gBtTxFifo);
 
     //Reset all bytes in the buffer -> only used during debugging
-//    memset(gBtTxFifo.data, 0x00, sizeof(gBtTxFifo.data) / sizeof(gBtTxFifo.data[0]));
+    //memset(gBtTxFifo.data, 0x00, sizeof(gBtTxFifo.data) / sizeof(gBtTxFifo.data[0]));
     //for(i=BT_TX_BUF_SIZE-1;i<BT_TX_BUF_SIZE;i--)
     //{
-    //    *(&gBtTxFifo.data[0]+i) = 0xFF;
+    //*(&gBtTxFifo.data[0]+i) = 0xFF;
     //}
   }
   else
@@ -2649,27 +2649,27 @@ void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
     ShimBt_pushByteToBtTxBuf(*(buf + i));
   }
 
-//  /* if enough space at after head, copy it in */
-//  uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
-//  if (spaceAfterHead > len)
-//  {
-//    memcpy_vout(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf, len);
-//    gBtTxFifo.wrIdx += len;
-//  }
-//  else
-//  {
-//    /* Fill from head to end of buf */
-//    memcpy_vout(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf, spaceAfterHead);
-//    gBtTxFifo.wrIdx += spaceAfterHead;
-//
-//    /* Fill from start of buf. We already checked above whether there is
-//     * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
-//     * worry about the tail position. */
-//    uint16_t remaining = len - spaceAfterHead;
-//    memcpy_vout(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-//        buf + spaceAfterHead, remaining);
-//    gBtTxFifo.wrIdx += remaining;
-//  }
+  ///* if enough space at after head, copy it in */
+  //uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx &
+  //BT_TX_BUF_MASK); if (spaceAfterHead > len)
+  //{
+  //  memcpy_vout(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf,
+  //  len); gBtTxFifo.wrIdx += len;
+  //}
+  //else
+  //{
+  //  /* Fill from head to end of buf */
+  //  memcpy_vout(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf,
+  //  spaceAfterHead); gBtTxFifo.wrIdx += spaceAfterHead;
+  //
+  //  /* Fill from start of buf. We already checked above whether there is
+  //   * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
+  //   * worry about the tail position. */
+  //  uint16_t remaining = len - spaceAfterHead;
+  //  memcpy_vout(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //      buf + spaceAfterHead, remaining);
+  //  gBtTxFifo.wrIdx += remaining;
+  //}
 }
 
 ////https://stackoverflow.com/questions/54964154/is-memcpyvoid-dest-src-n-with-a-volatile-array-safe
@@ -2766,7 +2766,7 @@ void ShimBt_sendNextChar(void)
       numBytes = BT_TX_BUF_SIZE - rdIdx;
     }
     gBtTxFifo.rdIdx += numBytes;
-    ret_val = BtTransmit((uint8_t*)&gBtTxFifo.data[rdIdx], numBytes);
+    ret_val = BtTransmit((uint8_t *) &gBtTxFifo.data[rdIdx], numBytes);
   }
   else
   {
@@ -2803,8 +2803,8 @@ void ShimBt_loadTxBufForDataRateTest(void)
     btDataRateTestCounter++;
   }
 #else
-  HAL_StatusTypeDefShimmer ret_val = BtTransmit(&dataRateTestTxPacket[0],
-      sizeof(dataRateTestTxPacket));
+  HAL_StatusTypeDefShimmer ret_val
+      = BtTransmit(&dataRateTestTxPacket[0], sizeof(dataRateTestTxPacket));
   (*((uint32_t *) &dataRateTestTxPacket[1]))++;
 #endif
 }
