@@ -86,117 +86,117 @@ void ShimTask_NORM_manage(void)
   {
     switch (taskCurrent)
     {
-    case TASK_SETUP_DOCK:
+      case TASK_SETUP_DOCK:
 #if defined(SHIMMER3)
-      checkSetupDock();
+        checkSetupDock();
 #else
-      SetupDock();
+        SetupDock();
 #endif
-      break;
-    case TASK_DOCK_PROCESS_CMD:
-      ShimDock_processCmd();
-      break;
-    case TASK_DOCK_RESPOND:
-      ShimDock_sendRsp();
-      break;
-    case TASK_BT_PROCESS_CMD:
-      ShimBt_processCmd();
-      break;
-    case TASK_BT_RESPOND:
-      ShimBt_sendRsp();
-      break;
-    case TASK_RCCENTERR1:
-      /* SD Sync - Center */
-      ShimSdSync_centerR1();
-      break;
-    case TASK_RCNODER10:
-      /* SD Sync - Node */
-      ShimSdSync_nodeR10();
-      break;
-    case TASK_STREAMDATA:
-      //TODO reduce down to one shared function
+        break;
+      case TASK_DOCK_PROCESS_CMD:
+        ShimDock_processCmd();
+        break;
+      case TASK_DOCK_RESPOND:
+        ShimDock_sendRsp();
+        break;
+      case TASK_BT_PROCESS_CMD:
+        ShimBt_processCmd();
+        break;
+      case TASK_BT_RESPOND:
+        ShimBt_sendRsp();
+        break;
+      case TASK_RCCENTERR1:
+        /* SD Sync - Center */
+        ShimSdSync_centerR1();
+        break;
+      case TASK_RCNODER10:
+        /* SD Sync - Node */
+        ShimSdSync_nodeR10();
+        break;
+      case TASK_STREAMDATA:
+        //TODO reduce down to one shared function
 #if defined(SHIMMER3)
-      checkStreamData();
+        checkStreamData();
 #else
-      ShimSens_streamData();
+        ShimSens_streamData();
 #endif
-      break;
+        break;
 #if defined(SHIMMER3)
-      //case TASK_CFGCH:
-      //  ConfigureChannels();
-      //  break;
-    case TASK_SAMPLE_MPU9150_MAG:
-      MPU9150_startMagMeasurement();
-      break;
-    case TASK_SAMPLE_BMPX80_PRESS:
-      BMPX80_startMeasurement();
-      break;
+        //case TASK_CFGCH:
+        //  ConfigureChannels();
+        //  break;
+      case TASK_SAMPLE_MPU9150_MAG:
+        MPU9150_startMagMeasurement();
+        break;
+      case TASK_SAMPLE_BMPX80_PRESS:
+        BMPX80_startMeasurement();
+        break;
 #endif
 #if defined(SHIMMER3R)
-    case TASK_SAVEDATA:
-      ShimSens_saveData();
-      break;
+      case TASK_SAVEDATA:
+        ShimSens_saveData();
+        break;
 #endif
-    case TASK_STARTSENSING:
-      //TODO reduce down to one shared function
+      case TASK_STARTSENSING:
+        //TODO reduce down to one shared function
 #if defined(SHIMMER3)
-      checkStartSensing();
+        checkStartSensing();
 #elif defined(SHIMMER3R)
-      ShimSens_startSensing();
+        ShimSens_startSensing();
 #endif
-      break;
+        break;
 #if defined(SHIMMER3R)
-    case TASK_STOPSENSING:
-      ShimSens_stopSensing();
-      break;
+      case TASK_STOPSENSING:
+        ShimSens_stopSensing();
+        break;
 #endif
-    case TASK_SDWRITE:
-      //TODO reduce down to one shared function
+      case TASK_SDWRITE:
+        //TODO reduce down to one shared function
 #if defined(SHIMMER3)
-      Write2SD();
+        Write2SD();
 #elif defined(SHIMMER3R)
-      ShimSd_writeToCard();
+        ShimSd_writeToCard();
 #endif
-      break;
-    case TASK_SDLOG_CFG_UPDATE:
-      if (!shimmerStatus.docked && !shimmerStatus.sensing && CheckSdInslot()
-          && ShimConfig_getSdCfgFlag())
-      {
-        shimmerStatus.configuring = 1;
-        ShimConfig_readRam();
-        ShimSd_updateSdConfig();
-        ShimConfig_setSdCfgFlag(0);
-        shimmerStatus.configuring = 0;
-      }
-      break;
-    case TASK_BATT_READ:
+        break;
+      case TASK_SDLOG_CFG_UPDATE:
+        if (!shimmerStatus.docked && !shimmerStatus.sensing && CheckSdInslot()
+            && ShimConfig_getSdCfgFlag())
+        {
+          shimmerStatus.configuring = 1;
+          ShimConfig_readRam();
+          ShimSd_updateSdConfig();
+          ShimConfig_setSdCfgFlag(0);
+          shimmerStatus.configuring = 0;
+        }
+        break;
+      case TASK_BATT_READ:
 #if defined(SHIMMER3)
-      /* use adc channel2 and mem4, read back battery status every certain period */
-      if (!shimmerStatus.sensing)
-      {
-        manageReadBatt(1);
-      }
+        /* use adc channel2 and mem4, read back battery status every certain period */
+        if (!shimmerStatus.sensing)
+        {
+          manageReadBatt(1);
+        }
 #elif defined(SHIMMER3R)
-      manageReadBatt(0);
-      setupNextRtcMinuteAlarm();
+        manageReadBatt(0);
+        setupNextRtcMinuteAlarm();
 #elif defined(SHIMMER4_SDK)
-      S4_ADC_readBatt();
-      I2C_readBatt();
+        S4_ADC_readBatt();
+        I2C_readBatt();
 #endif
-      break;
-    case TASK_FACTORY_TEST:
-      run_factory_test();
-      break;
+        break;
+      case TASK_FACTORY_TEST:
+        run_factory_test();
+        break;
 #if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
-    case TASK_USB_SETUP:
-      vbusPinStateCheck();
-      break;
+      case TASK_USB_SETUP:
+        vbusPinStateCheck();
+        break;
 #endif
-    case TASK_BT_TX_BUF_CLEAR:
-      ShimBt_clearBtTxBuf(1U);
-      break;
-    default:
-      break;
+      case TASK_BT_TX_BUF_CLEAR:
+        ShimBt_clearBtTxBuf(1U);
+        break;
+      default:
+        break;
     }
   }
 }

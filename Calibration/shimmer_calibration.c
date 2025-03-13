@@ -49,27 +49,27 @@ uint8_t ShimCalib_findLength(sc_t *sc1)
   switch (sc1->id)
   {
 #if defined(SHIMMER3)
-  case SC_SENSOR_ANALOG_ACCEL:
-    return SC_DATA_LEN_ANALOG_ACCEL;
-  case SC_SENSOR_MPU9X50_ICM20948_GYRO:
-    return SC_DATA_LEN_MPU9X50_ICM20948_GYRO;
-  case SC_SENSOR_LSM303_ACCEL:
-    return SC_DATA_LEN_LSM303_ACCEL;
-  case SC_SENSOR_LSM303_MAG:
-    return SC_DATA_LEN_LSM303_MAG;
-  case SC_SENSOR_BMP180_PRESSURE:
-    return SC_DATA_LEN_BMP180;
+    case SC_SENSOR_ANALOG_ACCEL:
+      return SC_DATA_LEN_ANALOG_ACCEL;
+    case SC_SENSOR_MPU9X50_ICM20948_GYRO:
+      return SC_DATA_LEN_MPU9X50_ICM20948_GYRO;
+    case SC_SENSOR_LSM303_ACCEL:
+      return SC_DATA_LEN_LSM303_ACCEL;
+    case SC_SENSOR_LSM303_MAG:
+      return SC_DATA_LEN_LSM303_MAG;
+    case SC_SENSOR_BMP180_PRESSURE:
+      return SC_DATA_LEN_BMP180;
 #elif defined(SHIMMER3R)
-  case SC_SENSOR_LSM6DSV_ACCEL:
-  case SC_SENSOR_LSM6DSV_GYRO:
-  case SC_SENSOR_LIS2DW12_ACCEL:
-  case SC_SENSOR_ADXL371_ACCEL:
-  case SC_SENSOR_LIS3MDL_MAG:
-  case SC_SENSOR_LIS2MDL_MAG:
-    return SC_DATA_LEN_STD_IMU_CALIB;
+    case SC_SENSOR_LSM6DSV_ACCEL:
+    case SC_SENSOR_LSM6DSV_GYRO:
+    case SC_SENSOR_LIS2DW12_ACCEL:
+    case SC_SENSOR_ADXL371_ACCEL:
+    case SC_SENSOR_LIS3MDL_MAG:
+    case SC_SENSOR_LIS2MDL_MAG:
+      return SC_DATA_LEN_STD_IMU_CALIB;
 #endif
-  default:
-    return 0;
+    default:
+      return 0;
   }
 }
 
@@ -1133,82 +1133,82 @@ void ShimCalib_syncFromDumpRamSingleSensor(uint8_t sensor)
   switch (sensor)
   {
 #if defined(SHIMMER3)
-  case SC_SENSOR_ANALOG_ACCEL:
-    scs_infomem_offset = NV_LN_ACCEL_CALIBRATION;
-    scs_sdhead_offset = SDH_LN_ACCEL_CALIBRATION;
-    scs_sdhead_ts = SDH_LN_ACCEL_CALIB_TS;
-    sc1.range = SC_SENSOR_RANGE_ANALOG_ACCEL;
-    break;
-  case SC_SENSOR_MPU9X50_ICM20948_GYRO:
-    scs_infomem_offset = NV_GYRO_CALIBRATION;
-    scs_sdhead_offset = SDH_GYRO_CALIBRATION;
-    scs_sdhead_ts = SDH_GYRO_CALIB_TS;
-    sc1.range = ShimConfig_gyroRangeGet();
-    break;
-  case SC_SENSOR_LSM303_MAG:
-    scs_infomem_offset = NV_MAG_CALIBRATION;
-    scs_sdhead_offset = SDH_MAG_CALIBRATION;
-    scs_sdhead_ts = SDH_MAG_CALIB_TS;
-    if (ShimBrd_isWrAccelInUseLsm303dlhc())
-    {
-      sc1.range = configBytes->magRange;
-    }
-    else
-    {
-      sc1.range = 0;
-    }
-    break;
-  case SC_SENSOR_LSM303_ACCEL:
-    scs_infomem_offset = NV_WR_ACCEL_CALIBRATION;
-    scs_sdhead_offset = SDH_WR_ACCEL_CALIBRATION;
-    scs_sdhead_ts = SDH_WR_ACCEL_CALIB_TS;
-    sc1.range = configBytes->wrAccelRange;
-    break;
-  default:
-    scs_infomem_offset = NV_LN_ACCEL_CALIBRATION;
-    scs_sdhead_offset = SDH_LN_ACCEL_CALIBRATION;
-    scs_sdhead_ts = SDH_LN_ACCEL_CALIB_TS;
-    sc1.range = SC_SENSOR_RANGE_ANALOG_ACCEL;
-    break;
+    case SC_SENSOR_ANALOG_ACCEL:
+      scs_infomem_offset = NV_LN_ACCEL_CALIBRATION;
+      scs_sdhead_offset = SDH_LN_ACCEL_CALIBRATION;
+      scs_sdhead_ts = SDH_LN_ACCEL_CALIB_TS;
+      sc1.range = SC_SENSOR_RANGE_ANALOG_ACCEL;
+      break;
+    case SC_SENSOR_MPU9X50_ICM20948_GYRO:
+      scs_infomem_offset = NV_GYRO_CALIBRATION;
+      scs_sdhead_offset = SDH_GYRO_CALIBRATION;
+      scs_sdhead_ts = SDH_GYRO_CALIB_TS;
+      sc1.range = ShimConfig_gyroRangeGet();
+      break;
+    case SC_SENSOR_LSM303_MAG:
+      scs_infomem_offset = NV_MAG_CALIBRATION;
+      scs_sdhead_offset = SDH_MAG_CALIBRATION;
+      scs_sdhead_ts = SDH_MAG_CALIB_TS;
+      if (ShimBrd_isWrAccelInUseLsm303dlhc())
+      {
+        sc1.range = configBytes->magRange;
+      }
+      else
+      {
+        sc1.range = 0;
+      }
+      break;
+    case SC_SENSOR_LSM303_ACCEL:
+      scs_infomem_offset = NV_WR_ACCEL_CALIBRATION;
+      scs_sdhead_offset = SDH_WR_ACCEL_CALIBRATION;
+      scs_sdhead_ts = SDH_WR_ACCEL_CALIB_TS;
+      sc1.range = configBytes->wrAccelRange;
+      break;
+    default:
+      scs_infomem_offset = NV_LN_ACCEL_CALIBRATION;
+      scs_sdhead_offset = SDH_LN_ACCEL_CALIBRATION;
+      scs_sdhead_ts = SDH_LN_ACCEL_CALIB_TS;
+      sc1.range = SC_SENSOR_RANGE_ANALOG_ACCEL;
+      break;
 #elif defined(SHIMMER3R)
-  case SC_SENSOR_LSM6DSV_ACCEL:
-    scs_infomem_offset = NV_LN_ACCEL_CALIBRATION;
-    scs_sdhead_offset = SDH_LN_ACCEL_CALIBRATION;
-    scs_sdhead_ts = SDH_LN_ACCEL_CALIB_TS;
-    sc1.range = configBytes->lnAccelRange;
-    break;
-  case SC_SENSOR_LSM6DSV_GYRO:
-    scs_infomem_offset = NV_GYRO_CALIBRATION;
-    scs_sdhead_offset = SDH_GYRO_CALIBRATION;
-    scs_sdhead_ts = SDH_GYRO_CALIB_TS;
-    sc1.range = ShimConfig_gyroRangeGet();
-    break;
-  case SC_SENSOR_LIS2DW12_ACCEL:
-    scs_infomem_offset = NV_WR_ACCEL_CALIBRATION;
-    scs_sdhead_offset = SDH_WR_ACCEL_CALIBRATION;
-    scs_sdhead_ts = SDH_WR_ACCEL_CALIB_TS;
-    sc1.range = configBytes->wrAccelRange;
-    break;
-  case SC_SENSOR_ADXL371_ACCEL:
-    scs_infomem_offset = NV_ALT_ACCEL_CALIBRATION;
-    scs_sdhead_offset = SDH_ALT_ACCEL_CALIBRATION;
-    scs_sdhead_ts = SDH_ALT_ACCEL_CALIB_TS;
-    sc1.range = SC_SENSOR_RANGE_ADXL371_RANGE;
-    break;
-  case SC_SENSOR_LIS3MDL_MAG:
-    scs_infomem_offset = NV_MAG_CALIBRATION;
-    scs_sdhead_offset = SDH_MAG_CALIBRATION;
-    scs_sdhead_ts = SDH_MAG_CALIB_TS;
-    sc1.range = configBytes->magRange;
-    break;
-  case SC_SENSOR_LIS2MDL_MAG:
-    scs_infomem_offset = NV_ALT_MAG_CALIBRATION;
-    scs_sdhead_offset = SDH_ALT_MAG_CALIBRATION;
-    scs_sdhead_ts = SDH_ALT_MAG_CALIB_TS;
-    sc1.range = SC_SENSOR_RANGE_LIS2MDL_RANGE;
-    break;
-  default:
-    break;
+    case SC_SENSOR_LSM6DSV_ACCEL:
+      scs_infomem_offset = NV_LN_ACCEL_CALIBRATION;
+      scs_sdhead_offset = SDH_LN_ACCEL_CALIBRATION;
+      scs_sdhead_ts = SDH_LN_ACCEL_CALIB_TS;
+      sc1.range = configBytes->lnAccelRange;
+      break;
+    case SC_SENSOR_LSM6DSV_GYRO:
+      scs_infomem_offset = NV_GYRO_CALIBRATION;
+      scs_sdhead_offset = SDH_GYRO_CALIBRATION;
+      scs_sdhead_ts = SDH_GYRO_CALIB_TS;
+      sc1.range = ShimConfig_gyroRangeGet();
+      break;
+    case SC_SENSOR_LIS2DW12_ACCEL:
+      scs_infomem_offset = NV_WR_ACCEL_CALIBRATION;
+      scs_sdhead_offset = SDH_WR_ACCEL_CALIBRATION;
+      scs_sdhead_ts = SDH_WR_ACCEL_CALIB_TS;
+      sc1.range = configBytes->wrAccelRange;
+      break;
+    case SC_SENSOR_ADXL371_ACCEL:
+      scs_infomem_offset = NV_ALT_ACCEL_CALIBRATION;
+      scs_sdhead_offset = SDH_ALT_ACCEL_CALIBRATION;
+      scs_sdhead_ts = SDH_ALT_ACCEL_CALIB_TS;
+      sc1.range = SC_SENSOR_RANGE_ADXL371_RANGE;
+      break;
+    case SC_SENSOR_LIS3MDL_MAG:
+      scs_infomem_offset = NV_MAG_CALIBRATION;
+      scs_sdhead_offset = SDH_MAG_CALIBRATION;
+      scs_sdhead_ts = SDH_MAG_CALIB_TS;
+      sc1.range = configBytes->magRange;
+      break;
+    case SC_SENSOR_LIS2MDL_MAG:
+      scs_infomem_offset = NV_ALT_MAG_CALIBRATION;
+      scs_sdhead_offset = SDH_ALT_MAG_CALIBRATION;
+      scs_sdhead_ts = SDH_ALT_MAG_CALIB_TS;
+      sc1.range = SC_SENSOR_RANGE_LIS2MDL_RANGE;
+      break;
+    default:
+      break;
 #endif
   }
 

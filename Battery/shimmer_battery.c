@@ -95,31 +95,31 @@ void ShimBatt_rankBattChargingStatus(void)
   {
     switch (batteryStatus.battStatusRaw.rawBytes[2])
     {
-    case CHRG_CHIP_STATUS_SUSPENDED:
-      if (batteryStatus.battValMV <= BATTERY_ERROR_VOLTAGE_MIN)
-      {
+      case CHRG_CHIP_STATUS_SUSPENDED:
+        if (batteryStatus.battValMV <= BATTERY_ERROR_VOLTAGE_MIN)
+        {
+          batteryStatus.battChargingStatus = CHARGING_STATUS_BAD_BATTERY;
+        }
+        else
+        {
+          batteryStatus.battChargingStatus = CHARGING_STATUS_SUSPENDED;
+        }
+        break;
+      case CHRG_CHIP_STATUS_FULLY_CHARGED:
+        batteryStatus.battChargingStatus = CHARGING_STATUS_FULLY_CHARGED;
+        break;
+      case CHRG_CHIP_STATUS_PRECONDITIONING:
+        batteryStatus.battChargingStatus = CHARGING_STATUS_CHARGING;
+        break;
+      case CHRG_CHIP_STATUS_BAD_BATTERY:
         batteryStatus.battChargingStatus = CHARGING_STATUS_BAD_BATTERY;
-      }
-      else
-      {
-        batteryStatus.battChargingStatus = CHARGING_STATUS_SUSPENDED;
-      }
-      break;
-    case CHRG_CHIP_STATUS_FULLY_CHARGED:
-      batteryStatus.battChargingStatus = CHARGING_STATUS_FULLY_CHARGED;
-      break;
-    case CHRG_CHIP_STATUS_PRECONDITIONING:
-      batteryStatus.battChargingStatus = CHARGING_STATUS_CHARGING;
-      break;
-    case CHRG_CHIP_STATUS_BAD_BATTERY:
-      batteryStatus.battChargingStatus = CHARGING_STATUS_BAD_BATTERY;
-      break;
-    case CHRG_CHIP_STATUS_UNKNOWN:
-      batteryStatus.battChargingStatus = CHARGING_STATUS_UNKNOWN;
-      break;
-    default:
-      batteryStatus.battChargingStatus = CHARGING_STATUS_ERROR;
-      break;
+        break;
+      case CHRG_CHIP_STATUS_UNKNOWN:
+        batteryStatus.battChargingStatus = CHARGING_STATUS_UNKNOWN;
+        break;
+      default:
+        batteryStatus.battChargingStatus = CHARGING_STATUS_ERROR;
+        break;
     }
   }
 }
@@ -180,34 +180,34 @@ void ShimBatt_determineUndockedLedState(void)
 {
   switch (batteryStatus.battStat)
   {
-  case BATT_LOW:
+    case BATT_LOW:
 #if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_RED;
+      batteryStatus.battStatLed = LED_RED;
 #elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_RED;
+      batteryStatus.battStatLed = LED_RGB_RED;
 #endif
-    break;
-  case BATT_MID:
+      break;
+    case BATT_MID:
 #if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_YELLOW;
+      batteryStatus.battStatLed = LED_YELLOW;
 #elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_YELLOW;
+      batteryStatus.battStatLed = LED_RGB_YELLOW;
 #endif
-    break;
-  case BATT_HIGH:
+      break;
+    case BATT_HIGH:
 #if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_GREEN0;
+      batteryStatus.battStatLed = LED_GREEN0;
 #elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_GREEN;
+      batteryStatus.battStatLed = LED_RGB_GREEN;
 #endif
-    break;
-  default:
+      break;
+    default:
 #if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_RED;
+      batteryStatus.battStatLed = LED_RED;
 #elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_RED;
+      batteryStatus.battStatLed = LED_RGB_RED;
 #endif
-    break;
+      break;
   }
 }
 

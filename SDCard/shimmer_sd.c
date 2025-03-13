@@ -1590,66 +1590,66 @@ void ShimSd_findError(uint8_t err, uint8_t *name)
 {
   switch (err)
   {
-  case 0:
-    strcpy((char *) name, "OK");
-    break;
-  case 1:
-    strcpy((char *) name, "DISK_ERR");
-    break;
-  case 2:
-    strcpy((char *) name, "INT_ERR");
-    break;
-  case 3:
-    strcpy((char *) name, "NOT_READY");
-    break;
-  case 4:
-    strcpy((char *) name, "NO_FILE");
-    break;
-  case 5:
-    strcpy((char *) name, "NO_PATH");
-    break;
-  case 6:
-    strcpy((char *) name, "INVALID_NAME");
-    break;
-  case 7:
-    strcpy((char *) name, "DENIED");
-    break;
-  case 8:
-    strcpy((char *) name, "EXIST");
-    break;
-  case 9:
-    strcpy((char *) name, "INVALID_OBJ");
-    break;
-  case 10:
-    strcpy((char *) name, "WRITE_PROTEC");
-    break;
-  case 11:
-    strcpy((char *) name, "INVALID_DRIV");
-    break;
-  case 12:
-    strcpy((char *) name, "NOT_ENABLED");
-    break;
-  case 13:
-    strcpy((char *) name, "NO_FILESYSTE");
-    break;
-  case 14:
-    strcpy((char *) name, "MKFS_ABORTED");
-    break;
-  case 15:
-    strcpy((char *) name, "TIMEOUT");
-    break;
-  case 16:
-    strcpy((char *) name, "LOCKED");
-    break;
-  case 17:
-    strcpy((char *) name, "NOT_ENOUGH_C");
-    break;
-  case 18:
-    strcpy((char *) name, "TOO_MANY_OPE");
-    break;
-  default:
-    strcpy((char *) name, "NO_REASON");
-    break;
+    case 0:
+      strcpy((char *) name, "OK");
+      break;
+    case 1:
+      strcpy((char *) name, "DISK_ERR");
+      break;
+    case 2:
+      strcpy((char *) name, "INT_ERR");
+      break;
+    case 3:
+      strcpy((char *) name, "NOT_READY");
+      break;
+    case 4:
+      strcpy((char *) name, "NO_FILE");
+      break;
+    case 5:
+      strcpy((char *) name, "NO_PATH");
+      break;
+    case 6:
+      strcpy((char *) name, "INVALID_NAME");
+      break;
+    case 7:
+      strcpy((char *) name, "DENIED");
+      break;
+    case 8:
+      strcpy((char *) name, "EXIST");
+      break;
+    case 9:
+      strcpy((char *) name, "INVALID_OBJ");
+      break;
+    case 10:
+      strcpy((char *) name, "WRITE_PROTEC");
+      break;
+    case 11:
+      strcpy((char *) name, "INVALID_DRIV");
+      break;
+    case 12:
+      strcpy((char *) name, "NOT_ENABLED");
+      break;
+    case 13:
+      strcpy((char *) name, "NO_FILESYSTE");
+      break;
+    case 14:
+      strcpy((char *) name, "MKFS_ABORTED");
+      break;
+    case 15:
+      strcpy((char *) name, "TIMEOUT");
+      break;
+    case 16:
+      strcpy((char *) name, "LOCKED");
+      break;
+    case 17:
+      strcpy((char *) name, "NOT_ENOUGH_C");
+      break;
+    case 18:
+      strcpy((char *) name, "TOO_MANY_OPE");
+      break;
+    default:
+      strcpy((char *) name, "NO_REASON");
+      break;
   } //FRESULT;
 }
 
