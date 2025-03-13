@@ -19,8 +19,8 @@
 #include <shimmer_include.h>
 #endif
 
-#define BT_TX_BUF_SIZE                  256U              /* serial buffer in bytes (power 2)  */
-#define BT_TX_BUF_MASK                  (BT_TX_BUF_SIZE-1UL)
+#define BT_TX_BUF_SIZE                              256U /* serial buffer in bytes (power 2)  */
+#define BT_TX_BUF_MASK                              (BT_TX_BUF_SIZE - 1UL)
 
 /* maximum number of arguments for any command sent (daughter card mem write) */
 #define MAX_COMMAND_ARG_SIZE                        131
@@ -232,12 +232,13 @@ enum
   PRESSURE_SENSOR_BMP390 = 2
 };
 
-typedef struct{
-    uint8_t data[BT_TX_BUF_SIZE];
-    // tail points to the buffer index for the oldest byte that was added to it
-    uint16_t rdIdx;
-    // head points to the index of the next empty byte in the buffer
-    uint16_t wrIdx;
+typedef struct
+{
+  uint8_t data[BT_TX_BUF_SIZE];
+  //tail points to the buffer index for the oldest byte that was added to it
+  uint16_t rdIdx;
+  //head points to the index of the next empty byte in the buffer
+  uint16_t wrIdx;
 } RingFifoTx_t;
 
 void ShimBt_btCommsProtocolInit(void);

@@ -76,12 +76,24 @@ uint32_t btDataRateTestCounter;
 uint8_t macIdStr[14], macIdBytes[6];
 
 /* Buffer read / write macros                                                 */
-#define RINGFIFO_RESET(ringFifo)                {ringFifo.rdIdx = ringFifo.wrIdx = 0;}
-#define RINGFIFO_WR(ringFifo, dataIn, mask)     {ringFifo.data[mask & ringFifo.wrIdx++] = (dataIn);}
-#define RINGFIFO_RD(ringFifo, dataOut, mask)    {ringFifo.rdIdx++; dataOut = ringFifo.data[mask & (ringFifo.rdIdx-1)];}
-#define RINGFIFO_EMPTY(ringFifo)                (ringFifo.rdIdx == ringFifo.wrIdx)
-#define RINGFIFO_FULL(ringFifo, mask)           ((mask & ringFifo.rdIdx) == (mask & (ringFifo.wrIdx+1)))
-#define RINGFIFO_COUNT(ringFifo, mask)          (mask & (ringFifo.wrIdx - ringFifo.rdIdx))
+#define RINGFIFO_RESET(ringFifo)         \
+  {                                      \
+    ringFifo.rdIdx = ringFifo.wrIdx = 0; \
+  }
+#define RINGFIFO_WR(ringFifo, dataIn, mask)            \
+  {                                                    \
+    ringFifo.data[mask & ringFifo.wrIdx++] = (dataIn); \
+  }
+#define RINGFIFO_RD(ringFifo, dataOut, mask)              \
+  {                                                       \
+    ringFifo.rdIdx++;                                     \
+    dataOut = ringFifo.data[mask & (ringFifo.rdIdx - 1)]; \
+  }
+#define RINGFIFO_EMPTY(ringFifo) (ringFifo.rdIdx == ringFifo.wrIdx)
+#define RINGFIFO_FULL(ringFifo, mask) \
+  ((mask & ringFifo.rdIdx) == (mask & (ringFifo.wrIdx + 1)))
+#define RINGFIFO_COUNT(ringFifo, mask) \
+  (mask & (ringFifo.wrIdx - ringFifo.rdIdx))
 
 volatile RingFifoTx_t gBtTxFifo;
 
@@ -2407,7 +2419,8 @@ void loadBtTxBufForDataRateTest(void)
   if (spaceInTxBuf > DATA_RATE_TEST_PACKET_SIZE)
   {
     ShimBt_pushByteToBtTxBuf(DATA_RATE_TEST_RESPONSE);
-    ShimBt_pushBytesToBtTxBuf((uint8_t *) &btDataRateTestCounter, sizeof(btDataRateTestCounter));
+    ShimBt_pushBytesToBtTxBuf(
+        (uint8_t *) &btDataRateTestCounter, sizeof(btDataRateTestCounter));
     btDataRateTestCounter++;
   }
 }
@@ -2624,23 +2637,23 @@ uint8_t *ShimBt_getBtArgsPtr(void)
 
 void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain)
 {
-//    uint16_t i;
-    /* We don't want to be clearing the TX buffer if main is in the middle to
-     * streaming bytes to it */
-    if (isCalledFromMain)
-    {
-        RINGFIFO_RESET(gBtTxFifo);
+  //uint16_t i;
+  /* We don't want to be clearing the TX buffer if main is in the middle to
+   * streaming bytes to it */
+  if (isCalledFromMain)
+  {
+    RINGFIFO_RESET(gBtTxFifo);
 
-        // Reset all bytes in the buffer -> only used during debugging
-//        for(i=BT_TX_BUF_SIZE-1;i<BT_TX_BUF_SIZE;i--)
-//        {
-//            *(&gBtTxFifo.data[0]+i) = 0xFF;
-//        }
-    }
-    else
-    {
-        ShimTask_set(TASK_BT_TX_BUF_CLEAR);
-    }
+    //Reset all bytes in the buffer -> only used during debugging
+    //for(i=BT_TX_BUF_SIZE-1;i<BT_TX_BUF_SIZE;i--)
+    //{
+    //    *(&gBtTxFifo.data[0]+i) = 0xFF;
+    //}
+  }
+  else
+  {
+    ShimTask_set(TASK_BT_TX_BUF_CLEAR);
+  }
 }
 
 uint8_t ShimBt_isBtTxBufEmpty(void)
@@ -2650,56 +2663,57 @@ uint8_t ShimBt_isBtTxBufEmpty(void)
 
 void ShimBt_pushByteToBtTxBuf(uint8_t c)
 {
-    if (!RINGFIFO_FULL(gBtTxFifo, BT_TX_BUF_MASK))
-    {
-        RINGFIFO_WR(gBtTxFifo, c, BT_TX_BUF_MASK);
-    }
+  if (!RINGFIFO_FULL(gBtTxFifo, BT_TX_BUF_MASK))
+  {
+    RINGFIFO_WR(gBtTxFifo, c, BT_TX_BUF_MASK);
+  }
 }
 
 void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
 {
-//    uint8_t i;
-//    for (i = 0; i < len; i++)
-//    {
-//        pushByteToBtTxBuf(*(buf + i));
-//    }
+  //uint8_t i;
+  //for (i = 0; i < len; i++)
+  //{
+  //    pushByteToBtTxBuf(*(buf + i));
+  //}
 
-    /* if enough space at after head, copy it in */
-    uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
-    if (spaceAfterHead > len)
-    {
-        memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf, len);
-        gBtTxFifo.wrIdx += len;
-    }
-    else
-    {
-        /* Fill from head to end of buf */
-        memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf, spaceAfterHead);
-        gBtTxFifo.wrIdx += spaceAfterHead;
+  /* if enough space at after head, copy it in */
+  uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
+  if (spaceAfterHead > len)
+  {
+    memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf, len);
+    gBtTxFifo.wrIdx += len;
+  }
+  else
+  {
+    /* Fill from head to end of buf */
+    memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf, spaceAfterHead);
+    gBtTxFifo.wrIdx += spaceAfterHead;
 
-        /* Fill from start of buf. We already checked above whether there is
-         * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
-         * worry about the tail position. */
-        uint16_t remaining = len - spaceAfterHead;
-        memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf + spaceAfterHead, remaining);
-        gBtTxFifo.wrIdx += remaining;
-    }
+    /* Fill from start of buf. We already checked above whether there is
+     * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
+     * worry about the tail position. */
+    uint16_t remaining = len - spaceAfterHead;
+    memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+        buf + spaceAfterHead, remaining);
+    gBtTxFifo.wrIdx += remaining;
+  }
 }
 
 uint8_t ShimBt_popBytefromBtTxBuf(void)
 {
-    uint8_t txByte = 0;
-    RINGFIFO_RD(gBtTxFifo, txByte, BT_TX_BUF_MASK);
-    return txByte;
+  uint8_t txByte = 0;
+  RINGFIFO_RD(gBtTxFifo, txByte, BT_TX_BUF_MASK);
+  return txByte;
 }
 
 uint16_t ShimBt_getUsedSpaceInBtTxBuf(void)
 {
-    return RINGFIFO_COUNT(gBtTxFifo, BT_TX_BUF_MASK);
+  return RINGFIFO_COUNT(gBtTxFifo, BT_TX_BUF_MASK);
 }
 
 uint16_t ShimBt_getSpaceInBtTxBuf(void)
 {
-    // Minus 1 as we always need to leave 1 empty byte in the rolling buffer
-    return BT_TX_BUF_SIZE - 1 - ShimBt_getUsedSpaceInBtTxBuf();
+  //Minus 1 as we always need to leave 1 empty byte in the rolling buffer
+  return BT_TX_BUF_SIZE - 1 - ShimBt_getUsedSpaceInBtTxBuf();
 }
