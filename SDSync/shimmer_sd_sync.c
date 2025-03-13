@@ -420,11 +420,7 @@ void ShimSdSync_centerT10(void)
     packet_length += BT_SD_SYNC_CRC_MODE;
   }
 
-#if defined(SHIMMER3)
-  BT_write(resPacket, packet_length, SHIMMER_CMD);
-#elif defined(SHIMMER3R)
-  BT_write(resPacket, packet_length);
-#endif
+  ShimBt_writeToTxBufAndSend(resPacket, packet_length, SHIMMER_CMD);
 }
 
 /* Sync Center only. Called by TASK_RCCENTERR1 when a center receives a byte
@@ -556,11 +552,7 @@ void ShimSdSync_nodeR10(void)
 void ShimSdSync_nodeT1(uint8_t val)
 {
   uint8_t syncResponse[] = { ACK_COMMAND_PROCESSED, SD_SYNC_RESPONSE, val };
-#if defined(SHIMMER3)
-  BT_write(&syncResponse[0], 3U, SHIMMER_CMD);
-#elif defined(SHIMMER3R)
-  BT_write(&syncResponse[0], 3U);
-#endif
+  ShimBt_writeToTxBufAndSend(&syncResponse[0], 3U, SHIMMER_CMD);
   if (syncNodeWinExpire < (syncCnt + SYNC_EXTEND * SYNC_FACTOR))
   {
     syncNodeWinExpire++;

@@ -232,6 +232,13 @@ enum
   PRESSURE_SENSOR_BMP390 = 2
 };
 
+typedef enum
+{
+    BT_SETUP,
+    SHIMMER_CMD,
+    SENSOR_DATA
+} btResponseType;
+
 typedef struct
 {
   uint8_t data[BT_TX_BUF_SIZE];
@@ -275,10 +282,6 @@ uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd);
 void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew);
 COMMS_CRC_MODE ShimBt_getCrcMode(void);
 
-#if defined(SHIMMER3)
-void setBtDataRateTestState(uint8_t state);
-void loadBtTxBufForDataRateTest(void);
-#endif
 uint8_t ShimBt_macAddressAsciiGet(char *macAscii);
 uint8_t ShimBt_macAddressHexGet(uint8_t *macHex);
 void ShimBt_macIdSetAndUpdateConfig(uint8_t *buf);
@@ -295,8 +298,18 @@ void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain);
 uint8_t ShimBt_isBtTxBufEmpty(void);
 void ShimBt_pushByteToBtTxBuf(uint8_t b);
 void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len);
+//volatile void *memcpy_vout(volatile void *dest, const void *src, size_t n);
 uint8_t ShimBt_popBytefromBtTxBuf(void);
 uint16_t ShimBt_getUsedSpaceInBtTxBuf(void);
 uint16_t ShimBt_getSpaceInBtTxBuf(void);
+
+void ShimBt_TxCpltCallback(void);
+void ShimBt_sendNextCharIfNotInProgress(void);
+void ShimBt_sendNextChar(void);
+
+void ShimBt_setDataRateTestState(uint8_t state);
+uint8_t ShimBt_getDataRateTestState(void);
+void ShimBt_loadTxBufForDataRateTest(void);
+HAL_StatusTypeDefShimmer ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType);
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */

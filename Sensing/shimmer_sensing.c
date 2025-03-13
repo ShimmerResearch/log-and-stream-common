@@ -569,7 +569,7 @@ void ShimSens_saveData(void)
       calculateCrcAndInsert(crcMode, sensing.dataBuf, sensing.dataLen);
     }
 
-    if (BT_write(sensing.dataBuf, sensing.dataLen + crcMode) == HAL_OK)
+    if (ShimBt_writeToTxBufAndSend(sensing.dataBuf, sensing.dataLen + crcMode, SENSOR_DATA) == HAL_SHIM_OK)
     {
     }
   }

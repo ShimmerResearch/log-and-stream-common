@@ -77,4 +77,12 @@ typedef enum
   BOOT_STAGE_END
 } boot_stage_t;
 
+typedef enum
+{
+  HAL_SHIM_OK       = 0x00,
+  HAL_SHIM_ERROR    = 0x01,
+  HAL_SHIM_BUSY     = 0x02,
+  HAL_SHIM_TIMEOUT  = 0x03
+} HAL_StatusTypeDefShimmer;
+
 #endif /* SHIMMER3_COMMON_SOURCE_SHIMMER_DEFINITIONS_H_ */

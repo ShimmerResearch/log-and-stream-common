@@ -99,10 +99,9 @@ typedef enum
   TASK_SDWRITE = (0x00000001UL << 16U),
   TASK_FACTORY_TEST = (0x00000001UL << 17U),
 #if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
-  TASK_USB_SETUP = (0x00000001UL << 18U)
+  TASK_USB_SETUP = (0x00000001UL << 18U),
 #endif
-      TASK_BT_TX_BUF_CLEAR
-  = (0x00000001UL << 19U)
+  TASK_BT_TX_BUF_CLEAR = (0x00000001UL << 19U)
 
 } TASK_FLAGS;
 //return the task id of the current task
