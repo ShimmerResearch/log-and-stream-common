@@ -2809,33 +2809,18 @@ void ShimBt_loadTxBufForDataRateTest(void)
 #endif
 }
 
-//void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-//{
-////  HAL_UART_Transmit_DMA(&huart1,(uint8_t *) "Message Received!\r\n", sizeof("Message Received!\r\n"));
-////  HAL_UART_Receive_DMA(&huart1, pRxBuff, 10);
-//}
-
-HAL_StatusTypeDefShimmer ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType)
+#if defined(SHIMMER3R)
+uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType)
 {
-  //HAL_StatusTypeDef ret_val;
-  //memcpy(bt_txBuf, buf, len);
-  //ret_val = HAL_UART_Transmit_DMA(huart, bt_txBuf, len);
-
-  //SHIMMER_PRINTF("BT_write=%d\n", len);
-
   if (ShimBt_getSpaceInBtTxBuf() <= len)
   {
-    return HAL_SHIM_ERROR; //fail
+    return 1; //fail
   }
 
   ShimBt_pushBytesToBtTxBuf(buf, len);
 
   ShimBt_sendNextCharIfNotInProgress();
 
-  //ret_val = HAL_UART_Transmit_IT(huart, bt_txBuf, len);
-  //if(ret_val == HAL_OK){
-  //   PeriStat_Set(STAT_PERI_BT);
-  //}
-  //return ret_val;
-  return HAL_SHIM_OK;
+  return 0;
 }
+#endif
