@@ -75,6 +75,86 @@ uint32_t btDataRateTestCounter;
 
 uint8_t macIdStr[14], macIdBytes[6];
 
+/* Buffer read / write macros                                                 */
+#define RINGFIFO_RESET(ringFifo)                {ringFifo.rdIdx = ringFifo.wrIdx = 0;}
+#define RINGFIFO_WR(ringFifo, dataIn, mask)     {ringFifo.data[mask & ringFifo.wrIdx++] = (dataIn);}
+#define RINGFIFO_RD(ringFifo, dataOut, mask)    {ringFifo.rdIdx++; dataOut = ringFifo.data[mask & (ringFifo.rdIdx-1)];}
+#define RINGFIFO_EMPTY(ringFifo)                (ringFifo.rdIdx == ringFifo.wrIdx)
+#define RINGFIFO_FULL(ringFifo, mask)           ((mask & ringFifo.rdIdx) == (mask & (ringFifo.wrIdx+1)))
+#define RINGFIFO_COUNT(ringFifo, mask)          (mask & (ringFifo.wrIdx - ringFifo.rdIdx))
+
+volatile RingFifoTx_t gBtTxFifo;
+
+void ShimBt_btCommsProtocolInit(void)
+{
+  ShimBt_setCrcMode(CRC_OFF);
+  numBytesInBtRxBufWhenLastProcessed = 0;
+  indexOfFirstEol = 0;
+  firstProcessFailTicks = 0;
+  memset(unwrappedResponse, 0, sizeof(unwrappedResponse));
+
+#if defined(SHIMMER3)
+  btRxExp = BT_getExpResp();
+#endif
+
+  waitingForArgs = 0;
+  waitingForArgsLength = 0;
+  argsSize = 0;
+
+#if defined(SHIMMER3)
+  memset(btStatusStr, 0, sizeof(btStatusStr));
+
+  memset(btRxBuffFullResponse, 0x00,
+      sizeof(btRxBuffFullResponse) / sizeof(btRxBuffFullResponse[0]));
+  setBtRxFullResponsePtr(btRxBuffFullResponse);
+
+  memset(btRxBuff, 0x00, sizeof(btRxBuff) / sizeof(btRxBuff[0]));
+  DMA2_init((uint16_t *) &UCA1RXBUF, (uint16_t *) btRxBuff, sizeof(btRxBuff));
+  DMA2_transferDoneFunction(&ShimBt_dmaConversionDone);
+  //DMA2SZ = 1U;
+  //DMA2_enable();
+#endif
+
+  memset(btVerStrResponse, 0x00, sizeof(btVerStrResponse) / sizeof(btVerStrResponse[0]));
+
+  setBtDataRateTestState(0);
+
+  ShimBt_resetBtResponseVars();
+  ShimBt_macIdVarsReset();
+
+  ShimBt_clearBtTxBuf(1U);
+
+  RINGFIFO_RESET(gBtTxFifo);
+  memset(gBtTxFifo.data, 0x00, sizeof(gBtTxFifo.data) / sizeof(gBtTxFifo.data[0]));
+}
+
+void ShimBt_resetBtResponseVars(void)
+{
+  sendAck = 0;
+  sendNack = 0;
+  getCmdWaitingResponse = 0;
+  useAckPrefixForInstreamResponses = 1;
+
+#if defined(SHIMMER4_SDK)
+  i2cvBattBtRsp = 0;
+#endif
+}
+
+void ShimBt_resetBtRxVariablesOnConnect(void)
+{
+  /* Reset to unsupported command */
+  gAction = ACK_COMMAND_PROCESSED - 1U;
+  waitingForArgs = 0;
+  waitingForArgsLength = 0;
+}
+
+#if defined(SHIMMER3)
+void ShimBt_resetBtRxBuff(void)
+{
+  memset(btRxBuff, 0, sizeof(btRxBuff));
+}
+#endif
+
 #if defined(SHIMMER3)
 /* Return of 1 brings MSP out of low-power mode */
 uint8_t ShimBt_dmaConversionDone(void)
@@ -1013,75 +1093,6 @@ uint8_t ShimBt_parseRn4678Status(void)
 }
 #endif
 
-void ShimBt_resetBtRxVariablesOnConnect(void)
-{
-  /* Reset to unsupported command */
-  gAction = ACK_COMMAND_PROCESSED - 1U;
-  waitingForArgs = 0;
-  waitingForArgsLength = 0;
-}
-
-#if defined(SHIMMER3)
-void ShimBt_resetBtRxBuff(void)
-{
-  memset(btRxBuff, 0, sizeof(btRxBuff));
-}
-#endif
-
-//ShimTask_setNewBtCmdToProcess,
-//                               ShimBt_macIdSetAndUpdateConfig,
-//                               ShimBt_getBtActionPtr(), ShimBt_getBtArgsPtr()
-
-void ShimBt_btCommsProtocolInit(void)
-{
-  ShimBt_setCrcMode(CRC_OFF);
-  numBytesInBtRxBufWhenLastProcessed = 0;
-  indexOfFirstEol = 0;
-  firstProcessFailTicks = 0;
-  memset(unwrappedResponse, 0, sizeof(unwrappedResponse));
-
-#if defined(SHIMMER3)
-  btRxExp = BT_getExpResp();
-#endif
-
-  waitingForArgs = 0;
-  waitingForArgsLength = 0;
-  argsSize = 0;
-
-#if defined(SHIMMER3)
-  memset(btStatusStr, 0, sizeof(btStatusStr));
-
-  memset(btRxBuffFullResponse, 0x00,
-      sizeof(btRxBuffFullResponse) / sizeof(btRxBuffFullResponse[0]));
-  setBtRxFullResponsePtr(btRxBuffFullResponse);
-
-  memset(btRxBuff, 0x00, sizeof(btRxBuff) / sizeof(btRxBuff[0]));
-  DMA2_init((uint16_t *) &UCA1RXBUF, (uint16_t *) btRxBuff, sizeof(btRxBuff));
-  DMA2_transferDoneFunction(&ShimBt_dmaConversionDone);
-  //DMA2SZ = 1U;
-  //DMA2_enable();
-#endif
-
-  memset(btVerStrResponse, 0x00, sizeof(btVerStrResponse) / sizeof(btVerStrResponse[0]));
-
-  setBtDataRateTestState(0);
-
-  ShimBt_resetBtResponseVars();
-  ShimBt_macIdVarsReset();
-}
-
-void ShimBt_resetBtResponseVars(void)
-{
-  sendAck = 0;
-  sendNack = 0;
-  getCmdWaitingResponse = 0;
-  useAckPrefixForInstreamResponses = 1;
-
-#if defined(SHIMMER4_SDK)
-  i2cvBattBtRsp = 0;
-#endif
-}
-
 uint8_t ShimBt_isWaitingForArgs(void)
 {
   return waitingForArgs;
@@ -1486,7 +1497,7 @@ void ShimBt_processCmd(void)
     if (args[0] == 0)
     {
       setBtDataRateTestState(0);
-      clearBtTxBuf(1);
+      ShimBt_clearBtTxBuf(1);
     }
     getCmdWaitingResponse = gAction;
     break;
@@ -2392,11 +2403,11 @@ void setBtDataRateTestState(uint8_t state)
 
 void loadBtTxBufForDataRateTest(void)
 {
-  uint16_t spaceInTxBuf = getSpaceInBtTxBuf();
+  uint16_t spaceInTxBuf = ShimBt_getSpaceInBtTxBuf();
   if (spaceInTxBuf > DATA_RATE_TEST_PACKET_SIZE)
   {
-    pushByteToBtTxBuf(DATA_RATE_TEST_RESPONSE);
-    pushBytesToBtTxBuf((uint8_t *) &btDataRateTestCounter, sizeof(btDataRateTestCounter));
+    ShimBt_pushByteToBtTxBuf(DATA_RATE_TEST_RESPONSE);
+    ShimBt_pushBytesToBtTxBuf((uint8_t *) &btDataRateTestCounter, sizeof(btDataRateTestCounter));
     btDataRateTestCounter++;
   }
 }
@@ -2583,7 +2594,7 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
 
     setBtDataRateTestState(0);
 
-    clearBtTxBuf(0);
+    ShimBt_clearBtTxBuf(0);
 
     ShimBt_setCrcMode(CRC_OFF);
     /* Revert to default state if changed */
@@ -2609,4 +2620,86 @@ volatile uint8_t *ShimBt_getBtActionPtr(void)
 uint8_t *ShimBt_getBtArgsPtr(void)
 {
   return &args[0];
+}
+
+void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain)
+{
+//    uint16_t i;
+    /* We don't want to be clearing the TX buffer if main is in the middle to
+     * streaming bytes to it */
+    if (isCalledFromMain)
+    {
+        RINGFIFO_RESET(gBtTxFifo);
+
+        // Reset all bytes in the buffer -> only used during debugging
+//        for(i=BT_TX_BUF_SIZE-1;i<BT_TX_BUF_SIZE;i--)
+//        {
+//            *(&gBtTxFifo.data[0]+i) = 0xFF;
+//        }
+    }
+    else
+    {
+        ShimTask_set(TASK_BT_TX_BUF_CLEAR);
+    }
+}
+
+uint8_t ShimBt_isBtTxBufEmpty(void)
+{
+  return RINGFIFO_EMPTY(gBtTxFifo);
+}
+
+void ShimBt_pushByteToBtTxBuf(uint8_t c)
+{
+    if (!RINGFIFO_FULL(gBtTxFifo, BT_TX_BUF_MASK))
+    {
+        RINGFIFO_WR(gBtTxFifo, c, BT_TX_BUF_MASK);
+    }
+}
+
+void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
+{
+//    uint8_t i;
+//    for (i = 0; i < len; i++)
+//    {
+//        pushByteToBtTxBuf(*(buf + i));
+//    }
+
+    /* if enough space at after head, copy it in */
+    uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
+    if (spaceAfterHead > len)
+    {
+        memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf, len);
+        gBtTxFifo.wrIdx += len;
+    }
+    else
+    {
+        /* Fill from head to end of buf */
+        memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf, spaceAfterHead);
+        gBtTxFifo.wrIdx += spaceAfterHead;
+
+        /* Fill from start of buf. We already checked above whether there is
+         * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
+         * worry about the tail position. */
+        uint16_t remaining = len - spaceAfterHead;
+        memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf + spaceAfterHead, remaining);
+        gBtTxFifo.wrIdx += remaining;
+    }
+}
+
+uint8_t ShimBt_popBytefromBtTxBuf(void)
+{
+    uint8_t txByte = 0;
+    RINGFIFO_RD(gBtTxFifo, txByte, BT_TX_BUF_MASK);
+    return txByte;
+}
+
+uint16_t ShimBt_getUsedSpaceInBtTxBuf(void)
+{
+    return RINGFIFO_COUNT(gBtTxFifo, BT_TX_BUF_MASK);
+}
+
+uint16_t ShimBt_getSpaceInBtTxBuf(void)
+{
+    // Minus 1 as we always need to leave 1 empty byte in the rolling buffer
+    return BT_TX_BUF_SIZE - 1 - ShimBt_getUsedSpaceInBtTxBuf();
 }

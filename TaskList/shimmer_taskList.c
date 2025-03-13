@@ -192,6 +192,9 @@ void ShimTask_NORM_manage(void)
       vbusPinStateCheck();
       break;
 #endif
+    case TASK_BT_TX_BUF_CLEAR:
+      ShimBt_clearBtTxBuf(1U);
+      break;
     default:
       break;
     }

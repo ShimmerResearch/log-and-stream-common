@@ -19,6 +19,9 @@
 #include <shimmer_include.h>
 #endif
 
+#define BT_TX_BUF_SIZE                  256U              /* serial buffer in bytes (power 2)  */
+#define BT_TX_BUF_MASK                  (BT_TX_BUF_SIZE-1UL)
+
 /* maximum number of arguments for any command sent (daughter card mem write) */
 #define MAX_COMMAND_ARG_SIZE                        131
 
@@ -229,18 +232,26 @@ enum
   PRESSURE_SENSOR_BMP390 = 2
 };
 
+typedef struct{
+    uint8_t data[BT_TX_BUF_SIZE];
+    // tail points to the buffer index for the oldest byte that was added to it
+    uint16_t rdIdx;
+    // head points to the index of the next empty byte in the buffer
+    uint16_t wrIdx;
+} RingFifoTx_t;
+
+void ShimBt_btCommsProtocolInit(void);
+void ShimBt_resetBtResponseVars(void);
+void ShimBt_resetBtRxVariablesOnConnect(void);
+#if defined(SHIMMER3)
+void ShimBt_resetBtRxBuff(void);
+#endif
 #if defined(SHIMMER3)
 uint8_t ShimBt_dmaConversionDone(void);
 uint8_t ShimBt_parseRn4678Status(void);
 #elif defined(SHIMMER3R)
 uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff);
 #endif
-void ShimBt_resetBtRxVariablesOnConnect(void);
-#if defined(SHIMMER3)
-void ShimBt_resetBtRxBuff(void);
-#endif
-void ShimBt_btCommsProtocolInit(void);
-void ShimBt_resetBtResponseVars(void);
 uint8_t ShimBt_isWaitingForArgs(void);
 uint8_t ShimBt_getBtVerStrLen(void);
 char *ShimBt_getBtVerStrPtr(void);
@@ -278,5 +289,13 @@ void ShimBt_btsdSelfcmd(void);
 void ShimBt_handleBtRfCommStateChange(uint8_t isConnected);
 volatile uint8_t *ShimBt_getBtActionPtr(void);
 uint8_t *ShimBt_getBtArgsPtr(void);
+
+void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain);
+uint8_t ShimBt_isBtTxBufEmpty(void);
+void ShimBt_pushByteToBtTxBuf(uint8_t b);
+void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len);
+uint8_t ShimBt_popBytefromBtTxBuf(void);
+uint16_t ShimBt_getUsedSpaceInBtTxBuf(void);
+uint16_t ShimBt_getSpaceInBtTxBuf(void);
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */
