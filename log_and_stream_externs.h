@@ -26,10 +26,9 @@ extern BattStatus batteryStatus;
 extern char *HAL_GetUID(void);
 extern void RwcCheck(void);
 
-extern void InitialiseBtAfterBoot(void);
-extern void BtStop(uint8_t isCalledFromMain);
 extern void triggerShimmerErrorState(void);
-uint64_t *getRwcTimeDiffPtr(void);
+extern uint64_t *getRwcTimeDiffPtr(void);
+extern uint8_t isBtModuleOverflowPinHigh(void);
 
 /* Task list */
 extern void checkSetupDock(void);
@@ -41,6 +40,9 @@ extern void setStopSensingFlag(uint8_t state);
 extern void setStopLoggingFlag(uint8_t state);
 extern void setStopStreamingFlag(uint8_t state);
 #endif
+
+extern void InitialiseBtAfterBoot(void);
+extern void BtStop(uint8_t isCalledFromMain);
 
 extern void sleepWhenNoTask(void);
 extern uint8_t CheckSdInslot(void);

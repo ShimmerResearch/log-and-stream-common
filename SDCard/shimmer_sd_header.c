@@ -5,6 +5,7 @@
  *      Author: MarkNolan
  */
 
+#include <log_and_stream_externs.h>
 #include <Boards/shimmer_boards.h>
 #include <Calibration/shimmer_calibration.h>
 #include <Configuration/shimmer_config.h>

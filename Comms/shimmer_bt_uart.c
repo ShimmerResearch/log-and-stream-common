@@ -139,6 +139,8 @@ void ShimBt_btCommsProtocolInit(void)
   ShimBt_macIdVarsReset();
 
   ShimBt_clearBtTxBuf(1U);
+
+  ShimBt_btTxInProgressSet(0);
 }
 
 void ShimBt_resetBtResponseVars(void)
@@ -2725,7 +2727,7 @@ void ShimBt_TxCpltCallback(void)
 
 void ShimBt_sendNextCharIfNotInProgress(void)
 {
-  if (!btTxInProgress)
+  if (!ShimBt_btTxInProgressGet())
   {
     ShimBt_sendNextChar();
   }
@@ -2733,24 +2735,23 @@ void ShimBt_sendNextCharIfNotInProgress(void)
 
 void ShimBt_sendNextChar(void)
 {
-  if (!ShimBt_isBtTxBufEmpty()
-      //#if BT_FLUSH_TX_BUF_IF_RN4678_RTS_LOCK_DETECTED
-      //            && (rn4678RtsLockDetected || !isBtModuleOverflowPinHigh())
-      //#else
-      //            && !isBtModuleOverflowPinHigh())
-      //#endif
-  )
+    if (!ShimBt_isBtTxBufEmpty()
+#if defined(SHIMMER3)
+#if BT_FLUSH_TX_BUF_IF_RN4678_RTS_LOCK_DETECTED
+            && (rn4678RtsLockDetected || !isBtModuleOverflowPinHigh())
+#else
+            && !isBtModuleOverflowPinHigh())
+#endif
+#else
+    }
+#endif
   {
-    btTxInProgress = 1;
-    /* commenting out while loop as individual bytes are sent based on
-     * interrupt firing so no need to wait here. */
-    //ensure no tx interrupt is pending
-    //while (UCA1IFG & UCTXIFG);
-    //uint8_t bt_txBuf;
+    ShimBt_btTxInProgressSet(1);
 
-    //RINGFIFO_RD(gBtTxFifo, bt_txBuf[0], BT_TX_BUF_MASK);
-    //HAL_StatusTypeDef ret_val = HAL_UART_Transmit_IT(huart, &bt_txBuf[0], 1);
-
+#if defined(SHIMMER3)
+    uint8_t buf = ShimBt_popBytefromBtTxBuf();
+    BtTransmit(&buf, 1);
+#else
     HAL_StatusTypeDefShimmer ret_val;
     uint8_t numBytes;
 
@@ -2767,11 +2768,22 @@ void ShimBt_sendNextChar(void)
     }
     gBtTxFifo.rdIdx += numBytes;
     ret_val = BtTransmit((uint8_t *) &gBtTxFifo.data[rdIdx], numBytes);
+#endif
   }
   else
   {
-    btTxInProgress = 0; //false
+    ShimBt_btTxInProgressSet(0); //false
   }
+}
+
+void ShimBt_btTxInProgressSet(uint8_t state)
+{
+  btTxInProgress = state;
+}
+
+uint8_t ShimBt_btTxInProgressGet(void)
+{
+  return btTxInProgress;
 }
 
 void ShimBt_setDataRateTestState(uint8_t state)
@@ -2779,8 +2791,6 @@ void ShimBt_setDataRateTestState(uint8_t state)
   btDataRateTestState = state;
 #if defined(SHIMMER3)
   btDataRateTestCounter = 0;
-
-  BT_setSendNextChar_cb(btDataRateTestState == 1 ? ShimBt_loadTxBufForDataRateTest : 0);
 #else
   *((uint32_t *) &dataRateTestTxPacket[1]) = 0;
 #endif

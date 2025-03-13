@@ -307,6 +307,8 @@ void ShimBt_TxCpltCallback(void);
 void ShimBt_sendNextCharIfNotInProgress(void);
 void ShimBt_sendNextChar(void);
 
+void ShimBt_btTxInProgressSet(uint8_t state);
+uint8_t ShimBt_btTxInProgressGet(void);
 void ShimBt_setDataRateTestState(uint8_t state);
 uint8_t ShimBt_getDataRateTestState(void);
 void ShimBt_loadTxBufForDataRateTest(void);
