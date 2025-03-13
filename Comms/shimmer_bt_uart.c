@@ -2735,7 +2735,7 @@ void ShimBt_sendNextCharIfNotInProgress(void)
 
 void ShimBt_sendNextChar(void)
 {
-    if (!ShimBt_isBtTxBufEmpty()
+  if (!ShimBt_isBtTxBufEmpty()
 #if defined(SHIMMER3)
 #if BT_FLUSH_TX_BUF_IF_RN4678_RTS_LOCK_DETECTED
             && (rn4678RtsLockDetected || !isBtModuleOverflowPinHigh())
@@ -2743,7 +2743,7 @@ void ShimBt_sendNextChar(void)
       && !isBtModuleOverflowPinHigh())
 #endif
 #else
-}
+  )
 #endif
   {
     ShimBt_btTxInProgressSet(1);
