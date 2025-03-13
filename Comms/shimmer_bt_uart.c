@@ -2616,8 +2616,8 @@ void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain)
     RINGFIFO_RESET(gBtTxFifo);
 
     //Reset all bytes in the buffer -> only used during debugging
-    //memset(gBtTxFifo.data, 0x00, sizeof(gBtTxFifo.data) / sizeof(gBtTxFifo.data[0]));
-    //for(i=BT_TX_BUF_SIZE-1;i<BT_TX_BUF_SIZE;i--)
+    //memset(gBtTxFifo.data, 0x00, sizeof(gBtTxFifo.data) /
+    //sizeof(gBtTxFifo.data[0])); for(i=BT_TX_BUF_SIZE-1;i<BT_TX_BUF_SIZE;i--)
     //{
     //*(&gBtTxFifo.data[0]+i) = 0xFF;
     //}
