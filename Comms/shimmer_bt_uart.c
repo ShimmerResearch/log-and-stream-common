@@ -2752,22 +2752,22 @@ void ShimBt_sendNextChar(void)
     uint8_t buf = ShimBt_popBytefromBtTxBuf();
     BtTransmit(&buf, 1);
 #else
-  HAL_StatusTypeDefShimmer ret_val;
-  uint8_t numBytes;
+    HAL_StatusTypeDefShimmer ret_val;
+    uint8_t numBytes;
 
-  uint8_t rdIdx = (gBtTxFifo.rdIdx & BT_TX_BUF_MASK);
-  uint8_t wrIdx = (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
+    uint8_t rdIdx = (gBtTxFifo.rdIdx & BT_TX_BUF_MASK);
+    uint8_t wrIdx = (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
 
-  if (rdIdx < wrIdx)
-  {
-    numBytes = wrIdx - rdIdx;
-  }
-  else
-  {
-    numBytes = BT_TX_BUF_SIZE - rdIdx;
-  }
-  gBtTxFifo.rdIdx += numBytes;
-  ret_val = BtTransmit((uint8_t *) &gBtTxFifo.data[rdIdx], numBytes);
+    if (rdIdx < wrIdx)
+    {
+      numBytes = wrIdx - rdIdx;
+    }
+    else
+    {
+      numBytes = BT_TX_BUF_SIZE - rdIdx;
+    }
+    gBtTxFifo.rdIdx += numBytes;
+    ret_val = BtTransmit((uint8_t *) &gBtTxFifo.data[rdIdx], numBytes);
 #endif
   }
   else
