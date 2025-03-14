@@ -69,3 +69,67 @@ uint64_t ShimUtil_Atol64(uint8_t *buf)
 
   return ret_val;
 }
+
+volatile void *ShimUtil_memset_v(volatile void *dest, uint8_t value, size_t n)
+{
+  volatile uint8_t *dest_c = (volatile uint8_t *) dest;
+
+  while (n > 0)
+  {
+    n--;
+    dest_c[n] = value;
+  }
+
+  return dest;
+}
+
+//https://stackoverflow.com/questions/54964154/is-memcpyvoid-dest-src-n-with-a-volatile-array-safe
+volatile void *ShimUtil_memcpy_v(volatile void *dest, const void *src, size_t n)
+{
+  const uint8_t *src_c = (const uint8_t *) src;
+  volatile uint8_t *dest_c = (volatile uint8_t *) dest;
+
+  while (n > 0)
+  {
+    n--;
+    dest_c[n] = src_c[n];
+  }
+
+  return dest;
+}
+
+volatile void *ShimUtil_memcpy_vv(volatile void *dest, volatile void *src, size_t n)
+{
+  volatile uint8_t *src_c = (volatile uint8_t *) src;
+  volatile uint8_t *dest_c = (volatile uint8_t *) dest;
+
+  while (n > 0)
+  {
+    n--;
+    dest_c[n] = src_c[n];
+  }
+
+  return dest;
+}
+
+size_t ShimUtil_strlen_v(volatile void *dest, size_t maxSize)
+{
+  volatile char *dest_c = (volatile char*) dest;
+
+  uint16_t n;
+  for (n = 0; n < maxSize; n++)
+  {
+    if (dest_c[n] == 0)
+    {
+      break;
+    }
+  }
+  return n;
+
+//  //TODO switch to more efficient approach based on stirng.h?
+//  size_t      n = (size_t)-1;
+//  const char *s = string;
+//
+//  do n++; while (*s++);
+//  return n;
+}

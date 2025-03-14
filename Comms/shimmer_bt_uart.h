@@ -298,7 +298,6 @@ void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain);
 uint8_t ShimBt_isBtTxBufEmpty(void);
 void ShimBt_pushByteToBtTxBuf(uint8_t b);
 void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len);
-//volatile void *memcpy_vout(volatile void *dest, const void *src, size_t n);
 uint8_t ShimBt_popBytefromBtTxBuf(void);
 uint16_t ShimBt_getUsedSpaceInBtTxBuf(void);
 uint16_t ShimBt_getSpaceInBtTxBuf(void);

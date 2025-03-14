@@ -35,6 +35,7 @@
 #include <SDSync/shimmer_sd_sync.h>
 #include <Sensing/shimmer_sensing.h>
 #include <TaskList/shimmer_taskList.h>
+#include <Util/shimmer_util.h>
 #include <log_and_stream_externs.h>
 
 uint8_t unwrappedResponse[256] = { 0 };
@@ -118,9 +119,9 @@ void ShimBt_btCommsProtocolInit(void)
   argsSize = 0;
 
 #if defined(SHIMMER3)
-  memset(btStatusStr, 0, sizeof(btStatusStr));
+  ShimUtil_memset_v(btStatusStr, 0, sizeof(btStatusStr));
 
-  memset(btRxBuffFullResponse, 0x00,
+  ShimUtil_memset_v(btRxBuffFullResponse, 0x00,
       sizeof(btRxBuffFullResponse) / sizeof(btRxBuffFullResponse[0]));
   setBtRxFullResponsePtr(btRxBuffFullResponse);
 
@@ -212,11 +213,11 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
     }
     else if (bt_waitForReturnNewLine)
     {
-      uint8_t btOffset = strlen(btRxBuffFullResponse);
-      memcpy(btRxBuffFullResponse + btOffset, btRxBuffPtr, strlen((char *) btRxBuffPtr));
+      uint8_t btOffset = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
+      ShimUtil_memcpy_v(btRxBuffFullResponse + btOffset, btRxBuffPtr, strlen((char *) btRxBuffPtr));
       memset(btRxBuffPtr, 0, strlen((char *) btRxBuffPtr));
 
-      uint8_t responseLen = strlen(btRxBuffFullResponse);
+      uint8_t responseLen = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
 
       if (btRxBuffFullResponse[responseLen - 1U] == '\r')
       {
@@ -288,11 +289,11 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
     else if (bt_waitForVersion)
     {
       uint8_t btVerRemainingChars = 0;
-      uint8_t btOffset = strlen(btRxBuffFullResponse);
-      memcpy(btRxBuffFullResponse + btOffset, btRxBuffPtr, strlen((char *) btRxBuffPtr));
+      uint8_t btOffset = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
+      ShimUtil_memcpy_v(btRxBuffFullResponse + btOffset, btRxBuffPtr, strlen((char *) btRxBuffPtr));
       memset(btRxBuffPtr, 0, strlen((char *) btRxBuffPtr));
 
-      uint8_t btVerLen = strlen(btRxBuffFullResponse);
+      uint8_t btVerLen = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
       enum BT_FIRMWARE_VERSION btFwVerNew = BT_FW_VER_UNKNOWN;
 
       /* RN41 or RN42 */
@@ -378,7 +379,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
         setBtFwVersion(btFwVerNew);
 
         /* When storing the BT version, ignore from "\r" onwards */
-        uint8_t btVerLen = strlen(btRxBuffFullResponse);
+        uint8_t btVerLen = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
         uint8_t btVerIdx;
         for (btVerIdx = 0; btVerIdx < btVerLen; btVerIdx++)
         {
@@ -388,9 +389,9 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
             break;
           }
         }
-        memcpy(btVerStrResponse, btRxBuffFullResponse, btVerLen);
+        ShimUtil_memcpy_vv(btVerStrResponse, btRxBuffFullResponse, btVerLen);
 
-        memset(btRxBuffFullResponse, 0, strlen((char *) btRxBuffFullResponse));
+        ShimUtil_memset_v(btRxBuffFullResponse, 0, strlen((char *) btRxBuffFullResponse));
         BT_setWaitForVersion(0);
         BT_setGoodCommand();
       }
@@ -626,7 +627,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
             break;
 #if defined(SHIMMER3)
           case RN4678_STATUS_STRING_SEPARATOR:
-            memset(btStatusStr, 0, sizeof(btStatusStr));
+            ShimUtil_memset_v(btStatusStr, 0, sizeof(btStatusStr));
             btStatusStr[0U] = RN4678_STATUS_STRING_SEPARATOR;
             btStatusStrIndex = 1U;
             gAction = data;
@@ -686,7 +687,7 @@ uint8_t ShimBt_parseRn4678Status(void)
   uint8_t numberOfCharRemaining = 0U;
   uint8_t bringUcOutOfSleep = 0U;
 
-  memcpy(btStatusStr + btStatusStrIndex, btRxBuffPtr, waitingForArgs);
+  ShimUtil_memcpy_v(btStatusStr + btStatusStrIndex, btRxBuffPtr, waitingForArgs);
   memset(btRxBuffPtr, 0, waitingForArgs);
   btStatusStrIndex += waitingForArgs;
 
@@ -2881,38 +2882,24 @@ void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
   //uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx &
   //BT_TX_BUF_MASK); if (spaceAfterHead > len)
   //{
-  //  memcpy_vout(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf,
+  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf,
   //  len); gBtTxFifo.wrIdx += len;
   //}
   //else
   //{
   //  /* Fill from head to end of buf */
-  //  memcpy_vout(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf,
+  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf,
   //  spaceAfterHead); gBtTxFifo.wrIdx += spaceAfterHead;
   //
   //  /* Fill from start of buf. We already checked above whether there is
   //   * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
   //   * worry about the tail position. */
   //  uint16_t remaining = len - spaceAfterHead;
-  //  memcpy_vout(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
   //      buf + spaceAfterHead, remaining);
   //  gBtTxFifo.wrIdx += remaining;
   //}
 }
-
-////https://stackoverflow.com/questions/54964154/is-memcpyvoid-dest-src-n-with-a-volatile-array-safe
-//volatile void *memcpy_vout(volatile void *dest, const void *src, size_t n)
-//{
-//  const uint8_t *src_c = (const uint8_t *) src;
-//  volatile uint8_t *dest_c = (volatile uint8_t *) dest;
-//
-//  for (size_t i = 0; i < n; i++)
-//  {
-//    dest_c[i] = src_c[i];
-//  }
-//
-//  return dest;
-//}
 
 uint8_t ShimBt_popBytefromBtTxBuf(void)
 {
@@ -2934,7 +2921,12 @@ uint16_t ShimBt_getSpaceInBtTxBuf(void)
 
 void ShimBt_TxCpltCallback(void)
 {
-  if (shimmerStatus.btConnected)
+  if (shimmerStatus.btConnected
+#if defined(SHIMMER3)
+      || areBtSetupCommandsRunning())
+#else
+  )
+#endif
   {
     if (btDataRateTestState)
     {
@@ -3038,6 +3030,7 @@ void ShimBt_loadTxBufForDataRateTest(void)
         (uint8_t *) &btDataRateTestCounter, sizeof(btDataRateTestCounter));
     btDataRateTestCounter++;
   }
+  ShimBt_sendNextChar();
 #else
   HAL_StatusTypeDefShimmer ret_val
       = BtTransmit(&dataRateTestTxPacket[0], sizeof(dataRateTestTxPacket));
