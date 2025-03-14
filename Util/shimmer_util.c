@@ -114,7 +114,7 @@ volatile void *ShimUtil_memcpy_vv(volatile void *dest, volatile void *src, size_
 
 size_t ShimUtil_strlen_v(volatile void *dest, size_t maxSize)
 {
-  volatile char *dest_c = (volatile char*) dest;
+  volatile char *dest_c = (volatile char *) dest;
 
   uint16_t n;
   for (n = 0; n < maxSize; n++)
@@ -126,10 +126,10 @@ size_t ShimUtil_strlen_v(volatile void *dest, size_t maxSize)
   }
   return n;
 
-//  //TODO switch to more efficient approach based on stirng.h?
-//  size_t      n = (size_t)-1;
-//  const char *s = string;
-//
-//  do n++; while (*s++);
-//  return n;
+  ////TODO switch to more efficient approach based on stirng.h?
+  //size_t      n = (size_t)-1;
+  //const char *s = string;
+  //
+  //do n++; while (*s++);
+  //return n;
 }

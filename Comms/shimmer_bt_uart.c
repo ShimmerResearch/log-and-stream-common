@@ -213,11 +213,14 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
     }
     else if (bt_waitForReturnNewLine)
     {
-      uint8_t btOffset = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
-      ShimUtil_memcpy_v(btRxBuffFullResponse + btOffset, btRxBuffPtr, strlen((char *) btRxBuffPtr));
+      uint8_t btOffset
+          = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
+      ShimUtil_memcpy_v(btRxBuffFullResponse + btOffset, btRxBuffPtr,
+          strlen((char *) btRxBuffPtr));
       memset(btRxBuffPtr, 0, strlen((char *) btRxBuffPtr));
 
-      uint8_t responseLen = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
+      uint8_t responseLen
+          = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
 
       if (btRxBuffFullResponse[responseLen - 1U] == '\r')
       {
@@ -289,11 +292,14 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
     else if (bt_waitForVersion)
     {
       uint8_t btVerRemainingChars = 0;
-      uint8_t btOffset = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
-      ShimUtil_memcpy_v(btRxBuffFullResponse + btOffset, btRxBuffPtr, strlen((char *) btRxBuffPtr));
+      uint8_t btOffset
+          = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
+      ShimUtil_memcpy_v(btRxBuffFullResponse + btOffset, btRxBuffPtr,
+          strlen((char *) btRxBuffPtr));
       memset(btRxBuffPtr, 0, strlen((char *) btRxBuffPtr));
 
-      uint8_t btVerLen = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
+      uint8_t btVerLen
+          = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
       enum BT_FIRMWARE_VERSION btFwVerNew = BT_FW_VER_UNKNOWN;
 
       /* RN41 or RN42 */
@@ -379,7 +385,8 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
         setBtFwVersion(btFwVerNew);
 
         /* When storing the BT version, ignore from "\r" onwards */
-        uint8_t btVerLen = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
+        uint8_t btVerLen
+            = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
         uint8_t btVerIdx;
         for (btVerIdx = 0; btVerIdx < btVerLen; btVerIdx++)
         {
@@ -2882,14 +2889,14 @@ void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
   //uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx &
   //BT_TX_BUF_MASK); if (spaceAfterHead > len)
   //{
-  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf,
-  //  len); gBtTxFifo.wrIdx += len;
+  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //  buf, len); gBtTxFifo.wrIdx += len;
   //}
   //else
   //{
   //  /* Fill from head to end of buf */
-  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf,
-  //  spaceAfterHead); gBtTxFifo.wrIdx += spaceAfterHead;
+  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //  buf, spaceAfterHead); gBtTxFifo.wrIdx += spaceAfterHead;
   //
   //  /* Fill from start of buf. We already checked above whether there is
   //   * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
