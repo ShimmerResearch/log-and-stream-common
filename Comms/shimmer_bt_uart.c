@@ -181,6 +181,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 {
   btRxBuffPtr = rxBuff;
 #endif
+
 #if defined(SHIMMER3)
   uint8_t bt_waitForStartCmd, bt_waitForMacAddress, bt_waitForVersion,
       bt_waitForInitialBoot, bt_waitForReturnNewLine;
@@ -622,8 +623,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case SET_ALT_ACCEL_CALIBRATION_COMMAND:
           case SET_ALT_MAG_CALIBRATION_COMMAND:
             gAction = data;
-            //TODO change to SC_DATA_LEN_STD_IMU_CALIB when calib code goes to common
-            waitingForArgs = 21;
+            waitingForArgs = SC_DATA_LEN_STD_IMU_CALIB;
             break;
 #if defined(SHIMMER3)
           case RN4678_STATUS_STRING_SEPARATOR:
