@@ -1498,14 +1498,14 @@ void ShimBt_processCmd(void)
       calibRamOffset = args[1] + (args[2] << 8);
       if (ShimCalib_ramWrite(&args[3], calibRamLength, calibRamOffset) == 1)
       {
-        ShimCalib_syncFromDumpRamAll();
+        ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
         update_calib_dump_file = 1;
       }
       break;
     }
     case UPD_CALIB_DUMP_COMMAND:
     {
-      ShimCalib_syncFromDumpRamAll();
+      ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
       update_calib_dump_file = 1;
       break;
     }
@@ -1530,6 +1530,7 @@ void ShimBt_processCmd(void)
 #endif
       ShimBt_calibrationChangeCommon(NV_LN_ACCEL_CALIBRATION, SDH_LN_ACCEL_CALIBRATION,
           &storedConfig->lnAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
       break;
     }
     case SET_GYRO_CALIBRATION_COMMAND:
@@ -1541,6 +1542,7 @@ void ShimBt_processCmd(void)
 #endif
       ShimBt_calibrationChangeCommon(NV_GYRO_CALIBRATION, SDH_GYRO_CALIBRATION,
           &storedConfig->gyroCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
       break;
     }
     case SET_MAG_CALIBRATION_COMMAND:
@@ -1552,6 +1554,7 @@ void ShimBt_processCmd(void)
 #endif
       ShimBt_calibrationChangeCommon(NV_MAG_CALIBRATION, SDH_MAG_CALIBRATION,
           &storedConfig->magCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
       break;
     }
     case SET_WR_ACCEL_CALIBRATION_COMMAND:
@@ -1563,6 +1566,7 @@ void ShimBt_processCmd(void)
 #endif
       ShimBt_calibrationChangeCommon(NV_WR_ACCEL_CALIBRATION, SDH_WR_ACCEL_CALIBRATION,
           &storedConfig->wrAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
       break;
     }
     case SET_GSR_RANGE_COMMAND:
@@ -1642,7 +1646,7 @@ void ShimBt_processCmd(void)
     case RESET_CALIBRATION_VALUE_COMMAND:
     {
       ShimCalib_init();
-      ShimCalib_syncFromDumpRamAll();
+      ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
       update_calib_dump_file = 1;
       break;
     }
@@ -1751,24 +1755,13 @@ void ShimBt_processCmd(void)
         /* Save from infomem to calib dump in memory */
         if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
         {
-#if defined(SHIMMER3)
-          ShimCalib_calibSaveFromInfoMemToCalibDump(SC_SENSOR_ANALOG_ACCEL);
-          ShimCalib_calibSaveFromInfoMemToCalibDump(SC_SENSOR_MPU9X50_ICM20948_GYRO);
-          ShimCalib_calibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM303_MAG);
-          ShimCalib_calibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM303_ACCEL);
-#elif defined(SHIMMER3R)
-          ShimCalib_calibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM6DSV_ACCEL);
-          ShimCalib_calibSaveFromInfoMemToCalibDump(SC_SENSOR_LSM6DSV_GYRO);
-          ShimCalib_calibSaveFromInfoMemToCalibDump(SC_SENSOR_LIS3MDL_MAG);
-          ShimCalib_calibSaveFromInfoMemToCalibDump(SC_SENSOR_LIS2DW12_ACCEL);
-#endif
+          ShimCalib_configBytes0To127ToCalibDumpBytes(0);
           update_calib_dump_file = 1;
         }
 #if defined(SHIMMER3R)
         else if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
         {
-          ShimCalib_calibSaveFromInfoMemToCalibDump(SC_SENSOR_ADXL371_ACCEL);
-          ShimCalib_calibSaveFromInfoMemToCalibDump(SC_SENSOR_LIS2MDL_MAG);
+          ShimCalib_configBytes128To255ToCalibDumpBytes(0);
           update_calib_dump_file = 1;
         }
 #endif
@@ -1776,15 +1769,6 @@ void ShimBt_processCmd(void)
         ShimSdHead_config2SdHead();
         ShimSd_infomem2Names();
         update_sdconfig = 1;
-        if (((infomemOffset >= NV_LN_ACCEL_CALIBRATION) && (infomemOffset <= NV_CALIBRATION_END))
-            || (((infomemLength + infomemOffset) >= NV_LN_ACCEL_CALIBRATION)
-                && ((infomemLength + infomemOffset) <= NV_CALIBRATION_END))
-            || ((infomemOffset <= NV_LN_ACCEL_CALIBRATION)
-                && ((infomemLength + infomemOffset) >= NV_CALIBRATION_END)))
-        {
-          ShimCalib_updateFromInfoAll();
-          update_calib_dump_file = 1;
-        }
       }
       else
       {
@@ -1828,6 +1812,7 @@ void ShimBt_processCmd(void)
 #endif
       ShimBt_calibrationChangeCommon(NV_ALT_ACCEL_CALIBRATION, SDH_ALT_ACCEL_CALIBRATION,
           &storedConfig->altAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
       break;
     }
     case SET_ALT_MAG_CALIBRATION_COMMAND:
@@ -1839,6 +1824,7 @@ void ShimBt_processCmd(void)
 #endif
       ShimBt_calibrationChangeCommon(NV_ALT_MAG_CALIBRATION, SDH_ALT_MAG_CALIBRATION,
           &storedConfig->altMagCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
       break;
     }
     case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
@@ -1945,11 +1931,10 @@ void ShimBt_calibrationChangeCommon(uint16_t configByteIdx,
 {
   memcpy(configBytePtr, newCalibPtr, SC_DATA_LEN_STD_IMU_CALIB);
   InfoMem_write(configByteIdx, configBytePtr, SC_DATA_LEN_STD_IMU_CALIB);
+
   ShimSdHead_sdHeadTextSet(configBytePtr, sdHeaderIdx, SC_DATA_LEN_STD_IMU_CALIB);
 
-  ShimCalib_calibSaveFromInfoMemToCalibDump(sensorCalibId);
-
-  ShimBt_updateCalibDumpFile();
+  ShimCalib_configBytesToCalibDump(sensorCalibId, 0);
 }
 
 void ShimBt_updateCalibDumpFile(void)

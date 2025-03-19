@@ -114,6 +114,7 @@ typedef struct shimmer_calib_t
 #define SC_SENSOR_BMP390_PRESSURE 43
 #endif
 #define SC_SENSOR_HOST_ECG        100
+#define SC_SENSOR_ALL           0xFF
 
 #define SC_DATA_LEN_STD_IMU_CALIB 21
 
@@ -159,8 +160,6 @@ void ShimCalib_init(void);
 
 uint8_t *ShimCalib_getRam(void);
 
-uint8_t ShimCalib_findLength(sc_t *sc1);
-
 void ShimCalib_ram2File(void);
 
 uint8_t ShimCalib_file2Ram(void);
@@ -175,10 +174,10 @@ void ShimCalib_checkRamLen(void);
 void ShimCalib_ramTempInit(void);
 
 uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset);
-
 uint8_t ShimCalib_ramRead(uint8_t *buf, uint8_t length, uint16_t offset);
 
-void ShimCalib_default(uint8_t sensor);
+void ShimCalib_defaultAll(void);
+void ShimCalib_setDefaultForSensor(uint8_t sensor);
 #if defined(SHIMMER3)
 void ShimCalib_setDefaultKionixCalib(sc_t *sc1Ptr);
 void ShimCalib_setDefaultMpu9X50Icm20948GyroCalib(sc_t *sc1Ptr);
@@ -193,14 +192,14 @@ void ShimCalib_setDefaultLis2mdlMagCalib(sc_t *sc1Ptr);
 void ShimCalib_setDefaultLis3mdlMagCalib(sc_t *sc1Ptr);
 #endif
 
-void ShimCalib_defaultAll(void);
-void ShimCalib_singleSensorWriteFromInfoMem(uint16_t id, uint8_t range, uint8_t data_len, uint8_t *ptr);
-void ShimCalib_calibSaveFromInfoMemToCalibDump(uint8_t id);
+void ShimCalib_initFromConfigBytesAll(void);
+void ShimCalib_updateFromConfigBytesAll(void);
+void ShimCalib_configBytes0To127ToCalibDumpBytes(uint8_t setCalibTsZero);
+void ShimCalib_configBytes128To255ToCalibDumpBytes(uint8_t setCalibTsZero);
+void ShimCalib_configBytesToCalibDump(uint8_t id, uint8_t setCalibTsZero);
+void ShimCalib_singleSensorToCalibDump(uint16_t id, uint8_t range, uint8_t data_len, uint8_t *configBytePtr, uint8_t setCalibTsZero);
 
-void ShimCalib_initFromInfoAll(void);
-void ShimCalib_updateFromInfoAll(void);
-void ShimCalib_fromInfo(uint8_t sensor, uint8_t use_sys_time);
-void ShimCalib_syncFromDumpRamAll(void);
-void ShimCalib_syncFromDumpRamSingleSensor(uint8_t sensor);
+void ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(void);
+void ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(uint8_t sensor);
 
 #endif //SHIMMER_CALIBRATION_H

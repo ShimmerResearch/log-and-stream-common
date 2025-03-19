@@ -592,6 +592,13 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
     settingCorrected = 1;
   }
 
+#if defined(SHIMMER3)
+  if (!ShimBrd_isWrAccelInUseLsm303dlhc())
+  {
+    storedConfigPtr->magRange = 0;
+  }
+#endif
+
   ShimSdSync_checkSyncCenterName();
 
   return settingCorrected;
@@ -725,7 +732,7 @@ uint8_t ShimConfig_isMicrophoneEnabled(void)
 void ShimConfig_loadSensorConfigAndCalib(void)
 {
   ShimCalib_init();
-  ShimCalib_initFromInfoAll();
+  ShimCalib_initFromConfigBytesAll();
 
   if (!shimmerStatus.docked && CheckSdInslot())
   { //sd card ready to access
@@ -764,5 +771,5 @@ void ShimConfig_loadSensorConfigAndCalib(void)
     //CalibFromInfoAll();
   }
 
-  ShimCalib_syncFromDumpRamAll();
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
 }

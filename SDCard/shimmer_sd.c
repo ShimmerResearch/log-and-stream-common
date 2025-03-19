@@ -1681,7 +1681,7 @@ void ShimSd_sdInfoSync()
     else
     {
       //only need to do this when file2Ram succeeds
-      ShimCalib_syncFromDumpRamAll();
+      ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
     }
   }
 

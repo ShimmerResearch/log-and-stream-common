@@ -177,7 +177,7 @@ void ShimSdHead_config2SdHead(void)
   memcpy(&sdHeadText[SDH_CONFIG_TIME_0], &configBytes->rawBytes[NV_SD_CONFIG_TIME], 4);
   ShimSdHead_saveBmpCalibrationToSdHeader();
 
-  ShimCalib_syncFromDumpRamAll();
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
   memcpy(&sdHeadText[SDH_DAUGHTER_CARD_ID_BYTE0], ShimBrd_getDaughtCardIdPtr(), 3);
 }
 
