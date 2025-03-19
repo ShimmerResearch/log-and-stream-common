@@ -902,7 +902,6 @@ void ShimCalib_configBytes0To127ToCalibDumpBytes(uint8_t setCalibTsZero)
   ShimCalib_configBytesToCalibDump(SC_SENSOR_LIS2DW12_ACCEL, setCalibTsZero);
   ShimCalib_configBytesToCalibDump(SC_SENSOR_LIS3MDL_MAG, setCalibTsZero);
 #endif
-
 }
 
 void ShimCalib_configBytes128To255ToCalibDumpBytes(uint8_t setCalibTsZero)
@@ -920,8 +919,9 @@ void ShimCalib_configBytesToCalibDump(uint8_t id, uint8_t setCalibTsZero)
 #if defined(SHIMMER3)
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_ANALOG_ACCEL)
   {
-    ShimCalib_singleSensorToCalibDump(SC_SENSOR_ANALOG_ACCEL, SC_SENSOR_RANGE_ANALOG_ACCEL,
-        SC_DATA_LEN_ANALOG_ACCEL, &configBytes->lnAccelCalib.rawBytes[0], setCalibTsZero);
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_ANALOG_ACCEL,
+        SC_SENSOR_RANGE_ANALOG_ACCEL, SC_DATA_LEN_ANALOG_ACCEL,
+        &configBytes->lnAccelCalib.rawBytes[0], setCalibTsZero);
   }
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_MPU9X50_ICM20948_GYRO)
   {
@@ -931,20 +931,21 @@ void ShimCalib_configBytesToCalibDump(uint8_t id, uint8_t setCalibTsZero)
   }
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_LSM303_ACCEL)
   {
-    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LSM303_ACCEL, configBytes->wrAccelRange,
-        SC_DATA_LEN_LSM303_ACCEL, &configBytes->wrAccelCalib.rawBytes[0], setCalibTsZero);
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LSM303_ACCEL,
+        configBytes->wrAccelRange, SC_DATA_LEN_LSM303_ACCEL,
+        &configBytes->wrAccelCalib.rawBytes[0], setCalibTsZero);
   }
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_LSM303_MAG)
   {
-    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LSM303_MAG,
-                                      configBytes->magRange,
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LSM303_MAG, configBytes->magRange,
         SC_DATA_LEN_LSM303_MAG, &configBytes->magCalib.rawBytes[0], setCalibTsZero);
   }
 #elif defined(SHIMMER3R)
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_LSM6DSV_ACCEL)
   {
-    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LSM6DSV_ACCEL, configBytes->lnAccelRange,
-        SC_DATA_LEN_STD_IMU_CALIB, &configBytes->lnAccelCalib.rawBytes[0], setCalibTsZero);
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LSM6DSV_ACCEL,
+        configBytes->lnAccelRange, SC_DATA_LEN_STD_IMU_CALIB,
+        &configBytes->lnAccelCalib.rawBytes[0], setCalibTsZero);
   }
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_LSM6DSV_GYRO)
   {
@@ -954,13 +955,14 @@ void ShimCalib_configBytesToCalibDump(uint8_t id, uint8_t setCalibTsZero)
   }
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_LIS2DW12_ACCEL)
   {
-    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LIS2DW12_ACCEL, configBytes->wrAccelRange,
-        SC_DATA_LEN_STD_IMU_CALIB, &configBytes->wrAccelCalib.rawBytes[0], setCalibTsZero);
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LIS2DW12_ACCEL,
+        configBytes->wrAccelRange, SC_DATA_LEN_STD_IMU_CALIB,
+        &configBytes->wrAccelCalib.rawBytes[0], setCalibTsZero);
   }
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_ADXL371_ACCEL)
   {
-    ShimCalib_singleSensorToCalibDump(SC_SENSOR_ADXL371_ACCEL, 0,
-        SC_DATA_LEN_STD_IMU_CALIB, &configBytes->altAccelCalib.rawBytes[0], setCalibTsZero);
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_ADXL371_ACCEL, 0, SC_DATA_LEN_STD_IMU_CALIB,
+        &configBytes->altAccelCalib.rawBytes[0], setCalibTsZero);
   }
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_LIS3MDL_MAG)
   {
@@ -969,13 +971,17 @@ void ShimCalib_configBytesToCalibDump(uint8_t id, uint8_t setCalibTsZero)
   }
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_LIS2MDL_MAG)
   {
-    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LIS2MDL_MAG, 0,
-        SC_DATA_LEN_STD_IMU_CALIB, &configBytes->altMagCalib.rawBytes[0], setCalibTsZero);
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LIS2MDL_MAG, 0, SC_DATA_LEN_STD_IMU_CALIB,
+        &configBytes->altMagCalib.rawBytes[0], setCalibTsZero);
   }
 #endif
 }
 
-void ShimCalib_singleSensorToCalibDump(uint16_t id, uint8_t range, uint8_t data_len, uint8_t *configBytePtr, uint8_t setCalibTsZero)
+void ShimCalib_singleSensorToCalibDump(uint16_t id,
+    uint8_t range,
+    uint8_t data_len,
+    uint8_t *configBytePtr,
+    uint8_t setCalibTsZero)
 {
   uint8_t info_valid = 0;
   uint8_t byte_cnt = 0;
