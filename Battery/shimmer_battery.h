@@ -32,7 +32,7 @@
 #endif
 
 /* approx. 10% cutoff voltage - 3.65 Volts */
-#define BATT_CUTOFF_3_65VOLTS   (2500)
+#define BATT_CUTOFF_3_65VOLTS (2500)
 
 typedef enum
 {

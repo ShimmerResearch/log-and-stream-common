@@ -569,7 +569,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
   ShimSdSync_checkSyncCenterName();
 
   uint8_t *macIdBytesPtr = ShimBt_macIdBytesPtrGet();
-  for(i=0;i<6;i++)
+  for (i = 0; i < 6; i++)
   {
     if (*(macIdBytesPtr + i) != storedConfigPtr->macAddr[i])
     {

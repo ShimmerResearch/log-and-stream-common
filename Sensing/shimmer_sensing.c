@@ -124,7 +124,7 @@ uint8_t ShimSens_checkStartSensorConditions(void)
             && shimmerStatus.sdInserted && !shimmerStatus.sdBadFile)
           || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START
               && shimmerStatus.btConnected))
-          || batteryStatus.battCritical)
+      || batteryStatus.battCritical)
   {
     return 0;
   }
@@ -206,7 +206,7 @@ void ShimSens_startSensing(void)
 #if defined(SHIMMER3)
     if (ShimConfig_getStoredConfig()->expansionBoardPower)
     { //EXT_RESET_N
-        Board_setExpansionBrdPower(1);
+      Board_setExpansionBrdPower(1);
     }
 #endif
 
@@ -224,7 +224,7 @@ void ShimSens_startSensing(void)
 
     if (shimmerStatus.docked)
     {
-        DockUart_disable();
+      DockUart_disable();
     }
     ShimSens_stepInit();
 
@@ -262,10 +262,10 @@ void ShimSens_startSensing(void)
 
       if (shimmerStatus.sdSyncEnabled)
       {
-          ShimConfig_experimentLengthCntReset();
-          ShimSdSync_start();
+        ShimConfig_experimentLengthCntReset();
+        ShimSdSync_start();
 
-          PrepareSDBuffHead();
+        PrepareSDBuffHead();
       }
     }
   }
@@ -345,12 +345,12 @@ void ShimSens_stopSensing(void)
 
     if (shimmerStatus.sdSyncEnabled)
     {
-        ShimSdSync_stop();
+      ShimSdSync_stop();
     }
 
     if (shimmerStatus.docked)
     {
-        DockUart_enable();
+      DockUart_enable();
     }
 
     ShimTask_clear(TASK_STREAMDATA);
@@ -374,7 +374,7 @@ void ShimSens_stopSensing(void)
 void ShimSens_stopPeripherals(void)
 {
 #if defined(SHIMMER3)
-    SampleTimerStop();
+  SampleTimerStop();
 #elif defined(SHIMMER4_SDK)
   S4_RTC_WakeUpSetSlow();
 #elif defined(SHIMMER3R)
@@ -387,11 +387,11 @@ void ShimSens_stopPeripherals(void)
   }
   if (sensing.nbrI2cChans)
   {
-      I2C_stopSensing();
+    I2C_stopSensing();
   }
   if (sensing.nbrSpiChans)
   {
-      SPI_stopSensing();
+    SPI_stopSensing();
   }
 
 #if defined(SHIMMER3R)
@@ -471,11 +471,11 @@ void ShimSens_gatherData(void)
     sensing.dataBuf[sensing.ptr.ts + 2] = (sensing.latestTs >> 16) & 0xff;
 
     ShimTask_set(TASK_STREAMDATA);
-//#if defined(SHIMMER3) || defined(SHIMMER3R)
-//    ShimSens_streamData();
-//#elif defined(SHIMMER4_SDK)
-//    ShimSens_step1Start();
-//#endif
+    //#if defined(SHIMMER3) || defined(SHIMMER3R)
+    //    ShimSens_streamData();
+    //#elif defined(SHIMMER4_SDK)
+    //    ShimSens_step1Start();
+    //#endif
   }
 }
 

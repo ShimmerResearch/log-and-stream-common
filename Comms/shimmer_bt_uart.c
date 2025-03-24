@@ -2069,7 +2069,8 @@ void ShimBt_sendRsp(void)
         *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE6];
 #endif
 
-        *(resPacket + packet_length++) = sensing.nbrAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans; //number of data channels
+        *(resPacket + packet_length++) = sensing.nbrAdcChans + sensing.nbrI2cChans
+            + sensing.nbrSpiChans; //number of data channels
         *(resPacket + packet_length++) = storedConfig->bufferSize; //buffer size
         memcpy((resPacket + packet_length), sensing.cc,
             (sensing.nbrAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans));

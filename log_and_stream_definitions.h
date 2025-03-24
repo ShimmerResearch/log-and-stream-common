@@ -15,8 +15,8 @@
 #define IS_SUPPORTED_SINGLE_TOUCH 0
 #define USE_FATFS                 1
 #define USE_SD                    1
-#define USE_BT                1
-#define SKIP_50MS             1
+#define USE_BT                    1
+#define SKIP_50MS                 1
 
 #define MAX_NODES                 20
 #define MAX_CHARS                 13
@@ -28,8 +28,8 @@
 #define RESPONSE_PACKET_SIZE 1024 //133
 #endif
 
-#define STAT_PERI_ADC                   0x01
-#define STAT_PERI_I2C_SENS              0x02
+#define STAT_PERI_ADC      0x01
+#define STAT_PERI_I2C_SENS 0x02
 #if defined(SHIMMER4_SDK)
 #define STAT_PERI_I2C_BATT 0x04
 #endif
@@ -82,9 +82,9 @@ typedef volatile struct STATTypeDef_t
 #if defined(SHIMMER3R)
   uint32_t testResult;
 #endif
-  uint8_t pinPvI2c: 1;
-//  uint8_t pinPvSd: 1;
-  uint8_t pinPvExt: 1;
+  uint8_t pinPvI2c : 1;
+  //uint8_t pinPvSd: 1;
+  uint8_t pinPvExt : 1;
   uint8_t periStat;
 } STATTypeDef;
 

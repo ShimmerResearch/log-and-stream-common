@@ -43,7 +43,7 @@ extern void BMPX80_startMeasurement(void);
 extern void SampleTimerStart(void);
 extern void SampleTimerStop(void);
 extern void Board_setExpansionBrdPower(uint8_t state);
-#endif // SHIMMER3
+#endif //SHIMMER3
 
 extern void DockUart_enable(void);
 extern void DockUart_disable(void);
@@ -87,6 +87,6 @@ extern void SPI_pollSensors(void);
 
 #if defined(SHIMMER3)
 extern void calculateClassicBtTxSampleSetBufferSize(uint8_t len, uint16_t samplingRateTicks);
-#endif // SHIMMER3
+#endif //SHIMMER3
 
 #endif /* SHIMMER_EXTERNS_H_ */

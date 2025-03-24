@@ -44,7 +44,7 @@
 #endif
 
 #if defined(SHIMMER3)
-#define __NOP()                          __no_operation()
+#define __NOP()            __no_operation()
 #define assert_param(expr) ((void) 0U)
 #endif
 
@@ -643,7 +643,7 @@ void ShimSd_writeToCard(void)
 
   if (shimmerStatus.sdSyncEnabled)
   {
-      PrepareSDBuffHead();
+    PrepareSDBuffHead();
   }
 }
 
@@ -1715,8 +1715,7 @@ void ShimSd_readSdConfiguration(void)
 
 void PrepareSDBuffHead(void)
 {
-    memcpy(&sdWrBuf[sdBufWr][sdBufWr], ShimSdSync_myTimeDiffPtrGet(), SYNC_PACKET_PAYLOAD_SIZE);
-    sdBufWr += SYNC_PACKET_PAYLOAD_SIZE;
-    ShimSdSync_resetMyTimeDiff();
+  memcpy(&sdWrBuf[sdBufWr][sdBufWr], ShimSdSync_myTimeDiffPtrGet(), SYNC_PACKET_PAYLOAD_SIZE);
+  sdBufWr += SYNC_PACKET_PAYLOAD_SIZE;
+  ShimSdSync_resetMyTimeDiff();
 }
-

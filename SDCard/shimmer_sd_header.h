@@ -12,9 +12,9 @@
 
 //SD Log file header format
 #if defined(SHIMMER3)
-#define SD_HEAD_SIZE                    256
+#define SD_HEAD_SIZE 256
 #else
-#define SD_HEAD_SIZE                    384
+#define SD_HEAD_SIZE 384
 #endif
 
 #define SDH_SAMPLE_RATE_0               0
