@@ -27,6 +27,7 @@
 #include "ff.h"
 
 #include "../5xx_HAL/hal_RTC.h"
+#include "intrinsics.h"
 
 #elif defined(SHIMMER3R)
 #include "main.h"
@@ -40,6 +41,11 @@
 #else
 #include "fx_api.h"
 #endif
+#endif
+
+#if defined(SHIMMER3)
+#define __NOP()                          __no_operation()
+#define assert_param(expr) ((void) 0U)
 #endif
 
 uint8_t fileName[64], dirName[64], expDirName[32], dataBuf[100],
@@ -634,6 +640,11 @@ void ShimSd_writeToCard(void)
   sensing.inSdWr = 0;
   sensing.inSdWrCnt = 0;
   //__enable_irq();
+
+  if (shimmerStatus.sdSyncEnabled)
+  {
+      PrepareSDBuffHead();
+  }
 }
 
 FRESULT ShimSd_mount(uint8_t val)
@@ -957,7 +968,7 @@ void ShimSd_updateSdConfig(void)
 #if defined(SHIMMER3)
       _delay_cycles(2400000); //100ms @ 24MHz
 #elif defined(SHIMMER3R)
-      HAL_Delay(100); //100ms @ 24MHz
+      HAL_Delay(100); //100ms
 #endif
     }
     else
@@ -1701,3 +1712,11 @@ void ShimSd_readSdConfiguration(void)
    * Sync) */
   ShimConfig_checkBtModeFromConfig();
 }
+
+void PrepareSDBuffHead(void)
+{
+    memcpy(&sdWrBuf[sdBufWr][sdBufWr], ShimSdSync_myTimeDiffPtrGet(), SYNC_PACKET_PAYLOAD_SIZE);
+    sdBufWr += SYNC_PACKET_PAYLOAD_SIZE;
+    ShimSdSync_resetMyTimeDiff();
+}
+

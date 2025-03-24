@@ -11,8 +11,11 @@
 #include <stdint.h>
 
 //SD Log file header format
-#define SD_HEAD_SIZE_S3                 256
+#if defined(SHIMMER3)
+#define SD_HEAD_SIZE                    256
+#else
 #define SD_HEAD_SIZE                    384
+#endif
 
 #define SDH_SAMPLE_RATE_0               0
 #define SDH_SAMPLE_RATE_1               1

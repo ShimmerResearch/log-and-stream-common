@@ -44,10 +44,14 @@
 
 #include <Comms/shimmer_bt_uart.h>
 #include <Configuration/shimmer_config.h>
+#include <SDCard/shimmer_sd.h>
+#include <SDSync/shimmer_sd_sync.h>
 #include <TaskList/shimmer_taskList.h>
 #include <log_and_stream_externs.h>
 
-#if defined(SHIMMER3R)
+#if defined(SHIMMER3)
+#include "../../Shimmer_Driver/RN4X/RN4X.h"
+#elif defined(SHIMMER3R)
 #include "shimmer_definitions.h"
 #endif
 
@@ -60,9 +64,8 @@ I2C_TypeDef *sensing_i2c;
 I2C_TypeDef *sensing_i2c_batt;
 #endif
 
-#if defined(SHIMMER3R)
 uint8_t expectedCbFlags = 0, currentCbFlags = 0;
-#elif defined(SHIMMER4_SDK)
+#if defined(SHIMMER4_SDK)
 uint32_t temp_cnt1, temp_cnt2, temp_cnt3, temp_cnt4;
 #endif
 
@@ -82,7 +85,7 @@ SENSINGTypeDef *ShimSens_getSensing(void)
 
 void ShimSens_configureChannels(void)
 {
-  sensing.nbrAdcChans = sensing.nbrDigiChans = 0;
+  sensing.nbrAdcChans = sensing.nbrI2cChans = sensing.nbrSpiChans = 0;
   sensing.ccLen = 0;
   sensing.ptr.ts = 1;
   sensing.dataLen = FIRST_CH_BYTE_IDX;
@@ -96,24 +99,21 @@ void ShimSens_configureChannels(void)
       sensing.dataLen, ShimConfig_getStoredConfig()->samplingRateTicks);
 #endif
 
-#if defined(SHIMMER3R)
   expectedCbFlags = 0;
-  if (areAdcChannelsEnabled())
+  if (sensing.nbrAdcChans)
   {
     expectedCbFlags |= STAT_PERI_ADC;
   }
-  if (areI2cChannelsEnabled())
+  if (sensing.nbrI2cChans)
   {
     expectedCbFlags |= STAT_PERI_I2C_SENS;
   }
-  if (areSpiChannelsEnabled())
+  if (sensing.nbrSpiChans)
   {
     expectedCbFlags |= STAT_PERI_SPI_SENS;
   }
-#endif
 }
 
-#if defined(SHIMMER3R)
 uint8_t ShimSens_checkStartSensorConditions(void)
 {
   if (shimmerStatus.sensing)
@@ -123,7 +123,8 @@ uint8_t ShimSens_checkStartSensorConditions(void)
   if (!((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START
             && shimmerStatus.sdInserted && !shimmerStatus.sdBadFile)
           || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START
-              && shimmerStatus.btConnected)))
+              && shimmerStatus.btConnected))
+          || batteryStatus.battCritical)
   {
     return 0;
   }
@@ -191,7 +192,9 @@ void ShimSens_startSensing(void)
 
     if (ShimSens_areAnyChannelsEnabled())
     {
+#if defined(SHIMMER3R)
       Board_enableSensingPower(SENSE_PWR_SENSING, 1);
+#endif
     }
     else
     {
@@ -199,6 +202,13 @@ void ShimSens_startSensing(void)
       shimmerStatus.sensing = 0;
       return;
     }
+
+#if defined(SHIMMER3)
+    if (ShimConfig_getStoredConfig()->expansionBoardPower)
+    { //EXT_RESET_N
+        Board_setExpansionBrdPower(1);
+    }
+#endif
 
     uint16_t samplingRateTicks = ShimConfig_getStoredConfig()->samplingRateTicks;
     sensing.freq = ShimConfig_getShimmerSamplingFreq();
@@ -212,16 +222,20 @@ void ShimSens_startSensing(void)
         / sensing.freq; //216000000 = 8192*26367 or 108000000 = 4096*26367
     sensing.clkInterval16k = samplingRateTicks / 2;
 
-    DockUart_disable();
+    if (shimmerStatus.docked)
+    {
+        DockUart_disable();
+    }
     ShimSens_stepInit();
 
-    if (areAdcChannelsEnabled())
+    if (sensing.nbrAdcChans)
     {
-      S4_ADC_startSensing();
+      ADC_startSensing();
     }
     I2C_startSensing();
     SPI_startSensing();
 
+#if defined(SHIMMER3R)
     if (ShimConfig_isMicrophoneEnabled())
     {
       //TODO remove IF when fully switched from eval board to BGA variant
@@ -232,18 +246,10 @@ void ShimSens_startSensing(void)
       micStartSensing();
 #endif
     }
+#endif
 
-    //I2cSensing(1);// gather the first set of sample?
-    //I2cBattMonitor(1);
-
-//TIM_startSensing();
-//sensing.clkInterval4096
-//if (HAL_RTCEx_SetWakeUpTimer_IT(&hrtc, sensing.clkInterval16k-1, RTC_WAKEUPCLOCK_RTCCLK_DIV2) != HAL_OK)
-//{
-//   Error_Handler();
-//}
-#if SENS_CLK_RTC0TIM1
-    TIM_startSensing();
+#if defined(SHIMMER3)
+    SampleTimerStart();
 #else
     S4_RTC_WakeUpSet(samplingRateTicks);
 #endif
@@ -253,6 +259,14 @@ void ShimSens_startSensing(void)
     if (ShimSens_checkStartLoggingConditions())
     {
       ShimSd_fileInit();
+
+      if (shimmerStatus.sdSyncEnabled)
+      {
+          ShimConfig_experimentLengthCntReset();
+          ShimSdSync_start();
+
+          PrepareSDBuffHead();
+      }
     }
   }
 
@@ -313,7 +327,12 @@ void ShimSens_stopSensing(void)
   if (ShimSens_checkStopLoggingConditions())
   {
     ShimSd_close();
-    HAL_Delay(10);
+#if defined(SHIMMER3)
+    _delay_cycles(240000); //10ms @ 24MHz
+#elif defined(SHIMMER3R)
+    HAL_Delay(10); //10ms
+#endif
+    ShimTask_clear(TASK_SDWRITE);
   }
   if (ShimSens_checkStopSensorConditions())
   {
@@ -323,50 +342,66 @@ void ShimSens_stopSensing(void)
     sensing.startTs = 0;
     //sensing.isSampling = 0;
     ShimSens_stopPeripherals();
-    DockUart_enable();
+
+    if (shimmerStatus.sdSyncEnabled)
+    {
+        ShimSdSync_stop();
+    }
+
+    if (shimmerStatus.docked)
+    {
+        DockUart_enable();
+    }
+
+    ShimTask_clear(TASK_STREAMDATA);
+
+    ShimConfig_experimentLengthCntReset();
+
+    if (ShimSd_isSdInfoSyncDelayed())
+    {
+      ShimSd_sdInfoSync();
+    }
+
+    stopSensingWrapup();
   }
 
   //shimmerStatus.sdlogCmd = 0;
   shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
-
-  if (ShimSd_isSdInfoSyncDelayed())
-  {
-    ShimSd_sdInfoSync();
-  }
 
   shimmerStatus.configuring = 0;
 }
 
 void ShimSens_stopPeripherals(void)
 {
-
-#if SENS_CLK_RTC0TIM1
-  TIM_stopSensing();
-#else
-
-#if defined(SHIMMER4_SDK)
+#if defined(SHIMMER3)
+    SampleTimerStop();
+#elif defined(SHIMMER4_SDK)
   S4_RTC_WakeUpSetSlow();
 #elif defined(SHIMMER3R)
   S4_RTC_WakeUpOff();
 #endif
 
-#endif
-
-  if (areAdcChannelsEnabled())
+  if (sensing.nbrAdcChans)
   {
-    S4_ADC_stopSensing();
+    ADC_stopSensing();
   }
-  //HAL_Delay(10); //Send ACK command needs delay here...
-  //BtUart_sendRsp();
-  I2C_stopSensing();
-  SPI_stopSensing();
+  if (sensing.nbrI2cChans)
+  {
+      I2C_stopSensing();
+  }
+  if (sensing.nbrSpiChans)
+  {
+      SPI_stopSensing();
+  }
 
+#if defined(SHIMMER3R)
   Board_enableSensingPower(SENSE_PWR_SENSING, 0);
 
   if (ShimConfig_isMicrophoneEnabled())
   {
     micStopSensing();
   }
+#endif
 }
 
 void ShimSens_streamData(void)
@@ -400,20 +435,28 @@ void ShimSens_streamData(void)
 
 void ShimSens_bufPoll()
 {
-  if (areAdcChannelsEnabled())
+  currentCbFlags = 0;
+
+  if (sensing.nbrAdcChans)
   {
-    S4_ADC_gatherDataStart();
+    ADC_gatherDataStart();
+  }
+  if (sensing.nbrI2cChans)
+  {
+    I2C_pollSensors();
+  }
+  if (sensing.nbrSpiChans)
+  {
+    SPI_pollSensors();
   }
 
-  I2C_pollSensors();
-
-  SPI_pollSensors();
-
+#if defined(SHIMMER3R)
   //TODO come back to when support is added
   //if (isMicrophoneEnabled())
   //{
   //  micStartSensing();
   //}
+#endif
 }
 
 //this is to be called in the ISR
@@ -427,27 +470,23 @@ void ShimSens_gatherData(void)
     sensing.dataBuf[sensing.ptr.ts + 1] = (sensing.latestTs >> 8) & 0xff;
     sensing.dataBuf[sensing.ptr.ts + 2] = (sensing.latestTs >> 16) & 0xff;
 
-    //Task_set(TASK_STREAMDATA);//
-#if defined(SHIMMER3R)
-    ShimSens_sensingStart();
-#elif defined(SHIMMER4_SDK)
-    ShimSens_step1Start();
-#endif
-
-    //ShimSens_streamData();
-
-    //I2cSensing(1);
+    ShimTask_set(TASK_STREAMDATA);
+//#if defined(SHIMMER3) || defined(SHIMMER3R)
+//    ShimSens_streamData();
+//#elif defined(SHIMMER4_SDK)
+//    ShimSens_step1Start();
+//#endif
   }
 }
 
 void ShimSens_stepInit(void)
 {
 #if defined(SHIMMER3R)
-  S4_ADC_gatherDataCb(ShimSens_adcCompleteCb);
+  ADC_gatherDataCb(ShimSens_adcCompleteCb);
   I2cSens_gatherDataCb(ShimSens_i2cCompleteCb);
   SPI_gatherDataCb(ShimSens_spiCompleteCb);
 #elif defined(SHIMMER4_SDK)
-  S4_ADC_gatherDataCb(ShimSens_step2Start);
+  ADC_gatherDataCb(ShimSens_step2Start);
   //I2C_gatherDataInit(ShimSens_step3Start);
   //I2C2_gatherDataInit(ShimSens_step4Start);
   I2cSens_gatherDataCb(ShimSens_step3Start);
@@ -455,13 +494,6 @@ void ShimSens_stepInit(void)
   SPI_gatherDataCb(ShimSens_step5Start);
   temp_cnt1 = temp_cnt2 = temp_cnt3 = temp_cnt4 = 0;
 #endif
-}
-
-#if defined(SHIMMER3R)
-void ShimSens_sensingStart(void)
-{
-  currentCbFlags = 0;
-  ShimSens_streamData();
 }
 
 void ShimSens_adcCompleteCb(void)
@@ -489,12 +521,12 @@ void ShimSens_stageCompleteCb(uint8_t stage)
   }
 }
 
-#elif defined(SHIMMER4_SDK)
+#if defined(SHIMMER4_SDK)
 void ShimSens_step1Start(void)
 {
   PeriStat_Set(STAT_PERI_ADC | STAT_PERI_I2C_SENS | STAT_PERI_I2C_BATT | STAT_PERI_SPI_SENS);
   ShimSens_streamData();
-  S4_ADC_gatherDataStart();
+  ADC_gatherDataStart();
   if (temp_cnt2 == 1000)
   {
     __NOP();
@@ -578,11 +610,10 @@ void ShimSens_saveData(void)
     ShimTask_set(TASK_STOPSENSING);
   }
 }
-#endif
 
 uint8_t ShimSens_areAnyChannelsEnabled(void)
 {
-  if (sensing.nbrAdcChans > 0 || sensing.nbrDigiChans > 0
+  if (sensing.nbrAdcChans > 0 || sensing.nbrI2cChans > 0 || sensing.nbrSpiChans > 0
 #if defined(SHIMMER3R)
       || ShimConfig_isMicrophoneEnabled()
 #endif

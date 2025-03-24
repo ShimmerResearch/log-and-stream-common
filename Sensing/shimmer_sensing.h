@@ -194,7 +194,8 @@ typedef struct
   uint8_t cc[MAX_NUM_CHANNELS]; //channelContents
   uint8_t ccLen;                //channelContentsLength
   uint8_t nbrAdcChans;
-  uint8_t nbrDigiChans;
+  uint8_t nbrI2cChans;
+  uint8_t nbrSpiChans;
   uint8_t dataLen;
   //uint8_t     sdlogEnabled;
   //uint8_t     btStreamEnabled;
@@ -210,7 +211,6 @@ extern SENSINGTypeDef sensing;
 void ShimSens_init(void);
 SENSINGTypeDef *ShimSens_getSensing(void);
 void ShimSens_configureChannels(void);
-#if defined(SHIMMER3R)
 uint8_t ShimSens_checkStartSensorConditions(void);
 uint8_t ShimSens_checkStartLoggingConditions(void);
 uint8_t ShimSens_checkStartStreamingConditions(void);
@@ -224,13 +224,11 @@ void ShimSens_bufPoll(void);
 void ShimSens_gatherData(void);
 
 void ShimSens_stepInit(void);
-#if defined(SHIMMER3R)
-void ShimSens_sensingStart(void);
 void ShimSens_adcCompleteCb(void);
 void ShimSens_i2cCompleteCb(void);
 void ShimSens_spiCompleteCb(void);
 void ShimSens_stageCompleteCb(uint8_t stage);
-#elif defined(SHIMMER4_SDK)
+#if defined(SHIMMER4_SDK)
 void ShimSens_step1Start(void);
 void ShimSens_step2Start(void);
 void ShimSens_step3Start(void);
@@ -240,7 +238,6 @@ void ShimSens_step5Start(void);
 void ShimSens_stepDone(void);
 
 void ShimSens_saveData(void);
-#endif
 
 uint8_t ShimSens_areAnyChannelsEnabled(void);
 uint8_t ShimSens_checkOnDefault(void);

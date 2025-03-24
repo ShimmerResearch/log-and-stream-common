@@ -34,12 +34,19 @@ extern uint8_t isBtModuleOverflowPinHigh(void);
 extern void checkSetupDock(void);
 extern void MPU9150_startMagMeasurement(void);
 extern void BMPX80_startMeasurement(void);
-extern void checkStreamData(void);
-extern void checkStartSensing(void);
-extern void setStopSensingFlag(uint8_t state);
-extern void setStopLoggingFlag(uint8_t state);
-extern void setStopStreamingFlag(uint8_t state);
-#endif
+//extern void checkStreamData(void);
+//extern void checkStartSensing(void);
+//extern void setStopSensingFlag(uint8_t state);
+//extern void setStopLoggingFlag(uint8_t state);
+//extern void setStopStreamingFlag(uint8_t state);
+
+extern void SampleTimerStart(void);
+extern void SampleTimerStop(void);
+extern void Board_setExpansionBrdPower(uint8_t state);
+#endif // SHIMMER3
+
+extern void DockUart_enable(void);
+extern void DockUart_disable(void);
 
 extern void InitialiseBtAfterBoot(void);
 extern void BtStop(uint8_t isCalledFromMain);
@@ -64,8 +71,22 @@ extern void eepromWrite(uint16_t dataAddr, uint16_t dataSize, uint8_t *dataBuf);
 extern void ADC_configureChannels(void);
 extern void I2C_configureChannels(void);
 extern void SPI_configureChannels(void);
+
+extern void ADC_startSensing(void);
+extern void I2C_startSensing(void);
+extern void SPI_startSensing(void);
+
+extern void ADC_stopSensing(void);
+extern void I2C_stopSensing(void);
+extern void SPI_stopSensing(void);
+extern void stopSensingWrapup(void);
+
+extern void ADC_gatherDataStart(void);
+extern void I2C_pollSensors(void);
+extern void SPI_pollSensors(void);
+
 #if defined(SHIMMER3)
 extern void calculateClassicBtTxSampleSetBufferSize(uint8_t len, uint16_t samplingRateTicks);
-#endif
+#endif // SHIMMER3
 
 #endif /* SHIMMER_EXTERNS_H_ */

@@ -473,11 +473,6 @@ uint8_t ShimConfig_storedConfigGet(uint8_t *buf, uint16_t offset, uint16_t lengt
 uint8_t ShimConfig_storedConfigGetByte(uint16_t offset);
 uint8_t ShimConfig_storedConfigSetByte(uint16_t offset, uint8_t val);
 
-void ShimConfig_btMacAsciiSet(char *buf);
-void ShimConfig_btMacAsciiGet(uint8_t *buf);
-uint8_t *ShimConfig_getMacIdStrPtr(void);
-void ShimConfig_btMacHexSet(uint8_t *buf);
-void ShimConfig_btMacHexGet(uint8_t *buf);
 void ShimConfig_setDefaultConfig(void);
 
 void ShimConfig_setDefaultShimmerName(void);

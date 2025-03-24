@@ -6,7 +6,10 @@
  */
 
 #include "shimmer_battery.h"
-#include "log_and_stream_externs.h"
+
+#include <log_and_stream_externs.h>
+#include <Configuration/shimmer_config.h>
+#include <TaskList/shimmer_taskList.h>
 
 #include "hal_Board.h"
 
@@ -32,6 +35,17 @@ void ShimBatt_updateStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3
   ShimBatt_rankBattUndockedVoltage();
   ShimBatt_rankBattChargingStatus();
   ShimBatt_determineChargingLedState();
+
+  /* 10% Battery cutoff point - LogAndStream S3 v0.9.6 onwards and S3R */
+  if (ShimConfig_getStoredConfig()->lowBatteryAutoStop
+          && (batteryStatus.battStatusRaw.adcBattVal < BATT_CUTOFF_3_65VOLTS))
+  {
+      ShimBatt_incrementBatteryCriticalCount();
+      if (ShimBatt_checkIfBatteryCritical() && shimmerStatus.sensing)
+      {
+          ShimTask_setStopSensing();
+      }
+  }
 }
 
 void ShimBatt_rankBattUndockedVoltage(void)

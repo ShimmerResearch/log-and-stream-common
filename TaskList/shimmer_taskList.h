@@ -88,14 +88,10 @@ typedef enum
   TASK_SAMPLE_BMPX80_PRESS = (0x00000001UL << 10U),
 #endif
   TASK_STREAMDATA = (0x00000001UL << 11U),
-  TASK_SDLOG_CFG_UPDATE = (0x00000001UL << 12U),
-  TASK_STARTSENSING = (0x00000001UL << 13U),
-#if defined(SHIMMER3R)
-  TASK_STOPSENSING = (0x00000001UL << 14U),
-#endif
-#if defined(SHIMMER3R)
+  TASK_STOPSENSING = (0x00000001UL << 12U),
+  TASK_SDLOG_CFG_UPDATE = (0x00000001UL << 13U),
+  TASK_STARTSENSING = (0x00000001UL << 14U),
   TASK_SAVEDATA = (0x00000001UL << 15U),
-#endif
   TASK_SDWRITE = (0x00000001UL << 16U),
   TASK_FACTORY_TEST = (0x00000001UL << 17U),
 #if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
@@ -121,6 +117,7 @@ uint8_t ShimTask_NORM_set(uint32_t task_id);
 //return the whole tasklist
 uint32_t ShimTask_NORM_getList(void);
 
+void ShimTask_setRestartSensing(void);
 void ShimTask_setStartSensing(void);
 void ShimTask_setStopSensing(void);
 void ShimTask_setStopLogging(void);

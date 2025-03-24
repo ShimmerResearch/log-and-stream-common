@@ -1636,11 +1636,7 @@ void ShimBt_processCmd(void)
       update_sdconfig = 1;
 
       //restart sensing to use settings
-      if (shimmerStatus.sensing)
-      {
-        ShimTask_setStopSensing();
-        ShimTask_setStartSensing();
-      }
+      ShimTask_setRestartSensing();
       break;
     }
     case RESET_CALIBRATION_VALUE_COMMAND:
@@ -1741,10 +1737,10 @@ void ShimBt_processCmd(void)
       {
         ShimConfig_storedConfigSet(&args[3], infomemOffset, infomemLength);
 
-        /* Overwrite MAC ID as read from BT module */
         if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
         {
-          ShimConfig_storedConfigSet(ShimBt_macIdBytesPtrGet(), NV_MAC_ADDRESS, 6);
+          /* Always overwrite MAC ID */
+          memcpy(&ShimConfig_getStoredConfig()->macAddr[0], ShimBt_macIdBytesPtrGet(), 6);
         }
 
         ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
@@ -1913,11 +1909,7 @@ void ShimBt_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, ui
   //new above ShimSdHead_config2SdHead();
 
   //restart sensing to use settings
-  if (shimmerStatus.sensing)
-  {
-    ShimTask_setStopSensing();
-    ShimTask_setStartSensing();
-  }
+  ShimTask_setRestartSensing();
 
   //update sdconfig
   ShimConfig_setSdCfgFlag(1);
@@ -2077,11 +2069,11 @@ void ShimBt_sendRsp(void)
         *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE6];
 #endif
 
-        *(resPacket + packet_length++) = sensing.nbrAdcChans + sensing.nbrDigiChans; //number of data channels
+        *(resPacket + packet_length++) = sensing.nbrAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans; //number of data channels
         *(resPacket + packet_length++) = storedConfig->bufferSize; //buffer size
         memcpy((resPacket + packet_length), sensing.cc,
-            (sensing.nbrAdcChans + sensing.nbrDigiChans));
-        packet_length += sensing.nbrAdcChans + sensing.nbrDigiChans;
+            (sensing.nbrAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans));
+        packet_length += sensing.nbrAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans;
         break;
       }
       case GET_SAMPLING_RATE_COMMAND:

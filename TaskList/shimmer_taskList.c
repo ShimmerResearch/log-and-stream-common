@@ -114,17 +114,9 @@ void ShimTask_NORM_manage(void)
         ShimSdSync_nodeR10();
         break;
       case TASK_STREAMDATA:
-        //TODO reduce down to one shared function
-#if defined(SHIMMER3)
-        checkStreamData();
-#else
         ShimSens_streamData();
-#endif
         break;
 #if defined(SHIMMER3)
-        //case TASK_CFGCH:
-        //  ConfigureChannels();
-        //  break;
       case TASK_SAMPLE_MPU9150_MAG:
         MPU9150_startMagMeasurement();
         break;
@@ -132,31 +124,17 @@ void ShimTask_NORM_manage(void)
         BMPX80_startMeasurement();
         break;
 #endif
-#if defined(SHIMMER3R)
       case TASK_SAVEDATA:
         ShimSens_saveData();
         break;
-#endif
       case TASK_STARTSENSING:
-        //TODO reduce down to one shared function
-#if defined(SHIMMER3)
-        checkStartSensing();
-#elif defined(SHIMMER3R)
         ShimSens_startSensing();
-#endif
         break;
-#if defined(SHIMMER3R)
       case TASK_STOPSENSING:
         ShimSens_stopSensing();
         break;
-#endif
       case TASK_SDWRITE:
-        //TODO reduce down to one shared function
-#if defined(SHIMMER3)
-        Write2SD();
-#elif defined(SHIMMER3R)
         ShimSd_writeToCard();
-#endif
         break;
       case TASK_SDLOG_CFG_UPDATE:
         if (!shimmerStatus.docked && !shimmerStatus.sensing && CheckSdInslot()
@@ -244,6 +222,21 @@ uint32_t ShimTask_NORM_getList()
   return taskList;
 }
 
+/* TODO this won't work in it's current form as since neither
+ * shimmerStatus.sdlogCmd nor shimmerStatus.btstreamCmd are modified and written
+ * back, no action will actually be taken. This shouldn't be needed as settings
+ * should never be allowed to be modified over Bluetooth while sensing is
+ * on-going but still could be needed if some is calling BT commands directly
+ * outside of our provided software. */
+void ShimTask_setRestartSensing(void)
+{
+  if (shimmerStatus.sensing)
+  {
+    ShimTask_setStopSensing();
+    ShimTask_setStartSensing();
+  }
+}
+
 void ShimTask_setStartSensing(void)
 {
   ShimTask_set(TASK_SDLOG_CFG_UPDATE);
@@ -252,36 +245,15 @@ void ShimTask_setStartSensing(void)
 
 void ShimTask_setStopSensing(void)
 {
-#if defined(SHIMMER3)
-  if (shimmerStatus.sensing)
-  {
-    setStopSensingFlag(1U);
-  }
-#else
   ShimTask_set(TASK_STOPSENSING);
-#endif
 }
 
 void ShimTask_setStopLogging(void)
 {
-#if defined(SHIMMER3)
-  if (shimmerStatus.sdLogging)
-  {
-    setStopLoggingFlag(1U);
-  }
-#else
   ShimTask_set(TASK_STOPSENSING);
-#endif
 }
 
 void ShimTask_setStopStreaming(void)
 {
-#if defined(SHIMMER3)
-  if (shimmerStatus.btStreaming)
-  {
-    setStopStreamingFlag(1U);
-  }
-#else
   ShimTask_set(TASK_STOPSENSING);
-#endif
 }

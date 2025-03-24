@@ -47,6 +47,7 @@
 
 #include <Boards/shimmer_boards.h>
 #include <Calibration/shimmer_calibration.h>
+#include <Comms/shimmer_bt_uart.h>
 #include <SDCard/shimmer_sd.h>
 #include <SDCard/shimmer_sd_header.h>
 #include <SDSync/shimmer_sd_sync.h>
@@ -55,7 +56,6 @@
 #include "shimmer_definitions.h"
 #endif
 
-uint8_t btMacAscii[14], btMacHex[6];
 static gConfigBytes storedConfig;
 uint8_t calibRamFlag = 0;
 
@@ -63,9 +63,6 @@ uint32_t maxLen, maxLenCnt;
 
 void ShimConfig_reset(void)
 {
-  memset(btMacAscii, 0x00, sizeof(btMacAscii));
-  memset(btMacHex, 0x00, sizeof(btMacHex));
-
   memset(storedConfig.rawBytes, 0xFF, NV_NUM_RWMEM_BYTES);
   storedConfig.rawBytes[NV_SD_SHIMMER_NAME] = '\0';
   storedConfig.rawBytes[NV_SD_EXP_ID_NAME] = '\0';
@@ -97,7 +94,6 @@ void ShimConfig_readRam(void)
     ShimConfig_storedConfigSet(temp_storedConfig.rawBytes, 0, STOREDCONFIG_SIZE);
   }
 #endif //USE_DEFAULT_SENSOR
-  ShimConfig_storedConfigSet(btMacHex, NV_MAC_ADDRESS, 6);
 
 #if defined(SHIMMER3)
   ShimSdHead_config2SdHead();
@@ -160,40 +156,6 @@ uint8_t ShimConfig_storedConfigSetByte(uint16_t offset, uint8_t val)
   return 0;
 }
 
-/*
- * btMacAscii: Set(), Get()
- */
-
-void ShimConfig_btMacAsciiSet(char *buf)
-{
-  memcpy(btMacAscii, buf, 12);
-  btMacAscii[12] = 0;
-}
-
-void ShimConfig_btMacAsciiGet(uint8_t *buf)
-{
-  memcpy(buf, btMacAscii, 12);
-}
-
-uint8_t *ShimConfig_getMacIdStrPtr(void)
-{
-  return &btMacAscii[0];
-}
-
-/*
- * btMacHex: Set(), Get()
- */
-
-void ShimConfig_btMacHexSet(uint8_t *buf)
-{
-  memcpy(btMacHex, buf, 6);
-}
-
-void ShimConfig_btMacHexGet(uint8_t *buf)
-{
-  memcpy(buf, btMacHex, 6);
-}
-
 void ShimConfig_setDefaultConfig(void)
 {
   memset(storedConfig.rawBytes, 0x00, sizeof(storedConfig.rawBytes));
@@ -213,7 +175,7 @@ void ShimConfig_setDefaultConfig(void)
   memset(&storedConfig.rawBytes[NV_BT_SET_PIN], 0xFF, 25);
   memset(&storedConfig.rawBytes[NV_NODE0], 0xFF, 128);
 
-  ShimConfig_btMacHexGet(storedConfig.macAddr);
+  ShimBt_macAddressHexGet(storedConfig.macAddr);
 
   storedConfig.samplingRateTicks = ShimConfig_freqDiv(51.2); //51.2Hz
   storedConfig.bufferSize = 1;
@@ -310,8 +272,11 @@ void ShimConfig_setDefaultConfig(void)
 
 void ShimConfig_setDefaultShimmerName(void)
 {
+  char btMacAscii[12];
+  ShimBt_macAddressAsciiGet(btMacAscii);
+
   strcpy(&storedConfig.shimmerName[0], "Shimmer_XXXX");
-  memcpy(&storedConfig.shimmerName[8], btMacAscii + 8, 4);
+  memcpy(&storedConfig.shimmerName[8], &btMacAscii[8], 4);
 }
 
 void ShimConfig_setDefaultTrialId(void)
@@ -483,6 +448,7 @@ uint8_t ShimConfig_configByteMagRateGet(void)
 uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
 {
   uint8_t settingCorrected = 0;
+  uint8_t i = 0;
 
   if (storedConfigPtr->chEnGsr
 #if defined(SHIMMER3)
@@ -593,13 +559,25 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
   }
 
 #if defined(SHIMMER3)
-  if (!ShimBrd_isWrAccelInUseLsm303dlhc())
+  if (!ShimBrd_isWrAccelInUseLsm303dlhc() && storedConfigPtr->magRange != 0)
   {
     storedConfigPtr->magRange = 0;
+    settingCorrected = 1;
   }
 #endif
 
   ShimSdSync_checkSyncCenterName();
+
+  uint8_t *macIdBytesPtr = ShimBt_macIdBytesPtrGet();
+  for(i=0;i<6;i++)
+  {
+    if (*(macIdBytesPtr + i) != storedConfigPtr->macAddr[i])
+    {
+      memcpy(&storedConfigPtr->macAddr[0], macIdBytesPtr, 6);
+      settingCorrected = 1;
+      break;
+    }
+  }
 
   return settingCorrected;
 }

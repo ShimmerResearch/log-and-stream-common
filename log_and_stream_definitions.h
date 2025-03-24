@@ -15,6 +15,8 @@
 #define IS_SUPPORTED_SINGLE_TOUCH 0
 #define USE_FATFS                 1
 #define USE_SD                    1
+#define USE_BT                1
+#define SKIP_50MS             1
 
 #define MAX_NODES                 20
 #define MAX_CHARS                 13
@@ -25,6 +27,25 @@
 #else
 #define RESPONSE_PACKET_SIZE 1024 //133
 #endif
+
+#define STAT_PERI_ADC                   0x01
+#define STAT_PERI_I2C_SENS              0x02
+#if defined(SHIMMER4_SDK)
+#define STAT_PERI_I2C_BATT 0x04
+#endif
+#define STAT_PERI_SPI_SENS 0x08
+#define STAT_PERI_SDMMC    0x10
+#define STAT_PERI_BT       0x20
+#define PeriStat_Set(x)          \
+  do                             \
+  {                              \
+    shimmerStatus.periStat |= x; \
+  } while (0)
+#define PeriStat_Clr(x)           \
+  do                              \
+  {                               \
+    shimmerStatus.periStat &= ~x; \
+  } while (0)
 
 typedef volatile struct STATTypeDef_t
 { //STATUS
@@ -60,11 +81,11 @@ typedef volatile struct STATTypeDef_t
   uint8_t toggleLedRedCmd        : 1;
 #if defined(SHIMMER3R)
   uint32_t testResult;
-  uint8_t pinPvI2c;
-  uint8_t pinPvSd;
-  uint8_t pinPvExt;
-  uint8_t periStat;
 #endif
+  uint8_t pinPvI2c: 1;
+//  uint8_t pinPvSd: 1;
+  uint8_t pinPvExt: 1;
+  uint8_t periStat;
 } STATTypeDef;
 
 typedef enum
