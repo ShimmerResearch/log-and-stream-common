@@ -114,7 +114,7 @@ typedef struct shimmer_calib_t
 #define SC_SENSOR_BMP390_PRESSURE 43
 #endif
 #define SC_SENSOR_HOST_ECG        100
-#define SC_SENSOR_ALL           0xFF
+#define SC_SENSOR_ALL             0xFF
 
 #define SC_DATA_LEN_STD_IMU_CALIB 21
 
@@ -197,7 +197,11 @@ void ShimCalib_updateFromConfigBytesAll(void);
 void ShimCalib_configBytes0To127ToCalibDumpBytes(uint8_t setCalibTsZero);
 void ShimCalib_configBytes128To255ToCalibDumpBytes(uint8_t setCalibTsZero);
 void ShimCalib_configBytesToCalibDump(uint8_t id, uint8_t setCalibTsZero);
-void ShimCalib_singleSensorToCalibDump(uint16_t id, uint8_t range, uint8_t data_len, uint8_t *configBytePtr, uint8_t setCalibTsZero);
+void ShimCalib_singleSensorToCalibDump(uint16_t id,
+    uint8_t range,
+    uint8_t data_len,
+    uint8_t *configBytePtr,
+    uint8_t setCalibTsZero);
 
 void ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(void);
 void ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(uint8_t sensor);
