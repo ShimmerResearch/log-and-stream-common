@@ -12,6 +12,8 @@
 
 #define FW_IS_LOGANDSTREAM        1
 
+#define TEST_UNDOCKED             0
+
 #define IS_SUPPORTED_SINGLE_TOUCH 0
 #define USE_FATFS                 1
 #define USE_SD                    1

@@ -566,11 +566,7 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = 8;
     *(uartRespBuf + uart_resp_len++) = UART_COMP_SHIMMER;
     *(uartRespBuf + uart_resp_len++) = UART_PROP_MAC;
-#if defined(SHIMMER3)
     memcpy(uartRespBuf + uart_resp_len, ShimBt_macIdBytesPtrGet(), 6);
-#else
-    ShimConfig_btMacHexGet(uartRespBuf + uart_resp_len);
-#endif
     uart_resp_len += 6;
   }
   else if (uartSendRspVer)
