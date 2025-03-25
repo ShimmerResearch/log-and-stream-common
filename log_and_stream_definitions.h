@@ -10,8 +10,6 @@
 
 #include <stdint.h>
 
-#define FW_IS_LOGANDSTREAM        1
-
 #define TEST_UNDOCKED             0
 
 #define IS_SUPPORTED_SINGLE_TOUCH 0

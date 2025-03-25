@@ -51,7 +51,6 @@ void (*btStartCb)(void);
 void (*btStopCb)(uint8_t);
 
 #if defined(SHIMMER3)
-extern uint8_t stopLogging;
 extern uint8_t all0xff[7U];
 #elif defined(SHIMMER3R)
 static uint8_t all0xff[7U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
