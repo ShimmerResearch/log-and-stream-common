@@ -2402,7 +2402,7 @@ void ShimBt_sendRsp(void)
       }
       case GET_RWC_COMMAND:
       {
-        temp_rtcCurrentTime = RTC_get64();
+        temp_rtcCurrentTime = getRwcTime();
         *(resPacket + packet_length++) = RWC_RESPONSE;
         memcpy(resPacket + packet_length, (uint8_t *) (&temp_rtcCurrentTime), 8);
         packet_length += 8;
@@ -2618,8 +2618,8 @@ void ShimBt_macIdSetFromBytes(uint8_t *macIdBytesNew)
 {
   ShimBt_macIdVarsReset();
   memcpy(&macIdBytes[0], macIdBytesNew, sizeof(macIdBytes));
-  (void) sprintf(macIdStr, "%02X%02X%02X%02X%02X%02X", macIdBytes[5],
-      macIdBytes[4], macIdBytes[3], macIdBytes[2], macIdBytes[1], macIdBytes[0]);
+  (void) sprintf(macIdStr, "%02X%02X%02X%02X%02X%02X", macIdBytes[0],
+      macIdBytes[1], macIdBytes[2], macIdBytes[3], macIdBytes[4], macIdBytes[5]);
 }
 
 char *ShimBt_macIdStrPtrGet(void)

@@ -1011,11 +1011,7 @@ void ShimCalib_singleSensorToCalibDump(uint16_t id,
     }
     else
     {
-#if defined(SHIMMER3)
       *(uint64_t *) (sc1.ts) = getRwcTime();
-#elif defined(SHIMMER3R)
-      *(uint64_t *) (sc1.ts) = RTC_get64();
-#endif
     }
 
     memcpy(sc1.data.raw, configBytePtr, sc1.data_len);

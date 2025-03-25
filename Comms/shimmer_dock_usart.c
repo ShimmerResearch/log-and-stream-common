@@ -625,11 +625,7 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_COMP_SHIMMER;
     *(uartRespBuf + uart_resp_len++) = UART_PROP_CURR_LOCAL_TIME;
 
-#if defined(SHIMMER3)
     uint64_t rwc_curr_time_64 = getRwcTime();
-#else
-    uint64_t rwc_curr_time_64 = RTC_get64();
-#endif
     memcpy(uartRespBuf + uart_resp_len, (uint8_t *) (&rwc_curr_time_64), 8);
     uart_resp_len += 8;
   }

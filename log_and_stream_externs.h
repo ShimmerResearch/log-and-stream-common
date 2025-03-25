@@ -53,6 +53,7 @@ extern void BtStop(uint8_t isCalledFromMain);
 
 extern void sleepWhenNoTask(void);
 extern uint8_t CheckSdInslot(void);
+extern uint64_t getRwcTime(void);
 extern uint64_t RTC_get64(void);
 extern void manageReadBatt(uint8_t isBlockingRead);
 extern float samplingClockFreqGet(void);

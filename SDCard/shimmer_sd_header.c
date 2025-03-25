@@ -163,6 +163,8 @@ void ShimSdHead_config2SdHead(void)
   sdHeadText[SDH_RTC_DIFF_1] = *(((uint8_t *) rwcTimeDiffPtr) + 6);
   sdHeadText[SDH_RTC_DIFF_0] = *(((uint8_t *) rwcTimeDiffPtr) + 7);
 #else
+  //TODO check is this is working
+//  uint64_t rwcTime = getRwcTime();
   sdHeadText[SDH_RTC_DIFF_7] = 0;
   sdHeadText[SDH_RTC_DIFF_6] = 0;
   sdHeadText[SDH_RTC_DIFF_5] = 0;
@@ -194,7 +196,7 @@ void ShimSdHead_saveBmpCalibrationToSdHeader(void)
     memcpy(&sdHeadText[SDH_TEMP_PRES_EXTRA_CALIB_BYTES],
         bmpCalibPtr + BMP180_CALIB_DATA_SIZE, BMP280_CALIB_XTRA_BYTES);
   }
-#elif defined(SHIMMER3)
+#elif defined(SHIMMER3R)
   /* BMP390 had 21 bytes stored in index SDH_TEMP_PRES_CALIBRATION */
   memcpy(&sdHeadText[SDH_TEMP_PRES_CALIBRATION], bmpCalibPtr, BMP3_LEN_CALIB_DATA);
 #endif

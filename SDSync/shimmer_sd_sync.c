@@ -142,11 +142,7 @@ uint8_t ShimSdSync_syncCntGet(void)
 
 void ShimSdSync_saveLocalTime(void)
 {
-#if defined(SHIMMER3)
   myLocalTimeLong = getRwcTime();
-#elif defined(SHIMMER3R)
-  myLocalTimeLong = RTC_get64();
-#endif
 }
 
 void ShimSdSync_resetSyncRcNodeR10Cnt(void)
