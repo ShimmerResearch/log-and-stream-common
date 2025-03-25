@@ -146,7 +146,7 @@ void ShimBatt_determineChargingLedState(void)
     if (batteryStatus.battChargingStatus == CHARGING_STATUS_SUSPENDED)
     {
 #if defined(SHIMMER3)
-      batteryStatus.battStatLedCharging = LED_YELLOW;
+      batteryStatus.battStatLedCharging = LED_LWR_YELLOW;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_YELLOW;
 #endif
@@ -156,7 +156,7 @@ void ShimBatt_determineChargingLedState(void)
         || batteryStatus.battChargingStatus == CHARGING_STATUS_ERROR)
     {
 #if defined(SHIMMER3)
-      batteryStatus.battStatLedCharging = LED_RED;
+      batteryStatus.battStatLedCharging = LED_LWR_RED;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_RED;
 #endif
@@ -166,7 +166,7 @@ void ShimBatt_determineChargingLedState(void)
         || batteryStatus.battChargingStatus == CHARGING_STATUS_CHARGING)
     {
 #if defined(SHIMMER3)
-      batteryStatus.battStatLedCharging = LED_RED;
+      batteryStatus.battStatLedCharging = LED_LWR_RED;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_RED;
 #endif
@@ -174,7 +174,7 @@ void ShimBatt_determineChargingLedState(void)
     else if (batteryStatus.battChargingStatus == CHARGING_STATUS_FULLY_CHARGED)
     {
 #if defined(SHIMMER3)
-      batteryStatus.battStatLedCharging = LED_GREEN0;
+      batteryStatus.battStatLedCharging = LED_LWR_GREEN;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_GREEN;
 #endif
@@ -196,28 +196,28 @@ void ShimBatt_determineUndockedLedState(void)
   {
     case BATT_LOW:
 #if defined(SHIMMER3)
-      batteryStatus.battStatLed = LED_RED;
+      batteryStatus.battStatLed = LED_LWR_RED;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLed = LED_RGB_RED;
 #endif
       break;
     case BATT_MID:
 #if defined(SHIMMER3)
-      batteryStatus.battStatLed = LED_YELLOW;
+      batteryStatus.battStatLed = LED_LWR_YELLOW;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLed = LED_RGB_YELLOW;
 #endif
       break;
     case BATT_HIGH:
 #if defined(SHIMMER3)
-      batteryStatus.battStatLed = LED_GREEN0;
+      batteryStatus.battStatLed = LED_LWR_GREEN;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLed = LED_RGB_GREEN;
 #endif
       break;
     default:
 #if defined(SHIMMER3)
-      batteryStatus.battStatLed = LED_RED;
+      batteryStatus.battStatLed = LED_LWR_RED;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLed = LED_RGB_RED;
 #endif
