@@ -153,24 +153,7 @@ uint8_t ShimConfig_storedConfigSetByte(uint16_t offset, uint8_t val)
 
 void ShimConfig_setDefaultConfig(void)
 {
-  memset(storedConfig.rawBytes, 0x00, sizeof(storedConfig.rawBytes));
-
-  memset(storedConfig.lnAccelCalib.rawBytes, 0xFF,
-      sizeof(storedConfig.lnAccelCalib.rawBytes));
-  memset(storedConfig.gyroCalib.rawBytes, 0xFF, sizeof(storedConfig.gyroCalib.rawBytes));
-  memset(storedConfig.magCalib.rawBytes, 0xFF, sizeof(storedConfig.magCalib.rawBytes));
-  memset(storedConfig.wrAccelCalib.rawBytes, 0xFF,
-      sizeof(storedConfig.wrAccelCalib.rawBytes));
-#if defined(SHIMMER3R)
-  memset(storedConfig.altAccelCalib.rawBytes, 0xFF,
-      sizeof(storedConfig.altAccelCalib.rawBytes));
-  memset(storedConfig.altMagCalib.rawBytes, 0xFF,
-      sizeof(storedConfig.altMagCalib.rawBytes));
-#endif
-  memset(&storedConfig.rawBytes[NV_BT_SET_PIN], 0xFF, 25);
-  memset(&storedConfig.rawBytes[NV_NODE0], 0xFF, 128);
-
-  ShimBt_macAddressHexGet(storedConfig.macAddr);
+  storedConfig = ShimConfig_createBlankConfigBytes();
 
   storedConfig.samplingRateTicks = ShimConfig_freqDiv(51.2); //51.2Hz
   storedConfig.bufferSize = 1;
@@ -218,9 +201,6 @@ void ShimConfig_setDefaultConfig(void)
   /* EXP_RESET_N pin set low */
   storedConfig.expansionBoardPower = 0;
 
-  storedConfig.sdErrorEnable = 1;
-  storedConfig.rtcErrorEnable = 1;
-
   //set all ExG registers to their reset values
   //setExgConfigForTestSignal(&storedConfig);
   ShimConfig_setExgConfigForEcg(&storedConfig);
@@ -267,11 +247,8 @@ void ShimConfig_setDefaultConfig(void)
 
 void ShimConfig_setDefaultShimmerName(void)
 {
-  char btMacAscii[12];
-  ShimBt_macAddressAsciiGet(btMacAscii);
-
   strcpy(&storedConfig.shimmerName[0], "Shimmer_XXXX");
-  memcpy(&storedConfig.shimmerName[8], &btMacAscii[8], 4);
+  memcpy(&storedConfig.shimmerName[8], &ShimBt_macIdStrPtrGet()[8], 4);
 }
 
 void ShimConfig_setDefaultTrialId(void)
@@ -745,4 +722,32 @@ void ShimConfig_loadSensorConfigAndCalib(void)
   }
 
   ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+}
+
+gConfigBytes ShimConfig_createBlankConfigBytes(void)
+{
+  gConfigBytes storedConfigNew;
+
+  memset(&storedConfigNew.rawBytes[NV_SAMPLING_RATE], 0, STOREDCONFIG_SIZE);
+
+  /* Make all calibration bytes invalid (i.e., 0xFF) */
+  memset(storedConfig.lnAccelCalib.rawBytes, 0xFF, sizeof(storedConfig.lnAccelCalib.rawBytes));
+  memset(storedConfig.gyroCalib.rawBytes, 0xFF, sizeof(storedConfig.gyroCalib.rawBytes));
+  memset(storedConfig.magCalib.rawBytes, 0xFF, sizeof(storedConfig.magCalib.rawBytes));
+  memset(storedConfig.wrAccelCalib.rawBytes, 0xFF, sizeof(storedConfig.wrAccelCalib.rawBytes));
+  memset(storedConfig.altAccelCalib.rawBytes, 0xFF, sizeof(storedConfig.altAccelCalib.rawBytes));
+  memset(storedConfig.altMagCalib.rawBytes, 0xFF, sizeof(storedConfig.altMagCalib.rawBytes));
+
+  /* Copy MAC ID directly from BT module */
+  memcpy(&storedConfigNew.macAddr[0], ShimBt_macIdBytesPtrGet(), 6);
+
+  /* Reset unused bytes */
+  memset(&storedConfigNew.rawBytes[NV_BT_SET_PIN + 1], 0xFF, 24);
+
+  /* Reset node addresses */
+  memset(&storedConfigNew.rawBytes[NV_CENTER], 0xFF, 128);
+
+  memset(storedConfig.rawBytes, 0x00, sizeof(storedConfig.rawBytes));
+
+  return storedConfigNew;
 }

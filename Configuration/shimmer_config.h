@@ -133,7 +133,7 @@
 #define NV_MAC_ADDRESS                      (128 + 96) //6bytes
 #define NV_SD_CONFIG_DELAY_FLAG             (128 + 102)
 #define NV_BT_SET_PIN                       (128 + 103)
-#define NV_TEMP_PRES_CALIBRATION            (128 + 104) //+22 bytes, till 128+125
+//#define NV_TEMP_PRES_CALIBRATION            (128 + 104) //+22 bytes, till 128+125
 
 #define NV_CENTER                           (128 + 128 + 0)
 #define NV_NODE0                            (128 + 128 + 6)
@@ -512,5 +512,6 @@ void ShimConfig_checkBtModeFromConfig(void);
 uint8_t ShimConfig_isMicrophoneEnabled(void);
 #endif
 void ShimConfig_loadSensorConfigAndCalib(void);
+gConfigBytes ShimConfig_createBlankConfigBytes(void);
 
 #endif //SHIMMER_CONFIG_H

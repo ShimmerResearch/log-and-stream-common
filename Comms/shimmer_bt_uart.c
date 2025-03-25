@@ -44,10 +44,9 @@ volatile COMMS_CRC_MODE btCrcMode;
 
 #if defined(SHIMMER3)
 uint8_t btStatusStrIndex;
-char btVerStrResponse[BT_VER_RESPONSE_LARGEST + 1U]; /* +1 to always have a null char */
-#else
-char btVerStrResponse[100U]; //CYW20820 app=v01.04.16.16 requires size = 76 chars
 #endif
+/* CYW20820 app=v01.04.16.16 requires size = 76 chars. Shimmer3 requires BT_VER_RESPONSE_LARGEST */
+char btVerStrResponse[100U];
 
 uint16_t numBytesInBtRxBufWhenLastProcessed = 0;
 uint16_t indexOfFirstEol;
@@ -70,7 +69,8 @@ uint8_t dataRateTestTxPacket[] = { DATA_RATE_TEST_RESPONSE, 0, 0, 0, 0 };
 
 volatile uint8_t btTxInProgress;
 
-uint8_t macIdStr[14], macIdBytes[6];
+char macIdStr[12+1]; // +1 for null termination
+uint8_t macIdBytes[6];
 
 /* Buffer read / write macros                                                 */
 #define RINGFIFO_RESET(ringFifo)         \
@@ -271,7 +271,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
     }
     else if (bt_waitForMacAddress)
     {
-      ShimBt_macIdSetAndUpdateConfig(btRxBuffPtr);
+      ShimBt_macIdSetFromStr(btRxBuffPtr);
 
       expectedlen = 14U;
       if (isBtDeviceRn4678())
@@ -1122,13 +1122,6 @@ char *ShimBt_getBtVerStrPtr(void)
 {
   return &btVerStrResponse[0];
 }
-
-#if defined(SHIMMER3R)
-void ShimBt_updateBtVer(void)
-{
-  BT_generateCyw20820FirmwareVersionStr(&btVerStrResponse[0]);
-}
-#endif
 
 void ShimBt_processCmd(void)
 {
@@ -2607,73 +2600,10 @@ COMMS_CRC_MODE ShimBt_getCrcMode(void)
   return btCrcMode;
 }
 
-uint8_t ShimBt_macAddressAsciiGet(char *macAscii)
+void ShimBt_macIdSetFromStr(uint8_t *macIdStrNew)
 {
-#if defined(SHIMMER3)
-  memcpy(macAscii, ShimBt_macIdStrPtrGet(), 12);
-  return 0;
-#elif defined(SHIMMER3R)
-  //MAC is stored as 6 byte array in CYW20820 library
-  uint8_t *macAddrPtr = BT_getCyw20820MacAddressPtr();
-  (void) sprintf(macAscii, "%02X%02X%02X%02X%02X%02X", macAddrPtr[5],
-      macAddrPtr[4], macAddrPtr[3], macAddrPtr[2], macAddrPtr[1], macAddrPtr[0]);
-  return 1;
-#elif defined(SHIMMER4_SDK)
-  if (BT_getRn42MacAddressPtr(macAddrPtr))
-  {
-    memcpy(macAscii, macAddrPtr, 12);
-    return 0;
-  }
-  else
-  {
-    return 1;
-  }
-#endif
-}
-
-uint8_t ShimBt_macAddressHexGet(uint8_t *macHex)
-{
-#if defined(SHIMMER3R)
-  uint8_t *ptr = BT_getCyw20820MacAddressPtr();
-  macHex[0] = *(ptr + 5);
-  macHex[1] = *(ptr + 4);
-  macHex[2] = *(ptr + 3);
-  macHex[3] = *(ptr + 2);
-  macHex[4] = *(ptr + 1);
-  macHex[5] = *(ptr + 0);
-  return 1;
-#elif defined(SHIMMER3)
-  uint8_t i, pchar[3];
-  uint8_t *macAddrPtr = ShimBt_macIdBytesPtrGet();
-  if (*macAddrPtr)
-  {
-    pchar[2] = 0;
-    for (i = 0; i < 6; i++)
-    {
-      pchar[0] = macAddrPtr[i * 2];
-      pchar[1] = macAddrPtr[i * 2 + 1];
-      macHex[i] = strtoul((char *) pchar, 0, 16);
-    }
-    return 0;
-  }
-  else
-  {
-    return 1;
-  }
-#endif
-}
-
-void ShimBt_macIdSetAndUpdateConfig(uint8_t *buf)
-{
-  ShimBt_macIdSet(buf);
-  memcpy(&ShimConfig_getStoredConfig()->rawBytes[NV_MAC_ADDRESS],
-      ShimBt_macIdBytesPtrGet(), 6);
-  InfoMem_write(NV_MAC_ADDRESS, ShimBt_macIdBytesPtrGet(), 6);
-}
-
-void ShimBt_macIdSet(uint8_t *buf)
-{
-  memcpy(macIdStr, buf, 14);
+  ShimBt_macIdVarsReset();
+  memcpy(macIdStr, macIdStrNew, 12);
   uint8_t i, pchar[3];
   pchar[2] = 0;
   for (i = 0; i < 6; i++)
@@ -2684,7 +2614,15 @@ void ShimBt_macIdSet(uint8_t *buf)
   }
 }
 
-uint8_t *ShimBt_macIdStrPtrGet(void)
+void ShimBt_macIdSetFromBytes(uint8_t *macIdBytesNew)
+{
+  ShimBt_macIdVarsReset();
+  memcpy(&macIdBytes[0], macIdBytesNew, sizeof(macIdBytes));
+  (void) sprintf(macIdStr, "%02X%02X%02X%02X%02X%02X", macIdBytes[5],
+      macIdBytes[4], macIdBytes[3], macIdBytes[2], macIdBytes[1], macIdBytes[0]);
+}
+
+char *ShimBt_macIdStrPtrGet(void)
 {
   return &macIdStr[0];
 }

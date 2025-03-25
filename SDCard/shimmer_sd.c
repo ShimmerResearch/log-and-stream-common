@@ -1006,22 +1006,12 @@ void ShimSd_parseConfig(void)
   }
   else
   {
-    gConfigBytes stored_config_temp;
-    memset((uint8_t *) (stored_config_temp.rawBytes), 0,
-        sizeof(stored_config_temp.rawBytes)); //0
+    gConfigBytes stored_config_temp = ShimConfig_createBlankConfigBytes();
 
     ShimSdSync_resetSyncVariablesBeforeParseConfig();
     ShimSdSync_resetSyncNodeArray();
 
-    memset((uint8_t *) (stored_config_temp.rawBytes), 0, NV_LN_ACCEL_CALIBRATION); //0
-    memset((uint8_t *) (stored_config_temp.rawBytes + NV_LN_ACCEL_CALIBRATION), 0xFF, 84);
-    memset((uint8_t *) (stored_config_temp.rawBytes + NV_DERIVED_CHANNELS_3), 0, 5); //0
-    memset((uint8_t *) (stored_config_temp.rawBytes + NV_SENSORS3), 0, 5); //0
-    memset((uint8_t *) (stored_config_temp.rawBytes + NV_ALT_ACCEL_CALIBRATION), 0xFF, 82);
-    memset((uint8_t *) (stored_config_temp.rawBytes + NV_SD_MYTRIAL_ID), 0, 9); //0
-    InfoMem_read(NV_MAC_ADDRESS, stored_config_temp.rawBytes + NV_MAC_ADDRESS, 7);
-    memset((uint8_t *) (stored_config_temp.rawBytes + NV_BT_SET_PIN + 1), 0xff, 24);
-    memset((uint8_t *) (stored_config_temp.rawBytes + NV_CENTER), 0xff, 128);
+    InfoMem_read(NV_SD_CONFIG_DELAY_FLAG, &stored_config_temp.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
 
 #if defined(SHIMMER3)
     stored_config_temp.rawBytes[NV_SD_TRIAL_CONFIG0] &= ~SDH_SET_PMUX; //PMUX reserved as 0

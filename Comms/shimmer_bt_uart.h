@@ -263,9 +263,6 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff);
 uint8_t ShimBt_isWaitingForArgs(void);
 uint8_t ShimBt_getBtVerStrLen(void);
 char *ShimBt_getBtVerStrPtr(void);
-#if defined(SHIMMER3R)
-void ShimBt_updateBtVer(void);
-#endif
 
 void ShimBt_processCmd(void);
 void ShimBt_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, uint16_t len);
@@ -282,11 +279,9 @@ uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd);
 void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew);
 COMMS_CRC_MODE ShimBt_getCrcMode(void);
 
-uint8_t ShimBt_macAddressAsciiGet(char *macAscii);
-uint8_t ShimBt_macAddressHexGet(uint8_t *macHex);
-void ShimBt_macIdSetAndUpdateConfig(uint8_t *buf);
-void ShimBt_macIdSet(uint8_t *buf);
-uint8_t *ShimBt_macIdStrPtrGet(void);
+void ShimBt_macIdSetFromStr(uint8_t *macIdStrNew);
+void ShimBt_macIdSetFromBytes(uint8_t *macIdBytesNew);
+char *ShimBt_macIdStrPtrGet(void);
 uint8_t *ShimBt_macIdBytesPtrGet(void);
 void ShimBt_macIdVarsReset(void);
 void ShimBt_btsdSelfcmd(void);
