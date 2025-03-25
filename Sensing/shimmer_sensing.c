@@ -461,27 +461,27 @@ void ShimSens_bufPoll()
 
 void ShimSens_saveTimestampToPacket(void)
 {
-    if (shimmerStatus.sensing)
-    {
-        /* TODO Shimmer3 only saved 64-bit for first sample and 32-bit after
-         * that. Need to considering efficiency impact here versus affect on
-         * other things that rely on sensing.latestTs */
-//        if (firstTsFlag == 1)
-//        {
-//            firstTs = RTC_get64();
-//            firstTsFlag = 2;
-//            *(uint32_t*) currentSampleTsTicks = (uint64_t) firstTs;
-//        }
-//        else
-//        {
-//            *(uint32_t*) currentSampleTsTicks = RTC_get32();
-//        }
+  if (shimmerStatus.sensing)
+  {
+    /* TODO Shimmer3 only saved 64-bit for first sample and 32-bit after
+     * that. Need to considering efficiency impact here versus affect on
+     * other things that rely on sensing.latestTs */
+    //if (firstTsFlag == 1)
+    //{
+    //    firstTs = RTC_get64();
+    //    firstTsFlag = 2;
+    //    *(uint32_t*) currentSampleTsTicks = (uint64_t) firstTs;
+    //}
+    //else
+    //{
+    //    *(uint32_t*) currentSampleTsTicks = RTC_get32();
+    //}
 
-      sensing.latestTs = RTC_get64();
-      sensing.dataBuf[sensing.ptr.ts] = sensing.latestTs & 0xff;
-      sensing.dataBuf[sensing.ptr.ts + 1] = (sensing.latestTs >> 8) & 0xff;
-      sensing.dataBuf[sensing.ptr.ts + 2] = (sensing.latestTs >> 16) & 0xff;
-    }
+    sensing.latestTs = RTC_get64();
+    sensing.dataBuf[sensing.ptr.ts] = sensing.latestTs & 0xff;
+    sensing.dataBuf[sensing.ptr.ts + 1] = (sensing.latestTs >> 8) & 0xff;
+    sensing.dataBuf[sensing.ptr.ts + 2] = (sensing.latestTs >> 16) & 0xff;
+  }
 }
 
 //this is to be called in the ISR
