@@ -45,12 +45,7 @@
 #include <math.h>
 #include <string.h>
 
-#include <Boards/shimmer_boards.h>
-#include <Calibration/shimmer_calibration.h>
-#include <Comms/shimmer_bt_uart.h>
-#include <SDCard/shimmer_sd.h>
-#include <SDCard/shimmer_sd_header.h>
-#include <SDSync/shimmer_sd_sync.h>
+#include <log_and_stream_includes.h>
 #include <log_and_stream_externs.h>
 #if defined(SHIMMER3R)
 #include "shimmer_definitions.h"

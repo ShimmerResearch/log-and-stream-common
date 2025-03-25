@@ -13,14 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <Calibration/shimmer_calibration.h>
-#include <Configuration/shimmer_config.h>
-#include <SDCard/shimmer_sd_header.h>
-#include <SDSync/shimmer_sd_sync.h>
-#include <Sensing/shimmer_sensing.h>
-#include <TaskList/shimmer_taskList.h>
-#include <Util/shimmer_util.h>
-#include <log_and_stream_definitions.h>
+#include <log_and_stream_includes.h>
 #include <log_and_stream_externs.h>
 
 #if defined(SHIMMER3)

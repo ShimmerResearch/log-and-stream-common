@@ -119,6 +119,7 @@ void GSR_init(uint8_t gsrRangeToSet, uint16_t gsrSamplingRateTicksToSet)
 
   gsrSamplingRateTicks = gsrSamplingRateTicksToSet;
 
+  lastGsrVal = 0;
   GSR_initSmoothing(gsrActiveResistor);
 }
 

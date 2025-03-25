@@ -27,15 +27,7 @@
 #include "shimmer_definitions.h"
 #endif
 
-#include <Boards/shimmer_boards.h>
-#include <Calibration/shimmer_calibration.h>
-#include <Configuration/shimmer_config.h>
-#include <SDCard/shimmer_sd.h>
-#include <SDCard/shimmer_sd_header.h>
-#include <SDSync/shimmer_sd_sync.h>
-#include <Sensing/shimmer_sensing.h>
-#include <TaskList/shimmer_taskList.h>
-#include <Util/shimmer_util.h>
+#include <log_and_stream_includes.h>
 #include <log_and_stream_externs.h>
 
 uint8_t unwrappedResponse[256] = { 0 };
