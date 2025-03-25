@@ -113,39 +113,39 @@ void GSR_setRange(uint8_t range)
   switch (range)
   {
     case HW_RES_40K:
-        GSR_setA0(0);
-        GSR_setA1(0);
+      GSR_setA0(0);
+      GSR_setA1(0);
       break;
 
     case HW_RES_287K:
       if (gsrRangePinsAreReversed)
       {
-          GSR_setA0(0);
-          GSR_setA1(1);
+        GSR_setA0(0);
+        GSR_setA1(1);
       }
       else
       {
-          GSR_setA0(1);
-          GSR_setA1(0);
+        GSR_setA0(1);
+        GSR_setA1(0);
       }
       break;
 
     case HW_RES_1M:
       if (gsrRangePinsAreReversed)
       {
-          GSR_setA0(1);
-          GSR_setA1(0);
+        GSR_setA0(1);
+        GSR_setA1(0);
       }
       else
       {
-          GSR_setA0(0);
-          GSR_setA1(1);
+        GSR_setA0(0);
+        GSR_setA1(1);
       }
       break;
 
     case HW_RES_3M3:
-        GSR_setA0(1);
-        GSR_setA1(1);
+      GSR_setA0(1);
+      GSR_setA1(1);
       break;
   }
 }
@@ -153,34 +153,34 @@ void GSR_setRange(uint8_t range)
 void GSR_setA0(uint8_t state)
 {
 #if defined(SHIMMER3)
-    if(state)
-    {
-        P1OUT |= BIT4;
-    }
-    else
-    {
-        P1OUT &= ~BIT4;
-    }
+  if (state)
+  {
+    P1OUT |= BIT4;
+  }
+  else
+  {
+    P1OUT &= ~BIT4;
+  }
 #else
-    HAL_GPIO_WritePin(GSR_RANGE_A0_GPIO_Port, GSR_RANGE_A0_Pin,
-                      state? GPIO_PIN_SET:GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GSR_RANGE_A0_GPIO_Port, GSR_RANGE_A0_Pin,
+      state ? GPIO_PIN_SET : GPIO_PIN_RESET);
 #endif
 }
 
 void GSR_setA1(uint8_t state)
 {
 #if defined(SHIMMER3)
-    if(state)
-    {
-        P2OUT |= BIT1;
-    }
-    else
-    {
-        P2OUT &= ~BIT1;
-    }
+  if (state)
+  {
+    P2OUT |= BIT1;
+  }
+  else
+  {
+    P2OUT &= ~BIT1;
+  }
 #else
-    HAL_GPIO_WritePin(GSR_RANGE_A1_GPIO_Port, GSR_RANGE_A1_Pin,
-                      state? GPIO_PIN_SET:GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GSR_RANGE_A1_GPIO_Port, GSR_RANGE_A1_Pin,
+      state ? GPIO_PIN_SET : GPIO_PIN_RESET);
 #endif
 }
 
