@@ -731,12 +731,16 @@ gConfigBytes ShimConfig_createBlankConfigBytes(void)
   memset(&storedConfigNew.rawBytes[NV_SAMPLING_RATE], 0, STOREDCONFIG_SIZE);
 
   /* Make all calibration bytes invalid (i.e., 0xFF) */
-  memset(storedConfig.lnAccelCalib.rawBytes, 0xFF, sizeof(storedConfig.lnAccelCalib.rawBytes));
+  memset(storedConfig.lnAccelCalib.rawBytes, 0xFF,
+      sizeof(storedConfig.lnAccelCalib.rawBytes));
   memset(storedConfig.gyroCalib.rawBytes, 0xFF, sizeof(storedConfig.gyroCalib.rawBytes));
   memset(storedConfig.magCalib.rawBytes, 0xFF, sizeof(storedConfig.magCalib.rawBytes));
-  memset(storedConfig.wrAccelCalib.rawBytes, 0xFF, sizeof(storedConfig.wrAccelCalib.rawBytes));
-  memset(storedConfig.altAccelCalib.rawBytes, 0xFF, sizeof(storedConfig.altAccelCalib.rawBytes));
-  memset(storedConfig.altMagCalib.rawBytes, 0xFF, sizeof(storedConfig.altMagCalib.rawBytes));
+  memset(storedConfig.wrAccelCalib.rawBytes, 0xFF,
+      sizeof(storedConfig.wrAccelCalib.rawBytes));
+  memset(storedConfig.altAccelCalib.rawBytes, 0xFF,
+      sizeof(storedConfig.altAccelCalib.rawBytes));
+  memset(storedConfig.altMagCalib.rawBytes, 0xFF,
+      sizeof(storedConfig.altMagCalib.rawBytes));
 
   /* Copy MAC ID directly from BT module */
   memcpy(&storedConfigNew.macAddr[0], ShimBt_macIdBytesPtrGet(), 6);

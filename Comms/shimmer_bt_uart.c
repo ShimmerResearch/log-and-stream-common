@@ -69,7 +69,7 @@ uint8_t dataRateTestTxPacket[] = { DATA_RATE_TEST_RESPONSE, 0, 0, 0, 0 };
 
 volatile uint8_t btTxInProgress;
 
-char macIdStr[12+1]; // +1 for null termination
+char macIdStr[12 + 1]; //+1 for null termination
 uint8_t macIdBytes[6];
 
 /* Buffer read / write macros                                                 */

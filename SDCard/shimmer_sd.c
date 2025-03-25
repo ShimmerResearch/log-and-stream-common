@@ -1011,7 +1011,8 @@ void ShimSd_parseConfig(void)
     ShimSdSync_resetSyncVariablesBeforeParseConfig();
     ShimSdSync_resetSyncNodeArray();
 
-    InfoMem_read(NV_SD_CONFIG_DELAY_FLAG, &stored_config_temp.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
+    InfoMem_read(NV_SD_CONFIG_DELAY_FLAG,
+        &stored_config_temp.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
 
 #if defined(SHIMMER3)
     stored_config_temp.rawBytes[NV_SD_TRIAL_CONFIG0] &= ~SDH_SET_PMUX; //PMUX reserved as 0
