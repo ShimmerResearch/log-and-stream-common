@@ -164,7 +164,7 @@ void ShimSdHead_config2SdHead(void)
   sdHeadText[SDH_RTC_DIFF_0] = *(((uint8_t *) rwcTimeDiffPtr) + 7);
 #else
   //TODO check is this is working
-//  uint64_t rwcTime = getRwcTime();
+  //uint64_t rwcTime = getRwcTime();
   sdHeadText[SDH_RTC_DIFF_7] = 0;
   sdHeadText[SDH_RTC_DIFF_6] = 0;
   sdHeadText[SDH_RTC_DIFF_5] = 0;
