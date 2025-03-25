@@ -44,15 +44,16 @@
  *
  */
 
+#include "gsr.h"
+
 #include "math.h"
 
 #if defined(SHIMMER3)
 #include "msp430.h"
 #else
 #include "stm32u5xx_hal.h"
+#include "hal_Board.h"
 #endif
-
-#include <GSR/gsr.h>
 
 #define HW_RES_40K_MIN_ADC_VAL \
   1120 //10k to 56k..1159->1140 //nom: changed to 1120 for linear conversion
@@ -99,16 +100,58 @@ uint16_t transient_sample, transient_smoothing_samples, max_resistance_step;
 uint32_t last_resistance;
 uint8_t gsrRangePinsAreReversed = 0;
 
-void GSR_init(void)
-{
-  //by default set to use 40kohm resistor
-  GSR_setRange(HW_RES_40K);
-  last_active_resistor = HW_RES_40K;
+uint8_t gsrRange;
+uint8_t gsrActiveResistor;
+uint16_t lastGsrVal;
+uint16_t gsrSamplingRateTicks;
 
-  GSR_initSmoothing(HW_RES_40K);
+void GSR_init(uint8_t gsrRangeToSet, uint16_t gsrSamplingRateTicksToSet)
+{
+  gsrRange = gsrRangeToSet;
+  if (gsrRange <= HW_RES_3M3)
+  {
+    GSR_setActiveResistor(gsrRange);
+  }
+  else
+  {
+    GSR_setActiveResistor(HW_RES_40K);
+  }
+
+  gsrSamplingRateTicks = gsrSamplingRateTicksToSet;
+
+  GSR_initSmoothing(gsrActiveResistor);
 }
 
-void GSR_setRange(uint8_t range)
+void GSR_range(uint8_t *buf)
+{
+  //Fill the current active resistor into the upper two bits of the GSR value
+  //if autorange is enabled, switch active resistor if required
+  //If during resistor transition period use old ADC and resistor values
+  //as determined by GSR_smoothTransition()
+
+  uint8_t current_active_resistor = gsrActiveResistor;
+  uint16_t ADC_val;
+
+  ADC_val = *((uint16_t*) buf);
+  if (gsrRange == GSR_AUTORANGE)
+  {
+    if (GSR_smoothTransition(&current_active_resistor, gsrSamplingRateTicks))
+    {
+      ADC_val = lastGsrVal;
+    }
+    else
+    {
+      GSR_controlRange(ADC_val);
+    }
+  }
+
+  //filling the upper two bits with the current value of selected GSR resistor
+  *((uint16_t*) buf) = ADC_val | (current_active_resistor << 14);
+
+  lastGsrVal = ADC_val;
+}
+
+void GSR_setActiveResistor(uint8_t range)
 {
   switch (range)
   {
@@ -148,6 +191,7 @@ void GSR_setRange(uint8_t range)
       GSR_setA1(1);
       break;
   }
+  gsrActiveResistor = range;
 }
 
 void GSR_setA0(uint8_t state)
@@ -201,12 +245,12 @@ uint64_t multiply(uint64_t no1, uint64_t no2)
   return no1 * no2;
 }
 
-uint32_t GSR_calcResistance(uint16_t ADC_val, uint8_t active_resistor)
+uint32_t GSR_calcResistance(uint16_t ADC_val)
 {
   float conductance = 0;
 
   //Conductance measured in uS
-  switch (active_resistor)
+  switch (gsrActiveResistor)
   {
     case HW_RES_40K:
       conductance = (((HW_RES_40K_CONSTANT_A) *ADC_val) + (HW_RES_40K_CONSTANT_B));
@@ -226,17 +270,14 @@ uint32_t GSR_calcResistance(uint16_t ADC_val, uint8_t active_resistor)
   return (uint32_t) (1000000.0 / conductance);
 }
 
-uint8_t GSR_controlRange(uint16_t ADC_val, uint8_t active_resistor)
+void GSR_controlRange(uint16_t ADC_val)
 {
-  uint8_t ret = active_resistor;
-
-  switch (active_resistor)
+  switch (gsrActiveResistor)
   {
     case HW_RES_40K:
       if (ADC_val < HW_RES_40K_MIN_ADC_VAL)
       {
-        GSR_setRange(HW_RES_287K);
-        ret = HW_RES_287K;
+        GSR_setActiveResistor(HW_RES_287K);
       }
       break;
     case HW_RES_287K:
@@ -246,13 +287,11 @@ uint8_t GSR_controlRange(uint16_t ADC_val, uint8_t active_resistor)
       }
       else if (ADC_val < HW_RES_287K_MIN_ADC_VAL)
       {
-        GSR_setRange(HW_RES_1M);
-        ret = HW_RES_1M;
+        GSR_setActiveResistor(HW_RES_1M);
       }
       else
       {
-        GSR_setRange(HW_RES_40K);
-        ret = HW_RES_40K;
+        GSR_setActiveResistor(HW_RES_40K);
       }
       break;
     case HW_RES_1M:
@@ -262,13 +301,11 @@ uint8_t GSR_controlRange(uint16_t ADC_val, uint8_t active_resistor)
       }
       else if (ADC_val < HW_RES_1M_MIN_ADC_VAL)
       {
-        GSR_setRange(HW_RES_3M3);
-        ret = HW_RES_3M3;
+        GSR_setActiveResistor(HW_RES_3M3);
       }
       else
       {
-        GSR_setRange(HW_RES_287K);
-        ret = HW_RES_287K;
+        GSR_setActiveResistor(HW_RES_287K);
       }
       break;
     case HW_RES_3M3:
@@ -278,8 +315,7 @@ uint8_t GSR_controlRange(uint16_t ADC_val, uint8_t active_resistor)
       }
       else if (ADC_val > HW_RES_3M3_MAX_ADC_VAL)
       {
-        GSR_setRange(HW_RES_1M);
-        ret = HW_RES_1M;
+        GSR_setActiveResistor(HW_RES_1M);
       }
       else
       {
@@ -288,7 +324,6 @@ uint8_t GSR_controlRange(uint16_t ADC_val, uint8_t active_resistor)
       break;
     default:;
   }
-  return ret;
 }
 
 void GSR_initSmoothing(uint8_t active_resistor)

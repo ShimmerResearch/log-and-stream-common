@@ -45,12 +45,15 @@
 
 #include <stdint.h>
 
-#define HW_RES_40K  (0)
-#define HW_RES_287K (1)
-#define HW_RES_1M   (2)
-#define HW_RES_3M3  (3)
+#define HW_RES_40K    0
+#define HW_RES_287K   1
+#define HW_RES_1M     2
+#define HW_RES_3M3    3
+#define GSR_AUTORANGE 4
 
-void GSR_init(void);
+void GSR_init(uint8_t gsrRangeToSet, uint16_t gsrSamplingRateToSet);
+
+void GSR_range(uint8_t *buf);
 
 //Adjusts the GSR's range by selecting the which internal resistor is used
 //range: select the resistor to use
@@ -58,24 +61,20 @@ void GSR_init(void);
 //    1: 287 kohm
 //    2: 1.0 Mohm
 //    3: 3.3 Mohm
-void GSR_setRange(uint8_t range);
+void GSR_setActiveResistor(uint8_t range);
 
 void GSR_setA0(uint8_t state);
 void GSR_setA1(uint8_t state);
 
 //Calculates resistance from a raw ADC value using linear fit to conductance
 //ADC_val: the ADC value to be used in the calculation
-//active_resistor: the currently active resistor on the GSR board
-//returns the calculated resistance
-uint32_t GSR_calcResistance(uint16_t ADC_val, uint8_t active_resistor);
+uint32_t GSR_calcResistance(uint16_t ADC_val);
 
 //Determines whether to change the currently active internal resistor based
 //on the ADC value, and if necessary change the internal resistor to a new
 //value
 //ADC_val: the ADC value to be used in the calculation
-//active_resistor: the currently active resistor on the GSR board
-//returns the active internal resistor
-uint8_t GSR_controlRange(uint16_t ADC_val, uint8_t active_resistor);
+void GSR_controlRange(uint16_t ADC_val);
 
 //Initializes the smoothing state
 //active_resistor: the currently active resistor on the GSR board
