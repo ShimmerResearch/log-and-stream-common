@@ -51,8 +51,8 @@
 #if defined(SHIMMER3)
 #include "msp430.h"
 #else
-#include "stm32u5xx_hal.h"
 #include "hal_Board.h"
+#include "stm32u5xx_hal.h"
 #endif
 
 #define HW_RES_40K_MIN_ADC_VAL \
@@ -132,7 +132,7 @@ void GSR_range(uint8_t *buf)
   uint8_t current_active_resistor = gsrActiveResistor;
   uint16_t ADC_val;
 
-  ADC_val = *((uint16_t*) buf);
+  ADC_val = *((uint16_t *) buf);
   if (gsrRange == GSR_AUTORANGE)
   {
     if (GSR_smoothTransition(&current_active_resistor, gsrSamplingRateTicks))
@@ -146,7 +146,7 @@ void GSR_range(uint8_t *buf)
   }
 
   //filling the upper two bits with the current value of selected GSR resistor
-  *((uint16_t*) buf) = ADC_val | (current_active_resistor << 14);
+  *((uint16_t *) buf) = ADC_val | (current_active_resistor << 14);
 
   lastGsrVal = ADC_val;
 }
