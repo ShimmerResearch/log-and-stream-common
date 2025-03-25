@@ -221,6 +221,7 @@ void ShimSens_stopSensing(void);
 void ShimSens_stopPeripherals(void);
 void ShimSens_streamData(void);
 void ShimSens_bufPoll(void);
+void ShimSens_saveTimestampToPacket(void);
 void ShimSens_gatherData(void);
 
 void ShimSens_stepInit(void);
