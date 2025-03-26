@@ -7,8 +7,8 @@
 
 #include "log_and_stream_common.h"
 
-#include "log_and_stream_includes.h"
 #include "hal_Board.h"
+#include "log_and_stream_includes.h"
 
 boot_stage_t bootStage;
 
@@ -36,32 +36,32 @@ void LogAndStream_init(void)
 
 void setBootStage(boot_stage_t bootStageNew)
 {
-    bootStage = bootStageNew;
+  bootStage = bootStageNew;
 
-    switch (bootStage)
-    {
+  switch (bootStage)
+  {
     case BOOT_STAGE_START:
-        Board_ledOn(LED_ALL);
-        break;
+      Board_ledOn(LED_ALL);
+      break;
     case BOOT_STAGE_I2C:
-        Board_ledOff(LED_ALL);
-        break;
+      Board_ledOff(LED_ALL);
+      break;
     case BOOT_STAGE_BLUETOOTH:
-        Board_ledOn(LED_ALL);
-        break;
+      Board_ledOn(LED_ALL);
+      break;
     case BOOT_STAGE_BLUETOOTH_FAILURE:
-        Board_ledOff(LED_ALL);
-        break;
+      Board_ledOff(LED_ALL);
+      break;
     case BOOT_STAGE_CONFIGURATION:
-        Board_ledOn(LED_ALL);
-        break;
+      Board_ledOn(LED_ALL);
+      break;
     case BOOT_STAGE_END:
-        Board_ledOff(LED_ALL);
-        break;
+      Board_ledOff(LED_ALL);
+      break;
     default:
-        break;
-    }
-    return;
+      break;
+  }
+  return;
 }
 
 boot_stage_t getBootStage(void)
@@ -121,7 +121,7 @@ void LogAndStream_blinkTimerCommon(void)
 
   if (shimmerStatus.initialising)
   {
-      ShimLeds_controlDuringBoot(bootStage);
+    ShimLeds_controlDuringBoot(bootStage);
   }
   else
   {
@@ -133,8 +133,7 @@ void LogAndStream_blinkTimerCommon(void)
 
     if (shimmerStatus.timerBlinkEnabled)
     {
-        ShimLeds_blink();
+      ShimLeds_blink();
     }
   }
 }
-
