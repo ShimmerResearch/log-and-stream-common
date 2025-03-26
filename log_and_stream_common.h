@@ -10,7 +10,11 @@
 
 #include <stdint.h>
 
+#include <log_and_stream_definitions.h>
+
 void LogAndStream_init(void);
+void setBootStage(boot_stage_t bootStageNew);
+boot_stage_t getBootStage(void);
 void LogAndStream_syncConfigAndCalibOnSd(void);
 uint8_t LogAndStream_isSdInfoSyncDelayed(void);
 void LogAndStream_setSdInfoSyncDelayed(uint8_t state);

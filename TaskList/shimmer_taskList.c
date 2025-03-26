@@ -234,13 +234,3 @@ void ShimTask_setStopSensing(void)
 {
   ShimTask_set(TASK_STOPSENSING);
 }
-
-void ShimTask_setStopLogging(void)
-{
-  ShimTask_set(TASK_STOPSENSING);
-}
-
-void ShimTask_setStopStreaming(void)
-{
-  ShimTask_set(TASK_STOPSENSING);
-}

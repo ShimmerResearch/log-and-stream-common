@@ -72,6 +72,8 @@ volatile uint8_t btTxInProgress;
 char macIdStr[12 + 1]; //+1 for null termination
 uint8_t macIdBytes[6];
 
+uint8_t instreamStatusRespPending;
+
 /* Buffer read / write macros                                                 */
 #define RINGFIFO_RESET(ringFifo)         \
   {                                      \
@@ -109,6 +111,8 @@ void ShimBt_btCommsProtocolInit(void)
   waitingForArgs = 0;
   waitingForArgsLength = 0;
   argsSize = 0;
+
+  instreamStatusRespPending = 0;
 
 #if defined(SHIMMER3)
   ShimUtil_memset_v(btStatusStr, 0, sizeof(btStatusStr));
@@ -1250,7 +1254,7 @@ void ShimBt_processCmd(void)
     case STOP_STREAMING_COMMAND:
     {
       shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
-      ShimTask_setStopStreaming();
+      ShimTask_setStopSensing();
       break;
     }
     case STOP_SDBT_COMMAND:
@@ -1263,7 +1267,7 @@ void ShimBt_processCmd(void)
     case STOP_LOGGING_COMMAND:
     {
       shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
-      ShimTask_setStopLogging();
+      ShimTask_setStopSensing();
       break;
     }
     case SET_SENSORS_COMMAND:
@@ -2641,7 +2645,7 @@ void ShimBt_macIdVarsReset(void)
   memset(macIdBytes, 0x00, sizeof(macIdBytes) / sizeof(macIdBytes[0]));
 }
 
-void ShimBt_btsdSelfcmd(void)
+void ShimBt_instreamStatusRespSend(void)
 {
   if (shimmerStatus.btConnected)
   {
@@ -2668,6 +2672,17 @@ void ShimBt_btsdSelfcmd(void)
 
     ShimBt_writeToTxBufAndSend(selfcmd, i, SHIMMER_CMD);
   }
+  ShimBt_instreamStatusRespPendingSet(0);
+}
+
+void ShimBt_instreamStatusRespPendingSet(uint8_t state)
+{
+  instreamStatusRespPending = state;
+}
+
+uint8_t ShimBt_instreamStatusRespPendingGet(void)
+{
+  return instreamStatusRespPending;
 }
 
 void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)

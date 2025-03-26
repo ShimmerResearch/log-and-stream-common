@@ -8,6 +8,9 @@
 #include "log_and_stream_common.h"
 
 #include "log_and_stream_includes.h"
+#include "hal_Board.h"
+
+boot_stage_t bootStage;
 
 uint8_t sdInfoSyncDelayed = 0;
 
@@ -29,6 +32,41 @@ void LogAndStream_init(void)
   memset((uint8_t *) &shimmerStatus, 0, sizeof(STATTypeDef));
 
   ShimTask_set(TASK_BATT_READ);
+}
+
+void setBootStage(boot_stage_t bootStageNew)
+{
+    bootStage = bootStageNew;
+
+    switch (bootStage)
+    {
+    case BOOT_STAGE_START:
+        Board_ledOn(LED_ALL);
+        break;
+    case BOOT_STAGE_I2C:
+        Board_ledOff(LED_ALL);
+        break;
+    case BOOT_STAGE_BLUETOOTH:
+        Board_ledOn(LED_ALL);
+        break;
+    case BOOT_STAGE_BLUETOOTH_FAILURE:
+        Board_ledOff(LED_ALL);
+        break;
+    case BOOT_STAGE_CONFIGURATION:
+        Board_ledOn(LED_ALL);
+        break;
+    case BOOT_STAGE_END:
+        Board_ledOff(LED_ALL);
+        break;
+    default:
+        break;
+    }
+    return;
+}
+
+boot_stage_t getBootStage(void)
+{
+  return bootStage;
 }
 
 void LogAndStream_syncConfigAndCalibOnSd(void)
@@ -76,3 +114,27 @@ void LogAndStream_setSdInfoSyncDelayed(uint8_t state)
 {
   sdInfoSyncDelayed = state;
 }
+
+void LogAndStream_blinkTimerCommon(void)
+{
+  ShimLeds_incrementCounters();
+
+  if (shimmerStatus.initialising)
+  {
+      ShimLeds_controlDuringBoot(bootStage);
+  }
+  else
+  {
+    if (ShimLeds_isBlinkTimerCnt1s() && ShimConfig_checkAutostopCondition())
+    {
+      ShimTask_setStopSensing();
+      ShimBt_instreamStatusRespPendingSet(1);
+    }
+
+    if (shimmerStatus.timerBlinkEnabled)
+    {
+        ShimLeds_blink();
+    }
+  }
+}
+

@@ -109,7 +109,7 @@ void ShimLeds_blinkSetLwrRedOn(void)
 void ShimLeds_blinkSetLwrSdError(void)
 {
   //Alternate Red/Yellow for SD error
-  if (ShimLeds_isBlinkCntTime200ms())
+  if (ShimLeds_isBlinkTimerCnt200ms())
   {
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
     Board_ledOn(LED_LWR_RED);
@@ -138,7 +138,7 @@ void ShimLeds_blinkSetLwrBattStatus(void)
   uint32_t batt_led = 0;
   if (batteryStatus.battStatLedFlash)
   {
-    if (ShimLeds_isBlinkCntTime200ms())
+    if (ShimLeds_isBlinkTimerCnt200ms())
     {
       batt_led = batteryStatus.battStatLedCharging;
     }
@@ -180,7 +180,7 @@ void ShimLeds_blinkSetLwrBtnPress(void)
 
 void ShimLeds_blinkSetUprRtcNotSet(void)
 {
-  if (ShimLeds_isBlinkCntTime200ms())
+  if (ShimLeds_isBlinkTimerCnt200ms())
   {
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
     Board_ledOff(LED_UPR_GREEN);
@@ -227,7 +227,7 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
 #endif
       else
       { //standby
-        if (ShimLeds_isBlinkCntTime2s())
+        if (ShimLeds_isBlinkTimerCnt2s())
         {
           Board_ledOn(LED_UPR_BLUE);
         }
@@ -245,7 +245,7 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
       if ((shimmerStatus.btStreaming && shimmerStatus.btstreamReady)
           && !(shimmerStatus.sdlogReady && shimmerStatus.sdLogging))
       {
-        if (ShimLeds_isBlinkCntTime1s())
+        if (ShimLeds_isBlinkTimerCnt1s())
         {
           Board_ledToggle(LED_UPR_BLUE);
         }
@@ -255,7 +255,7 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
       else if (!(shimmerStatus.btStreaming && shimmerStatus.btstreamReady)
           && (shimmerStatus.sdlogReady && shimmerStatus.sdLogging))
       {
-        if (ShimLeds_isBlinkCntTime1s())
+        if (ShimLeds_isBlinkTimerCnt1s())
         {
           Board_ledToggle(LED_UPR_GREEN);
         }
@@ -265,7 +265,7 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
       else if ((shimmerStatus.btStreaming && shimmerStatus.btstreamReady)
           && (shimmerStatus.sdlogReady && shimmerStatus.sdLogging))
       {
-        if (ShimLeds_isBlinkCntTime1s())
+        if (ShimLeds_isBlinkTimerCnt1s())
         {
           if (BOARD_IS_LED_BLUE_ON || BOARD_IS_LED_GREEN1_ON)
           {
@@ -303,7 +303,7 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
       }
       else
       { //standby
-        if (ShimLeds_isBlinkCntTime2s())
+        if (ShimLeds_isBlinkTimerCnt2s())
         {
           Board_ledOn(LED_UPR_GREEN);
         }
@@ -474,17 +474,17 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
 #endif
 }
 
-uint8_t ShimLeds_isBlinkCntTime200ms(void)
+uint8_t ShimLeds_isBlinkTimerCnt200ms(void)
 {
   return (blinkCnt20 % 2);
 }
 
-uint8_t ShimLeds_isBlinkCntTime1s(void)
+uint8_t ShimLeds_isBlinkTimerCnt1s(void)
 {
   return (blinkCnt20 % 10 == 0);
 }
 
-uint8_t ShimLeds_isBlinkCntTime2s(void)
+uint8_t ShimLeds_isBlinkTimerCnt2s(void)
 {
   return (blinkCnt20 == 0);
 }

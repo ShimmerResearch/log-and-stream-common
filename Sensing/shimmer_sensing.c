@@ -652,7 +652,7 @@ uint8_t ShimSens_checkOnDefault(void)
     ShimTask_setStartSensing();
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
     shimmerStatus.sensing = 1;
-    ShimBt_btsdSelfcmd();
+    ShimBt_instreamStatusRespSend();
     shimmerStatus.sensing = 0;
     return 1;
   }

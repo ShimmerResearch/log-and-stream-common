@@ -26,9 +26,9 @@ void ShimLeds_varsInit(void);
 void ShimLeds_incrementCounters(void);
 void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent);
 void ShimLeds_blink(void);
-uint8_t ShimLeds_isBlinkCntTime200ms(void);
-uint8_t ShimLeds_isBlinkCntTime1s(void);
-uint8_t ShimLeds_isBlinkCntTime2s(void);
+uint8_t ShimLeds_isBlinkTimerCnt200ms(void);
+uint8_t ShimLeds_isBlinkTimerCnt1s(void);
+uint8_t ShimLeds_isBlinkTimerCnt2s(void);
 
 void RwcCheck(void);
 
