@@ -173,11 +173,7 @@ void ShimDock_processCmd(void)
 {
   if (uartAction)
   {
-#if defined(SHIMMER3)
     if (ShimDock_uartCheckCrc(dockRxBuf[UART_RXBUF_LEN] + 3))
-#else
-    if (S4Calc_crcCheck(dockRxBuf, dockRxBuf[UART_RXBUF_LEN] + 5))
-#endif
     {
       if (uartAction == UART_GET)
       { //get
