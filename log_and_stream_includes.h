@@ -15,6 +15,7 @@
 #include <Comms/shimmer_dock_usart.h>
 #include <Configuration/shimmer_config.h>
 #include <GSR/gsr.h>
+#include <LEDs/shimmer_leds.h>
 #include <SDCard/shimmer_sd_cfg_file.h>
 #include <SDCard/shimmer_sd_data_file.h>
 #include <SDCard/shimmer_sd_header.h>
@@ -24,6 +25,5 @@
 #include <Util/shimmer_util.h>
 #include <log_and_stream_common.h>
 #include <log_and_stream_definitions.h>
-#include <LEDs/shimmer_leds.h>
 
 #endif /* LOG_AND_STREAM_COMMON_LOG_AND_STREAM_INCLUDES_H_ */
