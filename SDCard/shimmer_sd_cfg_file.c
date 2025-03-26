@@ -7,7 +7,11 @@
 
 #include "shimmer_sd_cfg_file.h"
 
-#include "log_and_stream_includes.h"
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <log_and_stream_includes.h>
 
 FRESULT cfg_file_status;
 

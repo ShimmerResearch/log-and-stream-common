@@ -5,13 +5,10 @@
  *      Author: MarkNolan
  */
 
-#include <ctype.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <SDCard/shimmer_sd_data_file.h>
 #include <log_and_stream_externs.h>
 #include <log_and_stream_includes.h>
 
@@ -51,7 +48,6 @@ uint16_t fileNum, dirCounter, sdWrLen[NUM_SDWRBUF];
 uint64_t sdFileCrTs, sdFileSyncTs;
 #if USE_FATFS
 FRESULT file_status;
-//char file_name_current[128];
 FATFS fatfs; //File object
 #if _FATFS == FATFS_V_0_08B
 DIRS dir; //Directory object

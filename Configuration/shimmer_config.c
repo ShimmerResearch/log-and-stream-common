@@ -42,6 +42,7 @@
 
 #include <Configuration/shimmer_config.h>
 
+#include <ctype.h>
 #include <math.h>
 #include <string.h>
 
@@ -98,7 +99,7 @@ void ShimConfig_readRam(void)
 
 #if defined(SHIMMER3)
   ShimSdHead_config2SdHead();
-  ShimSd_infomem2Names();
+  ShimConfig_infomem2Names();
 #endif
 
   /* Check BT module configuration after sensor configuration read from

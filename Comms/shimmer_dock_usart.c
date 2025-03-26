@@ -414,7 +414,7 @@ void ShimDock_processCmd(void)
                 InfoMem_read(uartInfoMemOffset,
                     &ShimConfig_getStoredConfig()->rawBytes[uartInfoMemOffset],
                     uartInfoMemLength);
-                ShimSd_infomem2Names();
+                ShimConfig_infomem2Names();
 #else
                 uint8_t temp_btMacHex[6];
                 ShimConfig_storedConfigGet(temp_btMacHex, NV_MAC_ADDRESS, 6);

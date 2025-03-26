@@ -42,11 +42,7 @@
 
 #include <Sensing/shimmer_sensing.h>
 
-#include <Comms/shimmer_bt_uart.h>
-#include <Configuration/shimmer_config.h>
-#include <SDCard/shimmer_sd_data_file.h>
-#include <SDSync/shimmer_sd_sync.h>
-#include <TaskList/shimmer_taskList.h>
+#include <log_and_stream_includes.h>
 #include <log_and_stream_externs.h>
 
 #if defined(SHIMMER3)
