@@ -8,6 +8,7 @@
 #include "shimmer_battery.h"
 
 #include <Configuration/shimmer_config.h>
+#include <LEDs/shimmer_leds.h>
 #include <TaskList/shimmer_taskList.h>
 #include <log_and_stream_externs.h>
 

@@ -22,6 +22,7 @@ void LogAndStream_init(void)
   ShimSens_init();
   ShimDock_resetVariables();
   ShimBrd_resetDaughterCardId();
+  ShimLeds_varsInit();
 
   LogAndStream_setSdInfoSyncDelayed(0);
 

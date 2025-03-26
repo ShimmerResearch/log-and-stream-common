@@ -24,5 +24,6 @@
 #include <Util/shimmer_util.h>
 #include <log_and_stream_common.h>
 #include <log_and_stream_definitions.h>
+#include <LEDs/shimmer_leds.h>
 
 #endif /* LOG_AND_STREAM_COMMON_LOG_AND_STREAM_INCLUDES_H_ */
