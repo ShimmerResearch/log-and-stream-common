@@ -15,7 +15,8 @@
 #include <Comms/shimmer_dock_usart.h>
 #include <Configuration/shimmer_config.h>
 #include <GSR/gsr.h>
-#include <SDCard/shimmer_sd.h>
+#include <SDCard/shimmer_sd_cfg_file.h>
+#include <SDCard/shimmer_sd_data_file.h>
 #include <SDCard/shimmer_sd_header.h>
 #include <SDSync/shimmer_sd_sync.h>
 #include <Sensing/shimmer_sensing.h>

@@ -44,7 +44,7 @@
 
 #include <Comms/shimmer_bt_uart.h>
 #include <Configuration/shimmer_config.h>
-#include <SDCard/shimmer_sd.h>
+#include <SDCard/shimmer_sd_data_file.h>
 #include <SDSync/shimmer_sd_sync.h>
 #include <TaskList/shimmer_taskList.h>
 #include <log_and_stream_externs.h>
@@ -258,7 +258,7 @@ void ShimSens_startSensing(void)
 
     if (ShimSens_checkStartLoggingConditions())
     {
-      ShimSd_fileInit();
+      ShimSdDataFile_fileInit();
 
       if (shimmerStatus.sdSyncEnabled)
       {
@@ -326,7 +326,7 @@ void ShimSens_stopSensing(void)
   }
   if (ShimSens_checkStopLoggingConditions())
   {
-    ShimSd_close();
+    ShimSdDataFile_close();
 #if defined(SHIMMER3)
     _delay_cycles(240000); //10ms @ 24MHz
 #elif defined(SHIMMER3R)
@@ -357,9 +357,9 @@ void ShimSens_stopSensing(void)
 
     ShimConfig_experimentLengthCntReset();
 
-    if (ShimSd_isSdInfoSyncDelayed())
+    if (ShimSdCfgFile_isSdInfoSyncDelayed())
     {
-      ShimSd_sdInfoSync();
+      ShimSdCfgFile_sync();
     }
 
     stopSensingWrapup();
@@ -608,7 +608,7 @@ void ShimSens_saveData(void)
   if (shimmerStatus.sdLogging)
   {
     PeriStat_Set(STAT_PERI_SDMMC);
-    ShimSd_writeToBuff(sensing.dataBuf + 1, sensing.dataLen - 1);
+    ShimSdDataFile_writeToBuff(sensing.dataBuf + 1, sensing.dataLen - 1);
     PeriStat_Clr(STAT_PERI_SDMMC);
   }
 #endif

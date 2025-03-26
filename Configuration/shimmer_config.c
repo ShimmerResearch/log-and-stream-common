@@ -56,6 +56,8 @@ uint8_t calibRamFlag = 0;
 
 uint32_t maxLen, maxLenCnt;
 
+char expIdName[MAX_CHARS], shimmerName[MAX_CHARS], configTimeText[UINT32_LEN];
+
 void ShimConfig_reset(void)
 {
   memset(storedConfig.rawBytes, 0xFF, NV_NUM_RWMEM_BYTES);
@@ -66,6 +68,10 @@ void ShimConfig_reset(void)
 
   maxLen = 0;
   maxLenCnt = 0;
+
+  memset(&expIdName[0], 0x00, sizeof(expIdName));
+  memset(&shimmerName[0], 0x00, sizeof(shimmerName));
+  memset(&configTimeText[0], 0x00, sizeof(configTimeText));
 }
 
 void ShimConfig_readRam(void)
@@ -694,7 +700,7 @@ void ShimConfig_loadSensorConfigAndCalib(void)
     if (ShimConfig_getSdCfgFlag())
     { //info > sdcard
       ShimConfig_readRam();
-      ShimSd_updateSdConfig();
+      ShimSdCfgFile_generate();
       ShimConfig_setSdCfgFlag(0);
       if (!ShimSd_isFileStatusOk())
       {
@@ -705,7 +711,7 @@ void ShimConfig_loadSensorConfigAndCalib(void)
     else
     {
       //Hits here when undocked
-      ShimSd_readSdConfiguration();
+      ShimSdCfgFile_readSdConfiguration();
     }
 
     if (ShimCalib_file2Ram())
@@ -754,4 +760,107 @@ gConfigBytes ShimConfig_createBlankConfigBytes(void)
   memset(storedConfig.rawBytes, 0x00, sizeof(storedConfig.rawBytes));
 
   return storedConfigNew;
+}
+
+uint8_t ShimConfig_areConfigBytesValid(void)
+{
+//  return memcmp(all0xff, &storedConfig.rawBytes[0], 6)
+  uint8_t i;
+  for (i = 0; i < 6; i++)
+  {
+    if (storedConfig.macAddr[i] != 0xFF)
+    {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+void ShimConfig_setShimmerName(void)
+{
+  uint8_t i;
+  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
+
+  memset(&shimmerName[0], 0x00, sizeof(shimmerName));
+
+  for (i = 0; (i < MAX_CHARS - 1) && isprint((uint8_t) configBytes->shimmerName[i]); i++)
+    ;
+  if (i == 0)
+  {
+    ShimConfig_setDefaultShimmerName();
+    i = 12;
+  }
+  memcpy((char *) shimmerName, &(configBytes->shimmerName[0]), i);
+}
+
+void ShimConfig_setExpIdName(void)
+{
+  uint8_t i;
+  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
+
+  memset(&expIdName[0], 0x00, sizeof(expIdName));
+
+  for (i = 0; (i < MAX_CHARS - 1) && (isprint((uint8_t) configBytes->expIdName[i])); i++)
+    ;
+  if (i == 0)
+  {
+    ShimConfig_setDefaultTrialId();
+    i = 12;
+  }
+  memcpy((char *) expIdName, &(configBytes->expIdName[0]), i);
+}
+
+void ShimConfig_setCfgTime(void)
+{
+  uint32_t cfg_time_temp = 0;
+  uint8_t i;
+  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
+
+  memset(&configTimeText[0], 0x00, sizeof(configTimeText));
+
+  //MSB order
+  for (i = 0; i < 4; i++)
+  {
+    cfg_time_temp <<= 8;
+    cfg_time_temp |= configBytes->rawBytes[NV_SD_CONFIG_TIME + i];
+  }
+
+  if (cfg_time_temp)
+  {
+    ShimUtil_ItoaNo0((uint64_t) cfg_time_temp, configTimeText, UINT32_LEN);
+  }
+  else
+  {
+    strcpy((char *) configTimeText, "0");
+  }
+}
+
+void ShimConfig_setConfigTimeTextIfEmpty(void)
+{
+  if (strlen((char *) configTimeText) == 0)
+  {
+    strcpy((char *) configTimeText, "0");
+  }
+}
+
+void ShimConfig_infomem2Names(void)
+{
+  ShimConfig_setShimmerName();
+  ShimConfig_setExpIdName();
+  ShimConfig_setCfgTime();
+}
+
+char* ShimConfig_shimmerNamePtrGet(void)
+{
+  return &shimmerName[0];
+}
+
+char* ShimConfig_expIdPtrGet(void)
+{
+  return &expIdName[0];
+}
+
+char* ShimConfig_configTimeTextPtrGet(void)
+{
+  return &configTimeText[0];
 }

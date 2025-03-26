@@ -14,10 +14,10 @@
 #include <Boards/shimmer_boards.h>
 #include <Comms/shimmer_bt_uart.h>
 #include <Configuration/shimmer_config.h>
-#include <SDCard/shimmer_sd.h>
 #include <TaskList/shimmer_taskList.h>
 #include <log_and_stream_definitions.h>
 #include <log_and_stream_externs.h>
+#include <SDCard/shimmer_sd_data_file.h>
 
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"

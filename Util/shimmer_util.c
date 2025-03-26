@@ -19,7 +19,7 @@ void ShimUtil_ItoaWith0(uint64_t num, uint8_t *buf, uint8_t len)
   }
 }
 
-void ShimUtil_ItoaNo0(uint64_t num, uint8_t *buf, uint8_t max_len)
+void ShimUtil_ItoaNo0(uint64_t num, char *buf, uint8_t max_len)
 { //len = actual len + 1 extra '\0' at the end
   uint8_t idx, i_move;
   memset(buf, 0, max_len);

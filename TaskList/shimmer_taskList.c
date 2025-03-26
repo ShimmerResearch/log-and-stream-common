@@ -40,25 +40,12 @@
  * @date May, 2016
  */
 
-#include <TaskList/shimmer_taskList.h>
+#include "shimmer_taskList.h"
 
-#include <Battery/shimmer_battery.h>
-#include <Boards/shimmer_boards.h>
-#include <Calibration/shimmer_calibration.h>
-#include <Comms/shimmer_bt_uart.h>
-#include <Comms/shimmer_dock_usart.h>
-#include <Configuration/shimmer_config.h>
-#include <SDCard/shimmer_sd.h>
-#include <SDCard/shimmer_sd_header.h>
-#include <SDSync/shimmer_sd_sync.h>
-#include <Sensing/shimmer_sensing.h>
+#include <log_and_stream_includes.h>
 #include <log_and_stream_externs.h>
 
 #include "hal_FactoryTest.h"
-
-#if defined(SHIMMER3R)
-#include "shimmer_definitions.h"
-#endif
 
 volatile uint32_t taskList = 0;
 uint32_t taskCurrent;
@@ -134,7 +121,7 @@ void ShimTask_NORM_manage(void)
         ShimSens_stopSensing();
         break;
       case TASK_SDWRITE:
-        ShimSd_writeToCard();
+        ShimSdDataFile_writeToCard();
         break;
       case TASK_SDLOG_CFG_UPDATE:
         if (!shimmerStatus.docked && !shimmerStatus.sensing && CheckSdInslot()
@@ -142,7 +129,7 @@ void ShimTask_NORM_manage(void)
         {
           shimmerStatus.configuring = 1;
           ShimConfig_readRam();
-          ShimSd_updateSdConfig();
+          ShimSdCfgFile_generate();
           ShimConfig_setSdCfgFlag(0);
           shimmerStatus.configuring = 0;
         }
