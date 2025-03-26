@@ -353,9 +353,9 @@ void ShimSens_stopSensing(void)
 
     ShimConfig_experimentLengthCntReset();
 
-    if (ShimSdCfgFile_isSdInfoSyncDelayed())
+    if (LogAndStream_isSdInfoSyncDelayed())
     {
-      ShimSdCfgFile_sync();
+      LogAndStream_syncConfigAndCalibOnSd();
     }
 
     stopSensingWrapup();

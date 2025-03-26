@@ -15,13 +15,10 @@
 
 FRESULT cfg_file_status;
 
-uint8_t sdInfoSyncDelayed = 0;
-
 static uint8_t all0xff[7U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
 void ShimSdCfgFile_init(void)
 {
-  ShimSdCfgFile_setSdInfoSyncDelayed(0);
 }
 
 void ShimSdCfgFile_generate(void)
@@ -864,42 +861,6 @@ void ShimSdCfgFile_parse(void)
   }
 }
 
-void ShimSdCfgFile_sync()
-{
-  ShimSdCfgFile_setSdInfoSyncDelayed(0);
-  if (ShimConfig_getSdCfgFlag())
-  { //info > sdcard
-    ShimConfig_readRam();
-    ShimSdCfgFile_generate();
-    ShimConfig_setSdCfgFlag(0);
-  }
-  else
-  {
-    ShimSdCfgFile_readSdConfiguration();
-  }
-
-  if (ShimConfig_getRamCalibFlag())
-  {
-    ShimCalib_ram2File();
-    ShimConfig_setRamCalibFlag(0);
-  }
-  else
-  {
-    if (ShimCalib_file2Ram())
-    {
-      ShimCalib_ram2File();
-    }
-    else
-    {
-      //only need to do this when file2Ram succeeds
-      ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
-    }
-  }
-
-  ShimSens_configureChannels();
-  ShimSens_checkOnDefault();
-}
-
 void ShimSdCfgFile_readSdConfiguration(void)
 {
   ShimTask_clear(TASK_STREAMDATA); //this will skip one sample
@@ -911,14 +872,4 @@ void ShimSdCfgFile_readSdConfiguration(void)
    * card to see if it is in the correct state (i.e., BT on vs. BT off vs. SD
    * Sync) */
   ShimConfig_checkBtModeFromConfig();
-}
-
-uint8_t ShimSdCfgFile_isSdInfoSyncDelayed(void)
-{
-  return sdInfoSyncDelayed;
-}
-
-void ShimSdCfgFile_setSdInfoSyncDelayed(uint8_t state)
-{
-  sdInfoSyncDelayed = state;
 }

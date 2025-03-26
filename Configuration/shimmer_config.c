@@ -68,7 +68,7 @@ void ShimConfig_reset(void)
   calibRamFlag = 0;
 
   maxLen = 0;
-  maxLenCnt = 0;
+  ShimConfig_experimentLengthCntReset();
 
   memset(&expIdName[0], 0x00, sizeof(expIdName));
   memset(&shimmerName[0], 0x00, sizeof(shimmerName));
