@@ -764,7 +764,7 @@ gConfigBytes ShimConfig_createBlankConfigBytes(void)
 
 uint8_t ShimConfig_areConfigBytesValid(void)
 {
-//  return memcmp(all0xff, &storedConfig.rawBytes[0], 6)
+  //return memcmp(all0xff, &storedConfig.rawBytes[0], 6)
   uint8_t i;
   for (i = 0; i < 6; i++)
   {
@@ -850,17 +850,17 @@ void ShimConfig_infomem2Names(void)
   ShimConfig_setCfgTime();
 }
 
-char* ShimConfig_shimmerNamePtrGet(void)
+char *ShimConfig_shimmerNamePtrGet(void)
 {
   return &shimmerName[0];
 }
 
-char* ShimConfig_expIdPtrGet(void)
+char *ShimConfig_expIdPtrGet(void)
 {
   return &expIdName[0];
 }
 
-char* ShimConfig_configTimeTextPtrGet(void)
+char *ShimConfig_configTimeTextPtrGet(void)
 {
   return &configTimeText[0];
 }

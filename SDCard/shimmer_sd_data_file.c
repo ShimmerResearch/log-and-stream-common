@@ -11,9 +11,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <SDCard/shimmer_sd_data_file.h>
 #include <log_and_stream_externs.h>
 #include <log_and_stream_includes.h>
-#include <SDCard/shimmer_sd_data_file.h>
 
 #if defined(SHIMMER3)
 #include "ff.h"
@@ -45,8 +45,8 @@ void ShimSd_writeSdHeaderToFile(void);
 void ShimSd_closeDataFile(void);
 
 uint8_t fileName[64], dirName[64], expDirName[32], dataBuf[100],
-    sdWrBuf[NUM_SDWRBUF][SD_WRITE_BUF_SIZE],
-    sdBufInQ, dirLen, sdBufSens = 0, sdBufWr = 0;
+    sdWrBuf[NUM_SDWRBUF][SD_WRITE_BUF_SIZE], sdBufInQ, dirLen, sdBufSens = 0,
+                                                               sdBufWr = 0;
 uint16_t fileNum, dirCounter, sdWrLen[NUM_SDWRBUF];
 uint64_t sdFileCrTs, sdFileSyncTs;
 #if USE_FATFS
@@ -449,7 +449,7 @@ void ShimSdDataFile_writeToCard(void)
 {
 #if USE_FATFS
   UINT bw;
-#endif // USE_FATFS
+#endif //USE_FATFS
   uint8_t *writing_buf;
   uint16_t *writing_buf_len;
 
@@ -467,7 +467,7 @@ void ShimSdDataFile_writeToCard(void)
   sensing.isSdOperating = 1;
 
 #if USE_FATFS
-  // dataFileInfo.fsize was not incrementing the file size.
+  //dataFileInfo.fsize was not incrementing the file size.
   file_status = f_lseek(&dataFile, f_size(&dataFile));
   assert_param(file_status == FR_OK);
   file_status = f_write(&dataFile, writing_buf, *writing_buf_len, &bw);
@@ -535,7 +535,7 @@ void ShimSdDataFile_writeToCard(void)
 void ShimSd_openNewDataFile(void)
 {
   ShimSdDataFile_makeFileName(dataFileName);
-#if USE_FATFS // USE_FATFS
+#if USE_FATFS //USE_FATFS
   file_status = f_open(&dataFile, dataFileName, FA_WRITE | FA_CREATE_NEW);
   assert_param(file_status == FR_OK);
   f_stat(dataFileName, &dataFileInfo);
@@ -556,9 +556,9 @@ void ShimSd_writeSdHeaderToFile(void)
   temp_sdHeadText[SDH_MY_LOCALTIME_5TH] = (sdFileSyncTs >> 32) & 0xff;
   *(uint32_t *) (temp_sdHeadText + SDH_MY_LOCALTIME)
       = (uint32_t) (sdFileSyncTs & 0xffffffff);
-#endif // USE_8BYTES_INIT_TS
+#endif //USE_8BYTES_INIT_TS
 
-#if USE_FATFS // USE_FATFS
+#if USE_FATFS //USE_FATFS
   file_status = f_write(&dataFile, temp_sdHeadText, SD_HEAD_SIZE, &bw);
 #endif
 }
@@ -566,11 +566,11 @@ void ShimSd_writeSdHeaderToFile(void)
 void ShimSd_closeDataFile(void)
 {
 #if USE_FATFS
-    file_status = f_sync(&dataFile);
-    assert_param(file_status == FR_OK);
-    file_status = f_close(&dataFile);
-    assert_param(file_status == FR_OK);
-    ShimSd_setFileTimestamp(dataFileName);
+  file_status = f_sync(&dataFile);
+  assert_param(file_status == FR_OK);
+  file_status = f_close(&dataFile);
+  assert_param(file_status == FR_OK);
+  ShimSd_setFileTimestamp(dataFileName);
 #endif
 }
 

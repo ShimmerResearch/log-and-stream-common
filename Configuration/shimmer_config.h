@@ -520,8 +520,8 @@ void ShimConfig_setExpIdName(void);
 void ShimConfig_setCfgTime(void);
 void ShimConfig_setConfigTimeTextIfEmpty(void);
 void ShimConfig_infomem2Names(void);
-char* ShimConfig_shimmerNamePtrGet(void);
-char* ShimConfig_expIdPtrGet(void);
-char* ShimConfig_configTimeTextPtrGet(void);
+char *ShimConfig_shimmerNamePtrGet(void);
+char *ShimConfig_expIdPtrGet(void);
+char *ShimConfig_configTimeTextPtrGet(void);
 
 #endif //SHIMMER_CONFIG_H
