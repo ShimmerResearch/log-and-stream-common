@@ -42,8 +42,8 @@
 
 #include <Sensing/shimmer_sensing.h>
 
-#include <log_and_stream_includes.h>
 #include <log_and_stream_externs.h>
+#include <log_and_stream_includes.h>
 
 #if defined(SHIMMER3)
 #include "../../Shimmer_Driver/RN4X/RN4X.h"
