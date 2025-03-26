@@ -224,10 +224,12 @@ void ShimSens_startSensing(void)
     }
     ShimSens_stepInit();
 
+#if defined(SHIMMER3) || defined(SHIMMER4_SDK) || defined(SR48_6_0)
     if (sensing.nbrAdcChans)
     {
       ADC_startSensing();
     }
+#endif
     I2C_startSensing();
     SPI_startSensing();
 
@@ -377,10 +379,12 @@ void ShimSens_stopPeripherals(void)
   S4_RTC_WakeUpOff();
 #endif
 
+#if defined(SHIMMER3) || defined(SHIMMER4_SDK) || defined(SR48_6_0)
   if (sensing.nbrAdcChans)
   {
     ADC_stopSensing();
   }
+#endif
   if (sensing.nbrI2cChans)
   {
     I2C_stopSensing();
@@ -433,10 +437,12 @@ void ShimSens_bufPoll()
 {
   currentCbFlags = 0;
 
+#if defined(SHIMMER3) || defined(SHIMMER4_SDK) || defined(SR48_6_0)
   if (sensing.nbrAdcChans)
   {
     ADC_gatherDataStart();
   }
+#endif
   if (sensing.nbrI2cChans)
   {
     I2C_pollSensors();
@@ -499,7 +505,9 @@ void ShimSens_gatherData(void)
 void ShimSens_stepInit(void)
 {
 #if defined(SHIMMER3R)
+#if defined(SR48_6_0)
   ADC_gatherDataCb(ShimSens_adcCompleteCb);
+#endif
   I2cSens_gatherDataCb(ShimSens_i2cCompleteCb);
   SPI_gatherDataCb(ShimSens_spiCompleteCb);
 #elif defined(SHIMMER4_SDK)
