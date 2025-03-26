@@ -45,7 +45,6 @@
 
 #include <stdint.h>
 
-
 #define CRC_INIT 0xB0CA
 
 uint16_t ShimSwCrc_byte(uint16_t crc, uint8_t b);
