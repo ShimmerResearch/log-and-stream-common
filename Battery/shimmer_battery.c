@@ -17,6 +17,8 @@ battAlarmInterval_t battAlarmInterval;
 
 void ShimBatt_init(void)
 {
+  memset((uint8_t *) &batteryStatus, 0, sizeof(BattStatus));
+
   ShimBatt_setBattCritical(0);
   ShimBatt_resetBatteryCriticalCount();
   /* Reset to battery "charging"/"checking" LED indication on boot */
