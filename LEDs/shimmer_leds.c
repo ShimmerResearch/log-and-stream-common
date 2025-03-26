@@ -377,16 +377,16 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
   uint8_t greenUprStateToSet = 0;
   if (shimmerStatus.configuring)
   {
-    greenUprStateToSet = (cntBlink % 2) ? 0 : 1;
+    greenUprStateToSet = ShimLeds_isBlinkTimerCnt200ms() ? 0 : 1;
   }
   else if (shimmerStatus.sdLogging)
   {
-    greenUprStateToSet = (cntBlink >= 10) ? 0 : 1;
+    greenUprStateToSet = (blinkCnt20 >= 10) ? 0 : 1;
   }
 #if defined(SHIMMER4_SDK)
   else if (shimmerStatus.isSdInserted)
   {
-    greenUprStateToSet = (cntBlink == 0) ? 1 : 0;
+    greenUprStateToSet = ShimLeds_isBlinkTimerCnt2s() ? 1 : 0;
   }
 #endif
   else
@@ -411,11 +411,11 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
   {
     if (!shimmerStatus.btConnected)
     {
-      blueUprStateToSet = (cntBlink == 0) ? 1 : 0;
+      blueUprStateToSet = ShimLeds_isBlinkTimerCnt2s() ? 1 : 0;
     }
     else if (shimmerStatus.btStreaming)
     {
-      if (!(cntBlink % 10))
+      if (ShimLeds_isBlinkTimerCnt1s())
       {
         blueUprStateToSet = isLedOnUprBlue() ? 0 : 1;
       }
@@ -469,8 +469,6 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
   Board_ledUprSetColourRgb(LED_PWM_OFF, greenUprStateToSet ? LED_PWM_ON : LED_PWM_OFF,
       blueUprStateToSet ? LED_PWM_ON : LED_PWM_OFF);
 #endif
-}
-
 #endif
 }
 
