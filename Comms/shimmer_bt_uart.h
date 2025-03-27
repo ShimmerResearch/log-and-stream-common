@@ -279,8 +279,8 @@ uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd);
 void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew);
 COMMS_CRC_MODE ShimBt_getCrcMode(void);
 
-void ShimBt_macIdSetFromStr(uint8_t *macIdStrNew);
-void ShimBt_macIdSetFromBytes(uint8_t *macIdBytesNew);
+void ShimBt_macIdSetFromStr(uint8_t *macIdStrMsbOrder);
+void ShimBt_macIdSetFromBytes(uint8_t *macIdBytesLsbOrder);
 char *ShimBt_macIdStrPtrGet(void);
 uint8_t *ShimBt_macIdBytesPtrGet(void);
 void ShimBt_macIdVarsReset(void);

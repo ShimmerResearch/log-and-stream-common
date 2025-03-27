@@ -2607,10 +2607,10 @@ COMMS_CRC_MODE ShimBt_getCrcMode(void)
   return btCrcMode;
 }
 
-void ShimBt_macIdSetFromStr(uint8_t *macIdStrNew)
+void ShimBt_macIdSetFromStr(uint8_t *macIdStrMsbOrder)
 {
   ShimBt_macIdVarsReset();
-  memcpy(macIdStr, macIdStrNew, 12);
+  memcpy(macIdStr, macIdStrMsbOrder, 12);
   uint8_t i, pchar[3];
   pchar[2] = 0;
   for (i = 0; i < 6; i++)
@@ -2621,12 +2621,15 @@ void ShimBt_macIdSetFromStr(uint8_t *macIdStrNew)
   }
 }
 
-void ShimBt_macIdSetFromBytes(uint8_t *macIdBytesNew)
+void ShimBt_macIdSetFromBytes(uint8_t *macIdBytesLsbOrder)
 {
   ShimBt_macIdVarsReset();
-  memcpy(&macIdBytes[0], macIdBytesNew, sizeof(macIdBytes));
-  (void) sprintf(macIdStr, "%02X%02X%02X%02X%02X%02X", macIdBytes[5],
-      macIdBytes[4], macIdBytes[3], macIdBytes[2], macIdBytes[1], macIdBytes[0]);
+  memcpy(&macIdBytes[0], macIdBytesLsbOrder, sizeof(macIdBytes));
+
+  ShimUtil_reverseArray(&macIdBytes[0], sizeof(macIdBytes));
+
+  (void) sprintf(macIdStr, "%02X%02X%02X%02X%02X%02X", macIdBytes[0],
+      macIdBytes[1], macIdBytes[2], macIdBytes[3], macIdBytes[4], macIdBytes[5]);
 }
 
 char *ShimBt_macIdStrPtrGet(void)
