@@ -133,3 +133,14 @@ size_t ShimUtil_strlen_v(volatile void *dest, size_t maxSize)
   //do n++; while (*s++);
   //return n;
 }
+
+void ShimUtil_reverseArray(uint8_t *arr, size_t length)
+{
+  size_t i;
+  for (i = 0; i < length / 2; i++)
+  {
+    uint8_t temp = arr[i];
+    arr[i] = arr[length - 1 - i];
+    arr[length - 1 - i] = temp;
+  }
+}
