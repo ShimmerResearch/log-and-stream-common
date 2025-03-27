@@ -2625,8 +2625,8 @@ void ShimBt_macIdSetFromBytes(uint8_t *macIdBytesNew)
 {
   ShimBt_macIdVarsReset();
   memcpy(&macIdBytes[0], macIdBytesNew, sizeof(macIdBytes));
-  (void) sprintf(macIdStr, "%02X%02X%02X%02X%02X%02X", macIdBytes[0],
-      macIdBytes[1], macIdBytes[2], macIdBytes[3], macIdBytes[4], macIdBytes[5]);
+  (void) sprintf(macIdStr, "%02X%02X%02X%02X%02X%02X", macIdBytes[5],
+      macIdBytes[4], macIdBytes[3], macIdBytes[2], macIdBytes[1], macIdBytes[0]);
 }
 
 char *ShimBt_macIdStrPtrGet(void)
