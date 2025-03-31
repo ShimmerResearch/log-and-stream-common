@@ -266,6 +266,19 @@ uint8_t ShimBrd_isBoardSr48_6_0(void)
   return ShimBrd_isDaughterCardIdSet()
       && ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0);
 }
+
+uint8_t ShimBrd_isBoardSr48_7_0(void)
+{
+  return ShimBrd_isDaughterCardIdSet()
+      && ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0);
+}
+
+uint8_t ShimBrd_areMcuAdcsUsedForSensing(void)
+{
+  return (ShimBrd_isHwId(HW_ID_SHIMMER3)
+      || ShimBrd_isHwId(SHIMMER4_SDK)
+      || ShimBrd_isBoardSr48_6_0());
+}
 #endif
 
 uint8_t ShimBrd_isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_brd_minor)
@@ -274,4 +287,9 @@ uint8_t ShimBrd_isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8
       && (daughterCardIdPage.expansion_brd.exp_brd_id == exp_brd_id
           && daughterCardIdPage.expansion_brd.exp_brd_major == exp_brd_major
           && daughterCardIdPage.expansion_brd.exp_brd_minor == exp_brd_minor));
+}
+
+uint8_t ShimBrd_isHwId(uint8_t hwIdToCheck)
+{
+  return hwId == hwIdToCheck;
 }
