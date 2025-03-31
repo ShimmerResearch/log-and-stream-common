@@ -499,7 +499,7 @@ void ShimSens_gatherData(void)
 void ShimSens_stepInit(void)
 {
 #if defined(SHIMMER3R)
-  if(ShimBrd_areMcuAdcsUsedForSensing())
+  if (ShimBrd_areMcuAdcsUsedForSensing())
   {
     ADC_gatherDataCb(ShimSens_adcCompleteCb);
   }

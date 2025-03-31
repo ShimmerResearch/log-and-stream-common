@@ -275,8 +275,7 @@ uint8_t ShimBrd_isBoardSr48_7_0(void)
 
 uint8_t ShimBrd_areMcuAdcsUsedForSensing(void)
 {
-  return (ShimBrd_isHwId(HW_ID_SHIMMER3)
-      || ShimBrd_isHwId(SHIMMER4_SDK)
+  return (ShimBrd_isHwId(HW_ID_SHIMMER3) || ShimBrd_isHwId(SHIMMER4_SDK)
       || ShimBrd_isBoardSr48_6_0());
 }
 #endif
