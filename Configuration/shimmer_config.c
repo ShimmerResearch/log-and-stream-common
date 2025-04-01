@@ -231,6 +231,7 @@ void ShimConfig_setDefaultConfig(void)
   storedConfig.rtcErrorEnable = 1;
   storedConfig.sdErrorEnable = 1;
   storedConfig.btIntervalSecs = 54;
+  storedConfig.bluetoothDisable = 0;
 
   storedConfig.experimentLengthMaxInMinutes = 0;
 
