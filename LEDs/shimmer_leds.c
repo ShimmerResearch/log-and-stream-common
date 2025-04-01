@@ -203,46 +203,14 @@ void ShimLeds_blinkSetUprRtcNotSet(void)
 //TODO merge Shimmer3 and Shimmer3R approaches
 void ShimLeds_blinkSetUprDeviceStatus(void)
 {
-#if defined(SHIMMER3)
+  //#if defined(SHIMMER3)
   if (shimmerStatus.btSupportEnabled && !shimmerStatus.sdSyncEnabled)
   {
-    if (!shimmerStatus.sensing)
-    { //standby or configuring
-      if (shimmerStatus.configuring)
-      {
-        Board_ledToggle(LED_UPR_GREEN);
-      }
-      else if (shimmerStatus.btConnected)
-      {
-        Board_ledOn(LED_UPR_BLUE);
-        Board_ledOff(LED_UPR_GREEN); //nothing to show
-      }
-#if defined(SHIMMER3)
-      else if (isRn4678ConnectionEstablished())
-      {
-        /* BT connection established but RFComm not open */
-        Board_ledToggle(LED_UPR_BLUE);
-        Board_ledOff(LED_UPR_GREEN); //nothing to show
-      }
-#endif
-      else
-      { //standby
-        if (ShimLeds_isBlinkTimerCnt2s())
-        {
-          Board_ledOn(LED_UPR_BLUE);
-        }
-        else
-        {
-          Board_ledOff(LED_UPR_BLUE);
-        }
-        Board_ledOff(LED_UPR_GREEN); //nothing to show
-      }
-    }
-    else
+    if (shimmerStatus.sensing)
     { //sensing
       //shimmerStatus.sdlogReady, shimmerStatus.btstreamReady, enableSdlog,
       //enableBtstream btstream only
-      if ((shimmerStatus.btStreaming && shimmerStatus.btstreamReady)
+      if ((shimmerStatus.btstreamReady && shimmerStatus.btStreaming)
           && !(shimmerStatus.sdlogReady && shimmerStatus.sdLogging))
       {
         if (ShimLeds_isBlinkTimerCnt1s())
@@ -252,7 +220,7 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
         Board_ledOff(LED_UPR_GREEN); //nothing to show
       }
       //sdlog only
-      else if (!(shimmerStatus.btStreaming && shimmerStatus.btstreamReady)
+      else if (!(shimmerStatus.btstreamReady && shimmerStatus.btStreaming)
           && (shimmerStatus.sdlogReady && shimmerStatus.sdLogging))
       {
         if (ShimLeds_isBlinkTimerCnt1s())
@@ -262,12 +230,12 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
         Board_ledOff(LED_UPR_BLUE); //nothing to show
       }
       //btstream & sdlog
-      else if ((shimmerStatus.btStreaming && shimmerStatus.btstreamReady)
+      else if ((shimmerStatus.btstreamReady && shimmerStatus.btStreaming)
           && (shimmerStatus.sdlogReady && shimmerStatus.sdLogging))
       {
         if (ShimLeds_isBlinkTimerCnt1s())
         {
-          if (BOARD_IS_LED_BLUE_ON || BOARD_IS_LED_GREEN1_ON)
+          if (Board_isLedOnUprBlue() || Board_isLedOnUprGreen())
           {
             Board_ledOff(LED_UPR_BLUE + LED_UPR_GREEN);
           }
@@ -289,6 +257,39 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
       else
       {
         Board_ledOff(LED_UPR_GREEN + LED_UPR_BLUE); //nothing to show
+      }
+    }
+    else //standby or configuring
+    {
+      if (shimmerStatus.configuring)
+      {
+        Board_ledToggle(LED_UPR_GREEN);
+      }
+      else if (shimmerStatus.btConnected)
+      {
+        Board_ledOn(LED_UPR_BLUE);
+        Board_ledOff(LED_UPR_GREEN); //nothing to show
+      }
+#if defined(SHIMMER3)
+      else if (isRn4678ConnectionEstablished())
+      {
+        /* BT connection established but RFComm not open */
+        Board_ledToggle(LED_UPR_BLUE);
+        Board_ledOff(LED_UPR_GREEN); //nothing to show
+      }
+#endif
+      else
+      {
+        /* BT advertising */
+        if (shimmerStatus.btPowerOn && ShimLeds_isBlinkTimerCnt2s())
+        {
+          Board_ledOn(LED_UPR_BLUE);
+        }
+        else
+        {
+          Board_ledOff(LED_UPR_BLUE);
+        }
+        Board_ledOff(LED_UPR_GREEN);
       }
     }
   }
@@ -372,104 +373,104 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
       //}
     }
   }
-#else
-  //green1
-  uint8_t greenUprStateToSet = 0;
-  if (shimmerStatus.configuring)
-  {
-    greenUprStateToSet = ShimLeds_isBlinkTimerCnt200ms() ? 0 : 1;
-  }
-  else if (shimmerStatus.sdLogging)
-  {
-    greenUprStateToSet = (blinkCnt20 >= 10) ? 0 : 1;
-  }
-#if defined(SHIMMER4_SDK)
-  else if (shimmerStatus.isSdInserted)
-  {
-    greenUprStateToSet = ShimLeds_isBlinkTimerCnt2s() ? 1 : 0;
-  }
-#endif
-  else
-  {
-    greenUprStateToSet = 0;
-  }
-
-#if defined(SHIMMER4_SDK)
-  if (greenUprStateToSet)
-  {
-    Board_ledOn(LED_GREEN_UPR);
-  }
-  else
-  {
-    Board_ledOff(LED_GREEN_UPR);
-  }
-#endif
-
-  //blue
-  uint8_t blueUprStateToSet = 0;
-  if (isBtIsInitialised())
-  {
-    if (!shimmerStatus.btConnected)
-    {
-      blueUprStateToSet = ShimLeds_isBlinkTimerCnt2s() ? 1 : 0;
-    }
-    else if (shimmerStatus.btStreaming)
-    {
-      if (ShimLeds_isBlinkTimerCnt1s())
-      {
-        blueUprStateToSet = isLedOnUprBlue() ? 0 : 1;
-      }
-      else
-      {
-        blueUprStateToSet = isLedOnUprBlue();
-      }
-    }
-    else
-    {
-      blueUprStateToSet = 1;
-    }
-  }
-  else
-  {
-    blueUprStateToSet = 0;
-  }
-
-#if defined(SHIMMER4_SDK)
-  if (blueUprStateToSet)
-  {
-    Board_ledOn(LED_BLUE_UPR);
-  }
-  else
-  {
-    Board_ledOff(LED_BLUE_UPR);
-  }
-#endif
-
-#if defined(SHIMMER3R)
-  //TODO handle different LED blinks for logging/streaming
-  //if (shimmerStatus.isStreaming && shimmerStatus.isLogging)
-  //{
+  //#else
+  //  //green1
+  //  uint8_t greenUprStateToSet = 0;
+  //  if (shimmerStatus.configuring)
+  //  {
+  //    greenUprStateToSet = ShimLeds_isBlinkTimerCnt200ms() ? 0 : 1;
+  //  }
+  //  else if (shimmerStatus.sdLogging)
+  //  {
+  //    greenUprStateToSet = (blinkCnt20 >= 10) ? 0 : 1;
+  //  }
+  //#if defined(SHIMMER4_SDK)
+  //  else if (shimmerStatus.isSdInserted)
+  //  {
+  //    greenUprStateToSet = ShimLeds_isBlinkTimerCnt2s() ? 1 : 0;
+  //  }
+  //#endif
+  //  else
+  //  {
+  //    greenUprStateToSet = 0;
+  //  }
   //
-  //}
-  //else if (shimmerStatus.btStreaming)
-  //{
-  //  if(!(cntBlink % 10))
+  //#if defined(SHIMMER4_SDK)
+  //  if (greenUprStateToSet)
   //  {
-  //    blueUprStateToSet = isLedOnUprBlue()? 0:1;
+  //    Board_ledOn(LED_GREEN_UPR);
   //  }
-  //}
-  //else if (shimmerStatus.sdLogging)
-  //{
-  //  if(!(cntBlink % 10))
+  //  else
   //  {
-  //    greenUprStateToSet = isLedOnUprGreen()? 0:1;
+  //    Board_ledOff(LED_GREEN_UPR);
   //  }
-  //}
-
-  Board_ledUprSetColourRgb(LED_PWM_OFF, greenUprStateToSet ? LED_PWM_ON : LED_PWM_OFF,
-      blueUprStateToSet ? LED_PWM_ON : LED_PWM_OFF);
-#endif
-#endif
+  //#endif
+  //
+  //  //blue
+  //  uint8_t blueUprStateToSet = 0;
+  //  if (isBtIsInitialised())
+  //  {
+  //    if (!shimmerStatus.btConnected)
+  //    {
+  //      blueUprStateToSet = ShimLeds_isBlinkTimerCnt2s() ? 1 : 0;
+  //    }
+  //    else if (shimmerStatus.btStreaming)
+  //    {
+  //      if (ShimLeds_isBlinkTimerCnt1s())
+  //      {
+  //        blueUprStateToSet = isLedOnUprBlue() ? 0 : 1;
+  //      }
+  //      else
+  //      {
+  //        blueUprStateToSet = isLedOnUprBlue();
+  //      }
+  //    }
+  //    else
+  //    {
+  //      blueUprStateToSet = 1;
+  //    }
+  //  }
+  //  else
+  //  {
+  //    blueUprStateToSet = 0;
+  //  }
+  //
+  //#if defined(SHIMMER4_SDK)
+  //  if (blueUprStateToSet)
+  //  {
+  //    Board_ledOn(LED_BLUE_UPR);
+  //  }
+  //  else
+  //  {
+  //    Board_ledOff(LED_BLUE_UPR);
+  //  }
+  //#endif
+  //
+  //#if defined(SHIMMER3R)
+  //  //TODO handle different LED blinks for logging/streaming
+  //  //if (shimmerStatus.isStreaming && shimmerStatus.isLogging)
+  //  //{
+  //  //
+  //  //}
+  //  //else if (shimmerStatus.btStreaming)
+  //  //{
+  //  //  if(!(cntBlink % 10))
+  //  //  {
+  //  //    blueUprStateToSet = isLedOnUprBlue()? 0:1;
+  //  //  }
+  //  //}
+  //  //else if (shimmerStatus.sdLogging)
+  //  //{
+  //  //  if(!(cntBlink % 10))
+  //  //  {
+  //  //    greenUprStateToSet = isLedOnUprGreen()? 0:1;
+  //  //  }
+  //  //}
+  //
+  //  Board_ledUprSetColourRgb(LED_PWM_OFF, greenUprStateToSet ? LED_PWM_ON : LED_PWM_OFF,
+  //      blueUprStateToSet ? LED_PWM_ON : LED_PWM_OFF);
+  //#endif
+  //#endif
 }
 
 uint8_t ShimLeds_isBlinkTimerCnt200ms(void)

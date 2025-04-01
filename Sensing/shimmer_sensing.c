@@ -398,6 +398,13 @@ void ShimSens_stopPeripherals(void)
     micStopSensing();
   }
 #endif
+
+#if defined(SHIMMER3)
+  if (ShimConfig_getStoredConfig()->expansionBoardPower)
+  { //EXT_RESET_N
+    Board_setExpansionBrdPower(0);
+  }
+#endif
 }
 
 void ShimSens_streamData(void)

@@ -654,12 +654,12 @@ void ShimConfig_checkBtModeFromConfig(void)
 {
   if (!shimmerStatus.btConnected)
   {
-    shimmerStatus.btSupportEnabled
-        = ShimConfig_getStoredConfig()->bluetoothDisable ? 0 : 1;
+    gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
+    shimmerStatus.btSupportEnabled = configBytesPtr->bluetoothDisable ? 0 : 1;
 
     //Don't allow sync to be enabled if BT is disabled.
     shimmerStatus.sdSyncEnabled
-        = (shimmerStatus.btSupportEnabled && ShimConfig_getStoredConfig()->syncEnable);
+        = (shimmerStatus.btSupportEnabled && configBytesPtr->syncEnable);
 
     /* Turn off BT if it has been disabled but it's still powered on. Also
      * turn off if BT module is not in the right configuration for SD sync.
