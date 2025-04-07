@@ -42,8 +42,9 @@ extern void BMPX80_startMeasurement(void);
 
 extern void SampleTimerStart(void);
 extern void SampleTimerStop(void);
-extern void Board_setExpansionBrdPower(uint8_t state);
 #endif //SHIMMER3
+
+extern void Board_setExpansionBrdPower(uint8_t state);
 
 extern void DockUart_enable(void);
 extern void DockUart_disable(void);

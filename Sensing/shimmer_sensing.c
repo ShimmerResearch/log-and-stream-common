@@ -86,7 +86,10 @@ void ShimSens_configureChannels(void)
   sensing.ptr.ts = 1;
   sensing.dataLen = FIRST_CH_BYTE_IDX;
 
-  ADC_configureChannels();
+  if (ShimBrd_areMcuAdcsUsedForSensing())
+  {
+    ADC_configureChannels();
+  }
   I2C_configureChannels();
   SPI_configureChannels();
 
@@ -96,7 +99,7 @@ void ShimSens_configureChannels(void)
 #endif
 
   expectedCbFlags = 0;
-  if (sensing.nbrAdcChans)
+  if (areMcuAdcChannelsEnabled())
   {
     expectedCbFlags |= STAT_PERI_ADC;
   }
@@ -199,12 +202,10 @@ void ShimSens_startSensing(void)
       return;
     }
 
-#if defined(SHIMMER3)
-    if (ShimConfig_getStoredConfig()->expansionBoardPower)
-    { //EXT_RESET_N
+    if (ShimConfig_isExpansionBoardEnabled())
+    {
       Board_setExpansionBrdPower(1);
     }
-#endif
 
     uint16_t samplingRateTicks = ShimConfig_getStoredConfig()->samplingRateTicks;
     sensing.freq = ShimConfig_getShimmerSamplingFreq();
@@ -399,12 +400,10 @@ void ShimSens_stopPeripherals(void)
   }
 #endif
 
-#if defined(SHIMMER3)
   if (ShimConfig_getStoredConfig()->expansionBoardPower)
   { //EXT_RESET_N
     Board_setExpansionBrdPower(0);
   }
-#endif
 }
 
 void ShimSens_streamData(void)

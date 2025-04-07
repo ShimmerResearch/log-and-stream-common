@@ -687,6 +687,16 @@ uint8_t ShimConfig_isMicrophoneEnabled(void)
 }
 #endif
 
+uint8_t ShimConfig_isGSREnabled(void)
+{
+  return storedConfig.chEnGsr;
+}
+
+uint8_t ShimConfig_isExpansionBoardEnabled(void)
+{
+  return storedConfig.expansionBoardPower;
+}
+
 void ShimConfig_loadSensorConfigAndCalib(void)
 {
   ShimCalib_init();
