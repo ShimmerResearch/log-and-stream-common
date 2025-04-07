@@ -100,17 +100,17 @@ uint16_t transient_sample, transient_smoothing_samples, max_resistance_step;
 uint32_t last_resistance;
 uint8_t gsrRangePinsAreReversed = 0;
 
-uint8_t gsrRange;
+uint8_t gsrRangeConfigured;
 uint8_t gsrActiveResistor;
 uint16_t lastGsrVal;
 uint16_t gsrSamplingRateTicks;
 
 void GSR_init(uint8_t gsrRangeToSet, uint16_t gsrSamplingRateTicksToSet)
 {
-  gsrRange = gsrRangeToSet;
-  if (gsrRange <= HW_RES_3M3)
+  gsrRangeConfigured = gsrRangeToSet;
+  if (gsrRangeConfigured <= HW_RES_3M3)
   {
-    GSR_setActiveResistor(gsrRange);
+    GSR_setActiveResistor(gsrRangeConfigured);
   }
   else
   {
@@ -134,7 +134,7 @@ void GSR_range(uint8_t *buf)
   uint16_t ADC_val;
 
   ADC_val = *((uint16_t *) buf);
-  if (gsrRange == GSR_AUTORANGE)
+  if (gsrRangeConfigured == GSR_AUTORANGE)
   {
     if (GSR_smoothTransition(&current_active_resistor, gsrSamplingRateTicks))
     {

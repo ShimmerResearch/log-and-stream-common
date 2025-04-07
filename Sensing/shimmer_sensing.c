@@ -178,10 +178,6 @@ uint8_t ShimSens_checkStartStreamingConditions(void)
 
 void ShimSens_startSensing(void)
 {
-  //if(shimmerStatus.isDocked){
-  //   return;
-  //}
-
   shimmerStatus.configuring = 1;
   if (ShimSens_checkStartSensorConditions())
   {
@@ -189,20 +185,20 @@ void ShimSens_startSensing(void)
     sensing.isFileCreated = 0;
     ShimSens_configureChannels();
 
-    if (ShimSens_getNumEnabledChannels())
-    {
-#if defined(SHIMMER3R)
-      Board_enableSensingPower(SENSE_PWR_SENSING, 1);
-#endif
-    }
-    else
+    if (ShimSens_getNumEnabledChannels() == 0)
     {
       shimmerStatus.configuring = 0;
       shimmerStatus.sensing = 0;
       return;
     }
 
-    if (ShimConfig_isExpansionBoardEnabled())
+    memset(sensing.dataBuf, 0, sizeof(sensing.dataBuf));
+
+#if defined(SHIMMER3R)
+      Board_enableSensingPower(SENSE_PWR_SENSING, 1);
+#endif
+
+    if (ShimConfig_isExpansionBoardPwrEnabled())
     {
       Board_setExpansionBrdPower(1);
     }

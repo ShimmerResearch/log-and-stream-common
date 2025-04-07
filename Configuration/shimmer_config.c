@@ -692,7 +692,7 @@ uint8_t ShimConfig_isGSREnabled(void)
   return storedConfig.chEnGsr;
 }
 
-uint8_t ShimConfig_isExpansionBoardEnabled(void)
+uint8_t ShimConfig_isExpansionBoardPwrEnabled(void)
 {
   return storedConfig.expansionBoardPower;
 }
