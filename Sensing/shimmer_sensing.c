@@ -81,7 +81,7 @@ SENSINGTypeDef *ShimSens_getSensing(void)
 
 void ShimSens_configureChannels(void)
 {
-  sensing.nbrAdcChans = sensing.nbrI2cChans = sensing.nbrSpiChans = 0;
+  sensing.nbrMcuAdcChans = sensing.nbrI2cChans = sensing.nbrSpiChans = 0;
   sensing.ccLen = 0;
   sensing.ptr.ts = 1;
   sensing.dataLen = FIRST_CH_BYTE_IDX;
@@ -189,7 +189,7 @@ void ShimSens_startSensing(void)
     sensing.isFileCreated = 0;
     ShimSens_configureChannels();
 
-    if (ShimSens_areAnyChannelsEnabled())
+    if (ShimSens_getNumEnabledChannels())
     {
 #if defined(SHIMMER3R)
       Board_enableSensingPower(SENSE_PWR_SENSING, 1);
@@ -225,7 +225,7 @@ void ShimSens_startSensing(void)
     }
     ShimSens_stepInit();
 
-    if (ShimBrd_areMcuAdcsUsedForSensing() && sensing.nbrAdcChans)
+    if (sensing.nbrMcuAdcChans)
     {
       ADC_startSensing();
     }
@@ -378,7 +378,7 @@ void ShimSens_stopPeripherals(void)
   S4_RTC_WakeUpOff();
 #endif
 
-  if (ShimBrd_areMcuAdcsUsedForSensing() && sensing.nbrAdcChans)
+  if (sensing.nbrMcuAdcChans)
   {
     ADC_stopSensing();
   }
@@ -439,7 +439,7 @@ void ShimSens_bufPoll()
 {
   currentCbFlags = 0;
 
-  if (ShimBrd_areMcuAdcsUsedForSensing() && sensing.nbrAdcChans)
+  if (sensing.nbrMcuAdcChans)
   {
     ADC_gatherDataStart();
   }
@@ -637,18 +637,13 @@ void ShimSens_saveData(void)
   }
 }
 
-uint8_t ShimSens_areAnyChannelsEnabled(void)
+uint8_t ShimSens_getNumEnabledChannels(void)
 {
-  if (sensing.nbrAdcChans > 0 || sensing.nbrI2cChans > 0 || sensing.nbrSpiChans > 0
+  return sensing.nbrMcuAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans
 #if defined(SHIMMER3R)
-      || ShimConfig_isMicrophoneEnabled()
+      + ShimConfig_isMicrophoneEnabled()
 #endif
-  )
-
-  {
-    return 1;
-  }
-  return 0;
+      ;
 }
 
 uint8_t ShimSens_checkOnDefault(void)

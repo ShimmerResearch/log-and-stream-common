@@ -2061,12 +2061,12 @@ void ShimBt_sendRsp(void)
         *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE6];
 #endif
 
-        *(resPacket + packet_length++) = sensing.nbrAdcChans + sensing.nbrI2cChans
-            + sensing.nbrSpiChans; //number of data channels
+        uint8_t numberOfChannels = ShimSens_getNumEnabledChannels();
+
+        *(resPacket + packet_length++) = numberOfChannels; //number of data channels
         *(resPacket + packet_length++) = storedConfig->bufferSize; //buffer size
-        memcpy((resPacket + packet_length), sensing.cc,
-            (sensing.nbrAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans));
-        packet_length += sensing.nbrAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans;
+        memcpy((resPacket + packet_length), sensing.cc, numberOfChannels);
+        packet_length += numberOfChannels;
         break;
       }
       case GET_SAMPLING_RATE_COMMAND:

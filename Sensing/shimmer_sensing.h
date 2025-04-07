@@ -193,7 +193,7 @@ typedef struct
   uint8_t status;
   uint8_t cc[MAX_NUM_CHANNELS]; //channelContents
   uint8_t ccLen;                //channelContentsLength
-  uint8_t nbrAdcChans;
+  uint8_t nbrMcuAdcChans;
   uint8_t nbrI2cChans;
   uint8_t nbrSpiChans;
   uint8_t dataLen;
@@ -240,7 +240,7 @@ void ShimSens_stepDone(void);
 
 void ShimSens_saveData(void);
 
-uint8_t ShimSens_areAnyChannelsEnabled(void);
+uint8_t ShimSens_getNumEnabledChannels(void);
 uint8_t ShimSens_checkOnDefault(void);
 
 #endif //SHIMMER_SENSING_H
