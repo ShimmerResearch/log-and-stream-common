@@ -195,7 +195,7 @@ void ShimSens_startSensing(void)
     memset(sensing.dataBuf, 0, sizeof(sensing.dataBuf));
 
 #if defined(SHIMMER3R)
-      Board_enableSensingPower(SENSE_PWR_SENSING, 1);
+    Board_enableSensingPower(SENSE_PWR_SENSING, 1);
 #endif
 
     if (ShimConfig_isExpansionBoardPwrEnabled())
