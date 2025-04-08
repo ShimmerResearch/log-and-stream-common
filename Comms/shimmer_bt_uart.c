@@ -6,71 +6,178 @@
  */
 
 #include "shimmer_bt_uart.h"
+
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #if defined(SHIMMER3)
 #include "msp430.h"
 
-#include "../../shimmer3_common_source/RN4X/RN4X.h"
+#include "../../Shimmer_Driver/RN4X/RN4X.h"
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_CRC.h"
+#include "../5xx_HAL/hal_DMA.h"
 #include "../5xx_HAL/hal_RTC.h"
 #include "../5xx_HAL/hal_board.h"
 
-#include "log_and_stream_externs.h"
-
-#if BT_DMA_USED_FOR_RX
-#include "../5xx_HAL/hal_DMA.h"
-#endif
 #elif defined(SHIMMER3R) || defined(SHIMMER4_SDK)
 #include "bmp3_defs.h"
 #include "hal_FactoryTest.h"
-#include "s4_sensing.h"
-#include "s4_taskList.h"
 #include "shimmer_definitions.h"
-#include "shimmer_externs.h"
 #endif
 
-#include <SDSync/shimmer_sd_sync.h>
+#include <log_and_stream_externs.h>
+#include <log_and_stream_includes.h>
 
 uint8_t unwrappedResponse[256] = { 0 };
-char *commandBufPtr;
-uint8_t *expectedResponsePtr;
-#if BT_DMA_USED_FOR_RX
-uint8_t waitingForArgs, waitingForArgsLength, argsSize;
-volatile uint8_t btStatusStrIndex;
+volatile uint8_t gAction;
+uint8_t args[MAX_COMMAND_ARG_SIZE], waitingForArgs, waitingForArgsLength, argsSize;
 
+#if defined(SHIMMER3)
 volatile char btStatusStr[BT_STAT_STR_LEN_LARGEST + 1U]; /* +1 to always have a null char */
 volatile char btRxBuffFullResponse[BT_VER_RESPONSE_LARGEST + 1U]; /* +1 to always have a null char */
 uint8_t btRxBuff[MAX_COMMAND_ARG_SIZE], *btRxExp;
-#else
-RingFifoRx_t *gBtRxFifoPtr;
-/* isRn4678CmdDetectedOnBoot is a workaround to know if it's RN42 or RN4678 before version is parsed */
-uint8_t isRn4678CmdDetectedOnBoot = 0;
 #endif
+uint8_t *btRxBuffPtr;
 volatile COMMS_CRC_MODE btCrcMode;
 
-uint8_t *gActionPtr;
-uint8_t *gArgsPtr;
-
-volatile char btVerStrResponse[BT_VER_RESPONSE_LARGEST + 1U]; /* +1 to always have a null char */
-
-uint8_t (*newBtCmdToProcess_cb)(void);
-void (*handleBtRfCommStateChange_cb)(uint8_t);
-void (*setMacId_cb)(uint8_t *);
+#if defined(SHIMMER3)
+uint8_t btStatusStrIndex;
+#endif
+/* CYW20820 app=v01.04.16.16 requires size = 76 chars. Shimmer3 requires BT_VER_RESPONSE_LARGEST */
+char btVerStrResponse[100U];
 
 uint16_t numBytesInBtRxBufWhenLastProcessed = 0;
 uint16_t indexOfFirstEol;
 uint32_t firstProcessFailTicks = 0;
 
-uint8_t btDataRateTestState;
-uint32_t btDataRateTestCounter;
+uint8_t useAckPrefixForInstreamResponses;
+uint8_t sendAck, sendNack, getCmdWaitingResponse;
+uint8_t infomemLength, dcMemLength, calibRamLength;
+uint16_t infomemOffset, dcMemOffset, calibRamOffset;
 
-#if BT_DMA_USED_FOR_RX
-/* Return of 1 brings MSP out of low-power mode */
-uint8_t Dma2ConversionDone(void)
+//ExG
+uint8_t exgLength, exgChip, exgStartAddr;
+
+uint8_t btDataRateTestState;
+#if defined(SHIMMER3)
+uint32_t btDataRateTestCounter;
+#else
+uint8_t dataRateTestTxPacket[] = { DATA_RATE_TEST_RESPONSE, 0, 0, 0, 0 };
+#endif
+
+volatile uint8_t btTxInProgress;
+
+char macIdStr[12 + 1]; //+1 for null termination
+uint8_t macIdBytes[6];
+
+uint8_t instreamStatusRespPending;
+
+/* Buffer read / write macros                                                 */
+#define RINGFIFO_RESET(ringFifo)         \
+  {                                      \
+    ringFifo.rdIdx = ringFifo.wrIdx = 0; \
+  }
+#define RINGFIFO_WR(ringFifo, dataIn, mask)            \
+  {                                                    \
+    ringFifo.data[mask & ringFifo.wrIdx++] = (dataIn); \
+  }
+#define RINGFIFO_RD(ringFifo, dataOut, mask)              \
+  {                                                       \
+    ringFifo.rdIdx++;                                     \
+    dataOut = ringFifo.data[mask & (ringFifo.rdIdx - 1)]; \
+  }
+#define RINGFIFO_EMPTY(ringFifo) (ringFifo.rdIdx == ringFifo.wrIdx)
+#define RINGFIFO_FULL(ringFifo, mask) \
+  ((mask & ringFifo.rdIdx) == (mask & (ringFifo.wrIdx + 1)))
+#define RINGFIFO_COUNT(ringFifo, mask) \
+  (mask & (ringFifo.wrIdx - ringFifo.rdIdx))
+
+volatile RingFifoTx_t gBtTxFifo;
+
+void ShimBt_btCommsProtocolInit(void)
 {
+  ShimBt_setCrcMode(CRC_OFF);
+  numBytesInBtRxBufWhenLastProcessed = 0;
+  indexOfFirstEol = 0;
+  firstProcessFailTicks = 0;
+  memset(unwrappedResponse, 0, sizeof(unwrappedResponse));
+
+#if defined(SHIMMER3)
+  btRxExp = BT_getExpResp();
+#endif
+
+  waitingForArgs = 0;
+  waitingForArgsLength = 0;
+  argsSize = 0;
+
+  instreamStatusRespPending = 0;
+
+#if defined(SHIMMER3)
+  ShimUtil_memset_v(btStatusStr, 0, sizeof(btStatusStr));
+
+  ShimUtil_memset_v(btRxBuffFullResponse, 0x00,
+      sizeof(btRxBuffFullResponse) / sizeof(btRxBuffFullResponse[0]));
+  setBtRxFullResponsePtr(btRxBuffFullResponse);
+
+  memset(btRxBuff, 0x00, sizeof(btRxBuff) / sizeof(btRxBuff[0]));
+  DMA2_init((uint16_t *) &UCA1RXBUF, (uint16_t *) btRxBuff, sizeof(btRxBuff));
+  DMA2_transferDoneFunction(&ShimBt_dmaConversionDone);
+  //DMA2SZ = 1U;
+  //DMA2_enable();
+#endif
+
+  memset(btVerStrResponse, 0x00, sizeof(btVerStrResponse) / sizeof(btVerStrResponse[0]));
+
+  ShimBt_setDataRateTestState(0);
+
+  ShimBt_resetBtResponseVars();
+  ShimBt_macIdVarsReset();
+
+  ShimBt_clearBtTxBuf(1U);
+
+  ShimBt_btTxInProgressSet(0);
+}
+
+void ShimBt_resetBtResponseVars(void)
+{
+  sendAck = 0;
+  sendNack = 0;
+  getCmdWaitingResponse = 0;
+  useAckPrefixForInstreamResponses = 1;
+
+#if defined(SHIMMER4_SDK)
+  i2cvBattBtRsp = 0;
+#endif
+}
+
+void ShimBt_resetBtRxVariablesOnConnect(void)
+{
+  /* Reset to unsupported command */
+  gAction = ACK_COMMAND_PROCESSED - 1U;
+  waitingForArgs = 0;
+  waitingForArgsLength = 0;
+}
+
+#if defined(SHIMMER3)
+void ShimBt_resetBtRxBuff(void)
+{
+  memset(btRxBuff, 0, sizeof(btRxBuff));
+}
+#endif
+
+#if defined(SHIMMER3)
+/* Return of 1 brings MSP out of low-power mode */
+uint8_t ShimBt_dmaConversionDone(void)
+{
+  btRxBuffPtr = &btRxBuff[0];
+#else
+uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
+{
+  btRxBuffPtr = rxBuff;
+#endif
+
 #if defined(SHIMMER3)
   uint8_t bt_waitForStartCmd, bt_waitForMacAddress, bt_waitForVersion,
       bt_waitForInitialBoot, bt_waitForReturnNewLine;
@@ -91,22 +198,26 @@ uint8_t Dma2ConversionDone(void)
     if (bt_waitForStartCmd)
     {
       /* RN42 responds with "CMD\r\n" and RN4678 with "CMD> " */
-      uint8_t len = strlen((char *) btRxBuff);
-      if (len == 5U && btRxBuff[0] == 'C' && btRxBuff[1] == 'M' && btRxBuff[2] == 'D')
+      uint8_t len = strlen((char *) btRxBuffPtr);
+      if (len == 5U && btRxBuffPtr[0] == 'C' && btRxBuffPtr[1] == 'M'
+          && btRxBuffPtr[2] == 'D')
       {
         BT_setWaitForStartCmd(0);
         setRnCommandModeActive(1U);
-        memset(btRxBuff, 0, len);
+        memset(btRxBuffPtr, 0, len);
         BT_setGoodCommand();
       }
     }
     else if (bt_waitForReturnNewLine)
     {
-      uint8_t btOffset = strlen(btRxBuffFullResponse);
-      memcpy(btRxBuffFullResponse + btOffset, btRxBuff, strlen((char *) btRxBuff));
-      memset(btRxBuff, 0, strlen((char *) btRxBuff));
+      uint8_t btOffset
+          = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
+      ShimUtil_memcpy_v(btRxBuffFullResponse + btOffset, btRxBuffPtr,
+          strlen((char *) btRxBuffPtr));
+      memset(btRxBuffPtr, 0, strlen((char *) btRxBuffPtr));
 
-      uint8_t responseLen = strlen(btRxBuffFullResponse);
+      uint8_t responseLen
+          = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
 
       if (btRxBuffFullResponse[responseLen - 1U] == '\r')
       {
@@ -158,31 +269,34 @@ uint8_t Dma2ConversionDone(void)
       {
         expectedlen = BT_STAT_STR_LEN_RN42_REBOOT;
       }
-      memset(btRxBuff, 0, expectedlen);
+      memset(btRxBuffPtr, 0, expectedlen);
       BT_setWaitForInitialBoot(0);
       BT_setGoodCommand();
     }
     else if (bt_waitForMacAddress)
     {
-      setMacId_cb(btRxBuff);
+      ShimBt_macIdSetFromStr(btRxBuffPtr);
 
       expectedlen = 14U;
       if (isBtDeviceRn4678())
       {
         expectedlen += RN4X_CMD_LEN; /* Allow for "CMD> " */
       }
-      memset(btRxBuff, 0, expectedlen);
+      memset(btRxBuffPtr, 0, expectedlen);
       BT_setWaitForMacAddress(0);
       BT_setGoodCommand();
     }
     else if (bt_waitForVersion)
     {
       uint8_t btVerRemainingChars = 0;
-      uint8_t btOffset = strlen(btRxBuffFullResponse);
-      memcpy(btRxBuffFullResponse + btOffset, btRxBuff, strlen((char *) btRxBuff));
-      memset(btRxBuff, 0, strlen((char *) btRxBuff));
+      uint8_t btOffset
+          = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
+      ShimUtil_memcpy_v(btRxBuffFullResponse + btOffset, btRxBuffPtr,
+          strlen((char *) btRxBuffPtr));
+      memset(btRxBuffPtr, 0, strlen((char *) btRxBuffPtr));
 
-      uint8_t btVerLen = strlen(btRxBuffFullResponse);
+      uint8_t btVerLen
+          = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
       enum BT_FIRMWARE_VERSION btFwVerNew = BT_FW_VER_UNKNOWN;
 
       /* RN41 or RN42 */
@@ -268,7 +382,8 @@ uint8_t Dma2ConversionDone(void)
         setBtFwVersion(btFwVerNew);
 
         /* When storing the BT version, ignore from "\r" onwards */
-        uint8_t btVerLen = strlen(btRxBuffFullResponse);
+        uint8_t btVerLen
+            = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
         uint8_t btVerIdx;
         for (btVerIdx = 0; btVerIdx < btVerLen; btVerIdx++)
         {
@@ -278,9 +393,9 @@ uint8_t Dma2ConversionDone(void)
             break;
           }
         }
-        memcpy(btVerStrResponse, btRxBuffFullResponse, btVerLen);
+        ShimUtil_memcpy_vv(btVerStrResponse, btRxBuffFullResponse, btVerLen);
 
-        memset(btRxBuffFullResponse, 0, strlen((char *) btRxBuffFullResponse));
+        ShimUtil_memset_v(btRxBuffFullResponse, 0, strlen((char *) btRxBuffFullResponse));
         BT_setWaitForVersion(0);
         BT_setGoodCommand();
       }
@@ -291,63 +406,64 @@ uint8_t Dma2ConversionDone(void)
       if (waitingForArgs)
       {
         if ((!waitingForArgsLength) && (waitingForArgs == 3)
-            && (*(gActionPtr) == SET_INFOMEM_COMMAND || *(gActionPtr) == SET_CALIB_DUMP_COMMAND
-                || *(gActionPtr) == SET_DAUGHTER_CARD_MEM_COMMAND
-                || *(gActionPtr) == SET_EXG_REGS_COMMAND))
+            && (gAction == SET_INFOMEM_COMMAND || gAction == SET_CALIB_DUMP_COMMAND
+                || gAction == SET_DAUGHTER_CARD_MEM_COMMAND || gAction == SET_EXG_REGS_COMMAND))
         {
-          gArgsPtr[0] = btRxBuff[0];
-          gArgsPtr[1] = btRxBuff[1];
-          gArgsPtr[2] = btRxBuff[2];
-          if (*(gActionPtr) == SET_EXG_REGS_COMMAND)
+          args[0] = btRxBuffPtr[0];
+          args[1] = btRxBuffPtr[1];
+          args[2] = btRxBuffPtr[2];
+          if (gAction == SET_EXG_REGS_COMMAND)
           {
-            waitingForArgsLength = gArgsPtr[2];
+            waitingForArgsLength = args[2];
           }
           else
           {
-            waitingForArgsLength = gArgsPtr[0];
+            waitingForArgsLength = args[0];
           }
           setDmaWaitingForResponse(waitingForArgsLength);
           return 0;
         }
         else if ((!waitingForArgsLength) && (waitingForArgs == 2)
-            && (*(gActionPtr) == SET_DAUGHTER_CARD_ID_COMMAND))
+            && (gAction == SET_DAUGHTER_CARD_ID_COMMAND))
         {
-          gArgsPtr[0] = btRxBuff[0];
-          gArgsPtr[1] = btRxBuff[1];
-          if (gArgsPtr[0])
+          args[0] = btRxBuffPtr[0];
+          args[1] = btRxBuffPtr[1];
+          if (args[0])
           {
-            waitingForArgsLength = gArgsPtr[0];
+            waitingForArgsLength = args[0];
             setDmaWaitingForResponse(waitingForArgsLength);
           }
           return 0;
         }
         else if ((!waitingForArgsLength) && (waitingForArgs == 1)
-            && (*(gActionPtr) == SET_CENTER_COMMAND || *(gActionPtr) == SET_CONFIGTIME_COMMAND
-                || *(gActionPtr) == SET_EXPID_COMMAND || *(gActionPtr) == SET_SHIMMERNAME_COMMAND))
+            && (gAction == SET_CENTER_COMMAND || gAction == SET_CONFIGTIME_COMMAND
+                || gAction == SET_EXPID_COMMAND || gAction == SET_SHIMMERNAME_COMMAND))
         {
-          gArgsPtr[0] = btRxBuff[0];
-          if (gArgsPtr[0])
+          args[0] = btRxBuffPtr[0];
+          if (args[0])
           {
-            waitingForArgsLength = gArgsPtr[0];
+            waitingForArgsLength = args[0];
             setDmaWaitingForResponse(waitingForArgsLength);
             return 0;
           }
         }
+
 #if defined(SHIMMER3)
-        else if (*(gActionPtr) == RN4678_STATUS_STRING_SEPARATOR)
+        else if (gAction == RN4678_STATUS_STRING_SEPARATOR)
         {
-          return parseRn4678Status();
+          return ShimBt_parseRn4678Status();
         }
 #endif
-        else if (*(gActionPtr) == ACK_COMMAND_PROCESSED)
+
+        else if (gAction == ACK_COMMAND_PROCESSED)
         {
           /* If waiting for command byte */
           if (!waitingForArgsLength)
           {
             /* Save command byte */
-            gArgsPtr[0] = btRxBuff[0];
+            args[0] = btRxBuffPtr[0];
 
-            if (btRxBuff[0] == SD_SYNC_RESPONSE)
+            if (btRxBuffPtr[0] == SD_SYNC_RESPONSE)
             {
               /* Wait for flag to be received */
               waitingForArgsLength = 1U;
@@ -359,185 +475,184 @@ uint8_t Dma2ConversionDone(void)
 
         if (waitingForArgsLength)
         {
-          memcpy(gArgsPtr + waitingForArgs, btRxBuff, waitingForArgsLength);
+          memcpy(&args[waitingForArgs], btRxBuffPtr, waitingForArgsLength);
         }
         else
         {
-          memcpy(gArgsPtr, btRxBuff, waitingForArgs);
+          memcpy(&args[0], btRxBuffPtr, waitingForArgs);
         }
 
         waitingForArgsLength = 0;
         waitingForArgs = 0;
         argsSize = 0;
         setDmaWaitingForResponse(1U);
-        if (newBtCmdToProcess_cb)
-        {
-          return newBtCmdToProcess_cb();
-        }
-        else
-        {
-          return 1;
-        }
+        return ShimTask_set(TASK_BT_PROCESS_CMD);
       }
       else
       {
-        uint8_t data = btRxBuff[0];
+        uint8_t data = btRxBuffPtr[0];
         uint8_t wakeupMcu = 0;
 
         switch (data)
         {
-        case INQUIRY_COMMAND:
-        case DUMMY_COMMAND:
-        case GET_SAMPLING_RATE_COMMAND:
-        case TOGGLE_LED_COMMAND:
-        case START_STREAMING_COMMAND:
-        case GET_STATUS_COMMAND:
-        case GET_VBATT_COMMAND:
-        case GET_TRIAL_CONFIG_COMMAND:
-        case START_SDBT_COMMAND:
-        case GET_CONFIG_SETUP_BYTES_COMMAND:
-        case STOP_STREAMING_COMMAND:
-        case STOP_SDBT_COMMAND:
-        case START_LOGGING_COMMAND:
-        case STOP_LOGGING_COMMAND:
-        case GET_LN_ACCEL_CALIBRATION_COMMAND:
-        case GET_GYRO_CALIBRATION_COMMAND:
-        case GET_MAG_CALIBRATION_COMMAND:
-        case GET_WR_ACCEL_CALIBRATION_COMMAND:
-        case GET_GSR_RANGE_COMMAND:
-        case GET_ALL_CALIBRATION_COMMAND:
-        case DEPRECATED_GET_DEVICE_VERSION_COMMAND:
-        case GET_DEVICE_VERSION_COMMAND:
-        case GET_FW_VERSION_COMMAND:
-        case GET_CHARGE_STATUS_LED_COMMAND:
-        case GET_BUFFER_SIZE_COMMAND:
-        case GET_UNIQUE_SERIAL_COMMAND:
-        case GET_WR_ACCEL_RANGE_COMMAND:
-        case GET_MAG_GAIN_COMMAND:
-        case GET_MAG_SAMPLING_RATE_COMMAND:
-        case GET_WR_ACCEL_SAMPLING_RATE_COMMAND:
-        case GET_WR_ACCEL_LPMODE_COMMAND:
-        case GET_WR_ACCEL_HRMODE_COMMAND:
-        case GET_GYRO_RANGE_COMMAND:
-        case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
-        case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
-        case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
-        case GET_GYRO_SAMPLING_RATE_COMMAND:
-        case GET_ALT_ACCEL_RANGE_COMMAND:
-        case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
-        case GET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
-        case RESET_TO_DEFAULT_CONFIGURATION_COMMAND:
-        case RESET_CALIBRATION_VALUE_COMMAND:
-        case GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND:
-        case GET_BT_COMMS_BAUD_RATE:
-        case GET_CENTER_COMMAND:
-        case GET_SHIMMERNAME_COMMAND:
-        case GET_EXPID_COMMAND:
-        case GET_MYID_COMMAND:
-        case GET_NSHIMMER_COMMAND:
-        case GET_CONFIGTIME_COMMAND:
-        case GET_DIR_COMMAND:
-        case GET_DERIVED_CHANNEL_BYTES:
-        case GET_RWC_COMMAND:
-        case UPD_SDLOG_CFG_COMMAND:
-        case UPD_CALIB_DUMP_COMMAND:
-        case GET_BT_VERSION_STR_COMMAND:
-          *(gActionPtr) = data;
-          if (newBtCmdToProcess_cb)
-          {
-            newBtCmdToProcess_cb();
-          }
-          setDmaWaitingForResponse(1U);
-          /* Wake-up MCU so that the get command can be processed */
-          wakeupMcu = 1U;
-          break;
-        case SET_WR_ACCEL_RANGE_COMMAND:
-        case SET_WR_ACCEL_SAMPLING_RATE_COMMAND:
-        case SET_MAG_GAIN_COMMAND:
-        case SET_CHARGE_STATUS_LED_COMMAND:
-        case SET_MAG_SAMPLING_RATE_COMMAND:
-        case SET_WR_ACCEL_LPMODE_COMMAND:
-        case SET_WR_ACCEL_HRMODE_COMMAND:
-        case SET_GYRO_RANGE_COMMAND:
-        case SET_GYRO_SAMPLING_RATE_COMMAND:
-        case SET_ALT_ACCEL_RANGE_COMMAND:
-        case SET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
-        case SET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
-        case SET_GSR_RANGE_COMMAND:
-        case SET_BT_COMMS_BAUD_RATE:
-        case SET_CENTER_COMMAND:
-        case SET_SHIMMERNAME_COMMAND:
-        case SET_EXPID_COMMAND:
-        case SET_MYID_COMMAND:
-        case SET_NSHIMMER_COMMAND:
-        case SET_CONFIGTIME_COMMAND:
-        case SET_CRC_COMMAND:
-        case SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE:
-        case SET_DATA_RATE_TEST:
-        case SET_FACTORY_TEST:
-          *(gActionPtr) = data;
-          waitingForArgs = 1U;
-          break;
-        case SET_SAMPLING_RATE_COMMAND:
-        case GET_DAUGHTER_CARD_ID_COMMAND:
-        case SET_DAUGHTER_CARD_ID_COMMAND:
-          *(gActionPtr) = data;
-          waitingForArgs = 2U;
-          break;
-        case SET_SENSORS_COMMAND:
-        case GET_EXG_REGS_COMMAND:
-        case SET_EXG_REGS_COMMAND:
-        case GET_DAUGHTER_CARD_MEM_COMMAND:
-        case SET_DAUGHTER_CARD_MEM_COMMAND:
-        case SET_TRIAL_CONFIG_COMMAND:
-        case GET_INFOMEM_COMMAND:
-        case SET_INFOMEM_COMMAND:
-        case GET_CALIB_DUMP_COMMAND:
-        case SET_CALIB_DUMP_COMMAND:
-          *(gActionPtr) = data;
-          waitingForArgs = 3U;
-          break;
-        case SET_CONFIG_SETUP_BYTES_COMMAND:
-          *(gActionPtr) = data;
-          waitingForArgs = 4U;
-          break;
-        case SET_RWC_COMMAND:
-        case SET_DERIVED_CHANNEL_BYTES:
-          *(gActionPtr) = data;
-          waitingForArgs = 8U;
-          break;
-        case SET_LN_ACCEL_CALIBRATION_COMMAND:
-        case SET_GYRO_CALIBRATION_COMMAND:
-        case SET_MAG_CALIBRATION_COMMAND:
-        case SET_WR_ACCEL_CALIBRATION_COMMAND:
-          *(gActionPtr) = data;
-          waitingForArgs = 21U;
-          break;
+          case INQUIRY_COMMAND:
+          case DUMMY_COMMAND:
+          case GET_SAMPLING_RATE_COMMAND:
+          case TOGGLE_LED_COMMAND:
+          case START_STREAMING_COMMAND:
+          case GET_STATUS_COMMAND:
+          case GET_VBATT_COMMAND:
+          case GET_TRIAL_CONFIG_COMMAND:
+          case START_SDBT_COMMAND:
+          case GET_CONFIG_SETUP_BYTES_COMMAND:
+          case STOP_STREAMING_COMMAND:
+          case STOP_SDBT_COMMAND:
+          case START_LOGGING_COMMAND:
+          case STOP_LOGGING_COMMAND:
+          case GET_LN_ACCEL_CALIBRATION_COMMAND:
+          case GET_GYRO_CALIBRATION_COMMAND:
+          case GET_MAG_CALIBRATION_COMMAND:
+          case GET_WR_ACCEL_CALIBRATION_COMMAND:
+          case GET_GSR_RANGE_COMMAND:
+          case GET_ALL_CALIBRATION_COMMAND:
+          case DEPRECATED_GET_DEVICE_VERSION_COMMAND:
+          case GET_DEVICE_VERSION_COMMAND:
+          case GET_FW_VERSION_COMMAND:
+          case GET_CHARGE_STATUS_LED_COMMAND:
+          case GET_BUFFER_SIZE_COMMAND:
+          case GET_UNIQUE_SERIAL_COMMAND:
+          case GET_WR_ACCEL_RANGE_COMMAND:
+          case GET_MAG_GAIN_COMMAND:
+          case GET_MAG_SAMPLING_RATE_COMMAND:
+          case GET_WR_ACCEL_SAMPLING_RATE_COMMAND:
+          case GET_WR_ACCEL_LPMODE_COMMAND:
+          case GET_WR_ACCEL_HRMODE_COMMAND:
+          case GET_GYRO_RANGE_COMMAND:
+          case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
+          case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
+          case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
+          case GET_GYRO_SAMPLING_RATE_COMMAND:
+          case GET_ALT_ACCEL_RANGE_COMMAND:
+          case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
+          case GET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
+          case RESET_TO_DEFAULT_CONFIGURATION_COMMAND:
+          case RESET_CALIBRATION_VALUE_COMMAND:
+          case GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND:
+          case GET_BT_COMMS_BAUD_RATE:
+          case GET_CENTER_COMMAND:
+          case GET_SHIMMERNAME_COMMAND:
+          case GET_EXPID_COMMAND:
+          case GET_MYID_COMMAND:
+          case GET_NSHIMMER_COMMAND:
+          case GET_CONFIGTIME_COMMAND:
+          case GET_DIR_COMMAND:
+          case GET_DERIVED_CHANNEL_BYTES:
+          case GET_RWC_COMMAND:
+          case UPD_SDLOG_CFG_COMMAND:
+          case UPD_CALIB_DUMP_COMMAND:
+            //case UPD_FLASH_COMMAND:
+          case GET_BT_VERSION_STR_COMMAND:
+          case GET_ALT_ACCEL_CALIBRATION_COMMAND:
+          case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
+          case GET_ALT_MAG_CALIBRATION_COMMAND:
+          case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
+            gAction = data;
+            ShimTask_set(TASK_BT_PROCESS_CMD);
+            setDmaWaitingForResponse(1U);
+            /* Wake-up MCU so that the get command can be processed */
+            wakeupMcu = 1U;
+            break;
+          case SET_WR_ACCEL_RANGE_COMMAND:
+          case SET_WR_ACCEL_SAMPLING_RATE_COMMAND:
+          case SET_MAG_GAIN_COMMAND:
+          case SET_CHARGE_STATUS_LED_COMMAND:
+          case SET_MAG_SAMPLING_RATE_COMMAND:
+          case SET_WR_ACCEL_LPMODE_COMMAND:
+          case SET_WR_ACCEL_HRMODE_COMMAND:
+          case SET_GYRO_RANGE_COMMAND:
+          case SET_GYRO_SAMPLING_RATE_COMMAND:
+          case SET_ALT_ACCEL_RANGE_COMMAND:
+          case SET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
+          case SET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
+          case SET_GSR_RANGE_COMMAND:
+          case SET_BT_COMMS_BAUD_RATE:
+          case SET_CENTER_COMMAND:
+          case SET_SHIMMERNAME_COMMAND:
+          case SET_EXPID_COMMAND:
+          case SET_MYID_COMMAND:
+          case SET_NSHIMMER_COMMAND:
+          case SET_CONFIGTIME_COMMAND:
+          case SET_CRC_COMMAND:
+          case SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE:
+          case SET_DATA_RATE_TEST:
+          case SET_FACTORY_TEST:
+          case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
+          case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
+            gAction = data;
+            waitingForArgs = 1U;
+            break;
+          case SET_SAMPLING_RATE_COMMAND:
+          case GET_DAUGHTER_CARD_ID_COMMAND:
+          case SET_DAUGHTER_CARD_ID_COMMAND:
+            gAction = data;
+            waitingForArgs = 2U;
+            break;
+          case SET_SENSORS_COMMAND:
+          case GET_EXG_REGS_COMMAND:
+          case SET_EXG_REGS_COMMAND:
+          case GET_DAUGHTER_CARD_MEM_COMMAND:
+          case SET_DAUGHTER_CARD_MEM_COMMAND:
+          case SET_TRIAL_CONFIG_COMMAND:
+          case GET_INFOMEM_COMMAND:
+          case SET_INFOMEM_COMMAND:
+          case GET_CALIB_DUMP_COMMAND:
+          case SET_CALIB_DUMP_COMMAND:
+            gAction = data;
+            waitingForArgs = 3U;
+            break;
+          case SET_CONFIG_SETUP_BYTES_COMMAND:
+            gAction = data;
+            waitingForArgs = 4U;
+            break;
+          case SET_RWC_COMMAND:
+          case SET_DERIVED_CHANNEL_BYTES:
+            gAction = data;
+            waitingForArgs = 8U;
+            break;
+          case SET_LN_ACCEL_CALIBRATION_COMMAND:
+          case SET_GYRO_CALIBRATION_COMMAND:
+          case SET_MAG_CALIBRATION_COMMAND:
+          case SET_WR_ACCEL_CALIBRATION_COMMAND:
+          case SET_ALT_ACCEL_CALIBRATION_COMMAND:
+          case SET_ALT_MAG_CALIBRATION_COMMAND:
+            gAction = data;
+            waitingForArgs = SC_DATA_LEN_STD_IMU_CALIB;
+            break;
 #if defined(SHIMMER3)
-        case RN4678_STATUS_STRING_SEPARATOR:
-          memset(btStatusStr, 0, sizeof(btStatusStr));
-          btStatusStr[0U] = RN4678_STATUS_STRING_SEPARATOR;
-          btStatusStrIndex = 1U;
-          *(gActionPtr) = data;
-          /* Minus 1 because we've already received 1 x RN4678_STATUS_STRING_SEPARATOR */
-          waitingForArgs = BT_STAT_STR_LEN_SMALLEST - 1U;
-          break;
+          case RN4678_STATUS_STRING_SEPARATOR:
+            ShimUtil_memset_v(btStatusStr, 0, sizeof(btStatusStr));
+            btStatusStr[0U] = RN4678_STATUS_STRING_SEPARATOR;
+            btStatusStrIndex = 1U;
+            gAction = data;
+            /* Minus 1 because we've already received 1 x RN4678_STATUS_STRING_SEPARATOR */
+            waitingForArgs = BT_STAT_STR_LEN_SMALLEST - 1U;
+            break;
 #endif
-        case ACK_COMMAND_PROCESSED:
-          /* Wait for command byte */
-          *(gActionPtr) = data;
-          waitingForArgs = 1U;
-          break;
-        case SET_SD_SYNC_COMMAND:
-          /* Store local time as early as possible after sync bytes have been received */
-          saveLocalTime();
+          case ACK_COMMAND_PROCESSED:
+            /* Wait for command byte */
+            gAction = data;
+            waitingForArgs = 1U;
+            break;
+          case SET_SD_SYNC_COMMAND:
+            /* Store local time as early as possible after sync bytes have been received */
+            ShimSdSync_saveLocalTime();
 
-          *(gActionPtr) = data;
-          waitingForArgs = SYNC_PACKET_PAYLOAD_SIZE + BT_SD_SYNC_CRC_MODE;
-          break;
-        default:
-          setDmaWaitingForResponse(1U);
-          break;
+            gAction = data;
+            waitingForArgs = SYNC_PACKET_PAYLOAD_SIZE + BT_SD_SYNC_CRC_MODE;
+            break;
+          default:
+            setDmaWaitingForResponse(1U);
+            break;
         }
 
         if (waitingForArgs)
@@ -553,9 +668,9 @@ uint8_t Dma2ConversionDone(void)
   else
   {
     uint8_t len = strlen((char *) btRxExp);
-    if (!memcmp(btRxBuff, btRxExp, len))
+    if (!memcmp(btRxBuffPtr, btRxExp, len))
     {
-      memset(btRxBuff, 0, len);
+      memset(btRxBuffPtr, 0, len);
       BT_setGoodCommand();
     }
     else
@@ -570,13 +685,13 @@ uint8_t Dma2ConversionDone(void)
 }
 
 #if defined(SHIMMER3)
-uint8_t parseRn4678Status(void)
+uint8_t ShimBt_parseRn4678Status(void)
 {
   uint8_t numberOfCharRemaining = 0U;
   uint8_t bringUcOutOfSleep = 0U;
 
-  memcpy(btStatusStr + btStatusStrIndex, btRxBuff, waitingForArgs);
-  memset(btRxBuff, 0, waitingForArgs);
+  ShimUtil_memcpy_v(btStatusStr + btStatusStrIndex, btRxBuffPtr, waitingForArgs);
+  memset(btRxBuffPtr, 0, waitingForArgs);
   btStatusStrIndex += waitingForArgs;
 
   enum BT_FIRMWARE_VERSION btFwVer = getBtFwVersion();
@@ -584,403 +699,403 @@ uint8_t parseRn4678Status(void)
   uint8_t firstChar = btStatusStr[1U];
   switch (firstChar)
   {
-  case 'A':
-    /* "%AUTHENTICATED%" */
-    if (btStatusStr[14U] == '%')
-    {
-      /* TODO */
-    }
-    /* "%AUTHEN" - Read outstanding bytes */
-    else if (btStatusStr[6U] == 'N')
-    {
-      numberOfCharRemaining = BT_STAT_STR_LEN_AUTHENTICATED - BT_STAT_STR_LEN_SMALLEST;
-    }
-    /* "%AUTH_FAIL%" */
-    else if (btStatusStr[10U] == '%')
-    {
-      /* TODO */
-    }
-    /* "%AUTH_FA" - Read outstanding bytes */
-    else if (btStatusStr[6U] == 'F')
-    {
-      numberOfCharRemaining = BT_STAT_STR_LEN_AUTH_FAIL - BT_STAT_STR_LEN_SMALLEST;
-    }
-    break;
-  case 'B':
-    /* "%BONDED%" */
-    if (btStatusStr[7U] == '%')
-    {
-      /* TODO */
-    }
-    /* "%BONDED" - Read outstanding bytes */
-    else
-    {
-      numberOfCharRemaining = BT_STAT_STR_LEN_BONDED - BT_STAT_STR_LEN_SMALLEST;
-    }
-    break;
-  case 'C':
-    if (btStatusStr[5U] == 'E')
-    {
-      /* "%CONNECT,001BDC06A3D5%" - RN4678 */
-      if (btStatusStr[21U] == '%')
-      {
-        setRn4678ConnectionState(RN4678_CONNECTED_CLASSIC);
-      }
-      /* "%CONNECT" for RN42 v4.77 or "%CONNECT,001BDC06A3D5," - RN42 v6.15 */
-      else if ((btFwVer == RN41_V4_77 && btStatusStr[7U] == 'T')
-          || (btFwVer == RN42_V4_77 && btStatusStr[7U] == 'T')
-          || (btFwVer == RN42_V6_15 && btStatusStr[21U] == ','))
-      {
-        triggerBtRfCommStateChangeCallback(TRUE);
-        bringUcOutOfSleep = 1U;
-      }
-      else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-      {
-        if (btFwVer == RN41_V4_77 || btFwVer == RN42_V4_77)
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_RN42_v477_CONNECT;
-        }
-        else if (btFwVer == RN42_V6_15)
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_RN42_v615_CONNECT;
-        }
-        else
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_CONNECT;
-        }
-        numberOfCharRemaining -= BT_STAT_STR_LEN_SMALLEST;
-      }
-    }
-    else if (btStatusStr[5U] == '_')
-    {
-      /* "%CONN_PARAM,000C,0000,03C0%" - RN4678 */
-      if (btStatusStr[26U] == '%')
-      {
-        //TODO
-      }
-      else
-      {
-        numberOfCharRemaining = BT_STAT_STR_LEN_CONN_PARAM - BT_STAT_STR_LEN_SMALLEST;
-      }
-    }
-    break;
-  case 'D':
-    /* "%DISCONN%" -> RN4678 */
-    if (btStatusStr[8U] == '%')
-    {
-      /* This if is needed here for BLE connections as a
-       * disconnect over BLE does not trigger an
-       * RFCOMM_CLOSE status change as it does for classic
-       * Bluetooth connections. */
-      if (shimmerStatus.btConnected)
-      {
-        triggerBtRfCommStateChangeCallback(FALSE);
-        bringUcOutOfSleep = 1U;
-      }
-
-      setRn4678ConnectionState(RN4678_DISCONNECTED);
-    }
-    /* "%DISCONNECT" -> RN42 */
-    else if (btStatusStr[10U] == 'T')
-    {
-      triggerBtRfCommStateChangeCallback(FALSE);
-      bringUcOutOfSleep = 1U;
-    }
-    /* "%DISCON" - Read outstanding bytes */
-    else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-    {
-      if (isBtDeviceRn41orRN42())
-      {
-        numberOfCharRemaining = BT_STAT_STR_LEN_RN42_DISCONNECT;
-      }
-      else
-      {
-        numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_DISCONN;
-      }
-      numberOfCharRemaining -= BT_STAT_STR_LEN_SMALLEST;
-    }
-    break;
-  case 'E':
-    if (btStatusStr[2U] == 'N')
-    {
-      if (btStatusStr[5U] == 'I')
-      {
-        /* "%END_INQ%" */
-        if (btStatusStr[8U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%END_IN" - Read outstanding bytes */
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_END_INQ - BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-      else if (btStatusStr[5U] == 'S')
-      {
-        /* "%END_SCN%" */
-        if (btStatusStr[8U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%END_SC" - Read outstanding bytes */
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_END_SCN - BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-    }
-    else if (btStatusStr[2U] == 'R')
-    {
-      if (btStatusStr[5U] == 'C')
-      {
-        /* %ERR_CON is common to two status strings. If detected, read two more chars to determine which one it is */
-        /* "%ERR_CONN%" */
-        if (btStatusStr[9U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%ERR_CONN_PARAM%" */
-        else if (btStatusStr[15U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%ERR_CONN_" - Read outstanding bytes */
-        else if (btStatusStr[9U] == '_')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_ERR_CONN_PARAM - BT_STAT_STR_LEN_ERR_CONN;
-        }
-        /* "%ERR_CON" - Read outstanding bytes */
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_ERR_CONN - BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-      else if (btStatusStr[5U] == 'L')
-      {
-        /* "%ERR_LSEC%" */
-        if (btStatusStr[9U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%ERR_LSE" - Read outstanding bytes */
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_ERR_LSEC - BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-      else if (btStatusStr[5U] == 'S')
-      {
-        /* "%ERR_SEC%" */
-        if (btStatusStr[8U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%ERR_SE" - Read outstanding bytes */
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_ERR_SEC - BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-    }
-    break;
-  case 'F':
-    /* "%FACTORY_RESET%" */
-    if (btStatusStr[14U] == '%')
-    {
-      /* TODO */
-    }
-    /* "%FACTOR" - Read outstanding bytes */
-    else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-    {
-      numberOfCharRemaining = BT_STAT_STR_LEN_FACTORY_RESET - BT_STAT_STR_LEN_SMALLEST;
-    }
-    break;
-  case 'L':
-    if (btStatusStr[2U] == 'C')
-    {
-      /* "%LCONNECT,001BDC06A3D5,1%" - RN4678 BLE mode */
-      if (btStatusStr[24U] == '%')
-      {
-        setRn4678ConnectionState(RN4678_CONNECTED_BLE);
-
-        /* RN4678 seems to assume charactertic is advice once BLE connected */
-        triggerBtRfCommStateChangeCallback(TRUE);
-
-        bringUcOutOfSleep = 1U;
-      }
-      else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-      {
-        numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_LCONNECT - BT_STAT_STR_LEN_SMALLEST;
-      }
-      break;
-    }
-    else if (btStatusStr[2U] == 'B')
-    {
-      /* "%LBONDED%" */
-      if (btStatusStr[8U] == '%')
+    case 'A':
+      /* "%AUTHENTICATED%" */
+      if (btStatusStr[14U] == '%')
       {
         /* TODO */
       }
-      /* "%LBONDE" - Read outstanding bytes */
-      else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+      /* "%AUTHEN" - Read outstanding bytes */
+      else if (btStatusStr[6U] == 'N')
       {
-        numberOfCharRemaining = BT_STAT_STR_LEN_LBONDED - BT_STAT_STR_LEN_SMALLEST;
+        numberOfCharRemaining = BT_STAT_STR_LEN_AUTHENTICATED - BT_STAT_STR_LEN_SMALLEST;
       }
-    }
-    else if (btStatusStr[2U] == 'S')
-    {
-      if (btStatusStr[6U] == 'R')
+      /* "%AUTH_FAIL%" */
+      else if (btStatusStr[10U] == '%')
       {
-        /* "%LSECURED%" */
-        if (btStatusStr[9U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%LSECURE_FAIL%" */
-        else if (btStatusStr[13U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%LSECURE_F" */
-        else if (btStatusStr[9U] == 'F')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_LSECURE_FAIL - BT_STAT_STR_LEN_LSECURED;
-        }
-        /* "%LSECUR" - Read outstanding bytes */
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_LSECURED - BT_STAT_STR_LEN_SMALLEST;
-        }
+        /* TODO */
       }
-      else if (btStatusStr[6U] == 'A')
+      /* "%AUTH_FA" - Read outstanding bytes */
+      else if (btStatusStr[6U] == 'F')
       {
-        /* "%LSTREAM_OPEN%" */
-        if (btStatusStr[13U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%LSTREA" - Read outstanding bytes */
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_LSTREAM_OPEN - BT_STAT_STR_LEN_SMALLEST;
-        }
+        numberOfCharRemaining = BT_STAT_STR_LEN_AUTH_FAIL - BT_STAT_STR_LEN_SMALLEST;
       }
-    }
-    break;
-  case 'M':
-    /* "%MLDP_MODE%" */
-    if (btStatusStr[10U] == '%')
-    {
-      /* TODO */
-    }
-    /* "%MLDP_M" - Read outstanding bytes */
-    else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-    {
-      numberOfCharRemaining = BT_STAT_STR_LEN_MLDP_MODE - BT_STAT_STR_LEN_SMALLEST;
-    }
-    break;
-  case 'R':
-    if (btStatusStr[2U] == 'E')
-    {
-      /* "%REBOOT%" -> RN4678 */
+      break;
+    case 'B':
+      /* "%BONDED%" */
       if (btStatusStr[7U] == '%')
       {
         /* TODO */
-        _NOP();
       }
+      /* "%BONDED" - Read outstanding bytes */
       else
       {
-        if (isBtDeviceRn41orRN42())
+        numberOfCharRemaining = BT_STAT_STR_LEN_BONDED - BT_STAT_STR_LEN_SMALLEST;
+      }
+      break;
+    case 'C':
+      if (btStatusStr[5U] == 'E')
+      {
+        /* "%CONNECT,001BDC06A3D5%" - RN4678 */
+        if (btStatusStr[21U] == '%')
         {
-          numberOfCharRemaining = BT_STAT_STR_LEN_RN42_REBOOT;
+          setRn4678ConnectionState(RN4678_CONNECTED_CLASSIC);
+        }
+        /* "%CONNECT" for RN42 v4.77 or "%CONNECT,001BDC06A3D5," - RN42 v6.15 */
+        else if ((btFwVer == RN41_V4_77 && btStatusStr[7U] == 'T')
+            || (btFwVer == RN42_V4_77 && btStatusStr[7U] == 'T')
+            || (btFwVer == RN42_V6_15 && btStatusStr[21U] == ','))
+        {
+          ShimBt_handleBtRfCommStateChange(TRUE);
+          bringUcOutOfSleep = 1U;
+        }
+        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+        {
+          if (btFwVer == RN41_V4_77 || btFwVer == RN42_V4_77)
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_RN42_v477_CONNECT;
+          }
+          else if (btFwVer == RN42_V6_15)
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_RN42_v615_CONNECT;
+          }
+          else
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_CONNECT;
+          }
+          numberOfCharRemaining -= BT_STAT_STR_LEN_SMALLEST;
+        }
+      }
+      else if (btStatusStr[5U] == '_')
+      {
+        /* "%CONN_PARAM,000C,0000,03C0%" - RN4678 */
+        if (btStatusStr[26U] == '%')
+        {
+          //TODO
         }
         else
         {
-          numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_REBOOT;
+          numberOfCharRemaining = BT_STAT_STR_LEN_CONN_PARAM - BT_STAT_STR_LEN_SMALLEST;
+        }
+      }
+      break;
+    case 'D':
+      /* "%DISCONN%" -> RN4678 */
+      if (btStatusStr[8U] == '%')
+      {
+        /* This if is needed here for BLE connections as a
+         * disconnect over BLE does not trigger an
+         * RFCOMM_CLOSE status change as it does for classic
+         * Bluetooth connections. */
+        if (shimmerStatus.btConnected)
+        {
+          ShimBt_handleBtRfCommStateChange(FALSE);
+          bringUcOutOfSleep = 1U;
+        }
+
+        setRn4678ConnectionState(RN4678_DISCONNECTED);
+      }
+      /* "%DISCONNECT" -> RN42 */
+      else if (btStatusStr[10U] == 'T')
+      {
+        ShimBt_handleBtRfCommStateChange(FALSE);
+        bringUcOutOfSleep = 1U;
+      }
+      /* "%DISCON" - Read outstanding bytes */
+      else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+      {
+        if (isBtDeviceRn41orRN42())
+        {
+          numberOfCharRemaining = BT_STAT_STR_LEN_RN42_DISCONNECT;
+        }
+        else
+        {
+          numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_DISCONN;
         }
         numberOfCharRemaining -= BT_STAT_STR_LEN_SMALLEST;
       }
-    }
-    else if (btStatusStr[2U] == 'F')
-    {
-      if (btStatusStr[8U] == 'C')
+      break;
+    case 'E':
+      if (btStatusStr[2U] == 'N')
       {
-        /* "%RFCOMM_CLOSE%" */
-        if (btStatusStr[13U] == '%')
+        if (btStatusStr[5U] == 'I')
         {
-          triggerBtRfCommStateChangeCallback(FALSE);
+          /* "%END_INQ%" */
+          if (btStatusStr[8U] == '%')
+          {
+            /* TODO */
+          }
+          /* "%END_IN" - Read outstanding bytes */
+          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_END_INQ - BT_STAT_STR_LEN_SMALLEST;
+          }
+        }
+        else if (btStatusStr[5U] == 'S')
+        {
+          /* "%END_SCN%" */
+          if (btStatusStr[8U] == '%')
+          {
+            /* TODO */
+          }
+          /* "%END_SC" - Read outstanding bytes */
+          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_END_SCN - BT_STAT_STR_LEN_SMALLEST;
+          }
+        }
+      }
+      else if (btStatusStr[2U] == 'R')
+      {
+        if (btStatusStr[5U] == 'C')
+        {
+          /* %ERR_CON is common to two status strings. If detected, read two more chars to determine which one it is */
+          /* "%ERR_CONN%" */
+          if (btStatusStr[9U] == '%')
+          {
+            /* TODO */
+          }
+          /* "%ERR_CONN_PARAM%" */
+          else if (btStatusStr[15U] == '%')
+          {
+            /* TODO */
+          }
+          /* "%ERR_CONN_" - Read outstanding bytes */
+          else if (btStatusStr[9U] == '_')
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_ERR_CONN_PARAM - BT_STAT_STR_LEN_ERR_CONN;
+          }
+          /* "%ERR_CON" - Read outstanding bytes */
+          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_ERR_CONN - BT_STAT_STR_LEN_SMALLEST;
+          }
+        }
+        else if (btStatusStr[5U] == 'L')
+        {
+          /* "%ERR_LSEC%" */
+          if (btStatusStr[9U] == '%')
+          {
+            /* TODO */
+          }
+          /* "%ERR_LSE" - Read outstanding bytes */
+          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_ERR_LSEC - BT_STAT_STR_LEN_SMALLEST;
+          }
+        }
+        else if (btStatusStr[5U] == 'S')
+        {
+          /* "%ERR_SEC%" */
+          if (btStatusStr[8U] == '%')
+          {
+            /* TODO */
+          }
+          /* "%ERR_SE" - Read outstanding bytes */
+          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_ERR_SEC - BT_STAT_STR_LEN_SMALLEST;
+          }
+        }
+      }
+      break;
+    case 'F':
+      /* "%FACTORY_RESET%" */
+      if (btStatusStr[14U] == '%')
+      {
+        /* TODO */
+      }
+      /* "%FACTOR" - Read outstanding bytes */
+      else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+      {
+        numberOfCharRemaining = BT_STAT_STR_LEN_FACTORY_RESET - BT_STAT_STR_LEN_SMALLEST;
+      }
+      break;
+    case 'L':
+      if (btStatusStr[2U] == 'C')
+      {
+        /* "%LCONNECT,001BDC06A3D5,1%" - RN4678 BLE mode */
+        if (btStatusStr[24U] == '%')
+        {
+          setRn4678ConnectionState(RN4678_CONNECTED_BLE);
+
+          /* RN4678 seems to assume charactertic is advice once BLE connected */
+          ShimBt_handleBtRfCommStateChange(TRUE);
+
           bringUcOutOfSleep = 1U;
         }
-        /* "%RFCOMM_CLOSE" - Read outstanding bytes */
-        else if (btStatusStr[13U] == '\0')
+        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
         {
-          numberOfCharRemaining = BT_STAT_STR_LEN_RFCOMM_CLOSE - BT_STAT_STR_LEN_RFCOMM_OPEN;
+          numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_LCONNECT - BT_STAT_STR_LEN_SMALLEST;
+        }
+        break;
+      }
+      else if (btStatusStr[2U] == 'B')
+      {
+        /* "%LBONDED%" */
+        if (btStatusStr[8U] == '%')
+        {
+          /* TODO */
+        }
+        /* "%LBONDE" - Read outstanding bytes */
+        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+        {
+          numberOfCharRemaining = BT_STAT_STR_LEN_LBONDED - BT_STAT_STR_LEN_SMALLEST;
         }
       }
-      /* "%RFCOMM_OPEN%" */
-      else if (btStatusStr[12U] == '%')
+      else if (btStatusStr[2U] == 'S')
       {
-        triggerBtRfCommStateChangeCallback(TRUE);
-        bringUcOutOfSleep = 1U;
+        if (btStatusStr[6U] == 'R')
+        {
+          /* "%LSECURED%" */
+          if (btStatusStr[9U] == '%')
+          {
+            /* TODO */
+          }
+          /* "%LSECURE_FAIL%" */
+          else if (btStatusStr[13U] == '%')
+          {
+            /* TODO */
+          }
+          /* "%LSECURE_F" */
+          else if (btStatusStr[9U] == 'F')
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_LSECURE_FAIL - BT_STAT_STR_LEN_LSECURED;
+          }
+          /* "%LSECUR" - Read outstanding bytes */
+          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_LSECURED - BT_STAT_STR_LEN_SMALLEST;
+          }
+        }
+        else if (btStatusStr[6U] == 'A')
+        {
+          /* "%LSTREAM_OPEN%" */
+          if (btStatusStr[13U] == '%')
+          {
+            /* TODO */
+          }
+          /* "%LSTREA" - Read outstanding bytes */
+          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_LSTREAM_OPEN - BT_STAT_STR_LEN_SMALLEST;
+          }
+        }
       }
-      /* "%RFCOMM" - Read outstanding bytes */
+      break;
+    case 'M':
+      /* "%MLDP_MODE%" */
+      if (btStatusStr[10U] == '%')
+      {
+        /* TODO */
+      }
+      /* "%MLDP_M" - Read outstanding bytes */
       else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
       {
-        numberOfCharRemaining = BT_STAT_STR_LEN_RFCOMM_OPEN - BT_STAT_STR_LEN_SMALLEST;
+        numberOfCharRemaining = BT_STAT_STR_LEN_MLDP_MODE - BT_STAT_STR_LEN_SMALLEST;
       }
-    }
-    break;
-  case 'S':
-    if (btStatusStr[3U] == 'C')
-    {
-      /* "%SECURED%" */
-      if (btStatusStr[8U] == '%')
+      break;
+    case 'R':
+      if (btStatusStr[2U] == 'E')
       {
-        /* TODO */
+        /* "%REBOOT%" -> RN4678 */
+        if (btStatusStr[7U] == '%')
+        {
+          /* TODO */
+          _NOP();
+        }
+        else
+        {
+          if (isBtDeviceRn41orRN42())
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_RN42_REBOOT;
+          }
+          else
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_REBOOT;
+          }
+          numberOfCharRemaining -= BT_STAT_STR_LEN_SMALLEST;
+        }
       }
-      /* "%SECURE_FAIL%" */
-      else if (btStatusStr[12U] == '%')
+      else if (btStatusStr[2U] == 'F')
       {
-        /* TODO */
+        if (btStatusStr[8U] == 'C')
+        {
+          /* "%RFCOMM_CLOSE%" */
+          if (btStatusStr[13U] == '%')
+          {
+            ShimBt_handleBtRfCommStateChange(FALSE);
+            bringUcOutOfSleep = 1U;
+          }
+          /* "%RFCOMM_CLOSE" - Read outstanding bytes */
+          else if (btStatusStr[13U] == '\0')
+          {
+            numberOfCharRemaining = BT_STAT_STR_LEN_RFCOMM_CLOSE - BT_STAT_STR_LEN_RFCOMM_OPEN;
+          }
+        }
+        /* "%RFCOMM_OPEN%" */
+        else if (btStatusStr[12U] == '%')
+        {
+          ShimBt_handleBtRfCommStateChange(TRUE);
+          bringUcOutOfSleep = 1U;
+        }
+        /* "%RFCOMM" - Read outstanding bytes */
+        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+        {
+          numberOfCharRemaining = BT_STAT_STR_LEN_RFCOMM_OPEN - BT_STAT_STR_LEN_SMALLEST;
+        }
       }
-      /* "%SECURE_F" - Read outstanding bytes */
-      else if (btStatusStr[7U] == '_')
+      break;
+    case 'S':
+      if (btStatusStr[3U] == 'C')
       {
-        numberOfCharRemaining = BT_STAT_STR_LEN_SECURE_FAIL - BT_STAT_STR_LEN_SECURED;
+        /* "%SECURED%" */
+        if (btStatusStr[8U] == '%')
+        {
+          /* TODO */
+        }
+        /* "%SECURE_FAIL%" */
+        else if (btStatusStr[12U] == '%')
+        {
+          /* TODO */
+        }
+        /* "%SECURE_F" - Read outstanding bytes */
+        else if (btStatusStr[7U] == '_')
+        {
+          numberOfCharRemaining = BT_STAT_STR_LEN_SECURE_FAIL - BT_STAT_STR_LEN_SECURED;
+        }
+        /* "%SECURE" - Read outstanding bytes */
+        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+        {
+          numberOfCharRemaining = BT_STAT_STR_LEN_SECURED - BT_STAT_STR_LEN_SMALLEST;
+        }
       }
-      /* "%SECURE" - Read outstanding bytes */
-      else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+      else if (btStatusStr[3U] == 'S')
       {
-        numberOfCharRemaining = BT_STAT_STR_LEN_SECURED - BT_STAT_STR_LEN_SMALLEST;
+        /* "%SESSION_OPEN%" */
+        if (btStatusStr[13U] == '%')
+        {
+          /* TODO */
+        }
+        /* "%SESSION_CLOSE%" */
+        else if (btStatusStr[14U] == '%')
+        {
+          /* TODO */
+        }
+        /* "%SESSION_CLOSE" - Read outstanding bytes */
+        else if (btStatusStr[13U] == 'E')
+        {
+          numberOfCharRemaining = BT_STAT_STR_LEN_SESSION_CLOSE - BT_STAT_STR_LEN_SESSION_OPEN;
+        }
+        /* "%SESSIO" - Read outstanding bytes */
+        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
+        {
+          numberOfCharRemaining = BT_STAT_STR_LEN_SESSION_OPEN - BT_STAT_STR_LEN_SMALLEST;
+        }
       }
-    }
-    else if (btStatusStr[3U] == 'S')
-    {
-      /* "%SESSION_OPEN%" */
-      if (btStatusStr[13U] == '%')
-      {
-        /* TODO */
-      }
-      /* "%SESSION_CLOSE%" */
-      else if (btStatusStr[14U] == '%')
-      {
-        /* TODO */
-      }
-      /* "%SESSION_CLOSE" - Read outstanding bytes */
-      else if (btStatusStr[13U] == 'E')
-      {
-        numberOfCharRemaining = BT_STAT_STR_LEN_SESSION_CLOSE - BT_STAT_STR_LEN_SESSION_OPEN;
-      }
-      /* "%SESSIO" - Read outstanding bytes */
-      else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-      {
-        numberOfCharRemaining = BT_STAT_STR_LEN_SESSION_OPEN - BT_STAT_STR_LEN_SMALLEST;
-      }
-    }
-    break;
-  default:
-    break;
+      break;
+    default:
+      break;
   }
 
   if (numberOfCharRemaining)
@@ -997,1242 +1112,1880 @@ uint8_t parseRn4678Status(void)
 }
 #endif
 
-void resetBtRxVariablesOnConnect(void)
+uint8_t ShimBt_isWaitingForArgs(void)
 {
-  /* Reset to unsupported command */
-  *(gActionPtr) = ACK_COMMAND_PROCESSED - 1U;
-  waitingForArgs = 0;
-  waitingForArgsLength = 0;
+  return waitingForArgs;
 }
 
-void resetBtRxBuff(void)
+uint8_t ShimBt_getBtVerStrLen(void)
 {
-  memset(btRxBuff, 0, sizeof(btRxBuff));
+  return strlen(btVerStrResponse);
 }
 
-#else
-void processBtUartBuf(void)
+char *ShimBt_getBtVerStrPtr(void)
 {
-  uint8_t responseParsed;
-  uint8_t firstByteInRxBuf;
+  return &btVerStrResponse[0];
+}
 
-  /* Continue parsing buffer until we've parsed everything that we can from it */
-  do
+void ShimBt_processCmd(void)
+{
+#if !defined(SHIMMER3)
+  uint64_t temp64;
+#endif
+  gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
+  char *configTimeTextPtr;
+
+  uint32_t config_time;
+  uint8_t my_config_time[4];
+  uint8_t name_len;
+
+  uint8_t update_sdconfig = 0, update_calib_dump_file = 0;
+  uint8_t fullSyncResp[SYNC_PACKET_MAX_SIZE] = { 0 };
+  uint8_t sensorCalibId;
+
+  switch (gAction)
   {
-    responseParsed = 0;
-    firstByteInRxBuf = getRxByteAtIndex(0);
-    updateNumBytesInBtRxBufWhenLastProcessed();
-    indexOfFirstEol = 0;
+    case INQUIRY_COMMAND:
+    case GET_SAMPLING_RATE_COMMAND:
+    case GET_WR_ACCEL_RANGE_COMMAND:
+    case GET_MAG_GAIN_COMMAND:
+    case GET_MAG_SAMPLING_RATE_COMMAND:
+    case GET_STATUS_COMMAND:
+    case GET_VBATT_COMMAND:
+    case GET_TRIAL_CONFIG_COMMAND:
+    case GET_CENTER_COMMAND:
+    case GET_SHIMMERNAME_COMMAND:
+    case GET_EXPID_COMMAND:
+    case GET_CONFIGTIME_COMMAND:
+    case GET_DIR_COMMAND:
+    case GET_NSHIMMER_COMMAND:
+    case GET_MYID_COMMAND:
+    case GET_WR_ACCEL_SAMPLING_RATE_COMMAND:
+    case GET_WR_ACCEL_LPMODE_COMMAND:
+    case GET_WR_ACCEL_HRMODE_COMMAND:
+    case GET_GYRO_RANGE_COMMAND:
+    case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
+    case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
+    case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
+    case GET_GYRO_SAMPLING_RATE_COMMAND:
+    case GET_ALT_ACCEL_RANGE_COMMAND:
+    case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
+    case GET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
+    case GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND:
+    case GET_CONFIG_SETUP_BYTES_COMMAND:
+    case GET_BT_VERSION_STR_COMMAND:
+    case GET_GSR_RANGE_COMMAND:
 
-    if (numBytesInBtRxBufWhenLastProcessed)
+    case DEPRECATED_GET_DEVICE_VERSION_COMMAND:
+    case GET_DEVICE_VERSION_COMMAND:
+
+    case GET_FW_VERSION_COMMAND:
+    case GET_CHARGE_STATUS_LED_COMMAND:
+    case GET_BUFFER_SIZE_COMMAND:
+    case GET_UNIQUE_SERIAL_COMMAND:
+    case GET_BT_COMMS_BAUD_RATE:
+    case GET_DERIVED_CHANNEL_BYTES:
+    case GET_RWC_COMMAND:
+
+    case GET_ALL_CALIBRATION_COMMAND:
+    case GET_LN_ACCEL_CALIBRATION_COMMAND:
+    case GET_GYRO_CALIBRATION_COMMAND:
+    case GET_MAG_CALIBRATION_COMMAND:
+    case GET_WR_ACCEL_CALIBRATION_COMMAND:
+    case GET_ALT_ACCEL_CALIBRATION_COMMAND:
+    case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
+    case GET_ALT_MAG_CALIBRATION_COMMAND:
+    case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
     {
-      /* Response from BT Module command mode */
-      if (wasStartBtCmdModeSentAndReponseReceived())
-      {
-        processStartRnCmdResponse();
-        responseParsed = 1U;
-      }
-      else if (isRnCommandModeActive()
-          && (indexOfFirstEol = isNewLineDetectedInBtRxBuf()) > 0)
-      {
-        /* isRn4678CmdDetectedOnBoot and isBtDeviceUnknown() are needed
-         * here because the first command that is sent is to get the
-         * version number and so until the response is parsed, BtDevice
-         * has not been set yet */
-        if (((isBtDeviceRn4678() || isRn4678CmdDetectedOnBoot) && isFullRN4678CmdResponseReceived())
-            || isBtDeviceRn41orRN42() || isBtDeviceUnknown())
-        {
-          responseParsed = processRnCmdResponse();
-        }
-      }
-      /* Status responses begin with '%' */
-      else if (firstByteInRxBuf == RN4678_STATUS_STRING_SEPARATOR
-          && numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_SMALLEST)
-      {
-        responseParsed = processStatusString();
-      }
-      /* Shimmer command */
-      else if (!areBtSetupCommandsRunning() && isShimmerBtCmd(firstByteInRxBuf))
-      {
-        responseParsed = processShimmerBtCmd();
-      }
-
-      /* Update reference time so that timeout can be detected */
-      /* Don't enable timeout until BT is being initialised */
-      if (isBtStarting() || responseParsed || getNumBytesInBtRxBuf() == 0)
-      {
-        /* Reset time if successfully parsed or buffer is empty */
-        firstProcessFailTicks = 0;
-      }
-      else if (firstProcessFailTicks == 0)
-      {
-        /* Set the time when the first fail to parse occurred */
-        firstProcessFailTicks = RTC_get32();
-      }
+      getCmdWaitingResponse = gAction;
+      break;
     }
-
-  } while (responseParsed == 1U);
-}
-
-/* TODO Status string check here only supports RN4678 responses at the moment but this is fine because we have them turned off for the RN42 */
-/* TODO If it's the end % missing, this code will currently remove it from the start of the next status string if there's one in the buffer */
-void handleBtRxTimeout(void)
-{
-  uint8_t numberOfCharToRemove = 0U;
-
-  if ((numberOfCharToRemove = isBtRxBufLike("%RFCOMM_CLOSE%", 1)) > 0)
-  {
-    triggerBtRfCommStateChangeCallback(0);
-  }
-  else if ((numberOfCharToRemove = isBtRxBufLike("%RFCOMM_OPEN%", 1)) > 0)
-  {
-    triggerBtRfCommStateChangeCallback(1U);
-  }
-  else if ((numberOfCharToRemove = isBtRxBufLike("%CONNECT,XXXXXXXXXXXX%", 1)) > 0)
-  {
-    setRn4678ConnectionState(RN4678_CONNECTED_CLASSIC);
-  }
-  else if ((numberOfCharToRemove = isBtRxBufLike("%DISCONN%", 1)) > 0)
-  {
-    setRn4678ConnectionState(RN4678_DISCONNECTED);
-  }
-  else
-  {
-    //Still unable to parse puffer, clear the first byte
-    numberOfCharToRemove = 1U;
-  }
-
-  clearBytesFromBtRxBuf(numberOfCharToRemove);
-
-  /* Need to update this variable to indicate to main to process new bytes when they come in */
-  updateNumBytesInBtRxBufWhenLastProcessed();
-
-  /* Reset process fail time */
-  firstProcessFailTicks = 0;
-}
-
-uint8_t hasBtRxTimeoutOccurred(void)
-{
-  return (firstProcessFailTicks != 0
-      && ((RTC_get32() - firstProcessFailTicks) > BT_RX_COMMS_TIMEOUT_TICKS));
-}
-
-void processStartRnCmdResponse(void)
-{
-  //clearBytesFromBtRxBuf(RN4X_CMD_LEN);
-
-  uint8_t buf[RN4X_CMD_LEN], i;
-  for (i = 0; i < RN4X_CMD_LEN; i++)
-  {
-    readByteFromBtRxBuf(&buf[i]);
-  }
-
-  /* RN42 returns "CMD\r\n", RN4678 returns "CMD> " */
-  if (buf[3] == '>' && buf[4] == ' ')
-  {
-    isRn4678CmdDetectedOnBoot = 1U;
-  }
-
-  setRnCommandModeActive(1U);
-  clearBtCmdTxRxBuffsAndProceed();
-}
-
-uint8_t wasStartBtCmdModeSentAndReponseReceived(void)
-{
-  return (commandBufPtr[0] == '$' && commandBufPtr[1U] == '$' && commandBufPtr[2U] == '$'
-      && numBytesInBtRxBufWhenLastProcessed >= RN4X_CMD_LEN && getRxByteAtIndex(0) == 'C'
-      && getRxByteAtIndex(1U) == 'M' && getRxByteAtIndex(2U) == 'D');
-}
-
-//uint8_t waitingForRnBtCmdResponse(void)
-//{
-//    return expectedResponsePtr[0]!='\0';
-//}
-//
-//uint8_t isExpectedRnBtCmdResponseInFifo(void)
-//{
-//    uint8_t i = strlen(expectedResponsePtr);
-//    if(getNumBytesInBtRxBuf()>=i)
-//    {
-//        for(;i>0;i--)
-//        {
-//            if (expectedResponsePtr[i-1] != getRxByteAtIndex(i-1))
-//            {
-//                return 0;
-//            }
-//        }
-//        return 1;
-//    }
-//    return 0;
-//}
-
-void clearBytesFromBtRxBuf(uint16_t numBytes)
-{
-  uint8_t buf;
-  for (; numBytes > 0; numBytes--)
-  {
-    readByteFromBtRxBuf(&buf);
-  }
-}
-
-/*
- * Gets a byte from the BT RX buffer without removing it from it.
- *
- */
-uint8_t getRxByteAtIndex(uint16_t index)
-{
-  return gBtRxFifoPtr->data[BT_RX_BUF_MASK & (gBtRxFifoPtr->rdIdx + index)];
-}
-
-uint8_t processStatusString(void)
-{
-  uint8_t numberOfCharToRemove = 0U;
-  uint8_t triggerBtSetGoodCommand = 0U;
-
-  enum BT_FIRMWARE_VERSION btFwVer = getBtFwVersion();
-
-  uint8_t firstChar = getRxByteAtIndex(1U);
-  switch (firstChar)
-  {
-  case 'A':
-    /* "%AUTHENTICATED%" */
-    if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_AUTHENTICATED
-        && getRxByteAtIndex(14U) == '%')
+    case DUMMY_COMMAND:
     {
-      numberOfCharToRemove = BT_STAT_STR_LEN_AUTHENTICATED;
-      /* TODO */
+      break;
     }
-    /* "%AUTH_FAIL%" */
-    else if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_AUTH_FAIL
-        && getRxByteAtIndex(10U) == '%')
+    case TOGGLE_LED_COMMAND:
     {
-      numberOfCharToRemove = BT_STAT_STR_LEN_AUTH_FAIL;
-      /* TODO */
+      shimmerStatus.toggleLedRedCmd ^= 1;
+      break;
     }
-    break;
-  case 'B':
-    /* "%BONDED%" */
-    if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_BONDED
-        && getRxByteAtIndex(7U) == '%')
+    case START_STREAMING_COMMAND:
     {
-      numberOfCharToRemove = BT_STAT_STR_LEN_BONDED;
-      /* TODO */
-    }
-    break;
-  case 'C':
-    /* "%CONNECT,001BDC06A3D5%" - RN4678 */
-    if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_RN4678_CONNECT
-        && getRxByteAtIndex(21U) == '%')
-    {
-      setRn4678ConnectionState(RN4678_CONNECTED_CLASSIC);
-      numberOfCharToRemove = BT_STAT_STR_LEN_RN4678_CONNECT;
-    }
-    /* "%CONNECT" for RN42 v4.77 or "%CONNECT,001BDC06A3D5," - RN42 v6.15 */
-    else if (((btFwVer == RN41_V4_77 || btFwVer == RN42_V4_77)
-                 && numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_RN42_v477_CONNECT
-                 && getRxByteAtIndex(7U) == 'T')
-        || (btFwVer == RN42_V6_15 && numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_RN42_v615_CONNECT
-            && getRxByteAtIndex(21U) == ','))
-    {
-      triggerBtRfCommStateChangeCallback(1U);
-
-      if (btFwVer == RN41_V4_77 || btFwVer == RN42_V4_77)
+      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
+      if (!shimmerStatus.sensing)
       {
-        numberOfCharToRemove = BT_STAT_STR_LEN_RN42_v477_CONNECT;
+        ShimTask_setStartSensing();
       }
-      else if (btFwVer == RN42_V6_15)
+      break;
+    }
+    case START_SDBT_COMMAND:
+    {
+      if (!shimmerStatus.sensing)
       {
-        numberOfCharToRemove = BT_STAT_STR_LEN_RN42_v615_CONNECT;
+        ShimTask_setStartSensing();
+      }
+      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
+      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
+      if (shimmerStatus.sdlogReady && !shimmerStatus.sdBadFile)
+      {
+        shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
+      }
+      break;
+    }
+    case START_LOGGING_COMMAND:
+    {
+      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
+      if (!shimmerStatus.sensing)
+      {
+        ShimTask_setStartSensing();
+      }
+      break;
+    }
+    case SET_CRC_COMMAND:
+    {
+      ShimBt_setCrcMode((COMMS_CRC_MODE) args[0]);
+      break;
+    }
+    case SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE:
+    {
+      useAckPrefixForInstreamResponses = args[0];
+      break;
+    }
+    case STOP_STREAMING_COMMAND:
+    {
+      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
+      ShimTask_setStopSensing();
+      break;
+    }
+    case STOP_SDBT_COMMAND:
+    {
+      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
+      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
+      ShimTask_setStopSensing();
+      break;
+    }
+    case STOP_LOGGING_COMMAND:
+    {
+      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
+      ShimTask_setStopSensing();
+      break;
+    }
+    case SET_SENSORS_COMMAND:
+    {
+      ShimConfig_storedConfigSet(&args[0], NV_SENSORS0, 3);
+      ShimBt_settingChangeCommon(NV_SENSORS0, SDH_SENSORS0, 3);
+      break;
+    }
+#if defined(SHIMMER4_SDK)
+    case GET_I2C_BATT_STATUS_COMMAND:
+    {
+      getCmdWaitingResponse = gAction;
+      break;
+    }
+    case SET_I2C_BATT_STATUS_FREQ_COMMAND:
+    {
+      temp16 = args[0] + ((uint16_t) args[1] << 8);
+      I2C_readBattSetFreq(temp16);
+      break;
+    }
+#endif
+    case SET_TRIAL_CONFIG_COMMAND:
+    {
+      storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0] = args[0];
+      storedConfig->rawBytes[NV_SD_TRIAL_CONFIG1] = args[1];
+      storedConfig->rawBytes[NV_SD_BT_INTERVAL] = args[2];
+
+      //Save TRIAL_CONFIG0, TRIAL_CONFIG1 and BT_INTERVAL
+      ShimBt_settingChangeCommon(NV_SD_TRIAL_CONFIG0, SDH_TRIAL_CONFIG0, 3);
+      break;
+    }
+    case SET_CENTER_COMMAND:
+    {
+      storedConfig->masterEnable = args[0] & 0x01;
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
+      break;
+    }
+    case SET_SHIMMERNAME_COMMAND:
+    {
+      name_len = (args[0] < sizeof(storedConfig->shimmerName)) ?
+          args[0] :
+          sizeof(storedConfig->shimmerName);
+      memset(&storedConfig->shimmerName[0], 0, sizeof(storedConfig->shimmerName));
+      memcpy(&storedConfig->shimmerName[0], &args[1], name_len);
+      InfoMem_write(NV_SD_SHIMMER_NAME, (uint8_t *) &storedConfig->shimmerName[0],
+          sizeof(storedConfig->shimmerName));
+      ShimConfig_setShimmerName();
+      update_sdconfig = 1;
+      break;
+    }
+    case SET_EXPID_COMMAND:
+    {
+      name_len = (args[0] < sizeof(storedConfig->expIdName)) ?
+          args[0] :
+          sizeof(storedConfig->expIdName);
+      memset(&storedConfig->expIdName[0], 0, sizeof(storedConfig->expIdName));
+      memcpy(&storedConfig->expIdName[0], &args[1], name_len);
+      InfoMem_write(NV_SD_EXP_ID_NAME, (uint8_t *) &storedConfig->expIdName[0],
+          sizeof(storedConfig->expIdName));
+      ShimConfig_setExpIdName();
+      update_sdconfig = 1;
+      break;
+    }
+    case SET_CONFIGTIME_COMMAND:
+    {
+      configTimeTextPtr = ShimConfig_configTimeTextPtrGet();
+      name_len = args[0] < (MAX_CHARS - 1) ? args[0] : (MAX_CHARS - 1);
+      memcpy(configTimeTextPtr, &args[1], name_len);
+      configTimeTextPtr[name_len] = 0;
+
+      ShimConfig_setConfigTimeTextIfEmpty();
+      ShimSd_setDataFileNameIfEmpty();
+
+      config_time = atol((char *) configTimeTextPtr);
+      my_config_time[3] = *((uint8_t *) &config_time);
+      my_config_time[2] = *(((uint8_t *) &config_time) + 1);
+      my_config_time[1] = *(((uint8_t *) &config_time) + 2);
+      my_config_time[0] = *(((uint8_t *) &config_time) + 3);
+      ShimSdHead_sdHeadTextSet(&my_config_time[0], SDH_CONFIG_TIME_0, 4);
+      ShimConfig_storedConfigSet(&my_config_time[0], NV_SD_CONFIG_TIME, 4);
+      InfoMem_write(NV_SD_CONFIG_TIME, &storedConfig->rawBytes[NV_SD_CONFIG_TIME], 4);
+      update_sdconfig = 1;
+      break;
+    }
+    case SET_NSHIMMER_COMMAND:
+    {
+      storedConfig->numberOfShimmers = args[0];
+      ShimBt_settingChangeCommon(NV_SD_NSHIMMER, SDH_NSHIMMER, 1);
+      break;
+    }
+    case SET_MYID_COMMAND:
+    {
+      storedConfig->myTrialID = args[0];
+      ShimBt_settingChangeCommon(NV_SD_MYTRIAL_ID, SDH_MYTRIAL_ID, 1);
+      break;
+    }
+    case SET_WR_ACCEL_RANGE_COMMAND:
+    {
+      storedConfig->wrAccelRange = args[0] < 4 ? (args[0] & 0x03) : 0;
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
+      break;
+    }
+    case GET_EXG_REGS_COMMAND:
+    {
+      if (args[0] < 2 && args[1] < 10 && args[2] < 11)
+      {
+        exgChip = args[0];
+        exgStartAddr = args[1];
+        exgLength = args[2];
       }
       else
       {
-        /* other RN42 FWs not supported */
+        exgLength = 0;
       }
+      getCmdWaitingResponse = gAction;
+      break;
     }
-    break;
-  case 'D':
-    /* "%DISCONN%" -> RN4678 */
-    if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_RN4678_DISCONN
-        && getRxByteAtIndex(8U) == '%')
+    case SET_WR_ACCEL_SAMPLING_RATE_COMMAND:
     {
-      setRn4678ConnectionState(RN4678_DISCONNECTED);
-      numberOfCharToRemove = BT_STAT_STR_LEN_RN4678_DISCONN;
+#if defined(SHIMMER3)
+      storedConfig->wrAccelRate
+          = (args[0] <= LSM303DLHC_ACCEL_1_344kHz) ? args[0] : LSM303DLHC_ACCEL_100HZ;
+#elif defined(SHIMMER3R)
+      storedConfig->wrAccelRate
+          = (args[0] <= LIS2DW12_XL_ODR_1k6Hz) ? args[0] : LIS2DW12_XL_ODR_100Hz;
+#endif
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
+      break;
     }
-    /* "%DISCONNECT" -> RN42 */
-    else if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_RN42_DISCONNECT
-        && getRxByteAtIndex(10U) == 'T')
+    case SET_MAG_GAIN_COMMAND:
     {
-      triggerBtRfCommStateChangeCallback(0);
+#if defined(SHIMMER3)
+      storedConfig->magRange = (args[0] <= LSM303DLHC_MAG_8_1G) ? args[0] : LSM303DLHC_MAG_1_3G;
+#elif defined(SHIMMER3R)
+      storedConfig->magRange = (args[0] <= LIS3MDL_16_GAUSS) ? args[0] : LIS3MDL_4_GAUSS;
+#endif
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
+      break;
+    }
+    case SET_MAG_SAMPLING_RATE_COMMAND:
+    {
+      ShimConfig_configByteMagRateSet(storedConfig, args[0]);
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
+      break;
+    }
+    case SET_WR_ACCEL_LPMODE_COMMAND:
+    {
+      ShimConfig_wrAccelLpModeSet(storedConfig, args[0] == 1 ? 1 : 0);
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
+      break;
+    }
+    case SET_WR_ACCEL_HRMODE_COMMAND:
+    {
+      storedConfig->wrAccelHrMode = (args[0] == 1) ? 1 : 0;
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
+      break;
+    }
+    case SET_GYRO_RANGE_COMMAND:
+    {
+      ShimConfig_gyroRangeSet(storedConfig, args[0]);
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
+      break;
+    }
+    case SET_GYRO_SAMPLING_RATE_COMMAND:
+    {
+      ShimConfig_gyroRateSet(storedConfig, args[0]);
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE1, SDH_CONFIG_SETUP_BYTE1, 1);
+      break;
+    }
+    case SET_ALT_ACCEL_RANGE_COMMAND:
+    {
+#if defined(SHIMMER3)
+      storedConfig->altAccelRange = (args[0] <= ACCEL_16G) ? (args[0] & 0x03) : ACCEL_2G;
+#elif defined(SHIMMER3R)
+      storedConfig->lnAccelRange = (args[0] <= LSM6DSV_16g) ? (args[0] & 0x03) : LSM6DSV_2g;
+#endif
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
+      break;
+    }
+    case SET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
+    {
+      ShimConfig_configBytePressureOversamplingRatioSet(storedConfig, args[0]);
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
+      break;
+    }
+    case SET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
+    {
+      storedConfig->expansionBoardPower = (args[0] == 1) ? 1 : 0;
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
+      break;
+    }
+    case SET_CONFIG_SETUP_BYTES_COMMAND:
+    {
+      ShimConfig_storedConfigSet(&args[0], NV_CONFIG_SETUP_BYTE0, 4);
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 4);
+      break;
+    }
+    case SET_SAMPLING_RATE_COMMAND:
+    {
+      storedConfig->samplingRateTicks = *(uint16_t *) args;
+      //ShimConfig_storedConfigSet(&args[0], NV_SAMPLING_RATE, 2);
+      ShimBt_settingChangeCommon(NV_SAMPLING_RATE, SDH_SAMPLE_RATE_0, 2);
+      break;
+    }
+    case GET_CALIB_DUMP_COMMAND:
+    {
+      //usage:
+      //0x98, offset, offset, length
+      calibRamLength = args[0];
+      calibRamOffset = args[1] + (args[2] << 8);
+      getCmdWaitingResponse = gAction;
+      break;
+    }
+    case SET_CALIB_DUMP_COMMAND:
+    {
+      //usage:
+      //0x98, offset, offset, length, data[0:127]
+      //max length of this command = 132
+      calibRamLength = args[0];
+      calibRamOffset = args[1] + (args[2] << 8);
+      if (ShimCalib_ramWrite(&args[3], calibRamLength, calibRamOffset) == 1)
+      {
+        ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+        update_calib_dump_file = 1;
+      }
+      break;
+    }
+    case UPD_CALIB_DUMP_COMMAND:
+    {
+      ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+      update_calib_dump_file = 1;
+      break;
+    }
+    case UPD_SDLOG_CFG_COMMAND:
+    {
+      ShimTask_set(TASK_SDLOG_CFG_UPDATE);
+      break;
+    }
+      //case UPD_FLASH_COMMAND:
+      //{
+      //  InfoMem_update();
+      //  //ShimmerCalibSyncFromDumpRamAll();
+      //  //update_calib_dump_file = 1;
+      //  break;
+      //}
+    case SET_LN_ACCEL_CALIBRATION_COMMAND:
+    {
+#if defined(SHIMMER3)
+      sensorCalibId = SC_SENSOR_ANALOG_ACCEL;
+#elif defined(SHIMMER3R)
+      sensorCalibId = SC_SENSOR_LSM6DSV_ACCEL;
+#endif
+      ShimBt_calibrationChangeCommon(NV_LN_ACCEL_CALIBRATION, SDH_LN_ACCEL_CALIBRATION,
+          &storedConfig->lnAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
+      break;
+    }
+    case SET_GYRO_CALIBRATION_COMMAND:
+    {
+#if defined(SHIMMER3)
+      sensorCalibId = SC_SENSOR_MPU9X50_ICM20948_GYRO;
+#elif defined(SHIMMER3R)
+      sensorCalibId = SC_SENSOR_LSM6DSV_GYRO;
+#endif
+      ShimBt_calibrationChangeCommon(NV_GYRO_CALIBRATION, SDH_GYRO_CALIBRATION,
+          &storedConfig->gyroCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
+      break;
+    }
+    case SET_MAG_CALIBRATION_COMMAND:
+    {
+#if defined(SHIMMER3)
+      sensorCalibId = SC_SENSOR_LSM303_MAG;
+#elif defined(SHIMMER3R)
+      sensorCalibId = SC_SENSOR_LIS3MDL_MAG;
+#endif
+      ShimBt_calibrationChangeCommon(NV_MAG_CALIBRATION, SDH_MAG_CALIBRATION,
+          &storedConfig->magCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
+      break;
+    }
+    case SET_WR_ACCEL_CALIBRATION_COMMAND:
+    {
+#if defined(SHIMMER3)
+      sensorCalibId = SC_SENSOR_LSM303_ACCEL;
+#elif defined(SHIMMER3R)
+      sensorCalibId = SC_SENSOR_LIS2DW12_ACCEL;
+#endif
+      ShimBt_calibrationChangeCommon(NV_WR_ACCEL_CALIBRATION, SDH_WR_ACCEL_CALIBRATION,
+          &storedConfig->wrAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
+      break;
+    }
+    case SET_GSR_RANGE_COMMAND:
+    {
+      storedConfig->gsrRange = (args[0] <= 4) ? (args[0] & 0x07) : GSR_AUTORANGE;
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
+      break;
+    }
+    case SET_EXG_REGS_COMMAND:
+    {
+      if (args[0] < 2 && args[1] < 10 && args[2] < 11)
+      {
+        exgChip = args[0];
+        exgStartAddr = args[1];
+        exgLength = args[2];
 
-      numberOfCharToRemove = BT_STAT_STR_LEN_RN42_DISCONNECT;
-    }
-    break;
-  case 'E':
-    if (getRxByteAtIndex(2U) == 'N')
-    {
-      /* "%END_INQ%" */
-      if (getRxByteAtIndex(5U) == 'I' && getRxByteAtIndex(8U) == '%'
-          && numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_END_INQ)
-      {
-        numberOfCharToRemove = BT_STAT_STR_LEN_END_INQ;
-        /* TODO */
-      }
-      /* "%END_SCN%" */
-      else if (getRxByteAtIndex(5U) == 'S' && getRxByteAtIndex(8U) == '%'
-          && numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_END_SCN)
-      {
-        numberOfCharToRemove = BT_STAT_STR_LEN_END_SCN;
-        /* TODO */
-      }
-    }
-    else if (getRxByteAtIndex(2U) == 'R')
-    {
-      if (getRxByteAtIndex(5U) == 'C')
-      {
-        /* %ERR_CON is common to two status strings. If detected, read two more chars to determine which one it is */
-        /* "%ERR_CONN%" */
-        if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_ERR_CONN
-            && getRxByteAtIndex(9U) == '%')
+        uint16_t exgConfigOffset = (exgChip == 0) ? NV_EXG_ADS1292R_1_CONFIG1 :
+                                                    NV_EXG_ADS1292R_2_CONFIG1;
+        uint16_t exgSdHeadOffset = (exgChip == 0) ? SDH_EXG_ADS1292R_1_CONFIG1 :
+                                                    SDH_EXG_ADS1292R_2_CONFIG1;
+
+        ShimConfig_storedConfigSet(&args[3], exgConfigOffset + exgStartAddr, exgLength);
+
+        /* Check if unit is SR47-4 or greater.
+         * If so, amend configuration byte 2 of ADS chip 1 to have bit 3 set
+         * to 1. This ensures clock lines on ADS chip are correct
+         */
+        if (exgChip == 0 && (ShimBrd_getDaughtCardId()->exp_brd_id == EXP_BRD_EXG_UNIFIED)
+            && (ShimBrd_getDaughtCardId()->exp_brd_major >= 4))
         {
-          numberOfCharToRemove = BT_STAT_STR_LEN_ERR_CONN;
-          /* TODO */
+          storedConfig->exgADS1292rRegsCh1.config2 |= 8;
         }
-        /* "%ERR_CONN_PARAM%" */
-        else if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_ERR_CONN_PARAM
-            && getRxByteAtIndex(15U) == '%')
+
+        InfoMem_write(exgConfigOffset + exgStartAddr,
+            &storedConfig->rawBytes[exgConfigOffset + exgStartAddr], exgLength);
+        ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[exgConfigOffset],
+            exgSdHeadOffset, exgLength);
+
+        update_sdconfig = 1;
+      }
+      break;
+    }
+    case SET_DATA_RATE_TEST:
+    {
+      /* Stop test before ACK is sent */
+      if (args[0] == 0)
+      {
+        ShimBt_setDataRateTestState(0);
+        ShimBt_clearBtTxBuf(1);
+      }
+      getCmdWaitingResponse = gAction;
+      break;
+    }
+    case SET_FACTORY_TEST:
+    {
+      if (args[0] < FACTORY_TEST_COUNT)
+      {
+        setup_factory_test(PRINT_TO_BT_UART, (factory_test_t) args[0]);
+        ShimTask_set(TASK_FACTORY_TEST);
+      }
+      break;
+    }
+    case RESET_TO_DEFAULT_CONFIGURATION_COMMAND:
+    {
+      ShimConfig_setDefaultConfig();
+      ShimSdHead_config2SdHead();
+      update_sdconfig = 1;
+
+      //restart sensing to use settings
+      ShimTask_setRestartSensing();
+      break;
+    }
+    case RESET_CALIBRATION_VALUE_COMMAND:
+    {
+      ShimCalib_init();
+      ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+      update_calib_dump_file = 1;
+      break;
+    }
+    case GET_DAUGHTER_CARD_ID_COMMAND:
+    {
+      dcMemLength = args[0];
+      dcMemOffset = args[1];
+      if ((dcMemLength <= 16) && (dcMemOffset <= 15) && (dcMemLength + dcMemOffset <= 16))
+      {
+        getCmdWaitingResponse = gAction;
+      }
+      break;
+    }
+    case SET_DAUGHTER_CARD_ID_COMMAND:
+    {
+      dcMemLength = args[0];
+      dcMemOffset = args[1];
+      if ((dcMemLength <= 16) && (dcMemOffset <= 15) && (dcMemLength + dcMemOffset <= 16))
+      {
+        eepromWrite(dcMemOffset, dcMemLength, &args[2]);
+      }
+      break;
+    }
+    case GET_DAUGHTER_CARD_MEM_COMMAND:
+    {
+      dcMemLength = args[0];
+      dcMemOffset = args[1] + (args[2] << 8);
+      if ((dcMemLength <= 128) && (dcMemOffset <= 2031) && (dcMemLength + dcMemOffset <= 2032))
+      {
+        getCmdWaitingResponse = gAction;
+      }
+      break;
+    }
+    case SET_DAUGHTER_CARD_MEM_COMMAND:
+    {
+      dcMemLength = args[0];
+      dcMemOffset = args[1] + (args[2] << 8);
+      if ((dcMemLength <= 128) && (dcMemOffset <= 2031) && (dcMemLength + dcMemOffset <= 2032))
+      {
+        eepromWrite(dcMemOffset + 16U, (uint16_t) dcMemLength, &args[3]);
+      }
+      break;
+    }
+    case SET_BT_COMMS_BAUD_RATE:
+    {
+      //TODO changing BAUD rate is not going to be supported
+      //if (btArgs[0] != storedConfig->btCommsBaudRate)
+      //{
+      //  if (args[0] <= BAUD_1000000)
+      //  {
+      //    changeBtBaudRate = args[0];
+      //  }
+      //  else
+      //  {
+      //    changeBtBaudRate = DEFAULT_BT_BAUD_RATE;
+      //  }
+      //}
+      break;
+    }
+    case SET_DERIVED_CHANNEL_BYTES:
+    {
+      memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_0], &args[0], 3);
+      memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_3], &args[3], 5);
+      InfoMem_write(NV_DERIVED_CHANNELS_0,
+          &storedConfig->rawBytes[NV_DERIVED_CHANNELS_0], 3);
+      InfoMem_write(NV_DERIVED_CHANNELS_3,
+          &storedConfig->rawBytes[NV_DERIVED_CHANNELS_3], 5);
+      ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_0],
+          SDH_DERIVED_CHANNELS_0, 3);
+      ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_3],
+          SDH_DERIVED_CHANNELS_3, 5);
+      update_sdconfig = 1;
+      break;
+    }
+    case GET_INFOMEM_COMMAND:
+    {
+      infomemLength = args[0];
+      infomemOffset = args[1] + (args[2] << 8);
+      if ((infomemLength <= 128) && (infomemOffset <= (NV_NUM_RWMEM_BYTES - 1))
+          && (infomemLength + infomemOffset <= NV_NUM_RWMEM_BYTES))
+      {
+        getCmdWaitingResponse = gAction;
+      }
+      break;
+    }
+    case SET_INFOMEM_COMMAND:
+    {
+      infomemLength = args[0];
+      infomemOffset = args[1] + (args[2] << 8);
+      if ((infomemLength <= 128) && (infomemOffset <= (NV_NUM_RWMEM_BYTES - 1))
+          && (infomemLength + infomemOffset <= NV_NUM_RWMEM_BYTES))
+      {
+        ShimConfig_storedConfigSet(&args[3], infomemOffset, infomemLength);
+
+        if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
         {
-          numberOfCharToRemove = BT_STAT_STR_LEN_ERR_CONN_PARAM;
-          /* TODO */
+          /* Always overwrite MAC ID */
+          memcpy(&ShimConfig_getStoredConfig()->macAddr[0], ShimBt_macIdBytesPtrGet(), 6);
         }
-      }
-      else if (getRxByteAtIndex(5U) == 'L')
-      {
-        /* "%ERR_LSEC%" */
-        if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_ERR_LSEC
-            && getRxByteAtIndex(9U) == '%')
+
+        ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
+
+        InfoMem_write(infomemOffset, &args[3], infomemLength);
+        InfoMem_read(infomemOffset, &storedConfig->rawBytes[infomemOffset], infomemLength);
+
+        /* Save from infomem to calib dump in memory */
+        if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
         {
-          numberOfCharToRemove = BT_STAT_STR_LEN_ERR_LSEC;
-          /* TODO */
+          ShimCalib_configBytes0To127ToCalibDumpBytes(0);
+          update_calib_dump_file = 1;
         }
-      }
-      else if (getRxByteAtIndex(5U) == 'S')
-      {
-        /* "%ERR_SEC%" */
-        if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_ERR_SEC
-            && getRxByteAtIndex(8U) == '%')
+#if defined(SHIMMER3R)
+        else if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
         {
-          numberOfCharToRemove = BT_STAT_STR_LEN_ERR_SEC;
-          /* TODO */
+          ShimCalib_configBytes128To255ToCalibDumpBytes(0);
+          update_calib_dump_file = 1;
         }
+#endif
+
+        ShimSdHead_config2SdHead();
+        ShimConfig_infomem2Names();
+        update_sdconfig = 1;
       }
-    }
-    break;
-  case 'F':
-    /* "%FACTORY_RESET%" */
-    if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_FACTORY_RESET
-        && getRxByteAtIndex(14U) == '%')
-    {
-      numberOfCharToRemove = BT_STAT_STR_LEN_FACTORY_RESET;
-      /* TODO */
-    }
-    break;
-  case 'L':
-    if (getRxByteAtIndex(2U) == 'B')
-    {
-      /* "%LBONDED%" */
-      if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_LBONDED
-          && getRxByteAtIndex(8U) == '%')
+      else
       {
-        numberOfCharToRemove = BT_STAT_STR_LEN_LBONDED;
-        /* TODO */
+        return;
       }
+      break;
     }
-    else if (getRxByteAtIndex(2U) == 'S')
+    case SET_RWC_COMMAND:
     {
-      if (getRxByteAtIndex(6U) == 'R')
+      storedConfig->rtcSetByBt = 1;
+      InfoMem_write(NV_SD_TRIAL_CONFIG0, &storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
+      ShimSdHead_sdHeadTextSetByte(
+          SDH_TRIAL_CONFIG0, storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0]);
+#if defined(SHIMMER3)
+      setRwcTime(&args[0]);
+      RwcCheck();
+
+      uint64_t *rwcTimeDiffPtr = getRwcTimeDiffPtr();
+      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_7, *((uint8_t *) rwcTimeDiffPtr));
+      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_6, *(((uint8_t *) rwcTimeDiffPtr) + 1));
+      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_5, *(((uint8_t *) rwcTimeDiffPtr) + 2));
+      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_4, *(((uint8_t *) rwcTimeDiffPtr) + 3));
+      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_3, *(((uint8_t *) rwcTimeDiffPtr) + 4));
+      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_2, *(((uint8_t *) rwcTimeDiffPtr) + 5));
+      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_1, *(((uint8_t *) rwcTimeDiffPtr) + 6));
+      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_0, *(((uint8_t *) rwcTimeDiffPtr) + 7));
+#else
+      memcpy((uint8_t *) (&temp64), args, 8); //64bits = 8bytes
+      RTC_init(temp64);
+
+      setupNextRtcMinuteAlarm(); //configure RTC alarm after time set from BT.
+#endif
+      break;
+    }
+    case SET_ALT_ACCEL_CALIBRATION_COMMAND:
+    {
+#if defined(SHIMMER3)
+      sensorCalibId = SC_SENSOR_MPU9X50_ICM20948_ACCEL;
+#elif defined(SHIMMER3R)
+      sensorCalibId = SC_SENSOR_ADXL371_ACCEL;
+#endif
+      ShimBt_calibrationChangeCommon(NV_ALT_ACCEL_CALIBRATION, SDH_ALT_ACCEL_CALIBRATION,
+          &storedConfig->altAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
+      break;
+    }
+    case SET_ALT_MAG_CALIBRATION_COMMAND:
+    {
+#if defined(SHIMMER3)
+      sensorCalibId = SC_SENSOR_MPU9X50_ICM20948_MAG;
+#elif defined(SHIMMER3R)
+      sensorCalibId = SC_SENSOR_LIS2MDL_MAG;
+#endif
+      ShimBt_calibrationChangeCommon(NV_ALT_MAG_CALIBRATION, SDH_ALT_MAG_CALIBRATION,
+          &storedConfig->altMagCalib.rawBytes[0], &args[0], sensorCalibId);
+      update_calib_dump_file = 1;
+      break;
+    }
+    case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
+    {
+      storedConfig->altAccelRate = args[0] & 0x03;
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
+      break;
+    }
+    case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
+    {
+      storedConfig->altMagRate = args[0] & 0x03;
+      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
+      break;
+    }
+    case SET_SD_SYNC_COMMAND:
+    {
+      if (shimmerStatus.btInSyncMode && ShimSdSync_isBtSdSyncRunning())
       {
-        /* "%LSECURED%" */
-        if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_LSECURED
-            && getRxByteAtIndex(9U) == '%')
+        /* Reassemble full packet so that original RcNodeR10() will work without modificiation */
+        fullSyncResp[0] = gAction;
+        memcpy(&fullSyncResp[1], &args[0], SYNC_PACKET_MAX_SIZE - SYNC_PACKET_SIZE_CMD);
+        ShimSdSync_syncRespSet(&fullSyncResp[0], SYNC_PACKET_MAX_SIZE);
+        ShimTask_set(TASK_RCNODER10);
+      }
+      else
+      {
+        sendNack = 1;
+      }
+      break;
+    }
+    case ACK_COMMAND_PROCESSED:
+    {
+      if (shimmerStatus.btInSyncMode && ShimSdSync_isBtSdSyncRunning())
+      {
+        /* Slave response received by Master */
+        if (args[0] == SD_SYNC_RESPONSE)
         {
-          numberOfCharToRemove = BT_STAT_STR_LEN_LSECURED;
-          /* TODO */
-        }
-        /* "%LSECURE_FAIL%" */
-        else if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_LSECURE_FAIL
-            && getRxByteAtIndex(13U) == '%')
-        {
-          numberOfCharToRemove = BT_STAT_STR_LEN_LSECURE_FAIL;
-          /* TODO */
+          /* SD Sync Center - get's into this case when the center is waiting for a 0x01 or 0xFF from a node */
+          ShimSdSync_syncRespSet(&args[1], 1U);
+          ShimTask_set(TASK_RCCENTERR1);
         }
       }
-      else if (getRxByteAtIndex(6U) == 'A')
+      else
       {
-        /* "%LSTREAM_OPEN%" */
-        if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_LSTREAM_OPEN
-            && getRxByteAtIndex(13U) == '%')
-        {
-          numberOfCharToRemove = BT_STAT_STR_LEN_LSTREAM_OPEN;
-          /* TODO */
-        }
+        sendNack = 1;
       }
+      break;
     }
-    break;
-  case 'M':
-    /* "%MLDP_MODE%" */
-    if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_MLDP_MODE
-        && getRxByteAtIndex(10U) == '%')
-    {
-      numberOfCharToRemove = BT_STAT_STR_LEN_MLDP_MODE;
-      /* TODO */
-    }
-    break;
-  case 'R':
-    if (getRxByteAtIndex(2U) == 'E')
-    {
-      /* "%REBOOT%" -> RN4678 */
-      if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_RN4678_REBOOT
-          && getRxByteAtIndex(7U) == '%')
-      {
-        numberOfCharToRemove = BT_STAT_STR_LEN_RN4678_REBOOT;
-      }
-      else if (isBtDeviceRn41orRN42() && numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_RN42_REBOOT
-          && getRxByteAtIndex(6U) == 'T')
-      {
-        numberOfCharToRemove = BT_STAT_STR_LEN_RN42_REBOOT;
-      }
-
-      if (BT_getWaitForInitialBoot() && numberOfCharToRemove)
-      {
-        BT_setWaitForInitialBoot(0);
-        triggerBtSetGoodCommand = 1U;
-      }
-    }
-    else if (getRxByteAtIndex(2U) == 'F')
-    {
-      if (getRxByteAtIndex(8U) == 'C')
-      {
-        /* "%RFCOMM_CLOSE%" */
-        if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_RFCOMM_CLOSE
-            && getRxByteAtIndex(13U) == '%')
-        {
-          triggerBtRfCommStateChangeCallback(0);
-          numberOfCharToRemove = BT_STAT_STR_LEN_RFCOMM_CLOSE;
-        }
-      }
-      /* "%RFCOMM_OPEN%" */
-      else if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_RFCOMM_OPEN
-          && getRxByteAtIndex(12U) == '%')
-      {
-        triggerBtRfCommStateChangeCallback(1U);
-        numberOfCharToRemove = BT_STAT_STR_LEN_RFCOMM_OPEN;
-      }
-    }
-    break;
-  case 'S':
-    if (getRxByteAtIndex(3U) == 'C')
-    {
-      /* "%SECURED%" */
-      if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_SECURED
-          && getRxByteAtIndex(8U) == '%')
-      {
-        numberOfCharToRemove = BT_STAT_STR_LEN_SECURED;
-        /* TODO */
-      }
-      /* "%SECURE_FAIL%" */
-      else if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_SECURE_FAIL
-          && getRxByteAtIndex(12U) == '%')
-      {
-        numberOfCharToRemove = BT_STAT_STR_LEN_SECURE_FAIL;
-        /* TODO */
-      }
-    }
-    else if (getRxByteAtIndex(3U) == 'S')
-    {
-      /* "%SESSION_OPEN%" */
-      if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_SESSION_OPEN
-          && getRxByteAtIndex(13U) == '%')
-      {
-        numberOfCharToRemove = BT_STAT_STR_LEN_SESSION_OPEN;
-        /* TODO */
-      }
-      /* "%SESSION_CLOSE%" */
-      else if (numBytesInBtRxBufWhenLastProcessed >= BT_STAT_STR_LEN_SESSION_CLOSE
-          && getRxByteAtIndex(14U) == '%')
-      {
-        numberOfCharToRemove = BT_STAT_STR_LEN_SESSION_CLOSE;
-        /* TODO */
-      }
-    }
-    break;
-  default:
-    break;
-  }
-
-  clearBytesFromBtRxBuf(numberOfCharToRemove);
-  if (triggerBtSetGoodCommand)
-  {
-    BT_setGoodCommand();
-  }
-
-  return numberOfCharToRemove > 0;
-}
-
-uint8_t isBtRxBufLike(char statStrCheck[], uint8_t numCharTolerance)
-{
-  uint8_t count = 0, bufIndex = 0, i = 0;
-  uint8_t statStrCheckLen = strlen(statStrCheck);
-
-  /* If there's not enough bytes in the buf even with the tolerance, return straight away */
-  if (getNumBytesInBtRxBuf() < (statStrCheckLen - numCharTolerance))
-  {
-    return 0;
-  }
-
-  for (i = 0; i < statStrCheckLen; i++)
-  {
-    if (getRxByteAtIndex(bufIndex) == statStrCheck[i] || statStrCheck[i] == 'X')
-    {
-      count++;
-      bufIndex++;
-    }
-  }
-
-  if (((statStrCheckLen - count) <= numCharTolerance))
-  {
-    return count;
-  }
-  else
-  {
-    return 0;
-  }
-}
-
-uint8_t processRnCmdResponse(void)
-{
-  uint8_t responseParsed = 0;
-
-  /* Unwrap response */
-  uint16_t i;
-  for (i = 0; i < (indexOfFirstEol + 2); i++)
-  {
-    readByteFromBtRxBuf(&unwrappedResponse[i]);
-
-    if (i >= 2 && unwrappedResponse[i - 1] == '\r' && unwrappedResponse[i] == '\n')
+    default:
     {
       break;
     }
   }
 
-  uint16_t unwrappedResponseLen = strlen(unwrappedResponse);
-  uint8_t cmdExpectedAfterEol = (isBtDeviceRn4678() || isRn4678CmdDetectedOnBoot);
-
-  /* Get BT module hardware and firmware version */
-  if (commandBufPtr[0] == 'V')
+  /* Send Response back for all commands except when FW has received an ACK */
+  /* ACK is sent back as part of SD_SYNC_RESPONSE so no need to send it here */
+  if (!(gAction == ACK_COMMAND_PROCESSED || gAction == SET_SD_SYNC_COMMAND) || sendNack)
   {
-    enum BT_FIRMWARE_VERSION btFwVerNew = BT_FW_VER_UNKNOWN;
-
-    /* RN41 or RN42 */
-    if (unwrappedResponse[0U] == 'V')
+    if (sendNack == 0)
     {
-      /* RN41_VERSION_RESPONSE_V4_77 or RN42_VERSION_RESPONSE_V4_77 */
-      if (unwrappedResponse[4U] == '4' && unwrappedResponse[5U] == '.')
-      {
-        if (unwrappedResponse[9U] == 'R' && unwrappedResponse[10U] == 'N')
-        {
-          btFwVerNew = RN42_V4_77;
-        }
-        else
-        {
-          btFwVerNew = RN41_V4_77;
-        }
-      }
-      /* RN42_VERSION_RESPONSE_V6_15 */
-      else if (unwrappedResponse[4U] == '6' && unwrappedResponse[5U] == '.'
-          && unwrappedResponse[6U] == '1' && unwrappedResponse[7U] == '5')
-      {
-        btFwVerNew = RN42_V6_15;
-      }
-      /* V6.30 not supported */
-      else if (unwrappedResponse[4U] == '6' && unwrappedResponse[5U] == '.'
-          && unwrappedResponse[6U] == '3' && unwrappedResponse[7U] == '0')
-      {
-        btFwVerNew = RN42_V6_30;
-      }
+      /* Send ACK back for all commands except when FW is sending a NACK */
+      sendAck = 1;
     }
-    /* RN4678 */
-    else if (unwrappedResponse[0U] == 'R')
-    {
-      /* RN4678_VERSION_RESPONSE_V1_00_5 */
-      if (unwrappedResponse[10U] == '0' && unwrappedResponse[11U] == '0')
-      {
-        btFwVerNew = RN4678_V1_00_5;
-      }
-      /* RN4678_VERSION_RESPONSE_V1_11_0 */
-      else if (unwrappedResponse[10U] == '1' && unwrappedResponse[11U] == '1')
-      {
-        btFwVerNew = RN4678_V1_11_0;
-      }
-      /* RN4678_VERSION_RESPONSE_V1_13_5 */
-      else if (unwrappedResponse[10U] == '1' && unwrappedResponse[11U] == '3')
-      {
-        btFwVerNew = RN4678_V1_13_5;
-      }
-      /* RN4678_VERSION_RESPONSE_V1_22_0 */
-      else if (unwrappedResponse[10U] == '2' && unwrappedResponse[11U] == '2')
-      {
-        btFwVerNew = RN4678_V1_22_0;
-      }
-      /* RN4678_VERSION_RESPONSE_V1_23_0 */
-      else if (unwrappedResponse[10U] == '2' && unwrappedResponse[11U] == '3')
-      {
-        btFwVerNew = RN4678_V1_23_0;
-      }
-    }
-
-    if (btFwVerNew == BT_FW_VER_UNKNOWN || btFwVerNew == RN42_V6_30)
-    {
-      triggerShimmerErrorState();
-    }
-
-    /* When storing the BT version, ignore from "\r" onwards */
-    uint8_t btVerLen = strlen(unwrappedResponse);
-    uint8_t btVerIdx;
-    for (btVerIdx = 0; btVerIdx < btVerLen; btVerIdx++)
-    {
-      if (unwrappedResponse[btVerIdx] == '\r')
-      {
-        btVerLen = btVerIdx;
-        break;
-      }
-    }
-    memcpy(btVerStrResponse, unwrappedResponse, btVerLen);
-
-    setBtFwVersion(btFwVerNew);
-
-    responseParsed = 1;
+    ShimTask_set(TASK_BT_RESPOND);
   }
-  /* Get commands */
-  else if (commandBufPtr[0] == 'G')
+
+  if (update_sdconfig)
   {
-    /* Get MAC address */
-    if (commandBufPtr[1] == 'B')
+    ShimConfig_setSdCfgFlag(1);
+  }
+  if (update_calib_dump_file)
+  {
+    ShimBt_updateCalibDumpFile();
+  }
+}
+
+void ShimBt_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, uint16_t len)
+{
+  gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
+
+  ShimConfig_checkAndCorrectConfig(storedConfig);
+
+  InfoMem_write(configByteIdx, &storedConfig->rawBytes[configByteIdx], len);
+  ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[configByteIdx], sdHeaderIdx, len);
+  //TODO don't think below is needed because we're specifically changing what's
+  //new above ShimSdHead_config2SdHead();
+
+  //restart sensing to use settings
+  ShimTask_setRestartSensing();
+
+  //update sdconfig
+  ShimConfig_setSdCfgFlag(1);
+}
+
+void ShimBt_calibrationChangeCommon(uint16_t configByteIdx,
+    uint16_t sdHeaderIdx,
+    uint8_t *configBytePtr,
+    uint8_t *newCalibPtr,
+    uint8_t sensorCalibId)
+{
+  memcpy(configBytePtr, newCalibPtr, SC_DATA_LEN_STD_IMU_CALIB);
+  InfoMem_write(configByteIdx, configBytePtr, SC_DATA_LEN_STD_IMU_CALIB);
+
+  ShimSdHead_sdHeadTextSet(configBytePtr, sdHeaderIdx, SC_DATA_LEN_STD_IMU_CALIB);
+
+  ShimCalib_configBytesToCalibDump(sensorCalibId, 0);
+}
+
+void ShimBt_updateCalibDumpFile(void)
+{
+  if (CheckSdInslot() && !shimmerStatus.sdBadFile)
+  {
+    if (!shimmerStatus.docked)
     {
-      setMacId_cb(unwrappedResponse);
-      responseParsed = 1;
+      ShimCalib_ram2File();
     }
     else
     {
-      responseParsed = parseRnGetResponse(commandBufPtr[1], &unwrappedResponse[0]);
+      ShimConfig_setRamCalibFlag(1);
     }
   }
-  //else if(unwrappedResponse[0]=='C'
-  //        && unwrappedResponse[1]=='M'
-  //        && unwrappedResponse[2]=='D')
-  //{
-  //    setCommandModeActive(1U);
-  //    responseParsed = 1;
-  //    cmdExpectedAfterEol = 0;
-  //}
-  else if (unwrappedResponse[0] == 'A' && unwrappedResponse[1] == 'O'
-      && unwrappedResponse[2] == 'K')
-  {
-    responseParsed = 1;
-  }
-  else if (unwrappedResponse[0] == 'E' && unwrappedResponse[1] == 'N'
-      && unwrappedResponse[2] == 'D')
-  {
-    setRnCommandModeActive(0U);
-    responseParsed = 1;
-    cmdExpectedAfterEol = 0;
-  }
-  else if (unwrappedResponse[0] == 'E' && unwrappedResponse[1] == 'R'
-      && unwrappedResponse[2] == 'R')
-  {
-    triggerShimmerErrorState();
-  }
-  else if (unwrappedResponse[0] == '?')
-  {
-    triggerShimmerErrorState();
-  }
-
-  else if (expectedResponsePtr[0] != '\0'
-      && !memcmp(unwrappedResponse, expectedResponsePtr, strlen(expectedResponsePtr)))
-  {
-    responseParsed = 1;
-  }
-
-  memset(unwrappedResponse, 0, strlen(unwrappedResponse));
-
-  if (responseParsed)
-  {
-    if (cmdExpectedAfterEol)
-    {
-      clearBytesFromBtRxBuf(RN4X_CMD_LEN);
-    }
-
-    clearBtCmdTxRxBuffsAndProceed();
-  }
-
-  return responseParsed;
 }
 
-uint8_t isFullRN4678CmdResponseReceived(void)
+uint8_t ShimBt_replySingleSensorCalibCmd(uint8_t cmdWaitingResponse, uint8_t *resPacketPtr)
 {
-  int16_t numBytesAfterEol = numBytesInBtRxBufWhenLastProcessed - (indexOfFirstEol + 2U);
+  sc_t sc1;
+  gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
 
-  /* For the RN4678, all responses have "CMD> " as a suffix except for "Trying\r\n", "END\r\n".
-   * There is an option to turn this off in the RN4678 but we are leaving it on at the moment */
-  if ((getRxByteAtIndex(0) == 'T' && getRxByteAtIndex(1U) == 'r' && getRxByteAtIndex(2U) == 'y')
-      || (getRxByteAtIndex(0) == 'E' && getRxByteAtIndex(1U) == 'N'
-          && getRxByteAtIndex(2U) == 'D'))
+  if (cmdWaitingResponse == GET_LN_ACCEL_CALIBRATION_COMMAND)
   {
-    return 1U;
+#if defined(SHIMMER3)
+    sc1.id = SC_SENSOR_ANALOG_ACCEL;
+    sc1.range = SC_SENSOR_RANGE_ANALOG_ACCEL;
+#elif defined(SHIMMER3R)
+    sc1.id = SC_SENSOR_LSM6DSV_ACCEL;
+    sc1.range = storedConfig->lnAccelRange;
+#endif
+  }
+  else if (cmdWaitingResponse == GET_GYRO_CALIBRATION_COMMAND)
+  {
+#if defined(SHIMMER3)
+    sc1.id = SC_SENSOR_MPU9X50_ICM20948_GYRO;
+#elif defined(SHIMMER3R)
+    sc1.id = SC_SENSOR_LSM6DSV_GYRO;
+#endif
+    sc1.range = ShimConfig_gyroRangeGet();
+  }
+  else if (cmdWaitingResponse == GET_MAG_CALIBRATION_COMMAND)
+  {
+#if defined(SHIMMER3)
+    sc1.id = SC_SENSOR_LSM303_MAG;
+#elif defined(SHIMMER3R)
+    sc1.id = SC_SENSOR_LIS3MDL_MAG;
+#endif
+    sc1.range = storedConfig->magRange;
+  }
+  else if (cmdWaitingResponse == GET_WR_ACCEL_CALIBRATION_COMMAND)
+  {
+#if defined(SHIMMER3)
+    sc1.id = SC_SENSOR_LSM303_ACCEL;
+#elif defined(SHIMMER3R)
+    sc1.id = SC_SENSOR_LIS2DW12_ACCEL;
+#endif
+    sc1.range = storedConfig->wrAccelRange;
+  }
+  else if (cmdWaitingResponse == GET_ALT_ACCEL_CALIBRATION_COMMAND)
+  {
+#if defined(SHIMMER3)
+    sc1.id = SC_SENSOR_MPU9X50_ICM20948_ACCEL;
+    sc1.range = storedConfig->altAccelRange;
+#elif defined(SHIMMER3R)
+    sc1.id = SC_SENSOR_ADXL371_ACCEL;
+    sc1.range = SC_SENSOR_RANGE_ADXL371_RANGE;
+#endif
+  }
+  else if (cmdWaitingResponse == GET_ALT_MAG_CALIBRATION_COMMAND)
+  {
+#if defined(SHIMMER3)
+    sc1.id = SC_SENSOR_MPU9X50_ICM20948_MAG;
+#elif defined(SHIMMER3R)
+    sc1.id = SC_SENSOR_LIS2MDL_MAG;
+    sc1.range = SC_SENSOR_RANGE_LIS2MDL_RANGE;
+#endif
   }
   else
   {
-    if (numBytesAfterEol != 0 && numBytesAfterEol >= RN4X_CMD_LEN)
-    {
-      return 1U;
-    }
-  }
-  return 0;
-}
-
-void clearBtCmdTxRxBuffsAndProceed(void)
-{
-  clearBtCmdBuf();
-  clearExpectedResponseBuf();
-  BT_setGoodCommand();
-}
-
-uint8_t processShimmerBtCmd(void)
-{
-  uint8_t expectedLength = 0;
-  uint8_t responseParsed = 0;
-
-  uint8_t data = getRxByteAtIndex(0);
-  switch (data)
-  {
-  /* 1 command byte, no argument bytes */
-  case INQUIRY_COMMAND:
-  case DUMMY_COMMAND:
-  case GET_SAMPLING_RATE_COMMAND:
-  case TOGGLE_LED_COMMAND:
-  case START_STREAMING_COMMAND:
-  case GET_STATUS_COMMAND:
-  case GET_VBATT_COMMAND:
-  case GET_TRIAL_CONFIG_COMMAND:
-  case START_SDBT_COMMAND:
-  case GET_CONFIG_SETUP_BYTES_COMMAND:
-  case STOP_STREAMING_COMMAND:
-  case STOP_SDBT_COMMAND:
-  case START_LOGGING_COMMAND:
-  case STOP_LOGGING_COMMAND:
-  case GET_LN_ACCEL_CALIBRATION_COMMAND:
-  case GET_GYRO_CALIBRATION_COMMAND:
-  case GET_MAG_CALIBRATION_COMMAND:
-  case GET_WR_ACCEL_CALIBRATION_COMMAND:
-  case GET_GSR_RANGE_COMMAND:
-  case GET_ALL_CALIBRATION_COMMAND:
-  case DEPRECATED_GET_DEVICE_VERSION_COMMAND:
-  case GET_DEVICE_VERSION_COMMAND:
-  case GET_FW_VERSION_COMMAND:
-  case GET_CHARGE_STATUS_LED_COMMAND:
-  case GET_BUFFER_SIZE_COMMAND:
-  case GET_UNIQUE_SERIAL_COMMAND:
-  case GET_WR_ACCEL_RANGE_COMMAND:
-  case GET_MAG_GAIN_COMMAND:
-  case GET_MAG_SAMPLING_RATE_COMMAND:
-  case GET_WR_ACCEL_SAMPLING_RATE_COMMAND:
-  case GET_WR_ACCEL_LPMODE_COMMAND:
-  case GET_WR_ACCEL_HRMODE_COMMAND:
-  case GET_GYRO_RANGE_COMMAND:
-  case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
-  case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
-  case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
-  case GET_GYRO_SAMPLING_RATE_COMMAND:
-  case GET_ALT_ACCEL_RANGE_COMMAND:
-  case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
-  case GET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
-  case RESET_TO_DEFAULT_CONFIGURATION_COMMAND:
-  case RESET_CALIBRATION_VALUE_COMMAND:
-  case GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND:
-  case GET_BT_COMMS_BAUD_RATE:
-  case GET_CENTER_COMMAND:
-  case GET_SHIMMERNAME_COMMAND:
-  case GET_EXPID_COMMAND:
-  case GET_MYID_COMMAND:
-  case GET_NSHIMMER_COMMAND:
-  case GET_CONFIGTIME_COMMAND:
-  case GET_DIR_COMMAND:
-  case GET_DERIVED_CHANNEL_BYTES:
-  case GET_RWC_COMMAND:
-  case UPD_SDLOG_CFG_COMMAND:
-  case UPD_CALIB_DUMP_COMMAND:
-  case GET_BT_VERSION_STR_COMMAND:
-    readActionAndArgBytes(0);
-    responseParsed = 1U;
-    break;
-
-  /* 1 command byte, 1 argument byte */
-  case SET_WR_ACCEL_RANGE_COMMAND:
-  case SET_WR_ACCEL_SAMPLING_RATE_COMMAND:
-  case SET_MAG_GAIN_COMMAND:
-  case SET_CHARGE_STATUS_LED_COMMAND:
-  case SET_MAG_SAMPLING_RATE_COMMAND:
-  case SET_WR_ACCEL_LPMODE_COMMAND:
-  case SET_WR_ACCEL_HRMODE_COMMAND:
-  case SET_GYRO_RANGE_COMMAND:
-  case SET_GYRO_SAMPLING_RATE_COMMAND:
-  case SET_ALT_ACCEL_RANGE_COMMAND:
-  case SET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
-  case SET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
-  case SET_GSR_RANGE_COMMAND:
-  case SET_BT_COMMS_BAUD_RATE:
-  case SET_MYID_COMMAND:
-  case SET_NSHIMMER_COMMAND:
-  case SET_CRC_COMMAND:
-  case SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE case SET_DATA_RATE_TEST:
-  case SET_FACTORY_TEST:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + 1U))
-    {
-      readActionAndArgBytes(1U);
-      responseParsed = 1U;
-    }
-    break;
-
-  /* 1 command byte, 2 argument bytes */
-  case SET_SAMPLING_RATE_COMMAND:
-  case GET_DAUGHTER_CARD_ID_COMMAND:
-  case SET_DAUGHTER_CARD_ID_COMMAND:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + 2U))
-    {
-      readActionAndArgBytes(2U);
-      responseParsed = 1U;
-    }
-    break;
-
-  /* 1 command byte, 3 argument bytes */
-  case SET_SENSORS_COMMAND:
-  case GET_EXG_REGS_COMMAND:
-  case GET_DAUGHTER_CARD_MEM_COMMAND:
-  case SET_TRIAL_CONFIG_COMMAND:
-  case GET_INFOMEM_COMMAND:
-  case GET_CALIB_DUMP_COMMAND:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + 3U))
-    {
-      readActionAndArgBytes(3U);
-      responseParsed = 1U;
-    }
-    break;
-
-  /* 1 command byte, 4 argument bytes */
-  case SET_CONFIG_SETUP_BYTES_COMMAND:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + 4U))
-    {
-      readActionAndArgBytes(4U);
-      responseParsed = 1U;
-    }
-    break;
-
-  /* 1 command byte, 8 argument bytes */
-  case SET_RWC_COMMAND:
-  case SET_DERIVED_CHANNEL_BYTES:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + 8U))
-    {
-      readActionAndArgBytes(8U);
-      responseParsed = 1U;
-    }
-    break;
-
-#if !USE_OLD_SD_SYNC_APPROACH
-  /* 1 command byte, 9 to 11 argument bytes */
-  case SET_SD_SYNC_COMMAND:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + SYNC_PACKET_PAYLOAD_SIZE + BT_SD_SYNC_CRC_MODE))
-    {
-      readActionAndArgBytes(SYNC_PACKET_PAYLOAD_SIZE + BT_SD_SYNC_CRC_MODE);
-      responseParsed = 1U;
-    }
-    break;
-#endif
-
-  /* 1 command byte, 21 argument bytes */
-  case SET_LN_ACCEL_CALIBRATION_COMMAND:
-  case SET_GYRO_CALIBRATION_COMMAND:
-  case SET_MAG_CALIBRATION_COMMAND:
-  case SET_WR_ACCEL_CALIBRATION_COMMAND:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + 21U))
-    {
-      readActionAndArgBytes(21U);
-      responseParsed = 1U;
-    }
-    break;
-
-    /*********************************************/
-  /* special cases */
-  /* 1 command byte, minimum 1 argument byte - expected length is stored in arg[0] */
-  case SET_CENTER_COMMAND:
-  case SET_CONFIGTIME_COMMAND:
-  case SET_EXPID_COMMAND:
-  case SET_SHIMMERNAME_COMMAND:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + 1U))
-    {
-      expectedLength = gBtRxFifoPtr->data[BT_RX_BUF_MASK & (gBtRxFifoPtr->rdIdx + 1U)];
-      if (numBytesInBtRxBufWhenLastProcessed >= (1U + 1U + expectedLength))
-      {
-        readActionAndArgBytes(1U + expectedLength);
-        responseParsed = 1U;
-      }
-    }
-    break;
-
-  /* 1 command byte, minimum 2 argument bytes - expected length is stored in arg[0] */
-  case SET_DAUGHTER_CARD_ID_COMMAND:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + 2U))
-    {
-      expectedLength = gBtRxFifoPtr->data[BT_RX_BUF_MASK & (gBtRxFifoPtr->rdIdx + 1U)];
-      if (numBytesInBtRxBufWhenLastProcessed >= (1U + 2U + expectedLength))
-      {
-        readActionAndArgBytes(2U + expectedLength);
-        responseParsed = 1U;
-      }
-    }
-    break;
-
-  /* 1 command byte, minimum 3 argument bytes - expected length is stored in arg[2] */
-  case SET_EXG_REGS_COMMAND:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + 3U))
-    {
-      expectedLength = gBtRxFifoPtr->data[BT_RX_BUF_MASK & (gBtRxFifoPtr->rdIdx + 3U)];
-      if (numBytesInBtRxBufWhenLastProcessed >= (1U + 3U + expectedLength))
-      {
-        readActionAndArgBytes(3U + expectedLength);
-        responseParsed = 1U;
-      }
-    }
-    break;
-
-  /* 1 command byte, minimum 3 argument bytes - expected length is stored in arg[0] */
-  case SET_INFOMEM_COMMAND:
-  case SET_CALIB_DUMP_COMMAND:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + 3U))
-    {
-      expectedLength = gBtRxFifoPtr->data[BT_RX_BUF_MASK & (gBtRxFifoPtr->rdIdx + 1U)];
-      if (numBytesInBtRxBufWhenLastProcessed >= (1U + 3U + expectedLength))
-      {
-        readActionAndArgBytes(3U + expectedLength);
-        responseParsed = 1U;
-      }
-    }
-    break;
-
-#if !USE_OLD_SD_SYNC_APPROACH
-  /* 1 command byte, minimum 1 argument byte representing command response */
-  case ACK_COMMAND_PROCESSED:
-    if (numBytesInBtRxBufWhenLastProcessed >= (1U + 1U))
-    {
-      uint8_t cmdByte = gBtRxFifoPtr->data[BT_RX_BUF_MASK & (gBtRxFifoPtr->rdIdx + 1U)];
-      if (cmdByte == SD_SYNC_RESPONSE && numBytesInBtRxBufWhenLastProcessed >= (1U + 2U))
-      {
-        readActionAndArgBytes(2U);
-        responseParsed = 1U;
-      }
-    }
-    break;
-#endif
-    /********************************************/
-
-  default:
-    break;
-  }
-
-  return responseParsed;
-}
-
-void readActionAndArgBytes(uint8_t numArgs)
-{
-  readByteFromBtRxBuf(gActionPtr);
-  if (numArgs)
-  {
-    uint8_t i;
-    for (i = 0; i < numArgs; i++)
-    {
-      readByteFromBtRxBuf(gArgsPtr + i);
-    }
-  }
-
-  if (newBtCmdToProcess_cb)
-  {
-    newBtCmdToProcess_cb();
-  }
-}
-
-uint8_t isNewLineDetectedInBtRxBuf(void)
-{
-  uint16_t i = 0;
-  if (numBytesInBtRxBufWhenLastProcessed > 2U)
-  {
-    /* numBytesInRxBuf is -1 here as we're looking to i+1 for \n and it was triggering too early as new bytes were coming in */
-    for (i = 0; i < (numBytesInBtRxBufWhenLastProcessed - 1); i++)
-    {
-      if (getRxByteAtIndex(i) == '\r' && getRxByteAtIndex(i + 1) == '\n')
-      {
-        return i;
-      }
-    }
-  }
-  return 0;
-}
-
-uint8_t isShimmerBtCmd(uint8_t data)
-{
-  switch (data)
-  {
-  case INQUIRY_COMMAND:
-  case DUMMY_COMMAND:
-  case GET_SAMPLING_RATE_COMMAND:
-  case TOGGLE_LED_COMMAND:
-  case START_STREAMING_COMMAND:
-  case GET_STATUS_COMMAND:
-  case GET_VBATT_COMMAND:
-  case GET_TRIAL_CONFIG_COMMAND:
-  case START_SDBT_COMMAND:
-  case GET_CONFIG_SETUP_BYTES_COMMAND:
-  case STOP_STREAMING_COMMAND:
-  case STOP_SDBT_COMMAND:
-  case START_LOGGING_COMMAND:
-  case STOP_LOGGING_COMMAND:
-  case GET_LN_ACCEL_CALIBRATION_COMMAND:
-  case GET_GYRO_CALIBRATION_COMMAND:
-  case GET_MAG_CALIBRATION_COMMAND:
-  case GET_WR_ACCEL_CALIBRATION_COMMAND:
-  case GET_GSR_RANGE_COMMAND:
-  case GET_ALL_CALIBRATION_COMMAND:
-  case DEPRECATED_GET_DEVICE_VERSION_COMMAND:
-  case GET_DEVICE_VERSION_COMMAND:
-  case GET_FW_VERSION_COMMAND:
-  case GET_CHARGE_STATUS_LED_COMMAND:
-  case GET_BUFFER_SIZE_COMMAND:
-  case GET_UNIQUE_SERIAL_COMMAND:
-  case GET_WR_ACCEL_RANGE_COMMAND:
-  case GET_MAG_GAIN_COMMAND:
-  case GET_MAG_SAMPLING_RATE_COMMAND:
-  case GET_WR_ACCEL_SAMPLING_RATE_COMMAND:
-  case GET_WR_ACCEL_LPMODE_COMMAND:
-  case GET_WR_ACCEL_HRMODE_COMMAND:
-  case GET_GYRO_RANGE_COMMAND:
-  case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
-  case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
-  case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
-  case GET_GYRO_SAMPLING_RATE_COMMAND:
-  case GET_ALT_ACCEL_RANGE_COMMAND:
-  case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
-  case GET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
-  case RESET_TO_DEFAULT_CONFIGURATION_COMMAND:
-  case RESET_CALIBRATION_VALUE_COMMAND:
-  case GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND:
-  case GET_BT_COMMS_BAUD_RATE:
-  case GET_CENTER_COMMAND:
-  case GET_SHIMMERNAME_COMMAND:
-  case GET_EXPID_COMMAND:
-  case GET_MYID_COMMAND:
-  case GET_NSHIMMER_COMMAND:
-  case GET_CONFIGTIME_COMMAND:
-  case GET_DIR_COMMAND:
-  case GET_DERIVED_CHANNEL_BYTES:
-  case GET_RWC_COMMAND:
-  case UPD_SDLOG_CFG_COMMAND:
-  case UPD_CALIB_DUMP_COMMAND:
-  case GET_BT_VERSION_STR_COMMAND:
-  case SET_WR_ACCEL_RANGE_COMMAND:
-  case SET_WR_ACCEL_SAMPLING_RATE_COMMAND:
-  case SET_MAG_GAIN_COMMAND:
-  case SET_CHARGE_STATUS_LED_COMMAND:
-  case SET_MAG_SAMPLING_RATE_COMMAND:
-  case SET_WR_ACCEL_LPMODE_COMMAND:
-  case SET_WR_ACCEL_HRMODE_COMMAND:
-  case SET_GYRO_RANGE_COMMAND:
-  case SET_GYRO_SAMPLING_RATE_COMMAND:
-  case SET_ALT_ACCEL_RANGE_COMMAND:
-  case SET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
-  case SET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
-  case SET_GSR_RANGE_COMMAND:
-  case SET_BT_COMMS_BAUD_RATE:
-  case SET_CENTER_COMMAND:
-  case SET_SHIMMERNAME_COMMAND:
-  case SET_EXPID_COMMAND:
-  case SET_MYID_COMMAND:
-  case SET_NSHIMMER_COMMAND:
-  case SET_CONFIGTIME_COMMAND:
-  case SET_CRC_COMMAND:
-  case SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE:
-  case SET_DATA_RATE_TEST:
-  case SET_FACTORY_TEST:
-  case SET_SAMPLING_RATE_COMMAND:
-  case GET_DAUGHTER_CARD_ID_COMMAND:
-  case SET_DAUGHTER_CARD_ID_COMMAND:
-  case SET_SENSORS_COMMAND:
-  case GET_EXG_REGS_COMMAND:
-  case SET_EXG_REGS_COMMAND:
-  case GET_DAUGHTER_CARD_MEM_COMMAND:
-  case SET_DAUGHTER_CARD_MEM_COMMAND:
-  case SET_TRIAL_CONFIG_COMMAND:
-  case GET_INFOMEM_COMMAND:
-  case SET_INFOMEM_COMMAND:
-  case GET_CALIB_DUMP_COMMAND:
-  case SET_CALIB_DUMP_COMMAND:
-  case SET_CONFIG_SETUP_BYTES_COMMAND:
-  case SET_RWC_COMMAND:
-  case SET_DERIVED_CHANNEL_BYTES:
-  case SET_LN_ACCEL_CALIBRATION_COMMAND:
-  case SET_GYRO_CALIBRATION_COMMAND:
-  case SET_MAG_CALIBRATION_COMMAND:
-  case SET_WR_ACCEL_CALIBRATION_COMMAND:
-#if !USE_OLD_SD_SYNC_APPROACH
-  case SET_SD_SYNC_COMMAND:
-#endif
-  case ACK_COMMAND_PROCESSED:
-    return 1;
-  default:
     return 0;
   }
+
+  sc1.data_len = SC_DATA_LEN_STD_IMU_CALIB;
+  ShimCalib_singleSensorRead(&sc1);
+
+  memcpy(resPacketPtr, sc1.data.raw, sc1.data_len);
+  return sc1.data_len;
 }
 
-void updateNumBytesInBtRxBufWhenLastProcessed(void)
+void ShimBt_sendRsp(void)
 {
-  numBytesInBtRxBufWhenLastProcessed = getNumBytesInBtRxBuf();
-}
+  uint16_t packet_length = 0;
+  //STATTypeDef * stat = GetStatus();
+  uint8_t resPacket[RESPONSE_PACKET_SIZE + 2]; //+2 for CRC
+  packet_length = 0;
 
-uint16_t getNumBytesInBtRxBufWhenLastProcessed(void)
-{
-  return numBytesInBtRxBufWhenLastProcessed;
-}
+  uint64_t temp_rtcCurrentTime = 0;
+  uint8_t *fileNamePtr;
+  uint8_t bmpCalibByteLen;
+  uint8_t btVerStrLen;
 
-uint8_t areUnprocessedBytesInBtRxBuff(void)
-{
-  uint16_t numBytes = getNumBytesInBtRxBuf();
-  return numBytes != 0 && numBytes != getNumBytesInBtRxBufWhenLastProcessed();
-}
+  gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
+
+  if (shimmerStatus.btConnected)
+  {
+    if (sendAck)
+    {
+      *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
+      sendAck = 0;
+    }
+    if (sendNack)
+    {
+      *(resPacket + packet_length++) = NACK_COMMAND_PROCESSED;
+      sendNack = 0;
+    }
+
+    switch (getCmdWaitingResponse)
+    {
+      case 0:
+      {
+        break;
+      }
+      case INQUIRY_COMMAND:
+      {
+        /* Channel order/packet structure need to be assembled before sending the inquiry response so that the information is correct. */
+        ShimSens_configureChannels();
+
+        *(resPacket + packet_length++) = INQUIRY_RESPONSE;
+        *(uint16_t *) (resPacket + packet_length) = storedConfig->samplingRateTicks; //ADC sampling rate
+        packet_length += 2;
+
+        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE0];
+        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE1];
+        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE2];
+        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE3];
+#if defined(SHIMMER3R)
+        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE4];
+        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE5];
+        *(resPacket + packet_length++) = storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE6];
 #endif
 
-void btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void),
-    void (*handleBtRfCommStateChangeCb)(uint8_t),
-    void (*setMacIdCb)(uint8_t *),
-    uint8_t *actionPtr,
-    uint8_t *argsPtr)
-{
-  setBtCrcMode(CRC_OFF);
-  numBytesInBtRxBufWhenLastProcessed = 0;
-  indexOfFirstEol = 0;
-  firstProcessFailTicks = 0;
-  memset(unwrappedResponse, 0, sizeof(unwrappedResponse));
+        uint8_t numberOfChannels = ShimSens_getNumEnabledChannels();
 
-  newBtCmdToProcess_cb = newBtCmdToProcessCb;
-  handleBtRfCommStateChange_cb = handleBtRfCommStateChangeCb;
-  setMacId_cb = setMacIdCb;
-
-  gActionPtr = actionPtr;
-  gArgsPtr = argsPtr;
-
-  commandBufPtr = getTxCmdBufPtr();
-  expectedResponsePtr = BT_getExpResp();
-
-#if BT_DMA_USED_FOR_RX
-  btRxExp = BT_getExpResp();
-
-  waitingForArgs = 0;
-  waitingForArgsLength = 0;
-  argsSize = 0;
-
-  memset(btStatusStr, 0, sizeof(btStatusStr));
-
-  memset(btRxBuffFullResponse, 0x00,
-      sizeof(btRxBuffFullResponse) / sizeof(btRxBuffFullResponse[0]));
-  setBtRxFullResponsePtr(btRxBuffFullResponse);
-
-  memset(btRxBuff, 0x00, sizeof(btRxBuff) / sizeof(btRxBuff[0]));
-  DMA2_init((uint16_t *) &UCA1RXBUF, (uint16_t *) btRxBuff, sizeof(btRxBuff));
-  DMA2_transferDoneFunction(&Dma2ConversionDone);
-  //DMA2SZ = 1U;
-  //DMA2_enable();
-
+        *(resPacket + packet_length++) = numberOfChannels; //number of data channels
+        *(resPacket + packet_length++) = storedConfig->bufferSize; //buffer size
+        memcpy((resPacket + packet_length), sensing.cc, numberOfChannels);
+        packet_length += numberOfChannels;
+        break;
+      }
+      case GET_SAMPLING_RATE_COMMAND:
+      {
+        *(resPacket + packet_length++) = SAMPLING_RATE_RESPONSE;
+        *(uint16_t *) (resPacket + packet_length) = storedConfig->samplingRateTicks; //ADC sampling rate
+        packet_length += 2;
+        break;
+      }
+      case GET_WR_ACCEL_RANGE_COMMAND:
+      {
+        *(resPacket + packet_length++) = WR_ACCEL_RANGE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->wrAccelRange;
+        break;
+      }
+      case GET_MAG_GAIN_COMMAND:
+      {
+        *(resPacket + packet_length++) = MAG_GAIN_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->magRange;
+        break;
+      }
+      case GET_MAG_SAMPLING_RATE_COMMAND:
+      {
+        *(resPacket + packet_length++) = MAG_SAMPLING_RATE_RESPONSE;
+        *(resPacket + packet_length++) = ShimConfig_configByteMagRateGet();
+        break;
+      }
+      case GET_STATUS_COMMAND:
+      {
+        *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
+        *(resPacket + packet_length++) = STATUS_RESPONSE;
+        *(resPacket + packet_length++) = (shimmerStatus.toggleLedRedCmd << 7)
+            + (shimmerStatus.sdBadFile << 6) + (shimmerStatus.sdInserted << 5)
+            + (shimmerStatus.btStreaming << 4) + (shimmerStatus.sdLogging << 3)
+            + (isRwcTimeSet() << 2) + (shimmerStatus.sensing << 1)
+            + (shimmerStatus.docked);
+        break;
+      }
+      case GET_VBATT_COMMAND:
+      {
+        manageReadBatt(1);
+        *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
+        *(resPacket + packet_length++) = VBATT_RESPONSE;
+        uint8_t i = 0;
+        for (i = 0; i < 3; i++)
+        {
+          resPacket[packet_length] = batteryStatus.battStatusRaw.rawBytes[i];
+          packet_length++;
+        }
+        break;
+      }
+      case GET_TRIAL_CONFIG_COMMAND:
+      {
+        *(resPacket + packet_length++) = TRIAL_CONFIG_RESPONSE;
+        //2 trial config bytes + 1 interval byte
+        ShimConfig_storedConfigGet(&resPacket[packet_length], NV_SD_TRIAL_CONFIG0, 3);
+        packet_length += 3;
+        break;
+      }
+      case GET_CENTER_COMMAND:
+      {
+        *(resPacket + packet_length++) = CENTER_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->masterEnable;
+        break;
+      }
+      case GET_SHIMMERNAME_COMMAND:
+      {
+        ShimConfig_setShimmerName();
+        uint8_t shimmer_name_len = strlen(ShimConfig_getStoredConfig()->shimmerName);
+        *(resPacket + packet_length++) = SHIMMERNAME_RESPONSE;
+        *(resPacket + packet_length++) = shimmer_name_len;
+        memcpy((resPacket + packet_length), &storedConfig->shimmerName[0], shimmer_name_len);
+        packet_length += shimmer_name_len;
+        break;
+      }
+      case GET_EXPID_COMMAND:
+      {
+        ShimConfig_setExpIdName();
+        uint8_t exp_id_name_len = strlen((char *) storedConfig->expIdName);
+        *(resPacket + packet_length++) = EXPID_RESPONSE;
+        *(resPacket + packet_length++) = exp_id_name_len;
+        memcpy((resPacket + packet_length), &storedConfig->expIdName[0], exp_id_name_len);
+        packet_length += exp_id_name_len;
+        break;
+      }
+      case GET_CONFIGTIME_COMMAND:
+      {
+        ShimConfig_setCfgTime();
+        char *configTimeTextPtr = ShimConfig_configTimeTextPtrGet();
+        uint8_t cfgtime_name_len = strlen(configTimeTextPtr);
+        *(resPacket + packet_length++) = CONFIGTIME_RESPONSE;
+        *(resPacket + packet_length++) = cfgtime_name_len;
+        memcpy((resPacket + packet_length), configTimeTextPtr, cfgtime_name_len);
+        packet_length += cfgtime_name_len;
+        break;
+      }
+      case GET_DIR_COMMAND:
+      {
+        fileNamePtr = ShimSd_fileNamePtrGet();
+        uint8_t dir_len = strlen((char *) fileNamePtr) - 3;
+        *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
+        *(resPacket + packet_length++) = DIR_RESPONSE;
+        *(resPacket + packet_length++) = dir_len;
+        memcpy((resPacket + packet_length), fileNamePtr, dir_len);
+        packet_length += dir_len;
+        break;
+      }
+      case GET_NSHIMMER_COMMAND:
+      {
+        *(resPacket + packet_length++) = NSHIMMER_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->numberOfShimmers;
+        break;
+      }
+      case GET_MYID_COMMAND:
+      {
+        *(resPacket + packet_length++) = MYID_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->myTrialID;
+        break;
+      }
+      case GET_WR_ACCEL_SAMPLING_RATE_COMMAND:
+      {
+        *(resPacket + packet_length++) = WR_ACCEL_SAMPLING_RATE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->wrAccelRate;
+        break;
+      }
+      case GET_WR_ACCEL_LPMODE_COMMAND:
+      {
+        *(resPacket + packet_length++) = WR_ACCEL_LPMODE_RESPONSE;
+        *(resPacket + packet_length++) = ShimConfig_wrAccelLpModeGet();
+        break;
+      }
+      case GET_WR_ACCEL_HRMODE_COMMAND:
+      {
+        *(resPacket + packet_length++) = WR_ACCEL_HRMODE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->wrAccelHrMode;
+        break;
+      }
+      case GET_GYRO_RANGE_COMMAND:
+      {
+        *(resPacket + packet_length++) = GYRO_RANGE_RESPONSE;
+        *(resPacket + packet_length++) = ShimConfig_gyroRangeGet();
+        break;
+        case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
+#if defined(SHIMMER3)
+          *(resPacket + packet_length++) = BMP180_CALIBRATION_COEFFICIENTS_RESPONSE;
+          if (isBmp180InUse())
+          {
+            memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP180_CALIB_DATA_SIZE);
+          }
+          else
+          {
+            //Dummy bytes sent if incorrect calibration bytes requested.
+            memset(resPacket + packet_length, 0x01, BMP180_CALIB_DATA_SIZE);
+          }
+          packet_length += BMP180_CALIB_DATA_SIZE;
+#elif defined(SHIMMER3R)
+          sendNack = 1;
+#endif
+          break;
+      }
+      case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
+      {
+#if defined(SHIMMER3)
+        *(resPacket + packet_length++) = BMP280_CALIBRATION_COEFFICIENTS_RESPONSE;
+        if (isBmp280InUse())
+        {
+          memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP280_CALIB_DATA_SIZE);
+        }
+        else
+        {
+          //Dummy bytes sent if incorrect calibration bytes requested.
+          memset(resPacket + packet_length, 0x01, BMP280_CALIB_DATA_SIZE);
+        }
+        packet_length += BMP280_CALIB_DATA_SIZE;
+#elif defined(SHIMMER3R)
+        sendNack = 1;
+#endif
+        break;
+      }
+      case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
+      {
+        bmpCalibByteLen = get_bmp_calib_data_bytes_len();
+        *(resPacket + packet_length++) = PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE;
+        *(resPacket + packet_length++) = 1U + bmpCalibByteLen;
+#if defined(SHIMMER3)
+        if (isBmp180InUse())
+        {
+          *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP180;
+        }
+        else if (isBmp280InUse())
+        {
+          *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP280;
+        }
+        else
+        {
+          *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
+        }
+#elif defined(SHIMMER3R)
+        *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
+#endif
+        memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
+        packet_length += bmpCalibByteLen;
+        break;
+      }
+      case GET_GYRO_SAMPLING_RATE_COMMAND:
+      {
+        *(resPacket + packet_length++) = GYRO_SAMPLING_RATE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->gyroRate;
+        break;
+      }
+      case GET_ALT_ACCEL_RANGE_COMMAND:
+      {
+#if defined(SHIMMER3)
+        *(resPacket + packet_length++) = ALT_ACCEL_RANGE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->altAccelRange;
+#elif defined(SHIMMER3R)
+        *(resPacket + packet_length++) = ALT_ACCEL_RANGE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->lnAccelRange;
+#endif
+        break;
+      }
+      case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
+      {
+        *(resPacket + packet_length++) = PRESSURE_OVERSAMPLING_RATIO_RESPONSE;
+        *(resPacket + packet_length++)
+            = ShimConfig_configBytePressureOversamplingRatioGet();
+        break;
+      }
+      case GET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
+      {
+        *(resPacket + packet_length++) = INTERNAL_EXP_POWER_ENABLE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->expansionBoardPower;
+        break;
+      }
+      case GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND:
+      {
+#if defined(SHIMMER3) || defined(SHIMMER4_SDK)
+        //Mag sensitivity adj feature is not present in ICM-20948
+        if (ShimBrd_isGyroInUseMpu9x50())
+        {
+          MPU9150_init();
+          MPU9150_wake(1);
+          MPU9150_wake(0);
+          *(resPacket + packet_length++) = MPU9150_MAG_SENS_ADJ_VALS_RESPONSE;
+          MPU9150_getMagSensitivityAdj(resPacket + packet_length);
+          packet_length += 3;
+        }
+        else
+        {
+          *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
+        }
 #else
-  gBtRxFifoPtr = getRxFifoPtr();
-  isRn4678CmdDetectedOnBoot = 0;
+        *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
+#endif
+        break;
+      }
+      case GET_CONFIG_SETUP_BYTES_COMMAND:
+      {
+        *(resPacket + packet_length++) = CONFIG_SETUP_BYTES_RESPONSE;
+        memcpy(resPacket + packet_length,
+            &storedConfig->rawBytes[NV_CONFIG_SETUP_BYTE0], 4);
+        packet_length += 4;
+        break;
+      }
+      case GET_BT_VERSION_STR_COMMAND:
+      {
+        btVerStrLen = ShimBt_getBtVerStrLen();
+        *(resPacket + packet_length++) = BT_VERSION_STR_RESPONSE;
+        *(resPacket + packet_length++) = btVerStrLen;
+        memcpy((resPacket + packet_length), ShimBt_getBtVerStrPtr(), btVerStrLen);
+        packet_length += btVerStrLen;
+        break;
+      }
+      case GET_GSR_RANGE_COMMAND:
+      {
+        *(resPacket + packet_length++) = GSR_RANGE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->gsrRange;
+        break;
+      }
+      case DEPRECATED_GET_DEVICE_VERSION_COMMAND:
+      case GET_DEVICE_VERSION_COMMAND:
+      {
+        *(resPacket + packet_length++) = DEVICE_VERSION_RESPONSE;
+        *(resPacket + packet_length++) = DEVICE_VER;
+        break;
+      }
+      case GET_FW_VERSION_COMMAND:
+      {
+        *(resPacket + packet_length++) = FW_VERSION_RESPONSE;
+        *(resPacket + packet_length++) = FW_IDENTIFIER & 0xFF;
+        *(resPacket + packet_length++) = (FW_IDENTIFIER & 0xFF00) >> 8;
+        *(resPacket + packet_length++) = FW_VER_MAJOR & 0xFF;
+        *(resPacket + packet_length++) = (FW_VER_MAJOR & 0xFF00) >> 8;
+        *(resPacket + packet_length++) = FW_VER_MINOR;
+        *(resPacket + packet_length++) = FW_VER_REL;
+        break;
+      }
+      case GET_CHARGE_STATUS_LED_COMMAND:
+      {
+        *(resPacket + packet_length++) = CHARGE_STATUS_LED_RESPONSE;
+        *(resPacket + packet_length++) = batteryStatus.battStat;
+        break;
+      }
+      case GET_BUFFER_SIZE_COMMAND:
+      {
+        *(resPacket + packet_length++) = BUFFER_SIZE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->bufferSize;
+        break;
+      }
+      case GET_UNIQUE_SERIAL_COMMAND:
+      {
+        *(resPacket + packet_length++) = UNIQUE_SERIAL_RESPONSE;
+#if defined(SHIMMER3)
+        memcpy((resPacket + packet_length), HAL_GetUID(), 8);
+        packet_length += 8;
+#elif defined(SHIMMER3R)
+        uint32_t uid[3];
+        uid[0] = HAL_GetUIDw0();
+        uid[1] = HAL_GetUIDw1();
+        uid[2] = HAL_GetUIDw2();
+        memcpy((resPacket + packet_length), (uint8_t *) &uid[0], 12);
+        packet_length += 12;
+#endif
+        break;
+      }
+      case GET_BT_COMMS_BAUD_RATE:
+      {
+        *(resPacket + packet_length++) = BT_COMMS_BAUD_RATE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->btCommsBaudRate;
+        break;
+      }
+      case GET_DERIVED_CHANNEL_BYTES:
+      {
+        *(resPacket + packet_length++) = DERIVED_CHANNEL_BYTES_RESPONSE;
+        ShimConfig_storedConfigGet(&resPacket[packet_length], NV_DERIVED_CHANNELS_0, 3);
+        packet_length += 3;
+        ShimConfig_storedConfigGet(&resPacket[packet_length], NV_DERIVED_CHANNELS_3, 5);
+        packet_length += 5;
+        break;
+      }
+      case GET_RWC_COMMAND:
+      {
+        temp_rtcCurrentTime = getRwcTime();
+        *(resPacket + packet_length++) = RWC_RESPONSE;
+        memcpy(resPacket + packet_length, (uint8_t *) (&temp_rtcCurrentTime), 8);
+        packet_length += 8;
+        break;
+      }
+      case GET_ALL_CALIBRATION_COMMAND:
+      {
+        *(resPacket + packet_length++) = ALL_CALIBRATION_RESPONSE;
+
+        packet_length += ShimBt_replySingleSensorCalibCmd(
+            GET_LN_ACCEL_CALIBRATION_COMMAND, &resPacket[packet_length]);
+
+        packet_length += ShimBt_replySingleSensorCalibCmd(
+            GET_GYRO_CALIBRATION_COMMAND, &resPacket[packet_length]);
+
+        packet_length += ShimBt_replySingleSensorCalibCmd(
+            GET_MAG_CALIBRATION_COMMAND, &resPacket[packet_length]);
+
+        packet_length += ShimBt_replySingleSensorCalibCmd(
+            GET_WR_ACCEL_CALIBRATION_COMMAND, &resPacket[packet_length]);
+
+#if defined(SHIMMER3R)
+        packet_length += ShimBt_replySingleSensorCalibCmd(
+            GET_ALT_ACCEL_CALIBRATION_COMMAND, &resPacket[packet_length]);
+
+        packet_length += ShimBt_replySingleSensorCalibCmd(
+            GET_ALT_MAG_CALIBRATION_COMMAND, &resPacket[packet_length]);
+#endif
+        break;
+      }
+      case GET_LN_ACCEL_CALIBRATION_COMMAND:
+      case GET_GYRO_CALIBRATION_COMMAND:
+      case GET_MAG_CALIBRATION_COMMAND:
+      case GET_WR_ACCEL_CALIBRATION_COMMAND:
+      case GET_ALT_ACCEL_CALIBRATION_COMMAND:
+      case GET_ALT_MAG_CALIBRATION_COMMAND:
+      {
+        *(resPacket + packet_length++)
+            = ShimBt_getExpectedRspForGetCmd(getCmdWaitingResponse);
+        packet_length += ShimBt_replySingleSensorCalibCmd(
+            getCmdWaitingResponse, &resPacket[packet_length]);
+        break;
+      }
+      case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
+      {
+        *(resPacket + packet_length++) = ALT_ACCEL_SAMPLING_RATE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->altAccelRate;
+        break;
+      }
+      case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
+      {
+        *(resPacket + packet_length++) = ALT_MAG_SAMPLING_RATE_RESPONSE;
+        *(resPacket + packet_length++) = storedConfig->altMagRate;
+        break;
+      }
+      case GET_EXG_REGS_COMMAND:
+      {
+        *(resPacket + packet_length++) = EXG_REGS_RESPONSE;
+        *(resPacket + packet_length++) = exgLength;
+        if (exgLength)
+        {
+          if (exgChip)
+          {
+            memcpy((resPacket + packet_length),
+                &storedConfig->exgADS1292rRegsCh2.rawBytes[exgStartAddr], exgLength);
+          }
+          else
+          {
+            memcpy((resPacket + packet_length),
+                &storedConfig->exgADS1292rRegsCh1.rawBytes[exgStartAddr], exgLength);
+          }
+          packet_length += exgLength;
+        }
+        break;
+      }
+      case GET_CALIB_DUMP_COMMAND:
+      {
+        *(resPacket + packet_length++) = RSP_CALIB_DUMP_COMMAND;
+        *(resPacket + packet_length++) = calibRamLength;
+        *(resPacket + packet_length++) = calibRamOffset & 0xff;
+        *(resPacket + packet_length++) = (calibRamOffset >> 8) & 0xff;
+        ShimCalib_ramRead(resPacket + packet_length, calibRamLength, calibRamOffset);
+        packet_length += calibRamLength;
+        break;
+      }
+      case SET_DATA_RATE_TEST:
+      {
+        /* Start test after ACK is sent - this will be handled by the
+         * interrupt after ACK byte is transmitted */
+        if (args[0] != 0)
+        {
+          ShimBt_setDataRateTestState(1);
+        }
+        break;
+      }
+      case GET_DAUGHTER_CARD_ID_COMMAND:
+      {
+        *(resPacket + packet_length++) = DAUGHTER_CARD_ID_RESPONSE;
+        *(resPacket + packet_length++) = dcMemLength;
+        eepromRead(dcMemOffset, dcMemLength, resPacket + packet_length);
+        packet_length += dcMemLength;
+        break;
+      }
+      case GET_DAUGHTER_CARD_MEM_COMMAND:
+      {
+        *(resPacket + packet_length++) = DAUGHTER_CARD_MEM_RESPONSE;
+        *(resPacket + packet_length++) = dcMemLength;
+        if (!shimmerStatus.sensing)
+        {
+          eepromRead(dcMemOffset + 16U, dcMemLength, resPacket + packet_length);
+        }
+        else
+        {
+          memset(resPacket + packet_length, 0xff, dcMemLength);
+        }
+        packet_length += dcMemLength;
+        break;
+      }
+      case GET_INFOMEM_COMMAND:
+      {
+        *(resPacket + packet_length++) = INFOMEM_RESPONSE;
+        *(resPacket + packet_length++) = infomemLength;
+        ShimConfig_storedConfigGet(&resPacket[packet_length], infomemOffset, infomemLength);
+        packet_length += infomemLength;
+        break;
+      }
+#if defined(SHIMMER4_SDK)
+      case GET_I2C_BATT_STATUS_COMMAND:
+      {
+        *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
+        *(resPacket + packet_length++) = RSP_I2C_BATT_STATUS_COMMAND;
+        memcpy((resPacket + packet_length),
+            (uint8_t *) shimmerStatus.battDigital, STC3100_DATA_LEN);
+        packet_length += STC3100_DATA_LEN;
+        break
+      }
 #endif
 
-  memset(btVerStrResponse, 0x00, sizeof(btVerStrResponse) / sizeof(btVerStrResponse[0]));
+      default:
+      {
+        break;
+      }
+    }
+    getCmdWaitingResponse = 0;
 
-  setBtDataRateTestState(0);
-}
-
-void triggerBtRfCommStateChangeCallback(bool state)
-{
-  if (handleBtRfCommStateChange_cb)
-  {
-    handleBtRfCommStateChange_cb(state);
+    uint8_t crcMode = ShimBt_getCrcMode();
+    if (crcMode != CRC_OFF)
+    {
+      calculateCrcAndInsert(crcMode, resPacket, packet_length);
+      packet_length += crcMode;
+    }
+    ShimBt_writeToTxBufAndSend(resPacket, packet_length, SHIMMER_CMD);
   }
 }
 
-void triggerShimmerErrorState(void)
+uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd)
 {
-  while (1)
+  switch (getCmd)
   {
-    Board_ledOff(LED_ALL);
-    _delay_cycles(24000000);
-    Board_ledOn(LED_YELLOW);
-    _delay_cycles(12000000);
-    Board_ledOn(LED_RED);
-    _delay_cycles(12000000);
-    Board_ledOn(LED_BLUE);
-    _delay_cycles(12000000);
-    Board_ledOn(LED_GREEN1);
-    _delay_cycles(12000000);
+    case GET_LN_ACCEL_CALIBRATION_COMMAND:
+      return LN_ACCEL_CALIBRATION_RESPONSE;
+    case GET_GYRO_CALIBRATION_COMMAND:
+      return GYRO_CALIBRATION_RESPONSE;
+    case GET_MAG_CALIBRATION_COMMAND:
+      return MAG_CALIBRATION_RESPONSE;
+    case GET_WR_ACCEL_CALIBRATION_COMMAND:
+      return WR_ACCEL_CALIBRATION_RESPONSE;
+    case GET_ALT_ACCEL_CALIBRATION_COMMAND:
+      return ALT_ACCEL_CALIBRATION_RESPONSE;
+    case GET_ALT_MAG_CALIBRATION_COMMAND:
+      return ALT_MAG_CALIBRATION_RESPONSE;
+    default:
+      return 0;
   }
 }
 
-uint8_t getBtVerStrLen(void)
-{
-  return strlen(btVerStrResponse);
-}
-
-char *getBtVerStrPtr(void)
-{
-  return &btVerStrResponse[0];
-}
-
-void setBtCrcMode(COMMS_CRC_MODE btCrcModeNew)
+void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew)
 {
   btCrcMode = btCrcModeNew;
+#if defined(SHIMMER3R)
+  //TODO turn on/off peripheral when needed to save power
+  //if (btCrcMode == CRC_OFF)
+  //{
+  //  HAL_CRC_DeInit(hcrc);
+  //}
+  //else
+  //{
+  //  MX_CRC_Init();
+  //}
+#endif
 }
 
-COMMS_CRC_MODE getBtCrcMode(void)
+COMMS_CRC_MODE ShimBt_getCrcMode(void)
 {
   return btCrcMode;
 }
 
-void setBtDataRateTestState(uint8_t state)
+void ShimBt_macIdSetFromStr(uint8_t *macIdStrMsbOrder)
 {
-  btDataRateTestState = state;
-  btDataRateTestCounter = 0;
-
-  BT_setSendNextChar_cb(btDataRateTestState == 1 ? loadBtTxBufForDataRateTest : 0);
-}
-
-void loadBtTxBufForDataRateTest(void)
-{
-  uint16_t spaceInTxBuf = getSpaceInBtTxBuf();
-  if (spaceInTxBuf > DATA_RATE_TEST_PACKET_SIZE)
+  ShimBt_macIdVarsReset();
+  memcpy(macIdStr, macIdStrMsbOrder, 12);
+  uint8_t i, pchar[3];
+  pchar[2] = 0;
+  for (i = 0; i < 6; i++)
   {
-    pushByteToBtTxBuf(DATA_RATE_TEST_RESPONSE);
-    pushBytesToBtTxBuf((uint8_t *) &btDataRateTestCounter, sizeof(btDataRateTestCounter));
-    btDataRateTestCounter++;
+    pchar[0] = macIdStr[i * 2];
+    pchar[1] = macIdStr[i * 2 + 1];
+    macIdBytes[i] = strtoul((char *) pchar, 0, 16);
   }
 }
 
-uint8_t BT_getMacAddressAscii(char *macAscii)
+void ShimBt_macIdSetFromBytes(uint8_t *macIdBytesLsbOrder)
 {
-  memcpy(macAscii, getMacIdStrPtr(), 12);
+  ShimBt_macIdVarsReset();
+  memcpy(&macIdBytes[0], macIdBytesLsbOrder, sizeof(macIdBytes));
+
+  ShimUtil_reverseArray(&macIdBytes[0], sizeof(macIdBytes));
+
+  (void) sprintf(macIdStr, "%02X%02X%02X%02X%02X%02X", macIdBytes[0],
+      macIdBytes[1], macIdBytes[2], macIdBytes[3], macIdBytes[4], macIdBytes[5]);
+}
+
+char *ShimBt_macIdStrPtrGet(void)
+{
+  return &macIdStr[0];
+}
+
+uint8_t *ShimBt_macIdBytesPtrGet(void)
+{
+  return &macIdBytes[0];
+}
+
+void ShimBt_macIdVarsReset(void)
+{
+  memset(macIdStr, 0x00, sizeof(macIdStr) / sizeof(macIdStr[0]));
+  memset(macIdBytes, 0x00, sizeof(macIdBytes) / sizeof(macIdBytes[0]));
+}
+
+void ShimBt_instreamStatusRespSend(void)
+{
+  if (shimmerStatus.btConnected)
+  {
+    uint8_t i = 0;
+    uint8_t selfcmd[6]; /* max is 6 bytes */
+
+    if (useAckPrefixForInstreamResponses)
+    {
+      selfcmd[i++] = ACK_COMMAND_PROCESSED;
+    }
+    selfcmd[i++] = INSTREAM_CMD_RESPONSE;
+    selfcmd[i++] = STATUS_RESPONSE;
+    selfcmd[i++] = (shimmerStatus.toggleLedRedCmd << 7)
+        | (shimmerStatus.sdBadFile << 6) | (shimmerStatus.sdInserted << 5)
+        | (shimmerStatus.btStreaming << 4) | (shimmerStatus.sdLogging << 3)
+        | (isRwcTimeSet() << 2) | (shimmerStatus.sensing << 1) | shimmerStatus.docked;
+
+    uint8_t crcMode = ShimBt_getCrcMode();
+    if (crcMode != CRC_OFF)
+    {
+      calculateCrcAndInsert(crcMode, &selfcmd[0], i);
+      i += crcMode; //Ordinal of enum is how many bytes are used
+    }
+
+    ShimBt_writeToTxBufAndSend(selfcmd, i, SHIMMER_CMD);
+  }
+  ShimBt_instreamStatusRespPendingSet(0);
+}
+
+void ShimBt_instreamStatusRespPendingSet(uint8_t state)
+{
+  instreamStatusRespPending = state;
+}
+
+uint8_t ShimBt_instreamStatusRespPendingGet(void)
+{
+  return instreamStatusRespPending;
+}
+
+void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
+{
+#if defined(SHIMMER3)
+  shimmerStatus.btConnected = isConnected;
+  BT_rst_MessageProgress();
+
+  updateBtConnectionStatusInterruptDirection();
+#endif
+
+  if (isConnected)
+  { //BT is connected
+    ShimBt_resetBtRxVariablesOnConnect();
+
+    if (shimmerStatus.sdSyncEnabled)
+    {
+      shimmerStatus.btstreamReady = 0;
+    }
+    else
+    {
+      shimmerStatus.btstreamReady = 1;
+
+#if defined(SHIMMER3)
+      setDmaWaitingForResponseIfStatusStrDisabled();
+#endif
+    }
+
+    if (ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER)
+    {
+      //center sends sync packet and is waiting for response
+      if (ShimSdSync_isBtSdSyncRunning())
+      {
+#if defined(SHIMMER3)
+        /* Only need to charge up the DMA if status strings aren't enabled. Otherwise this is handled within the setup/DMA code. */
+        setDmaWaitingForResponseIfStatusStrDisabled();
+#endif
+        ShimSdSync_centerT10();
+      }
+    }
+    else
+    {
+      ShimSdSync_resetSyncRcNodeR10Cnt();
+      //node is waiting for 1 byte ROUTINE_COMMUNICATION(0xE0)
+#if defined(SHIMMER3)
+      /* Only need to charge up the DMA if status strings aren't enabled. Otherwise this is handled within the setup/DMA code. */
+      setDmaWaitingForResponseIfStatusStrDisabled();
+#endif
+    }
+  }
+  else
+  { //BT is disconnected
+    shimmerStatus.btstreamReady = 0;
+    shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
+
+    ShimBt_setDataRateTestState(0);
+
+    ShimBt_clearBtTxBuf(0);
+
+    ShimBt_setCrcMode(CRC_OFF);
+    /* Revert to default state if changed */
+    ShimBt_resetBtResponseVars();
+
+    /* Check BT module configuration after disconnection in case
+     * sensor configuration (i.e., BT on vs. BT off vs. SD Sync) was changed
+     *  during the last connection. */
+    ShimConfig_checkBtModeFromConfig();
+  }
+
+  if (!shimmerStatus.sensing)
+  {
+    ShimTask_set(TASK_SDLOG_CFG_UPDATE);
+  }
+}
+
+volatile uint8_t *ShimBt_getBtActionPtr(void)
+{
+  return &gAction;
+}
+
+uint8_t *ShimBt_getBtArgsPtr(void)
+{
+  return &args[0];
+}
+
+void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain)
+{
+  //uint16_t i;
+  /* We don't want to be clearing the TX buffer if main is in the middle to
+   * streaming bytes to it */
+  if (isCalledFromMain)
+  {
+    RINGFIFO_RESET(gBtTxFifo);
+
+    //Reset all bytes in the buffer -> only used during debugging
+    //memset(gBtTxFifo.data, 0x00, sizeof(gBtTxFifo.data) /
+    //sizeof(gBtTxFifo.data[0])); for(i=BT_TX_BUF_SIZE-1;i<BT_TX_BUF_SIZE;i--)
+    //{
+    //*(&gBtTxFifo.data[0]+i) = 0xFF;
+    //}
+  }
+  else
+  {
+    ShimTask_set(TASK_BT_TX_BUF_CLEAR);
+  }
+}
+
+uint8_t ShimBt_isBtTxBufEmpty(void)
+{
+  return RINGFIFO_EMPTY(gBtTxFifo);
+}
+
+void ShimBt_pushByteToBtTxBuf(uint8_t c)
+{
+  if (!RINGFIFO_FULL(gBtTxFifo, BT_TX_BUF_MASK))
+  {
+    RINGFIFO_WR(gBtTxFifo, c, BT_TX_BUF_MASK);
+  }
+}
+
+void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
+{
+  uint8_t i;
+  for (i = 0; i < len; i++)
+  {
+    ShimBt_pushByteToBtTxBuf(*(buf + i));
+  }
+
+  ///* if enough space at after head, copy it in */
+  //uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx &
+  //BT_TX_BUF_MASK); if (spaceAfterHead > len)
+  //{
+  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //  buf, len); gBtTxFifo.wrIdx += len;
+  //}
+  //else
+  //{
+  //  /* Fill from head to end of buf */
+  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //  buf, spaceAfterHead); gBtTxFifo.wrIdx += spaceAfterHead;
+  //
+  //  /* Fill from start of buf. We already checked above whether there is
+  //   * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
+  //   * worry about the tail position. */
+  //  uint16_t remaining = len - spaceAfterHead;
+  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //      buf + spaceAfterHead, remaining);
+  //  gBtTxFifo.wrIdx += remaining;
+  //}
+}
+
+uint8_t ShimBt_popBytefromBtTxBuf(void)
+{
+  uint8_t txByte = 0;
+  RINGFIFO_RD(gBtTxFifo, txByte, BT_TX_BUF_MASK);
+  return txByte;
+}
+
+uint16_t ShimBt_getUsedSpaceInBtTxBuf(void)
+{
+  return RINGFIFO_COUNT(gBtTxFifo, BT_TX_BUF_MASK);
+}
+
+uint16_t ShimBt_getSpaceInBtTxBuf(void)
+{
+  //Minus 1 as we always need to leave 1 empty byte in the rolling buffer
+  return BT_TX_BUF_SIZE - 1 - ShimBt_getUsedSpaceInBtTxBuf();
+}
+
+void ShimBt_TxCpltCallback(void)
+{
+  if (shimmerStatus.btConnected
+#if defined(SHIMMER3)
+      || areBtSetupCommandsRunning())
+#else
+  )
+#endif
+  {
+    if (btDataRateTestState)
+    {
+      ShimBt_loadTxBufForDataRateTest();
+    }
+    else
+    {
+      ShimBt_sendNextChar();
+    }
+  }
+  else
+  {
+    ShimBt_clearBtTxBuf(0);
+  }
+}
+
+void ShimBt_sendNextCharIfNotInProgress(void)
+{
+  if (!ShimBt_btTxInProgressGet())
+  {
+    ShimBt_sendNextChar();
+  }
+}
+
+void ShimBt_sendNextChar(void)
+{
+  if (!ShimBt_isBtTxBufEmpty()
+#if defined(SHIMMER3)
+#if BT_FLUSH_TX_BUF_IF_RN4678_RTS_LOCK_DETECTED
+            && (rn4678RtsLockDetected || !isBtModuleOverflowPinHigh())
+#else
+      && !isBtModuleOverflowPinHigh())
+#endif
+#else
+  )
+#endif
+  {
+    ShimBt_btTxInProgressSet(1);
+
+#if defined(SHIMMER3)
+    uint8_t buf = ShimBt_popBytefromBtTxBuf();
+    BtTransmit(&buf, 1);
+#else
+    HAL_StatusTypeDefShimmer ret_val;
+    uint8_t numBytes;
+
+    uint8_t rdIdx = (gBtTxFifo.rdIdx & BT_TX_BUF_MASK);
+    uint8_t wrIdx = (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
+
+    if (rdIdx < wrIdx)
+    {
+      numBytes = wrIdx - rdIdx;
+    }
+    else
+    {
+      numBytes = BT_TX_BUF_SIZE - rdIdx;
+    }
+    gBtTxFifo.rdIdx += numBytes;
+    ret_val = BtTransmit((uint8_t *) &gBtTxFifo.data[rdIdx], numBytes);
+#endif
+  }
+  else
+  {
+    ShimBt_btTxInProgressSet(0); //false
+  }
+}
+
+void ShimBt_btTxInProgressSet(uint8_t state)
+{
+  btTxInProgress = state;
+}
+
+uint8_t ShimBt_btTxInProgressGet(void)
+{
+  return btTxInProgress;
+}
+
+void ShimBt_setDataRateTestState(uint8_t state)
+{
+  btDataRateTestState = state;
+#if defined(SHIMMER3)
+  btDataRateTestCounter = 0;
+#else
+  *((uint32_t *) &dataRateTestTxPacket[1]) = 0;
+#endif
+}
+
+uint8_t ShimBt_getDataRateTestState(void)
+{
+  return btDataRateTestState;
+}
+
+void ShimBt_loadTxBufForDataRateTest(void)
+{
+#if defined(SHIMMER3)
+  uint16_t spaceInTxBuf = ShimBt_getSpaceInBtTxBuf();
+  if (spaceInTxBuf > DATA_RATE_TEST_PACKET_SIZE)
+  {
+    ShimBt_pushByteToBtTxBuf(DATA_RATE_TEST_RESPONSE);
+    ShimBt_pushBytesToBtTxBuf(
+        (uint8_t *) &btDataRateTestCounter, sizeof(btDataRateTestCounter));
+    btDataRateTestCounter++;
+  }
+  ShimBt_sendNextChar();
+#else
+  HAL_StatusTypeDefShimmer ret_val
+      = BtTransmit(&dataRateTestTxPacket[0], sizeof(dataRateTestTxPacket));
+  (*((uint32_t *) &dataRateTestTxPacket[1]))++;
+#endif
+}
+
+#if defined(SHIMMER3R)
+uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType)
+{
+  if (ShimBt_getSpaceInBtTxBuf() <= len)
+  {
+    return 1; //fail
+  }
+
+  ShimBt_pushBytesToBtTxBuf(buf, len);
+
+  ShimBt_sendNextCharIfNotInProgress();
+
   return 0;
 }
+#endif

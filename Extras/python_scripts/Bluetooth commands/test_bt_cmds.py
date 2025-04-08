@@ -1260,7 +1260,7 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
         self.shimmer.bluetooth_port.wait_for_ack(2000)
         end = "//***************************** TEST END *************************************//\r\n"
         while True:
-            response = self.shimmer.bluetooth_port.ser.readline().decode('cp1252')
+            response = self.shimmer.bluetooth_port.ser.readline().decode('utf-8')
             print(response, end='')
             if response == end:
                 print(Fore.LIGHTMAGENTA_EX + "Factory Test End")

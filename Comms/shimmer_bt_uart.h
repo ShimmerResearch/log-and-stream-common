@@ -8,6 +8,8 @@
 #ifndef SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_
 #define SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_
 
+#include <stdint.h>
+
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_CRC.h"
@@ -16,7 +18,9 @@
 #include "shimmer_definitions.h"
 #include <shimmer_include.h>
 #endif
-#include <stdint.h>
+
+#define BT_TX_BUF_SIZE                              256U /* serial buffer in bytes (power 2)  */
+#define BT_TX_BUF_MASK                              (BT_TX_BUF_SIZE - 1UL)
 
 /* maximum number of arguments for any command sent (daughter card mem write) */
 #define MAX_COMMAND_ARG_SIZE                        131
@@ -185,17 +189,41 @@
 #define PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE    0xA6
 #define GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND 0xA7
 #define SET_FACTORY_TEST                              0xA8
-#if !USE_OLD_SD_SYNC_APPROACH
-#define SET_SD_SYNC_COMMAND 0xE0
-#define SD_SYNC_RESPONSE    0xE1
-#endif
-#define NACK_COMMAND_PROCESSED     0xFE
-#define ACK_COMMAND_PROCESSED      0xFF
+#define SET_ALT_ACCEL_CALIBRATION_COMMAND             0xA9
+#define ALT_ACCEL_CALIBRATION_RESPONSE                0xAA
+#define GET_ALT_ACCEL_CALIBRATION_COMMAND             0xAB
+#define SET_ALT_ACCEL_SAMPLING_RATE_COMMAND           0xAC
+#define ALT_ACCEL_SAMPLING_RATE_RESPONSE              0xAD
+#define GET_ALT_ACCEL_SAMPLING_RATE_COMMAND           0xAE
+#define SET_ALT_MAG_CALIBRATION_COMMAND               0xAF
+#define ALT_MAG_CALIBRATION_RESPONSE                  0xB0
+#define GET_ALT_MAG_CALIBRATION_COMMAND               0xB1
+#define SET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB2
+#define ALT_MAG_SAMPLING_RATE_RESPONSE                0xB3
+#define GET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB4
+#define SET_SD_SYNC_COMMAND                           0xE0
+#define SD_SYNC_RESPONSE                              0xE1
+#define NACK_COMMAND_PROCESSED                        0xFE
+#define ACK_COMMAND_PROCESSED                         0xFF
 
 //#define BT_RX_COMMS_TIMEOUT_TICKS                     3277U /* 32768*0.1s = 3276.8 */
-#define BT_RX_COMMS_TIMEOUT_TICKS  328U /* 32768*0.01s = 327.68  */
+#define BT_RX_COMMS_TIMEOUT_TICKS                     328U /* 32768*0.01s = 327.68  */
 
-#define DATA_RATE_TEST_PACKET_SIZE 5U //1 header byte + uint32_t counter value
+#define DATA_RATE_TEST_PACKET_SIZE                    5U //1 header byte + uint32_t counter value
+
+enum
+{
+  BT_STREAM_CMD_STATE_IDLE = 0,
+  BT_STREAM_CMD_STATE_START = 1,
+  BT_STREAM_CMD_STATE_STOP = 2
+};
+
+enum
+{
+  SD_LOG_CMD_STATE_IDLE = 0,
+  SD_LOG_CMD_STATE_START = 1,
+  SD_LOG_CMD_STATE_STOP = 2
+};
 
 enum
 {
@@ -204,62 +232,84 @@ enum
   PRESSURE_SENSOR_BMP390 = 2
 };
 
-#if BT_DMA_USED_FOR_RX
+typedef enum
+{
+  BT_SETUP,
+  SHIMMER_CMD,
+  SENSOR_DATA
+} btResponseType;
+
+typedef struct
+{
+  uint8_t data[BT_TX_BUF_SIZE];
+  //tail points to the buffer index for the oldest byte that was added to it
+  uint16_t rdIdx;
+  //head points to the index of the next empty byte in the buffer
+  uint16_t wrIdx;
+} RingFifoTx_t;
+
+void ShimBt_btCommsProtocolInit(void);
+void ShimBt_resetBtResponseVars(void);
+void ShimBt_resetBtRxVariablesOnConnect(void);
 #if defined(SHIMMER3)
-uint8_t Dma2ConversionDone(void);
-uint8_t parseRn4678Status(void);
+void ShimBt_resetBtRxBuff(void);
+#endif
+#if defined(SHIMMER3)
+uint8_t ShimBt_dmaConversionDone(void);
+uint8_t ShimBt_parseRn4678Status(void);
 #elif defined(SHIMMER3R)
-uint8_t Dma2ConversionDone(uint8_t *rxBuff);
+uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff);
 #endif
-void resetBtRxVariablesOnConnect(void);
-#if defined(SHIMMER3)
-void resetBtRxBuff(void);
-#endif
-#else
-void processBtUartBuf(void);
-void handleBtRxTimeout(void);
-uint8_t hasBtRxTimeoutOccurred(void);
-void processStartRnCmdResponse(void);
-uint8_t wasStartBtCmdModeSentAndReponseReceived(void);
-//uint8_t waitingForRnBtCmdResponse(void);
-//uint8_t isExpectedRnBtCmdResponseInFifo(void);
-void clearBytesFromBtRxBuf(uint16_t numBytes);
-uint8_t getRxByteAtIndex(uint16_t index);
-uint8_t processStatusString(void);
-uint8_t isBtRxBufLike(char statStrCheck[], uint8_t numCharTolerance);
-uint8_t processRnCmdResponse(void);
-uint8_t isFullRN4678CmdResponseReceived(void);
-void clearBtCmdTxRxBuffsAndProceed(void);
-uint8_t processShimmerBtCmd(void);
-void readActionAndArgBytes(uint8_t numArgs);
-uint8_t isNewLineDetectedInBtRxBuf(void);
-uint8_t isShimmerBtCmd(uint8_t data);
-void updateNumBytesInBtRxBufWhenLastProcessed(void);
-uint16_t getNumBytesInBtRxBufWhenLastProcessed(void);
-uint8_t areUnprocessedBytesInBtRxBuff(void);
-#endif
+uint8_t ShimBt_isWaitingForArgs(void);
+uint8_t ShimBt_getBtVerStrLen(void);
+char *ShimBt_getBtVerStrPtr(void);
 
-#if defined(SHIMMER3)
-void btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void),
-    void (*handleBtRfCommStateChangeCb)(uint8_t),
-    void (*setMacIdCb)(uint8_t *),
-    uint8_t *actionPtr,
-    uint8_t *argsPtr);
-#else
-void btCommsProtocolInit(uint8_t (*newBtCmdToProcessCb)(void));
-#endif
-#if defined(SHIMMER3)
-void triggerBtRfCommStateChangeCallback(bool state);
-void triggerShimmerErrorState(void);
-#endif
-uint8_t getBtVerStrLen(void);
-char *getBtVerStrPtr(void);
+void ShimBt_processCmd(void);
+void ShimBt_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, uint16_t len);
+void ShimBt_calibrationChangeCommon(uint16_t configByteIdx,
+    uint16_t sdHeaderIdx,
+    uint8_t *configBytePtr,
+    uint8_t *newCalibPtr,
+    uint8_t sensorCalibId);
+void ShimBt_updateCalibDumpFile(void);
+uint8_t ShimBt_replySingleSensorCalibCmd(uint8_t cmdWaitingResponse, uint8_t *resPacketPtr);
+void ShimBt_sendRsp(void);
+uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd);
 
-void setBtCrcMode(COMMS_CRC_MODE btCrcModeNew);
-COMMS_CRC_MODE getBtCrcMode(void);
+void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew);
+COMMS_CRC_MODE ShimBt_getCrcMode(void);
 
-void setBtDataRateTestState(uint8_t state);
-void loadBtTxBufForDataRateTest(void);
-uint8_t BT_getMacAddressAscii(char *macAscii);
+void ShimBt_macIdSetFromStr(uint8_t *macIdStrMsbOrder);
+void ShimBt_macIdSetFromBytes(uint8_t *macIdBytesLsbOrder);
+char *ShimBt_macIdStrPtrGet(void);
+uint8_t *ShimBt_macIdBytesPtrGet(void);
+void ShimBt_macIdVarsReset(void);
+void ShimBt_instreamStatusRespSend(void);
+void ShimBt_instreamStatusRespPendingSet(uint8_t state);
+uint8_t ShimBt_instreamStatusRespPendingGet(void);
+void ShimBt_handleBtRfCommStateChange(uint8_t isConnected);
+volatile uint8_t *ShimBt_getBtActionPtr(void);
+uint8_t *ShimBt_getBtArgsPtr(void);
+
+void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain);
+uint8_t ShimBt_isBtTxBufEmpty(void);
+void ShimBt_pushByteToBtTxBuf(uint8_t b);
+void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len);
+uint8_t ShimBt_popBytefromBtTxBuf(void);
+uint16_t ShimBt_getUsedSpaceInBtTxBuf(void);
+uint16_t ShimBt_getSpaceInBtTxBuf(void);
+
+void ShimBt_TxCpltCallback(void);
+void ShimBt_sendNextCharIfNotInProgress(void);
+void ShimBt_sendNextChar(void);
+
+void ShimBt_btTxInProgressSet(uint8_t state);
+uint8_t ShimBt_btTxInProgressGet(void);
+void ShimBt_setDataRateTestState(uint8_t state);
+uint8_t ShimBt_getDataRateTestState(void);
+void ShimBt_loadTxBufForDataRateTest(void);
+#if defined(SHIMMER3R)
+uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType);
+#endif
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */

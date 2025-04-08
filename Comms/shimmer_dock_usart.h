@@ -91,10 +91,10 @@
 #define UART_CMD_RDT              7
 #define UART_CMD_TIM              8
 
-void DockUart_resetVariables(void);
-uint8_t DockUart_rxCallback(uint8_t data);
-void DockUart_processCmd(void);
-void DockUart_sendRsp(void);
-uint8_t UartCheckCrc(uint8_t len);
+void ShimDock_resetVariables(void);
+uint8_t ShimDock_rxCallback(uint8_t data);
+void ShimDock_processCmd(void);
+void ShimDock_sendRsp(void);
+uint8_t ShimDock_uartCheckCrc(uint8_t len);
 
 #endif /* SHIMMER3_COMMON_SOURCE_DOCK_SHIMMER_DOCK_COMMS_H_ */

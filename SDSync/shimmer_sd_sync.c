@@ -7,18 +7,27 @@
  *      Author: Mark Nolan
  */
 
-#include <SDSync/shimmer_sd_sync.h>
+#include "shimmer_sd_sync.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <Configuration/shimmer_config.h>
+#include <SDCard/shimmer_sd_header.h>
+#include <TaskList/shimmer_taskList.h>
+#include <log_and_stream_externs.h>
+
+#if defined(SHIMMER3)
 #include "msp430.h"
 
-#include "../../shimmer3_common_source/RN4X/RN4X.h"
+#include "../../Shimmer_Driver/RN4X/RN4X.h"
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_RTC.h"
 #include "Comms/shimmer_bt_uart.h"
-#include "log_and_stream_externs.h"
+#elif defined(SHIMMER3R)
+#include "shimmer_definitions.h"
+#endif
 
 uint8_t nodeName[MAX_NODES][MAX_CHARS], shortExpFlag;
 uint8_t syncNodeCnt, syncNodeNum, syncThis, syncNodeSucc, nReboot, currNodeSucc, cReboot;
@@ -40,110 +49,108 @@ uint8_t myTimeDiff[SYNC_PACKET_PAYLOAD_SIZE];
 //TODO figure out how best to do away with the need for externs
 void (*btStartCb)(void);
 void (*btStopCb)(uint8_t);
-uint8_t (*taskSetCb)(TASK_FLAGS);
 
-extern uint8_t onSingleTouch, stopLogging;
-extern uint8_t sdHeadText[SDHEAD_LEN];
+#if defined(SHIMMER3)
 extern uint8_t all0xff[7U];
+#elif defined(SHIMMER3R)
+static uint8_t all0xff[7U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+#endif
 
-void sdSyncInit(void (*btStart_cb)(void),
-    void (*btStop_cb)(uint8_t),
-    uint8_t (*taskSet_cb)(TASK_FLAGS))
+void ShimSdSync_init(void (*btStart_cb)(void), void (*btStop_cb)(uint8_t))
 {
   btSdSyncIsRunning = 0;
 
   btStartCb = btStart_cb;
   btStopCb = btStop_cb;
-  taskSetCb = taskSet_cb;
 
   firstOutlier = 1;
 
-  resetSyncVariablesNode();
-  resetSyncVariablesCenter();
-  resetSyncNodeArray();
-  resetSyncRcNodeR10Cnt();
-  resetSyncVariablesBeforeParseConfig();
-  resetSyncVariablesDuringSyncStart();
+  ShimSdSync_resetSyncVariablesNode();
+  ShimSdSync_resetSyncVariablesCenter();
+  ShimSdSync_resetSyncNodeArray();
+  ShimSdSync_resetSyncRcNodeR10Cnt();
+  ShimSdSync_resetSyncVariablesBeforeParseConfig();
+  ShimSdSync_resetSyncVariablesDuringSyncStart();
 }
 
-void resetMyTimeDiff(void)
+void ShimSdSync_resetMyTimeDiff(void)
 {
   memset(myTimeDiff, 0xff, sizeof(myTimeDiff));
 }
 
-void resetMyTimeDiffArrays(void)
+void ShimSdSync_resetMyTimeDiffArrays(void)
 {
   memset(myTimeDiffFlagArr, 0xff, sizeof(myTimeDiffFlagArr));
   memset(myTimeDiffArr, 0, sizeof(myTimeDiffArr));
 }
 
-void resetMyTimeDiffLongMin(void)
+void ShimSdSync_resetMyTimeDiffLongMin(void)
 {
   myTimeDiffLongMin = 0;
   myTimeDiffLongFlagMin = 0;
 }
 
-uint8_t *getMyTimeDiffPtr(void)
+uint8_t *ShimSdSync_myTimeDiffPtrGet(void)
 {
   return &myTimeDiff[0];
 }
 
-void setSyncResp(uint8_t *args, uint8_t count)
+void ShimSdSync_syncRespSet(uint8_t *args, uint8_t count)
 {
   memcpy(syncResp, args, count);
 }
 
-uint8_t isBtSdSyncRunning(void)
+uint8_t ShimSdSync_isBtSdSyncRunning(void)
 {
   return btSdSyncIsRunning;
 }
 
-uint8_t getSyncNodeNum(void)
+uint8_t ShimSdSync_syncNodeNumGet(void)
 {
   return syncNodeNum;
 }
 
-uint8_t *getSyncNodeNamePtrForIndex(uint8_t index)
+uint8_t *ShimSdSync_syncNodeNamePtrForIndexGet(uint8_t index)
 {
   return &nodeName[index][0];
 }
 
-uint8_t *getSyncCenterNamePtr(void)
+uint8_t *ShimSdSync_syncCenterNamePtrGet(void)
 {
   return &centerName[0];
 }
 
-uint8_t getRcFirstOffsetRxed(void)
+uint8_t ShimSdSync_rcFirstOffsetRxedGet(void)
 {
   return rcFirstOffsetRxed;
 }
 
-uint8_t getSyncSuccC(void)
+uint8_t ShimSdSync_syncSuccCenterGet(void)
 {
   return syncSuccC;
 }
 
-uint8_t getSyncSuccN(void)
+uint8_t ShimSdSync_syncSuccNodeGet(void)
 {
   return syncSuccN;
 }
 
-uint8_t getSyncCnt(void)
+uint8_t ShimSdSync_syncCntGet(void)
 {
   return syncCnt;
 }
 
-void saveLocalTime(void)
+void ShimSdSync_saveLocalTime(void)
 {
   myLocalTimeLong = getRwcTime();
 }
 
-void resetSyncRcNodeR10Cnt(void)
+void ShimSdSync_resetSyncRcNodeR10Cnt(void)
 {
   rcNodeR10Cnt = 0;
 }
 
-void resetSyncVariablesBeforeParseConfig(void)
+void ShimSdSync_resetSyncVariablesBeforeParseConfig(void)
 {
   syncNodeNum = 0;
   nodeSuccFull = 0;
@@ -151,23 +158,23 @@ void resetSyncVariablesBeforeParseConfig(void)
   memset(centerName, 0, MAX_CHARS);
 }
 
-void resetSyncVariablesDuringSyncStart(void)
+void ShimSdSync_resetSyncVariablesDuringSyncStart(void)
 {
-  resetSyncRcNodeR10Cnt();
+  ShimSdSync_resetSyncRcNodeR10Cnt();
   syncCnt = 0;
   syncThis = 0;
   syncSuccC = 0;
   syncSuccN = 0;
 
-  resetMyTimeDiffLongMin();
-  resetMyTimeDiffArrays();
-  resetMyTimeDiff();
+  ShimSdSync_resetMyTimeDiffLongMin();
+  ShimSdSync_resetMyTimeDiffArrays();
+  ShimSdSync_resetMyTimeDiff();
 
   /* Needs to be reset between sessions so that blue LED goes solid again */
   rcFirstOffsetRxed = 0;
 }
 
-void resetSyncVariablesCenter(void)
+void ShimSdSync_resetSyncVariablesCenter(void)
 {
   cReboot = 0;
   syncNodeCnt = 0;
@@ -177,13 +184,13 @@ void resetSyncVariablesCenter(void)
   currNodeSucc = 0;
 }
 
-void resetSyncVariablesNode(void)
+void ShimSdSync_resetSyncVariablesNode(void)
 {
   syncNodeSucc = 0;
   nReboot = 0;
 }
 
-void resetSyncNodeArray(void)
+void ShimSdSync_resetSyncNodeArray(void)
 {
   int node_i;
   for (node_i = 0; node_i < MAX_NODES; node_i++)
@@ -192,7 +199,7 @@ void resetSyncNodeArray(void)
   }
 }
 
-uint16_t parseSyncEstExpLen(uint8_t estExpLenLsb, uint8_t estExpLenMsb)
+uint16_t ShimSdSync_parseSyncEstExpLen(uint8_t estExpLenLsb, uint8_t estExpLenMsb)
 {
   uint16_t temp16;
   uint32_t temp32;
@@ -201,7 +208,7 @@ uint16_t parseSyncEstExpLen(uint8_t estExpLenLsb, uint8_t estExpLenMsb)
   temp32 += ((uint32_t) estExpLenMsb) << 8;
   temp16 = (uint16_t) (temp32 & 0xffff);
 
-  setSyncEstExpLen(temp32);
+  ShimSdSync_setSyncEstExpLen(temp32);
 
   return temp16;
 }
@@ -209,7 +216,7 @@ uint16_t parseSyncEstExpLen(uint8_t estExpLenLsb, uint8_t estExpLenMsb)
 /* Usually a value of 5 for a 'Short' estimate trial duration (<1hr), 45 for a
  * 'Medium' estimated trial duration (<3hrs), or 200 for a 'Long' estimated
  * trial duration (>3hrs) */
-void setSyncEstExpLen(uint32_t est_exp_len)
+void ShimSdSync_setSyncEstExpLen(uint32_t est_exp_len)
 {
   if (est_exp_len < 10)
   {
@@ -228,7 +235,7 @@ void setSyncEstExpLen(uint32_t est_exp_len)
   estLen3 = estLen / 3;
 }
 
-void parseSyncNodeNamesFromConfig(uint8_t *storedConfigPtr)
+void ShimSdSync_parseSyncNodeNamesFromConfig(uint8_t *storedConfigPtr)
 {
   uint8_t i;
   uint8_t node_addr[6], byte_l, byte_h;
@@ -245,12 +252,12 @@ void parseSyncNodeNamesFromConfig(uint8_t *storedConfigPtr)
       nodeName[syncNodeNum][i * 2 + 1] = byte_l + (byte_l > 9 ? 'A' - 10 : '0');
     }
     *(nodeName[syncNodeNum] + 12) = 0;
-    nodeSuccFull |= SyncNodeShift(syncNodeNum);
+    nodeSuccFull |= ShimSdSync_nodeShift(syncNodeNum);
     syncNodeNum++;
   }
 }
 
-void parseSyncCenterNameFromConfig(uint8_t *storedConfigPtr)
+void ShimSdSync_parseSyncCenterNameFromConfig(uint8_t *storedConfigPtr)
 {
   uint8_t i;
   uint8_t center_addr[6], byte_l, byte_h;
@@ -266,7 +273,7 @@ void parseSyncCenterNameFromConfig(uint8_t *storedConfigPtr)
   *(centerName + 12) = 0;
 }
 
-void parseSyncCenterNameFromCfgFile(uint8_t *storedConfigPtr, char *equals)
+void ShimSdSync_parseSyncCenterNameFromCfgFile(uint8_t *storedConfigPtr, char *equals)
 {
   uint8_t string_length = 0;
   uint8_t i, pchar[3], center_addr[6];
@@ -299,7 +306,7 @@ void parseSyncCenterNameFromCfgFile(uint8_t *storedConfigPtr, char *equals)
   }
 }
 
-void parseSyncNodeNameFromCfgFile(uint8_t *storedConfigPtr, char *equals)
+void ShimSdSync_parseSyncNodeNameFromCfgFile(uint8_t *storedConfigPtr, char *equals)
 {
   uint8_t string_length = 0;
   uint8_t i, pchar[3], node_addr[6];
@@ -330,12 +337,12 @@ void parseSyncNodeNameFromCfgFile(uint8_t *storedConfigPtr, char *equals)
       node_addr[i] = strtoul((char *) pchar, 0, 16);
     }
     memcpy(storedConfigPtr + NV_NODE0 + syncNodeNum * 6, node_addr, 6);
-    nodeSuccFull |= SyncNodeShift(syncNodeNum);
+    nodeSuccFull |= ShimSdSync_nodeShift(syncNodeNum);
     syncNodeNum++;
   }
 }
 
-void checkSyncCenterName(void)
+void ShimSdSync_checkSyncCenterName(void)
 {
   if (strlen((char *) centerName) == 0) //if no center is appointed, let this guy be the center
   {
@@ -343,15 +350,15 @@ void checkSyncCenterName(void)
   }
 }
 
-void BtSdSyncStop(void)
+void ShimSdSync_stop(void)
 {
   btSdSyncIsRunning = 0;
   rcFirstOffsetRxed = 0;
-  CommTimerStop();
+  ShimSdSync_CommTimerStop();
   btStopCb(1U);
 }
 
-void BtSdSyncStart(void)
+void ShimSdSync_start(void)
 {
   btSdSyncIsRunning = 1;
 
@@ -373,7 +380,7 @@ void BtSdSyncStart(void)
     rcNodeReboot = (estLen3 / SYNC_WINDOW_N);
   }
 
-  if (sdHeadText[SDH_TRIAL_CONFIG0] & SDH_IAMMASTER)
+  if (ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER)
   {
     firstOutlier = nodeSuccFull;
   }
@@ -382,24 +389,24 @@ void BtSdSyncStart(void)
     firstOutlier = 1;
   }
 
-  resetSyncVariablesDuringSyncStart();
+  ShimSdSync_resetSyncVariablesDuringSyncStart();
 
-  CommTimerStart();
+  ShimSdSync_CommTimerStart();
 }
 
 /* Sync Center only. Sends a single sync packet to a node (T10 = transmit 10
  * bytes) and sets getRcomm = 1 waiting for single byte response from a node.
  * Once received, TASK_RCCENTERR1 is set. The sync packet contains the 8-byte
  * real-world clock value in ticks, LSB order. */
-void SyncCenterT10(void)
+void ShimSdSync_centerT10(void)
 {
   uint8_t resPacket[SYNC_PACKET_MAX_SIZE];
   uint16_t packet_length = 0;
 
   *(resPacket + packet_length++) = SET_SD_SYNC_COMMAND;
   *(resPacket + packet_length++) = shimmerStatus.sensing;
-  myLocalTimeLong = getRwcTime();
-  *(uint64_t *) (resPacket + packet_length) = myLocalTimeLong;
+  ShimSdSync_saveLocalTime();
+  memcpy(resPacket + packet_length, (uint8_t *) (&myLocalTimeLong), 8);
   packet_length += 8;
 
   if (BT_SD_SYNC_CRC_MODE)
@@ -408,14 +415,14 @@ void SyncCenterT10(void)
     packet_length += BT_SD_SYNC_CRC_MODE;
   }
 
-  BT_write(resPacket, packet_length, SHIMMER_CMD);
+  ShimBt_writeToTxBufAndSend(resPacket, packet_length, SHIMMER_CMD);
 }
 
 /* Sync Center only. Called by TASK_RCCENTERR1 when a center receives a byte
  * back from a node (R1 = received 1 byte) after it has sent a sync packet. If
  * ACK_COMMAND_PROCESSED is received, ?, Else the center sends the next sync
  * packet. */
-void SyncCenterR1(void)
+void ShimSdSync_centerR1(void)
 {
   if (syncResp[0] != SYNC_FINISHED)
   {
@@ -436,24 +443,24 @@ void SyncCenterR1(void)
     //{
     //    setDmaWaitingForResponse(1U);
     //}
-    SyncCenterT10();
+    ShimSdSync_centerT10();
     syncCurrNodeExpire = syncCurrNode + SYNC_EXTEND * SYNC_FACTOR;
   }
   else
   {
     currNodeSucc = 1;
-    if (firstOutlier & SyncNodeShift(syncNodeCnt))
+    if (firstOutlier & ShimSdSync_nodeShift(syncNodeCnt))
     {
-      firstOutlier &= ~SyncNodeShift(syncNodeCnt);
+      firstOutlier &= ~ShimSdSync_nodeShift(syncNodeCnt);
     }
     else
     {
-      nodeSucc |= SyncNodeShift(syncNodeCnt);
+      nodeSucc |= ShimSdSync_nodeShift(syncNodeCnt);
     }
   }
 }
 
-uint32_t SyncNodeShift(uint8_t shift_value)
+uint32_t ShimSdSync_nodeShift(uint8_t shift_value)
 {
   uint32_t sync_node_shift = 0x01;
   sync_node_shift <<= shift_value;
@@ -462,7 +469,7 @@ uint32_t SyncNodeShift(uint8_t shift_value)
 
 /* Sync Node only. Called by TASK_RCNODER10 after a node has received a 10 byte
  * sync packet (R10 = received 10 bytes) from a center */
-void SyncNodeR10(void)
+void ShimSdSync_nodeR10(void)
 {
   uint8_t nodeResponse;
 
@@ -495,20 +502,20 @@ void SyncNodeR10(void)
     }
     else
     {
-      if (onSingleTouch && !shimmerStatus.sensing && sd_tolog)
+      if (ShimConfig_getStoredConfig()->singleTouchStart && !shimmerStatus.sensing && sd_tolog)
       {
-        taskSetCb(TASK_STARTSENSING);
+        ShimTask_set(TASK_STARTSENSING);
       }
       syncNodeSucc = 1;
       if (!firstOutlier)
       {
         rcFirstOffsetRxed = 1;
-        RcFindSmallest();
+        ShimSdSync_rcFindSmallest();
         myTimeDiff[0] = myTimeDiffLongFlagMin;
         memcpy(myTimeDiff + 1, (uint8_t *) &myTimeDiffLongMin, 8);
       }
-      resetMyTimeDiffLongMin();
-      resetSyncRcNodeR10Cnt();
+      ShimSdSync_resetMyTimeDiffLongMin();
+      ShimSdSync_resetSyncRcNodeR10Cnt();
       nodeResponse = SYNC_FINISHED;
     }
   }
@@ -531,16 +538,16 @@ void SyncNodeR10(void)
   //#endif
 
   memset(syncResp, 0, sizeof(syncResp));
-  SyncNodeT1(nodeResponse);
+  ShimSdSync_nodeT1(nodeResponse);
 }
 
 /* Sync Node only. For responding to Center node after having received a single
  * packet. 1 is passed in if ready to receive the next 10 byte sync packet.
  * ACK_COMMAND_PROCESSED is passed in if 50 packets have been received */
-void SyncNodeT1(uint8_t val)
+void ShimSdSync_nodeT1(uint8_t val)
 {
   uint8_t syncResponse[] = { ACK_COMMAND_PROCESSED, SD_SYNC_RESPONSE, val };
-  BT_write(&syncResponse[0], 3U, SHIMMER_CMD);
+  ShimBt_writeToTxBufAndSend(&syncResponse[0], 3U, SHIMMER_CMD);
   if (syncNodeWinExpire < (syncCnt + SYNC_EXTEND * SYNC_FACTOR))
   {
     syncNodeWinExpire++;
@@ -548,7 +555,7 @@ void SyncNodeT1(uint8_t val)
 }
 
 /* Sync Node only. Called by a node after it has received all sync packets. */
-uint8_t RcFindSmallest(void)
+uint8_t ShimSdSync_rcFindSmallest(void)
 {
   uint8_t i, j, k, black_list[20], black_list_cnt = 0, far_cnt = 0, black = 0;
   uint64_t to_compare_val, diff_val;
@@ -577,7 +584,7 @@ uint8_t RcFindSmallest(void)
     far_cnt = 0;
   }
 
-  resetMyTimeDiffLongMin();
+  ShimSdSync_resetMyTimeDiffLongMin();
   for (i = 0; i < SYNC_TRANS_IN_ONE_COMM; i++)
   {
     for (k = 0; k < black_list_cnt; k++)
@@ -625,13 +632,13 @@ uint8_t RcFindSmallest(void)
     }
   }
 
-  resetMyTimeDiffArrays();
+  ShimSdSync_resetMyTimeDiffArrays();
   return 0;
 }
 
-void handleSyncTimerTrigger(void)
+void ShimSdSync_handleSyncTimerTrigger(void)
 {
-  if (isBtSdSyncRunning())
+  if (ShimSdSync_isBtSdSyncRunning())
   {
     if (syncCnt >= estLen3 * SYNC_FACTOR)
     { //there must be: estLen3>SYNC_WINDOW_C
@@ -651,26 +658,20 @@ void handleSyncTimerTrigger(void)
       syncCnt++;
     }
 
-    if (sdHeadText[SDH_TRIAL_CONFIG0] & SDH_IAMMASTER)
+    if (ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER)
     { //i am Center
-      handleSyncTimerTriggerCenter();
+      ShimSdSync_handleSyncTimerTriggerCenter();
     }
     else
     { //i am Node
-      handleSyncTimerTriggerNode();
+      ShimSdSync_handleSyncTimerTriggerNode();
     }
   }
   else //idle: no_RC mode
   {
     if (shimmerStatus.docked)
     {
-      if (shimmerStatus.sensing)
-      {
-        /* Note SDLog calls TASK_STOPSENSING here whereas
-         * LogAndStream could be in the middle of streaming over
-         * Bluetooth */
-        stopLogging = 1;
-      }
+      ShimTask_setStopSensing();
       if (shimmerStatus.btPowerOn)
       {
         btStopCb(0);
@@ -679,15 +680,15 @@ void handleSyncTimerTrigger(void)
   }
 }
 
-void handleSyncTimerTriggerCenter(void)
+void ShimSdSync_handleSyncTimerTriggerCenter(void)
 {
   if (shimmerStatus.sensing && (syncNodeNum > 0))
   {
     if (syncCnt == 1)
     {
       //start
-      resetSyncVariablesCenter();
-      btStartCb();
+      ShimSdSync_resetSyncVariablesCenter();
+      ShimSdSync_startBtForSync();
     }
     else if ((syncCnt > SYNC_BOOT * SYNC_FACTOR) && (syncCnt < SYNC_WINDOW_C * SYNC_FACTOR))
     {
@@ -702,7 +703,7 @@ void handleSyncTimerTriggerCenter(void)
           {
             if (syncCurrNode == 1)
             {
-              while (nodeSucc & SyncNodeShift(syncNodeCnt))
+              while (nodeSucc & ShimSdSync_nodeShift(syncNodeCnt))
               {
                 if (++syncNodeCnt >= syncNodeNum)
                 {
@@ -741,7 +742,7 @@ void handleSyncTimerTriggerCenter(void)
             if (cReboot == 1)
             {
               cReboot = 2;
-              btStartCb();
+              ShimSdSync_startBtForSync();
             }
             else if ((cReboot >= 2) && (cReboot < 5 * SYNC_FACTOR))
             {
@@ -797,14 +798,14 @@ void handleSyncTimerTriggerCenter(void)
   }
 }
 
-void handleSyncTimerTriggerNode(void)
+void ShimSdSync_handleSyncTimerTriggerNode(void)
 {
   if (!syncSuccN)
   {
     if (syncCnt == 1)
     {
-      resetMyTimeDiffLongMin();
-      resetSyncVariablesNode();
+      ShimSdSync_resetMyTimeDiffLongMin();
+      ShimSdSync_resetSyncVariablesNode();
     }
     else if (((syncCnt < syncNodeWinExpire) && (syncCnt > SYNC_BOOT))
         && (syncCnt != (SYNC_CD * (nReboot + 1) + SYNC_WINDOW_N * nReboot) * SYNC_FACTOR))
@@ -856,31 +857,52 @@ void handleSyncTimerTriggerNode(void)
     }
     else if (syncCnt == (SYNC_CD * (nReboot + 1) + SYNC_WINDOW_N * nReboot) * SYNC_FACTOR)
     {
-      btStartCb();
+      ShimSdSync_startBtForSync();
       syncNodeWinExpire
           = (SYNC_CD * (nReboot + 1) + SYNC_WINDOW_N * (nReboot + 1)) * SYNC_FACTOR;
     }
   }
 }
 
+void ShimSdSync_startBtForSync(void)
+{
+#if defined(SHIMMER3)
+  BT_init();
+  BT_rn4xDisableRemoteConfig(1);
+  BT_setUpdateBaudDuringBoot(1);
+#elif defined(SHIMMER3R)
+  //TODO
+#endif
+  btStartCb();
+}
+
 //Timer2:
 //ccr1: for blink timer
-void CommTimerStart(void)
+void ShimSdSync_CommTimerStart(void)
 {
+#if defined(SHIMMER3)
   TA0CTL = TASSEL_1 + MC_2 + TACLR; //ACLK, continuous mode, clear TAR
   TA0CCTL1 = CCIE;
   TA0CCR1 = GetTA0() + 16384;
+#elif defined(SHIMMER3R)
+  //TODO
+#endif
   shimmerStatus.sdSyncCommTimerRunning = 1;
 }
 
-inline void CommTimerStop(void)
+inline void ShimSdSync_CommTimerStop(void)
 {
+#if defined(SHIMMER3)
   TA0CTL = MC_0; //StopTb0()
   //rcommStatus=0;
   TA0CCTL1 &= ~CCIE;
+#elif defined(SHIMMER3R)
+  //TODO
+#endif
   shimmerStatus.sdSyncCommTimerRunning = 0;
 }
 
+#if defined(SHIMMER3)
 inline uint16_t GetTA0(void)
 {
   register uint16_t t0, t1;
@@ -908,39 +930,40 @@ __interrupt void TIMER0_A1_ISR(void)
 {
   switch (__even_in_range(TA0IV, 14))
   {
-  case 0:
-    break; //No interrupt
-  case 2:  //TA0CCR1
-    TA0CCR1 += SYNC_PERIOD;
+    case 0:
+      break; //No interrupt
+    case 2:  //TA0CCR1
+      TA0CCR1 += SYNC_PERIOD;
 
-    /* SDLog handles auto-stop in TIMER0_A1_VECTOR whereas LogAndStream handles it in TIMER0_B1_VECTOR */
-    //if (sensing && maxLen)
-    //{
-    //    if (maxLenCnt < maxLen * SYNC_FACTOR)
-    //        maxLenCnt++;
-    //    else
-    //    {
-    //        stopLogging = 1;
-    //        //stopSensing = 1;
-    //        maxLenCnt = 0;
-    //        return;
-    //    }
-    //}
+      /* SDLog handles auto-stop in TIMER0_A1_VECTOR whereas LogAndStream handles it in TIMER0_B1_VECTOR */
+      //if (sensing && maxLen)
+      //{
+      //    if (maxLenCnt < maxLen * SYNC_FACTOR)
+      //        maxLenCnt++;
+      //    else
+      //    {
+      //        stopLogging = 1;
+      //        //stopSensing = 1;
+      //        maxLenCnt = 0;
+      //        return;
+      //    }
+      //}
 
-    handleSyncTimerTrigger();
+      ShimSdSync_handleSyncTimerTrigger();
 
-    break;
-  case 4:
-    break; //TA0CCR2 not used
-  case 6:
-    break; //Reserved
-  case 8:
-    break; //Reserved
-  case 10:
-    break; //Reserved
-  case 12:
-    break; //Reserved
-  case 14:
-    break; //TAIFG overflow handler
+      break;
+    case 4:
+      break; //TA0CCR2 not used
+    case 6:
+      break; //Reserved
+    case 8:
+      break; //Reserved
+    case 10:
+      break; //Reserved
+    case 12:
+      break; //Reserved
+    case 14:
+      break; //TAIFG overflow handler
   }
 }
+#endif
