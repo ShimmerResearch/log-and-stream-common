@@ -5,23 +5,29 @@
  *      Author: MarkNolan
  */
 
-#include "battery.h"
-#include "log_and_stream_externs.h"
+#include "shimmer_battery.h"
+
+#include <Configuration/shimmer_config.h>
+#include <LEDs/shimmer_leds.h>
+#include <TaskList/shimmer_taskList.h>
+#include <log_and_stream_externs.h>
 
 #include "hal_Board.h"
 
 battAlarmInterval_t battAlarmInterval;
 
-void batteryInit(void)
+void ShimBatt_init(void)
 {
-  setBattCritical(0);
-  resetBatteryCriticalCount();
+  memset((uint8_t *) &batteryStatus, 0, sizeof(BattStatus));
+
+  ShimBatt_setBattCritical(0);
+  ShimBatt_resetBatteryCriticalCount();
   /* Reset to battery "charging"/"checking" LED indication on boot */
-  resetBatteryChargingStatus();
-  resetBatteryUndockedStatus();
+  ShimBatt_resetBatteryChargingStatus();
+  ShimBatt_resetBatteryUndockedStatus();
 }
 
-void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3658sdStat1, uint8_t lm3658sdStat2)
+void ShimBatt_updateStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3658sdStat1, uint8_t lm3658sdStat2)
 {
   batteryStatus.battStatusRaw.adcBattVal = adc_battVal;
   batteryStatus.battStatusRaw.rawBytes[2] = 0;
@@ -29,12 +35,23 @@ void updateBatteryStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm365
   batteryStatus.battStatusRaw.STAT2 = lm3658sdStat2;
   batteryStatus.battValMV = battValMV;
 
-  rankBattUndockedVoltage();
-  rankBattChargingStatus();
-  determineChargingLedState();
+  ShimBatt_rankBattUndockedVoltage();
+  ShimBatt_rankBattChargingStatus();
+  ShimBatt_determineChargingLedState();
+
+  /* 10% Battery cutoff point - LogAndStream S3 v0.9.6 onwards and S3R */
+  if (ShimConfig_getStoredConfig()->lowBatteryAutoStop
+      && (batteryStatus.battStatusRaw.adcBattVal < BATT_CUTOFF_3_65VOLTS))
+  {
+    ShimBatt_incrementBatteryCriticalCount();
+    if (ShimBatt_checkIfBatteryCritical() && shimmerStatus.sensing)
+    {
+      ShimTask_setStopSensing();
+    }
+  }
 }
 
-void rankBattUndockedVoltage(void)
+void ShimBatt_rankBattUndockedVoltage(void)
 {
   if (batteryStatus.battStat == BATT_MID)
   {
@@ -82,10 +99,10 @@ void rankBattUndockedVoltage(void)
     }
   }
 
-  determineUndockedLedState();
+  ShimBatt_determineUndockedLedState();
 }
 
-void rankBattChargingStatus(void)
+void ShimBatt_rankBattChargingStatus(void)
 {
   if (batteryStatus.battValMV > BATTERY_ERROR_VOLTAGE_MAX)
   {
@@ -95,36 +112,36 @@ void rankBattChargingStatus(void)
   {
     switch (batteryStatus.battStatusRaw.rawBytes[2])
     {
-    case CHRG_CHIP_STATUS_SUSPENDED:
-      if (batteryStatus.battValMV <= BATTERY_ERROR_VOLTAGE_MIN)
-      {
+      case CHRG_CHIP_STATUS_SUSPENDED:
+        if (batteryStatus.battValMV <= BATTERY_ERROR_VOLTAGE_MIN)
+        {
+          batteryStatus.battChargingStatus = CHARGING_STATUS_BAD_BATTERY;
+        }
+        else
+        {
+          batteryStatus.battChargingStatus = CHARGING_STATUS_SUSPENDED;
+        }
+        break;
+      case CHRG_CHIP_STATUS_FULLY_CHARGED:
+        batteryStatus.battChargingStatus = CHARGING_STATUS_FULLY_CHARGED;
+        break;
+      case CHRG_CHIP_STATUS_PRECONDITIONING:
+        batteryStatus.battChargingStatus = CHARGING_STATUS_CHARGING;
+        break;
+      case CHRG_CHIP_STATUS_BAD_BATTERY:
         batteryStatus.battChargingStatus = CHARGING_STATUS_BAD_BATTERY;
-      }
-      else
-      {
-        batteryStatus.battChargingStatus = CHARGING_STATUS_SUSPENDED;
-      }
-      break;
-    case CHRG_CHIP_STATUS_FULLY_CHARGED:
-      batteryStatus.battChargingStatus = CHARGING_STATUS_FULLY_CHARGED;
-      break;
-    case CHRG_CHIP_STATUS_PRECONDITIONING:
-      batteryStatus.battChargingStatus = CHARGING_STATUS_CHARGING;
-      break;
-    case CHRG_CHIP_STATUS_BAD_BATTERY:
-      batteryStatus.battChargingStatus = CHARGING_STATUS_BAD_BATTERY;
-      break;
-    case CHRG_CHIP_STATUS_UNKNOWN:
-      batteryStatus.battChargingStatus = CHARGING_STATUS_UNKNOWN;
-      break;
-    default:
-      batteryStatus.battChargingStatus = CHARGING_STATUS_ERROR;
-      break;
+        break;
+      case CHRG_CHIP_STATUS_UNKNOWN:
+        batteryStatus.battChargingStatus = CHARGING_STATUS_UNKNOWN;
+        break;
+      default:
+        batteryStatus.battChargingStatus = CHARGING_STATUS_ERROR;
+        break;
     }
   }
 }
 
-void determineChargingLedState(void)
+void ShimBatt_determineChargingLedState(void)
 {
   batteryStatus.battStatLedFlash = 0;
   if (shimmerStatus.docked)
@@ -132,7 +149,7 @@ void determineChargingLedState(void)
     if (batteryStatus.battChargingStatus == CHARGING_STATUS_SUSPENDED)
     {
 #if defined(SHIMMER3)
-      batteryStatus.battStatLedCharging = LED_YELLOW;
+      batteryStatus.battStatLedCharging = LED_LWR_YELLOW;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_YELLOW;
 #endif
@@ -142,7 +159,7 @@ void determineChargingLedState(void)
         || batteryStatus.battChargingStatus == CHARGING_STATUS_ERROR)
     {
 #if defined(SHIMMER3)
-      batteryStatus.battStatLedCharging = LED_RED;
+      batteryStatus.battStatLedCharging = LED_LWR_RED;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_RED;
 #endif
@@ -152,7 +169,7 @@ void determineChargingLedState(void)
         || batteryStatus.battChargingStatus == CHARGING_STATUS_CHARGING)
     {
 #if defined(SHIMMER3)
-      batteryStatus.battStatLedCharging = LED_RED;
+      batteryStatus.battStatLedCharging = LED_LWR_RED;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_RED;
 #endif
@@ -160,7 +177,7 @@ void determineChargingLedState(void)
     else if (batteryStatus.battChargingStatus == CHARGING_STATUS_FULLY_CHARGED)
     {
 #if defined(SHIMMER3)
-      batteryStatus.battStatLedCharging = LED_GREEN0;
+      batteryStatus.battStatLedCharging = LED_LWR_GREEN;
 #elif defined(SHIMMER3R)
       batteryStatus.battStatLedCharging = LED_RGB_GREEN;
 #endif
@@ -176,90 +193,90 @@ void determineChargingLedState(void)
   }
 }
 
-void determineUndockedLedState(void)
+void ShimBatt_determineUndockedLedState(void)
 {
   switch (batteryStatus.battStat)
   {
-  case BATT_LOW:
+    case BATT_LOW:
 #if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_RED;
+      batteryStatus.battStatLed = LED_LWR_RED;
 #elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_RED;
+      batteryStatus.battStatLed = LED_RGB_RED;
 #endif
-    break;
-  case BATT_MID:
+      break;
+    case BATT_MID:
 #if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_YELLOW;
+      batteryStatus.battStatLed = LED_LWR_YELLOW;
 #elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_YELLOW;
+      batteryStatus.battStatLed = LED_RGB_YELLOW;
 #endif
-    break;
-  case BATT_HIGH:
+      break;
+    case BATT_HIGH:
 #if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_GREEN0;
+      batteryStatus.battStatLed = LED_LWR_GREEN;
 #elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_GREEN;
+      batteryStatus.battStatLed = LED_RGB_GREEN;
 #endif
-    break;
-  default:
+      break;
+    default:
 #if defined(SHIMMER3)
-    batteryStatus.battStatLed = LED_RED;
+      batteryStatus.battStatLed = LED_LWR_RED;
 #elif defined(SHIMMER3R)
-    batteryStatus.battStatLed = LED_RGB_RED;
+      batteryStatus.battStatLed = LED_RGB_RED;
 #endif
-    break;
+      break;
   }
 }
 
-void resetBatteryChargingStatus(void)
+void ShimBatt_resetBatteryChargingStatus(void)
 {
   batteryStatus.battChargingStatus = CHARGING_STATUS_CHECKING;
-  determineChargingLedState();
+  ShimBatt_determineChargingLedState();
 }
 
-void resetBatteryUndockedStatus(void)
+void ShimBatt_resetBatteryUndockedStatus(void)
 {
   batteryStatus.battStat = BATT_MID;
-  determineUndockedLedState();
+  ShimBatt_determineUndockedLedState();
 }
 
-void setBatteryInterval(battAlarmInterval_t value)
+void ShimBatt_setBatteryInterval(battAlarmInterval_t value)
 {
   battAlarmInterval = value;
 }
 
-battAlarmInterval_t getBatteryInterval(void)
+battAlarmInterval_t ShimBatt_getBatteryInterval(void)
 {
   return battAlarmInterval;
 }
 
 #if defined(SHIMMER3)
-uint32_t getBatteryIntervalTicks(void)
+uint32_t ShimBatt_getBatteryIntervalTicks(void)
 {
   return battAlarmInterval == BATT_INTERVAL_DOCKED ? BATT_INTERVAL_D : BATT_INTERVAL;
 }
 #endif
 
-void resetBatteryCriticalCount(void)
+void ShimBatt_resetBatteryCriticalCount(void)
 {
   batteryStatus.battCriticalCount = 0;
 }
 
-void incrementBatteryCriticalCount(void)
+void ShimBatt_incrementBatteryCriticalCount(void)
 {
   batteryStatus.battCriticalCount++;
 }
 
-void setBattCritical(uint8_t state)
+void ShimBatt_setBattCritical(uint8_t state)
 {
   batteryStatus.battCritical = state;
 }
 
-uint8_t checkIfBatteryCritical(void)
+uint8_t ShimBatt_checkIfBatteryCritical(void)
 {
   if (batteryStatus.battCriticalCount > 2)
   {
-    setBattCritical(1);
+    ShimBatt_setBattCritical(1);
   }
   return batteryStatus.battCritical;
 }
