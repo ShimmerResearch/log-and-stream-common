@@ -239,7 +239,6 @@ uint8_t ShimBrd_isLnAccelKxtc9_2050Present(void)
 }
 #endif
 
-#if defined(SHIMMER3R)
 uint8_t ShimBrd_isAdxl371Present(void)
 {
   return (ShimBrd_isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R
@@ -278,7 +277,6 @@ uint8_t ShimBrd_areMcuAdcsUsedForSensing(void)
   return (ShimBrd_isHwId(HW_ID_SHIMMER3) || ShimBrd_isHwId(SHIMMER4_SDK)
       || ShimBrd_isBoardSr48_6_0());
 }
-#endif
 
 uint8_t ShimBrd_isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_brd_minor)
 {
