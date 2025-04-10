@@ -241,16 +241,18 @@ uint8_t ShimBrd_isLnAccelKxtc9_2050Present(void)
 
 uint8_t ShimBrd_isAdxl371Present(void)
 {
-  return (ShimBrd_isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R
+  return (ShimBrd_isDaughterCardIdSet() && hwId == HW_ID_SHIMMER3R
       && (daughterCardIdPage.expansion_brd.exp_brd_id == SHIMMER3_IMU
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0)
-          || ShimBrd_isBoardSrNumber(EXP_BRD_BR_AMP_UNIFIED, 4, 0)));
+          || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_BR_AMP_UNIFIED, 4, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_PROTO3_DELUXE, 4, 0)));
 }
 
 uint8_t isAds7028Present(void)
 {
-  return (ShimBrd_isDaughterCardIdSet() //&& hwId == HW_ID_SHIMMER3R
+  return (ShimBrd_isDaughterCardIdSet() && hwId == HW_ID_SHIMMER3R
       && !ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0));
 }
 

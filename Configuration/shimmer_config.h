@@ -511,6 +511,8 @@ void ShimConfig_checkBtModeFromConfig(void);
 #if defined(SHIMMER3R)
 uint8_t ShimConfig_isMicrophoneEnabled(void);
 #endif
+uint8_t ShimConfig_isGSREnabled(void);
+uint8_t ShimConfig_isExpansionBoardPwrEnabled(void);
 void ShimConfig_loadSensorConfigAndCalib(void);
 gConfigBytes ShimConfig_createBlankConfigBytes(void);
 uint8_t ShimConfig_areConfigBytesValid(void);
