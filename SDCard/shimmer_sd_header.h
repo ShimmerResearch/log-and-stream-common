@@ -54,7 +54,7 @@
 #define SDH_DERIVED_CHANNELS_0          40
 #define SDH_DERIVED_CHANNELS_1          41
 #define SDH_DERIVED_CHANNELS_2          42
-#define SDH_RTC_DIFF_0                  44 // MSB order
+#define SDH_RTC_DIFF_0                  44 //MSB order
 #define SDH_RTC_DIFF_1                  45
 #define SDH_RTC_DIFF_2                  46
 #define SDH_RTC_DIFF_3                  47
@@ -62,7 +62,7 @@
 #define SDH_RTC_DIFF_5                  49
 #define SDH_RTC_DIFF_6                  50
 #define SDH_RTC_DIFF_7                  51
-#define SDH_CONFIG_TIME_0               52 // MSB order
+#define SDH_CONFIG_TIME_0               52 //MSB order
 #define SDH_CONFIG_TIME_1               53
 #define SDH_CONFIG_TIME_2               54
 #define SDH_CONFIG_TIME_3               55
