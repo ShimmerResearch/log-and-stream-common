@@ -547,10 +547,10 @@ void ShimSd_writeSdHeaderToFile(void)
   uint8_t temp_sdHeadText[SD_HEAD_SIZE];
   ShimSdHead_sdHeadTextGet(temp_sdHeadText, 0, SD_HEAD_SIZE);
 #if USE_8BYTES_INIT_TS
-  *(uint64_t *) (temp_sdHeadText + SDH_MY_LOCALTIME_0TH) = sdFileSyncTs;
+  *(uint64_t *) (temp_sdHeadText + SDH_INITIAL_TIMESTAMP_0) = sdFileSyncTs;
 #else
-  temp_sdHeadText[SDH_MY_LOCALTIME_5TH] = (sdFileSyncTs >> 32) & 0xff;
-  *(uint32_t *) (temp_sdHeadText + SDH_MY_LOCALTIME)
+  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_4] = (sdFileSyncTs >> 32) & 0xff;
+  *(uint32_t *) (temp_sdHeadText + SDH_INITIAL_TIMESTAMP_0)
       = (uint32_t) (sdFileSyncTs & 0xffffffff);
 #endif //USE_8BYTES_INIT_TS
 

@@ -54,7 +54,7 @@
 #define SDH_DERIVED_CHANNELS_0          40
 #define SDH_DERIVED_CHANNELS_1          41
 #define SDH_DERIVED_CHANNELS_2          42
-#define SDH_RTC_DIFF_0                  44
+#define SDH_RTC_DIFF_0                  44 // MSB order
 #define SDH_RTC_DIFF_1                  45
 #define SDH_RTC_DIFF_2                  46
 #define SDH_RTC_DIFF_3                  47
@@ -62,7 +62,7 @@
 #define SDH_RTC_DIFF_5                  49
 #define SDH_RTC_DIFF_6                  50
 #define SDH_RTC_DIFF_7                  51
-#define SDH_CONFIG_TIME_0               52
+#define SDH_CONFIG_TIME_0               52 // MSB order
 #define SDH_CONFIG_TIME_1               53
 #define SDH_CONFIG_TIME_2               54
 #define SDH_CONFIG_TIME_3               55
@@ -102,13 +102,17 @@
 #define SDH_DERIVED_CHANNELS_6          220
 #define SDH_DERIVED_CHANNELS_7          221
 #define SDH_TEMP_PRES_EXTRA_CALIB_BYTES 222
-//#define SDH_MY_LOCALTIME_0TH             248
-#define SDH_MY_LOCALTIME_5TH            251
-#define SDH_MY_LOCALTIME                252 //252-255
+#define SDH_INITIAL_TIMESTAMP_4         251 //MSB
+#define SDH_INITIAL_TIMESTAMP_0         252 //LSB
+#define SDH_INITIAL_TIMESTAMP_1         253
+#define SDH_INITIAL_TIMESTAMP_2         254
+#define SDH_INITIAL_TIMESTAMP_3         255
 #define SDH_ALT_ACCEL_CALIBRATION       256 //+21
 #define SDH_ALT_ACCEL_CALIB_TS          277 //+8
 #define SDH_ALT_MAG_CALIBRATION         285 //+21
 #define SDH_ALT_MAG_CALIB_TS            306 //+8
+#define SDH_NUM_ENABLED_CHANNELS        314
+#define SDH_CHANNEL_ID_BYTE_0           315 //+50
 
 #if defined(SHIMMER3)
 //SENSORS0
