@@ -492,7 +492,7 @@ void ShimSens_gatherData(void)
   {
     sensing.isSampling = 1;
     ShimSens_saveTimestampToPacket();
-//    ShimTask_set(TASK_STREAMDATA);
+    //ShimTask_set(TASK_STREAMDATA);
     ShimSens_streamData();
 
     //#if defined(SHIMMER3) || defined(SHIMMER3R)
