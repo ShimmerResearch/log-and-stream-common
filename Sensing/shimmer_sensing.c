@@ -183,6 +183,8 @@ void ShimSens_startSensing(void)
   {
     shimmerStatus.sensing = 1;
     sensing.isFileCreated = 0;
+    sensing.isSampling = 0;
+
     ShimSens_configureChannels();
 
     if (ShimSens_getNumEnabledChannels() == 0)
@@ -336,7 +338,7 @@ void ShimSens_stopSensing(void)
     shimmerStatus.sensing = 0;
     shimmerStatus.btStreaming = 0;
     sensing.startTs = 0;
-    //sensing.isSampling = 0;
+    sensing.isSampling = 0;
     ShimSens_stopPeripherals();
 
     if (shimmerStatus.sdSyncEnabled)
@@ -430,8 +432,6 @@ void ShimSens_streamData(void)
   //HAL_Delay(500);
   saveData();
 #endif
-
-  //sensing.isSampling = 0;
 }
 
 void ShimSens_bufPoll()
@@ -488,8 +488,9 @@ void ShimSens_saveTimestampToPacket(void)
 //this is to be called in the ISR
 void ShimSens_gatherData(void)
 {
-  if (shimmerStatus.sensing)
+  if (shimmerStatus.sensing && !sensing.isSampling)
   {
+    sensing.isSampling = 1;
     ShimSens_saveTimestampToPacket();
     ShimTask_set(TASK_STREAMDATA);
 
@@ -629,6 +630,9 @@ void ShimSens_saveData(void)
     ShimBt_writeToTxBufAndSend(sensing.dataBuf, sensing.dataLen + crcMode, SENSOR_DATA);
   }
 #endif
+
+  /* Data packet has moved off dataBuf, device is free to start new packet */
+  sensing.isSampling = 0;
 
   if ((!shimmerStatus.sdLogging) && (!shimmerStatus.btStreaming))
   {
