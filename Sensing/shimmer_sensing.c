@@ -416,6 +416,7 @@ void ShimSens_streamData(void)
   else if ((sensing.startTs == 0) || (sensing.latestTs - sensing.startTs < 1638))
   {
     sensing.startTs = 0xffffffffffffffff;
+    sensing.isSampling = 0;
     return;
   }
   else
