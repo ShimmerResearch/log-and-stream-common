@@ -75,7 +75,7 @@ uint8_t ShimSdHead_sdHeadTextSetByte(uint16_t offset, uint8_t val)
 
 void ShimSdHead_config2SdHead(void)
 {
-  memset(sdHeadText, 0xff, SD_HEAD_SIZE);
+  memset(sdHeadText, 0xFF, SD_HEAD_SIZE);
 
   gConfigBytes *configBytes = ShimConfig_getStoredConfig();
 
@@ -181,6 +181,12 @@ void ShimSdHead_config2SdHead(void)
 
   ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
   memcpy(&sdHeadText[SDH_DAUGHTER_CARD_ID_BYTE0], ShimBrd_getDaughtCardIdPtr(), 3);
+
+#if defined(SHIMMER3R)
+  uint8_t numberOfChannels = ShimSens_getNumEnabledChannels();
+  sdHeadText[SDH_NUM_ENABLED_CHANNELS] = numberOfChannels;
+  memcpy(&sdHeadText[SDH_CHANNEL_ID_BYTE_0], sensing.cc, numberOfChannels);
+#endif
 }
 
 void ShimSdHead_saveBmpCalibrationToSdHeader(void)
