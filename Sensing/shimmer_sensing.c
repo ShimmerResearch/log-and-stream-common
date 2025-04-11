@@ -193,6 +193,9 @@ void ShimSens_startSensing(void)
     }
 
     memset(sensing.dataBuf, 0, sizeof(sensing.dataBuf));
+    /* Not needed due to memset above but explicitly setting DATA_PACKET for
+     * clarity. */
+    sensing.dataBuf[0] = DATA_PACKET;
 
 #if defined(SHIMMER3R)
     Board_enableSensingPower(SENSE_PWR_SENSING, 1);
