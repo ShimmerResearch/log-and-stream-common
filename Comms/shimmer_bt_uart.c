@@ -24,6 +24,7 @@
 #elif defined(SHIMMER3R) || defined(SHIMMER4_SDK)
 #include "bmp3_defs.h"
 #include "hal_FactoryTest.h"
+#include "hal_Infomem.h"
 #include "shimmer_definitions.h"
 #endif
 
