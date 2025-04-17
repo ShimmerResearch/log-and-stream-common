@@ -294,3 +294,9 @@ uint8_t ShimBrd_isHwId(uint8_t hwIdToCheck)
 {
   return hwId == hwIdToCheck;
 }
+
+uint8_t ShimBrd_isExpBrdId(uint8_t expIdToCheck)
+{
+  return (ShimBrd_isDaughterCardIdSet()
+        && (daughterCardIdPage.expansion_brd.exp_brd_id == expIdToCheck));
+}
