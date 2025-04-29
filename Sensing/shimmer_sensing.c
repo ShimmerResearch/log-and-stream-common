@@ -99,7 +99,7 @@ void ShimSens_configureChannels(void)
 #endif
 
   expectedCbFlags = 0;
-  if (areMcuAdcChannelsEnabled())
+  if (sensing.nbrMcuAdcChans)
   {
     expectedCbFlags |= STAT_PERI_ADC;
   }
