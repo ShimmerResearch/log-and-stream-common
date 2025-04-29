@@ -55,24 +55,25 @@
 #define FIRST_CH_BYTE_IDX (1 + 3) //0x00 + timestamp
 
 #if defined(SHIMMER3)
-#define MAX_NUM_CHANNELS \
-  45 //3xanalogAccel + 3xdigiGyro + 3xdigiMag +
-     //3xLSM303DLHCAccel + 3xMPU9150Accel + 3xMPU9150MAG +
-     //BMPX80TEMP + BMPX80PRESS + batteryVoltage +
-     //3xexternalADC + 4xinternalADC + (ExG)
+/* 3xanalogAccel + 3xdigiGyro + 3xdigiMag +
+ * 3xLSM303DLHCAccel + 3xMPU9150Accel + 3xMPU9150MAG +
+ * BMPX80TEMP + BMPX80PRESS + batteryVoltage +
+ * 3xexternalADC + 4xinternalADC + (ExG) */
+#define MAX_NUM_CHANNELS 45
 #elif defined(SHIMMER3R)
-//TODO updated with correct number
-#define MAX_NUM_CHANNELS \
-  60 //3xAccel + 3xdigiGyro + 3xdigiMag +
-     //3xLSM303DLHCAccel + 3xMPU9250Accel + 3xMPU9250MAG +
-     //BMP180TEMP + BMP180PRESS + batteryVoltage + 5stc3100
-     //3xexternalADC + 5xinternalADC
+/* Approximately:
+ * 3xAccel1 + 3xAccel2 + 3xAccel3 + 3xdigiGyro + 3xMag1 + 3xMag2
+ * + BMPTEMP + BMPPRESS + 3xExtADC + 5xIntADC + 10xExG = 38
+ * Note: ExG can't be enabled at the same time as internal ADC channels so this
+ * number incorporates some buffer. Similarly, not all models have all IMUs
+ * fitted. */
+#define MAX_NUM_CHANNELS 50
 #elif defined(SHIMMER4_SDK)
-#define MAX_NUM_CHANNELS \
-  34 //3xanalogAccel + 3xdigiGyro + 3xdigiMag +
-     //3xLSM303DLHCAccel + 3xMPU9250Accel + 3xMPU9250MAG +
-     //BMP180TEMP + BMP180PRESS + batteryVoltage + 5stc3100
-     //3xexternalADC + 5xinternalADC
+/* 3xanalogAccel + 3xdigiGyro + 3xdigiMag +
+ * 3xLSM303DLHCAccel + 3xMPU9250Accel + 3xMPU9250MAG +
+ * BMP180TEMP + BMP180PRESS + batteryVoltage + 5stc3100 +
+ * 3xexternalADC + 5xinternalADC */
+#define MAX_NUM_CHANNELS 34
 #endif
 
 //Streaming Channel contents
