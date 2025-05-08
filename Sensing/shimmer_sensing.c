@@ -489,7 +489,8 @@ void ShimSens_saveTimestampToPacket(void)
 //this is to be called in the ISR
 void ShimSens_gatherData(void)
 {
-  if (shimmerStatus.sensing && !sensing.isSampling)
+//  if (shimmerStatus.sensing && !sensing.isSampling)
+  if (shimmerStatus.sensing)
   {
     sensing.isSampling = 1;
     ShimSens_saveTimestampToPacket();
