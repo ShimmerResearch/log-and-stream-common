@@ -2858,6 +2858,12 @@ uint16_t ShimBt_getSpaceInBtTxBuf(void)
 
 void ShimBt_TxCpltCallback(void)
 {
+#if !defined(SHIMMER3)
+  /* Advance the fifo buffer read index after TX is complete */
+  gBtTxFifo.rdIdx += gBtTxFifo.numBytesBeingRead;
+  gBtTxFifo.numBytesBeingRead = 0;
+#endif
+
   if (shimmerStatus.btConnected
 #if defined(SHIMMER3)
       || areBtSetupCommandsRunning())
@@ -2904,6 +2910,7 @@ void ShimBt_sendNextChar(void)
     ShimBt_btTxInProgressSet(1);
 
 #if defined(SHIMMER3)
+    /* Shimmer3 sends 1 byte at a time */
     uint8_t buf = ShimBt_popBytefromBtTxBuf();
     BtTransmit(&buf, 1);
 #else
@@ -2921,7 +2928,7 @@ void ShimBt_sendNextChar(void)
     {
       numBytes = BT_TX_BUF_SIZE - rdIdx;
     }
-    gBtTxFifo.rdIdx += numBytes;
+    gBtTxFifo.numBytesBeingRead = numBytes;
     ret_val = BtTransmit((uint8_t *) &gBtTxFifo.data[rdIdx], numBytes);
 #endif
   }

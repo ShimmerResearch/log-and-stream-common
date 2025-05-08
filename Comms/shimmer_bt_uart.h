@@ -246,6 +246,9 @@ typedef struct
   uint16_t rdIdx;
   //head points to the index of the next empty byte in the buffer
   uint16_t wrIdx;
+#if !defined(SHIMMER3)
+  uint16_t numBytesBeingRead;
+#endif
 } RingFifoTx_t;
 
 void ShimBt_btCommsProtocolInit(void);
