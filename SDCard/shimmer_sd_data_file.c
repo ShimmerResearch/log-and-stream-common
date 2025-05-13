@@ -547,9 +547,36 @@ void ShimSd_writeSdHeaderToFile(void)
   uint8_t temp_sdHeadText[SD_HEAD_SIZE];
   ShimSdHead_sdHeadTextGet(temp_sdHeadText, 0, SD_HEAD_SIZE);
 
+  /* Because the S3 uses it's RTC in counter mode and it doesn't feature a way
+   * of setting the current counter value, S3 code uses an 8-byte RTC diff and
+   * a 5 byte clock counter which are both stored to the SD header. Because S3R
+   * has an RTC in-which we can set the time, there's no need to have a separate
+   * RTC diff variable. Since the header only has space for 5 bytes initial
+   * timestamp counter, we need to put the upper 3 bytes of the RTC time within
+   * the RTC diff bytes. */
+
+#if defined(SHIMMER3R)
+  /* Set lower 5 bytes of RTC diff to be 0*/
+  temp_sdHeadText[SDH_RTC_DIFF_7] = 0;
+  temp_sdHeadText[SDH_RTC_DIFF_6] = 0;
+  temp_sdHeadText[SDH_RTC_DIFF_5] = 0;
+  temp_sdHeadText[SDH_RTC_DIFF_4] = 0;
+  temp_sdHeadText[SDH_RTC_DIFF_3] = 0;
+#endif
+
+  /* Save initial timestamp to header (5 bytes, LSB order) */
+  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_0] = (sdFileSyncTs >> 0) & 0xff;
+  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_1] = (sdFileSyncTs >> 8) & 0xff;
+  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_2] = (sdFileSyncTs >> 16) & 0xff;
+  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_3] = (sdFileSyncTs >> 24) & 0xff;
   temp_sdHeadText[SDH_INITIAL_TIMESTAMP_4] = (sdFileSyncTs >> 32) & 0xff;
-  *(uint32_t *) (temp_sdHeadText + SDH_INITIAL_TIMESTAMP_0)
-      = (uint32_t) (sdFileSyncTs & 0xffffffff);
+
+#if defined(SHIMMER3R)
+  /* Save upper 3 bytes to RTC timestamp diff bytes (MSB order) */
+  temp_sdHeadText[SDH_RTC_DIFF_2] = (sdFileSyncTs >> 40) & 0xff;
+  temp_sdHeadText[SDH_RTC_DIFF_1] = (sdFileSyncTs >> 48) & 0xff;
+  temp_sdHeadText[SDH_RTC_DIFF_0] = (sdFileSyncTs >> 56) & 0xff;
+#endif
 
 #if USE_FATFS //USE_FATFS
   file_status = f_write(&dataFile, temp_sdHeadText, SD_HEAD_SIZE, &bw);
