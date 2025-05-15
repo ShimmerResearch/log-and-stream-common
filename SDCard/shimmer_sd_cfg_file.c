@@ -176,7 +176,7 @@ void ShimSdCfgFile_generate(void)
       sprintf(buffer, "acc_hrm=%d\r\n", storedConfig->wrAccelHrMode);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 #if defined(SHIMMER3R)
-      sprintf(buffer, "mag_alt_rate=%d\r\n", ShimConfig_configByteAltMagRateGet);
+      sprintf(buffer, "mag_alt_rate=%d\r\n", ShimConfig_configByteAltMagRateGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       sprintf(buffer, "accel_alt_rate=%d\r\n", storedConfig->altAccelRate);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
