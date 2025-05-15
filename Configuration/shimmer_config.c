@@ -180,7 +180,7 @@ void ShimConfig_setDefaultConfig(void)
   ShimConfig_gyroRateSet(&storedConfig, 0x9B);
   /* LSM303 Mag 75Hz, +/-1.3 Gauss, MPU9150 Gyro +/-500 degrees per second */
   storedConfig.magRange = LSM303DLHC_MAG_1_3G;
-  storedConfig.magRateLsb = LSM303DLHC_MAG_75HZ;
+  ShimConfig_configByteMagRateSet(&storedConfig, LSM303DLHC_MAG_75HZ);
   ShimConfig_gyroRangeSet(&storedConfig, MPU9X50_GYRO_500DPS);
   /* MPU9X50/ICM20948 Accel +/-2G */
   storedConfig.altAccelRange = ACCEL_2G;
@@ -190,17 +190,18 @@ void ShimConfig_setDefaultConfig(void)
   /* LIS2DW12 Accel 100Hz, +/-2G, Low Power and High Resolution modes off */
   storedConfig.wrAccelRate = LIS2DW12_XL_ODR_100Hz;
   storedConfig.wrAccelRange = LIS2DW12_2g;
+  ShimConfig_wrAccelModeSet(&storedConfig, LIS2DW12_HIGH_PERFORMANCE);
   /* LSM6DSV Gyro sampling rate, next highest to 51.2Hz */
   ShimConfig_gyroRateSet(&storedConfig, LSM6DSV_ODR_AT_60Hz);
-  /* LIS3MDL Mag 75Hz, +/-4 Gauss, MPU9150 Gyro +/-500 degrees per second */
-  storedConfig.magRange = LIS3MDL_4_GAUSS;
-  ShimConfig_configByteMagRateSet(&storedConfig, LIS3MDL_UHP_80Hz);
+  /* LIS2MDL Mag 100Hz */
+  ShimConfig_configByteMagRateSet(&storedConfig, LIS2MDL_ODR_100Hz);
+  /* LIS3MDL Mag 80Hz, +/-4 Gauss */
+  storedConfig.altMagRange = LIS3MDL_4_GAUSS;
+  ShimConfig_configByteAltMagRateSet(&storedConfig, LIS3MDL_UHP_80Hz);
   /* LSM6DSV Gyro +/-500 degrees per second */
   ShimConfig_gyroRangeSet(&storedConfig, LSM6DSV_500dps);
   storedConfig.lnAccelRange = LSM6DSV_2g;
   ShimConfig_configBytePressureOversamplingRatioSet(&storedConfig, BMP3_NO_OVERSAMPLING);
-  ShimConfig_wrAccelModeSet(&storedConfig, LIS2DW12_HIGH_PERFORMANCE);
-  storedConfig.altMagRate = LIS2MDL_ODR_100Hz;
 #endif
   /* GSR auto range */
   storedConfig.gsrRange = GSR_AUTORANGE;
@@ -407,22 +408,30 @@ void ShimConfig_configByteMagRateSet(gConfigBytes *storedConfigPtr, uint8_t valu
 {
 #if defined(SHIMMER3)
   value = (value < LSM303DLHC_MAG_220HZ) ? value : LSM303DLHC_MAG_75HZ;
-#elif defined(SHIMMER3R)
-  value = value <= (LIS3MDL_UHP_80Hz) ? value : LIS3MDL_UHP_80Hz;
+#else
+  value = (value <= LIS2MDL_ODR_100Hz) ? value : LIS2MDL_ODR_100Hz;
 #endif
-  storedConfigPtr->magRateLsb = value & 0x07;
-#if defined(SHIMMER3R)
-  storedConfigPtr->magRateMsb = (value >> 3) & 0x07;
-#endif
+  storedConfigPtr->magRate = value;
 }
 
 uint8_t ShimConfig_configByteMagRateGet(void)
 {
+  return storedConfig.magRate;
+}
+
+void ShimConfig_configByteAltMagRateSet(gConfigBytes *storedConfigPtr, uint8_t value)
+{
 #if defined(SHIMMER3)
-  return storedConfig.magRateLsb;
+  value = 0; //not used
 #elif defined(SHIMMER3R)
-  return (storedConfig.magRateMsb << 3) | storedConfig.magRateLsb;
+  value = value <= (LIS3MDL_UHP_80Hz) ? value : LIS3MDL_UHP_80Hz;
 #endif
+  storedConfigPtr->altMagRate = value;
+}
+
+uint8_t ShimConfig_configByteAltMagRateGet(void)
+{
+  return storedConfig.altMagRate;
 }
 
 uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
