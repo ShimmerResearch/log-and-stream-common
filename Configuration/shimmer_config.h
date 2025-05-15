@@ -262,11 +262,11 @@ typedef union
 
     //Idx 8: Config setup byte 2
     uint8_t gyroRangeLsb : 2;
-    uint8_t magRate   : 3;
+    uint8_t magRate      : 3;
 #if defined(SHIMMER3)
-    uint8_t magRange     : 3;
+    uint8_t magRange : 3;
 #else
-    uint8_t altMagRange     : 3;
+    uint8_t altMagRange : 3;
 #endif
 
     //Idx 9: Config setup byte 3

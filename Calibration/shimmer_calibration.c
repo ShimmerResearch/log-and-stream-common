@@ -971,8 +971,8 @@ void ShimCalib_configBytesToCalibDump(uint8_t id, uint8_t setCalibTsZero)
   }
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_LIS2MDL_MAG)
   {
-    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LIS2MDL_MAG, SC_SENSOR_RANGE_LIS2MDL_RANGE, SC_DATA_LEN_STD_IMU_CALIB,
-        &configBytes->magCalib.rawBytes[0], setCalibTsZero);
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LIS2MDL_MAG, SC_SENSOR_RANGE_LIS2MDL_RANGE,
+        SC_DATA_LEN_STD_IMU_CALIB, &configBytes->magCalib.rawBytes[0], setCalibTsZero);
   }
 #endif
 }
