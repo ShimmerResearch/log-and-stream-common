@@ -966,13 +966,13 @@ void ShimCalib_configBytesToCalibDump(uint8_t id, uint8_t setCalibTsZero)
   }
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_LIS3MDL_MAG)
   {
-    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LIS3MDL_MAG, configBytes->magRange,
-        SC_DATA_LEN_STD_IMU_CALIB, &configBytes->magCalib.rawBytes[0], setCalibTsZero);
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LIS3MDL_MAG, configBytes->altMagRange,
+        SC_DATA_LEN_STD_IMU_CALIB, &configBytes->altMagCalib.rawBytes[0], setCalibTsZero);
   }
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_LIS2MDL_MAG)
   {
-    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LIS2MDL_MAG, 0, SC_DATA_LEN_STD_IMU_CALIB,
-        &configBytes->altMagCalib.rawBytes[0], setCalibTsZero);
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_LIS2MDL_MAG, SC_SENSOR_RANGE_LIS2MDL_RANGE,
+        SC_DATA_LEN_STD_IMU_CALIB, &configBytes->magCalib.rawBytes[0], setCalibTsZero);
   }
 #endif
 }
@@ -1108,7 +1108,7 @@ void ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(uint8_t sensor)
       scs_infomem_offset = NV_MAG_CALIBRATION;
       scs_sdhead_offset = SDH_MAG_CALIBRATION;
       scs_sdhead_ts = SDH_MAG_CALIB_TS;
-      sc1.range = configBytes->magRange;
+      sc1.range = configBytes->altMagRange;
       break;
     case SC_SENSOR_LIS2MDL_MAG:
       scs_infomem_offset = NV_ALT_MAG_CALIBRATION;

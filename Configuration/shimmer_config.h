@@ -202,7 +202,7 @@ typedef union
     uint8_t chEnGsr        : 1; //S3 = IntADC1, S3R = IntADC3
     uint8_t chEnExg2_24Bit : 1;
     uint8_t chEnExg1_24Bit : 1;
-    uint8_t chEnMag  : 1; //S3/S4_SDK = LSM303DLHC/LSM303AH, S3R = LIS3MDL Mag
+    uint8_t chEnMag  : 1; //S3/S4_SDK = LSM303DLHC/LSM303AH, S3R = LIS2MDL Mag
     uint8_t chEnGyro : 1; //S3/S4_SDK = MPU9x50/ICM20948, S3R = LSM6DSV Gyro
     uint8_t chEnLnAccel : 1; //S3/S4_SDK = KXRB5-2042/KXTC9-2050, S3R = LSM6DSV Accel
 
@@ -243,7 +243,7 @@ typedef union
     uint8_t chEnPressureAndTemperature : 1;
     uint8_t chEnExg2_16Bit             : 1;
     uint8_t chEnExg1_16Bit             : 1;
-    uint8_t chEnAltMag   : 1; //S3/S4_SDK MPU9x50/ICM20948 Mag, S3R = LIS2MDL
+    uint8_t chEnAltMag   : 1; //S3/S4_SDK MPU9x50/ICM20948 Mag, S3R = LIS3MDL
     uint8_t chEnAltAccel : 1; //S3/S4_SDK MPU9x50/ICM20948 Accel, S3R = ADXL371
 #if defined(SHIMMER3)
     uint8_t chEnIntADC14 : 1;
@@ -262,8 +262,12 @@ typedef union
 
     //Idx 8: Config setup byte 2
     uint8_t gyroRangeLsb : 2;
-    uint8_t magRateLsb   : 3;
-    uint8_t magRange     : 3;
+    uint8_t magRate      : 3;
+#if defined(SHIMMER3)
+    uint8_t magRange : 3;
+#else
+    uint8_t altMagRange : 3;
+#endif
 
     //Idx 9: Config setup byte 3
     uint8_t expansionBoardPower          : 1;
@@ -346,14 +350,12 @@ typedef union
     uint8_t wrAccelLpModeMsb             : 1;
     uint8_t gyroRangeMsb                 : 1;
     uint8_t unusedByte130Bit4            : 1;
-    uint8_t altMagRate                   : 2;
+    uint8_t unusedByte130Bit5            : 1;
+    uint8_t unusedByte130Bit6            : 1;
     uint8_t altAccelRate                 : 2;
 
     //Idx 131: Config setup byte 5
-    uint8_t unusedByte131Bit0 : 1;
-    uint8_t unusedByte131Bit1 : 1;
-    uint8_t unusedByte131Bit2 : 1;
-    uint8_t magRateMsb        : 3;
+    uint8_t altMagRate        : 6;
     uint8_t unusedByte131Bit6 : 1;
     uint8_t unusedByte131Bit7 : 1;
 
@@ -499,6 +501,8 @@ void ShimConfig_configBytePressureOversamplingRatioSet(gConfigBytes *storedConfi
 uint8_t ShimConfig_configBytePressureOversamplingRatioGet(void);
 void ShimConfig_configByteMagRateSet(gConfigBytes *storedConfigPtr, uint8_t value);
 uint8_t ShimConfig_configByteMagRateGet(void);
+void ShimConfig_configByteAltMagRateSet(gConfigBytes *storedConfigPtr, uint8_t value);
+uint8_t ShimConfig_configByteAltMagRateGet(void);
 uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfig);
 void ShimConfig_setExgConfigForTestSignal(gConfigBytes *storedConfigPtr);
 void ShimConfig_setExgConfigForEcg(gConfigBytes *storedConfigPtr);
