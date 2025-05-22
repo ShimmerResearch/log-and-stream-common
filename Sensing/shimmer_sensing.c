@@ -60,11 +60,11 @@ I2C_TypeDef *sensing_i2c;
 I2C_TypeDef *sensing_i2c_batt;
 #endif
 
-uint8_t expectedCbFlags = 0, currentCbFlags = 0;
+uint8_t volatile  expectedCbFlags = 0;
+uint8_t volatile  currentCbFlags = 0;
 #if defined(SHIMMER4_SDK)
 uint32_t temp_cnt1, temp_cnt2, temp_cnt3, temp_cnt4;
 #endif
-
 //I2CBatteryTypeDef *sensing_i2c_batt;
 
 //uint8_t cc[MAX_NUM_CHANNELS], nbrAdcChans, nbrDigiChans;
@@ -183,10 +183,8 @@ void ShimSens_startSensing(void)
   {
     shimmerStatus.sensing = 1;
     sensing.isFileCreated = 0;
-    sensing.isSampling = 0;
-
+    sensing.isSampling = SAMPLE_NOT_READY;
     ShimSens_configureChannels();
-
     if (ShimSens_getNumEnabledChannels() == 0)
     {
       shimmerStatus.configuring = 0;
@@ -338,7 +336,7 @@ void ShimSens_stopSensing(void)
     shimmerStatus.sensing = 0;
     shimmerStatus.btStreaming = 0;
     sensing.startTs = 0;
-    sensing.isSampling = 0;
+    sensing.isSampling = SAMPLE_NOT_READY;
     ShimSens_stopPeripherals();
 
     if (shimmerStatus.sdSyncEnabled)
@@ -416,7 +414,7 @@ void ShimSens_streamData(void)
   else if ((sensing.startTs == 0) || (sensing.latestTs - sensing.startTs < 1638))
   {
     sensing.startTs = 0xffffffffffffffff;
-    sensing.isSampling = 0;
+    sensing.isSampling = SAMPLING_COMPLETE;
     return;
   }
   else
@@ -489,20 +487,14 @@ void ShimSens_saveTimestampToPacket(void)
 //this is to be called in the ISR
 void ShimSens_gatherData(void)
 {
-  //if (shimmerStatus.sensing && !sensing.isSampling)
-  if (shimmerStatus.sensing)
+#if SAVE_DATA_FROM_RTC_INT
+  if (shimmerStatus.sensing && (sensing.isSampling != SAMPLING_IN_PROGRESS))
   {
-    sensing.isSampling = 1;
+    sensing.isSampling = SAMPLING_IN_PROGRESS;
     ShimSens_saveTimestampToPacket();
-    //ShimTask_set(TASK_STREAMDATA);
     ShimSens_streamData();
-
-    //#if defined(SHIMMER3) || defined(SHIMMER3R)
-    //    ShimSens_streamData();
-    //#elif defined(SHIMMER4_SDK)
-    //    ShimSens_step1Start();
-    //#endif
   }
+#endif
 }
 
 void ShimSens_stepInit(void)
@@ -543,11 +535,12 @@ void ShimSens_spiCompleteCb(void)
 void ShimSens_stageCompleteCb(uint8_t stage)
 {
   currentCbFlags |= stage;
+#if SAVE_DATA_FROM_RTC_INT
   if (currentCbFlags == expectedCbFlags)
   {
-    //saveData();
-    ShimTask_set(TASK_SAVEDATA);
+    sensing.isSampling = SAMPLING_COMPLETE;
   }
+#endif /* SAVE_DATA_FROM_RTC_INT */
 }
 
 #if defined(SHIMMER4_SDK)
@@ -635,8 +628,7 @@ void ShimSens_saveData(void)
 #endif
 
   /* Data packet has moved off dataBuf, device is free to start new packet */
-  sensing.isSampling = 0;
-
+  sensing.isSampling = SAMPLING_COMPLETE;
   if ((!shimmerStatus.sdLogging) && (!shimmerStatus.btStreaming))
   {
     ShimTask_set(TASK_STOPSENSING);
