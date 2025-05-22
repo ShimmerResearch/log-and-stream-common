@@ -1403,7 +1403,7 @@ void ShimBt_processCmd(void)
 #if defined(SHIMMER3)
       storedConfig->magRange = (args[0] <= LSM303DLHC_MAG_8_1G) ? args[0] : LSM303DLHC_MAG_1_3G;
 #elif defined(SHIMMER3R)
-      storedConfig->magRange = (args[0] <= LIS3MDL_16_GAUSS) ? args[0] : LIS3MDL_4_GAUSS;
+      storedConfig->altMagRange = (args[0] <= LIS3MDL_16_GAUSS) ? args[0] : LIS3MDL_4_GAUSS;
 #endif
       ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
       break;
@@ -1543,7 +1543,7 @@ void ShimBt_processCmd(void)
 #if defined(SHIMMER3)
       sensorCalibId = SC_SENSOR_LSM303_MAG;
 #elif defined(SHIMMER3R)
-      sensorCalibId = SC_SENSOR_LIS3MDL_MAG;
+      sensorCalibId = SC_SENSOR_LIS2MDL_MAG;
 #endif
       ShimBt_calibrationChangeCommon(NV_MAG_CALIBRATION, SDH_MAG_CALIBRATION,
           &storedConfig->magCalib.rawBytes[0], &args[0], sensorCalibId);
@@ -1809,7 +1809,7 @@ void ShimBt_processCmd(void)
 #if defined(SHIMMER3)
       sensorCalibId = SC_SENSOR_MPU9X50_ICM20948_MAG;
 #elif defined(SHIMMER3R)
-      sensorCalibId = SC_SENSOR_LIS2MDL_MAG;
+      sensorCalibId = SC_SENSOR_LIS3MDL_MAG;
 #endif
       ShimBt_calibrationChangeCommon(NV_ALT_MAG_CALIBRATION, SDH_ALT_MAG_CALIBRATION,
           &storedConfig->altMagCalib.rawBytes[0], &args[0], sensorCalibId);
@@ -1824,7 +1824,7 @@ void ShimBt_processCmd(void)
     }
     case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
     {
-      storedConfig->altMagRate = args[0] & 0x03;
+      ShimConfig_configByteAltMagRateSet(storedConfig, args[0]);
       ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
       break;
     }
@@ -1965,10 +1965,11 @@ uint8_t ShimBt_replySingleSensorCalibCmd(uint8_t cmdWaitingResponse, uint8_t *re
   {
 #if defined(SHIMMER3)
     sc1.id = SC_SENSOR_LSM303_MAG;
-#elif defined(SHIMMER3R)
-    sc1.id = SC_SENSOR_LIS3MDL_MAG;
-#endif
     sc1.range = storedConfig->magRange;
+#elif defined(SHIMMER3R)
+    sc1.id = SC_SENSOR_LIS2MDL_MAG;
+    sc1.range = SC_SENSOR_RANGE_LIS2MDL_RANGE;
+#endif
   }
   else if (cmdWaitingResponse == GET_WR_ACCEL_CALIBRATION_COMMAND)
   {
@@ -1993,9 +1994,10 @@ uint8_t ShimBt_replySingleSensorCalibCmd(uint8_t cmdWaitingResponse, uint8_t *re
   {
 #if defined(SHIMMER3)
     sc1.id = SC_SENSOR_MPU9X50_ICM20948_MAG;
+    sc1.range = 0;
 #elif defined(SHIMMER3R)
-    sc1.id = SC_SENSOR_LIS2MDL_MAG;
-    sc1.range = SC_SENSOR_RANGE_LIS2MDL_RANGE;
+    sc1.id = SC_SENSOR_LIS3MDL_MAG;
+    sc1.range = storedConfig->altMagRange;
 #endif
   }
   else
@@ -2086,7 +2088,11 @@ void ShimBt_sendRsp(void)
       case GET_MAG_GAIN_COMMAND:
       {
         *(resPacket + packet_length++) = MAG_GAIN_RESPONSE;
+#if defined(SHIMMER3)
         *(resPacket + packet_length++) = storedConfig->magRange;
+#else
+        *(resPacket + packet_length++) = storedConfig->altMagRange;
+#endif
         break;
       }
       case GET_MAG_SAMPLING_RATE_COMMAND:
@@ -2463,7 +2469,7 @@ void ShimBt_sendRsp(void)
       case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
       {
         *(resPacket + packet_length++) = ALT_MAG_SAMPLING_RATE_RESPONSE;
-        *(resPacket + packet_length++) = storedConfig->altMagRate;
+        *(resPacket + packet_length++) = ShimConfig_configByteAltMagRateGet();
         break;
       }
       case GET_EXG_REGS_COMMAND:
@@ -2858,6 +2864,12 @@ uint16_t ShimBt_getSpaceInBtTxBuf(void)
 
 void ShimBt_TxCpltCallback(void)
 {
+#if !defined(SHIMMER3)
+  /* Advance the fifo buffer read index after TX is complete */
+  gBtTxFifo.rdIdx += gBtTxFifo.numBytesBeingRead;
+  gBtTxFifo.numBytesBeingRead = 0;
+#endif
+
   if (shimmerStatus.btConnected
 #if defined(SHIMMER3)
       || areBtSetupCommandsRunning())
@@ -2904,6 +2916,7 @@ void ShimBt_sendNextChar(void)
     ShimBt_btTxInProgressSet(1);
 
 #if defined(SHIMMER3)
+    /* Shimmer3 sends 1 byte at a time */
     uint8_t buf = ShimBt_popBytefromBtTxBuf();
     BtTransmit(&buf, 1);
 #else
@@ -2921,7 +2934,7 @@ void ShimBt_sendNextChar(void)
     {
       numBytes = BT_TX_BUF_SIZE - rdIdx;
     }
-    gBtTxFifo.rdIdx += numBytes;
+    gBtTxFifo.numBytesBeingRead = numBytes;
     ret_val = BtTransmit((uint8_t *) &gBtTxFifo.data[rdIdx], numBytes);
 #endif
   }

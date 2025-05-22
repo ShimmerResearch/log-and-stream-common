@@ -139,7 +139,11 @@ void ShimSdCfgFile_generate(void)
       //setup config
       sprintf(buffer, "mg_internal_rate=%d\r\n", ShimConfig_configByteMagRateGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
+#if defined(SHIMMER3)
       sprintf(buffer, "mg_range=%d\r\n", storedConfig->magRange);
+#else
+      sprintf(buffer, "mag_alt_range=%d\r\n", storedConfig->altMagRange);
+#endif
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       sprintf(buffer, "acc_internal_rate=%d\r\n", storedConfig->wrAccelRate);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
@@ -172,7 +176,7 @@ void ShimSdCfgFile_generate(void)
       sprintf(buffer, "acc_hrm=%d\r\n", storedConfig->wrAccelHrMode);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 #if defined(SHIMMER3R)
-      sprintf(buffer, "mag_alt_rate=%d\r\n", storedConfig->altMagRate);
+      sprintf(buffer, "mag_alt_rate=%d\r\n", ShimConfig_configByteAltMagRateGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       sprintf(buffer, "accel_alt_rate=%d\r\n", storedConfig->altAccelRate);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
@@ -515,10 +519,17 @@ void ShimSdCfgFile_parse(void)
       {
         ShimConfig_configByteMagRateSet(&stored_config_temp, atoi(equals));
       }
+#if defined(SHIMMER3)
       else if (strstr(buffer, "mg_range="))
       {
         stored_config_temp.magRange = atoi(equals);
       }
+#else
+      else if (strstr(buffer, "mag_alt_range="))
+      {
+        stored_config_temp.altMagRange = atoi(equals);
+      }
+#endif
       else if (strstr(buffer, "acc_internal_rate="))
       {
         stored_config_temp.wrAccelRate = atoi(equals);
@@ -579,7 +590,7 @@ void ShimSdCfgFile_parse(void)
 #if defined(SHIMMER3R)
       else if (strstr(buffer, "mag_alt_rate="))
       {
-        stored_config_temp.altMagRate = atoi(equals);
+        ShimConfig_configByteAltMagRateSet(&stored_config_temp, atoi(equals));
       }
       else if (strstr(buffer, "accel_alt_rate="))
       {
