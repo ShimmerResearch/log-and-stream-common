@@ -68,20 +68,6 @@
 #define HW_RES_3M3_MAX_ADC_VAL  3930 //680k to 4M7
 #define HW_RES_3M3_MIN_ADC_VAL  1125 //680k to 4M7
 
-//These constants were calculated by measuring against precision resistors
-//and then using a linear fit to give CONDUCTANCE values
-#define HW_RES_40K_CONSTANT_A   0.0373
-#define HW_RES_40K_CONSTANT_B   (-24.9915)
-
-#define HW_RES_287K_CONSTANT_A  0.0054
-#define HW_RES_287K_CONSTANT_B  (-3.5194)
-
-#define HW_RES_1M_CONSTANT_A    0.0015
-#define HW_RES_1M_CONSTANT_B    (-1.0163)
-
-#define HW_RES_3M3_CONSTANT_A   0.00045580
-#define HW_RES_3M3_CONSTANT_B   (-0.3014)
-
 //when we switch resistors with the ADG658 it takes a few samples for the
 //ADC to start to see the new sampled voltage correctly, the catch below is
 //to eliminate any glitches in the data
@@ -246,29 +232,10 @@ uint64_t multiply(uint64_t no1, uint64_t no2)
   return no1 * no2;
 }
 
-uint32_t GSR_calcResistance(uint16_t ADC_val)
+uint32_t GSR_calcResistance(uint16_t gsrMv)
 {
-  float conductance = 0;
-
-  //Conductance measured in uS
-  switch (gsrActiveResistor)
-  {
-    case HW_RES_40K:
-      conductance = (((HW_RES_40K_CONSTANT_A) *ADC_val) + (HW_RES_40K_CONSTANT_B));
-      break;
-    case HW_RES_287K:
-      conductance = (((HW_RES_287K_CONSTANT_A) *ADC_val) + (HW_RES_287K_CONSTANT_B));
-      break;
-    case HW_RES_1M:
-      conductance = (((HW_RES_1M_CONSTANT_A) *ADC_val) + (HW_RES_1M_CONSTANT_B));
-      break;
-    case HW_RES_3M3:
-    default:
-      conductance = (((HW_RES_3M3_CONSTANT_A) *ADC_val) + (HW_RES_3M3_CONSTANT_B));
-      break;
-  }
-  //Resistance = 1e6/Conductance (in ohms)
-  return (uint32_t) (1000000.0 / conductance);
+  // Uses op amp equation
+  return GSR_FEEDBACK_RESISTORS_OHMS[gsrActiveResistor] / ((gsrMv / 0.5) - 1.0);
 }
 
 void GSR_controlRange(uint16_t ADC_val)
