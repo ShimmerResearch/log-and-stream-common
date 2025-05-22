@@ -60,8 +60,8 @@ I2C_TypeDef *sensing_i2c;
 I2C_TypeDef *sensing_i2c_batt;
 #endif
 
-uint8_t volatile  expectedCbFlags = 0;
-uint8_t volatile  currentCbFlags = 0;
+uint8_t volatile expectedCbFlags = 0;
+uint8_t volatile currentCbFlags = 0;
 #if defined(SHIMMER4_SDK)
 uint32_t temp_cnt1, temp_cnt2, temp_cnt3, temp_cnt4;
 #endif
