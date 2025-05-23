@@ -52,7 +52,9 @@
 #include "shimmer_include.h"
 #endif
 
-#define FIRST_CH_BYTE_IDX (1 + 3) //0x00 + timestamp
+#define SAVE_DATA_FROM_RTC_INT 0x1
+
+#define FIRST_CH_BYTE_IDX      (1 + 3) //0x00 + timestamp
 
 #if defined(SHIMMER3)
 /* 3xanalogAccel + 3xdigiGyro + 3xdigiMag +
@@ -178,12 +180,19 @@ typedef struct
   uint8_t batteryAnalog;
 } DATAPTRTypeDef;
 
+typedef enum
+{
+  SAMPLING_COMPLETE = 0x00,
+  SAMPLING_IN_PROGRESS = 0x01,
+  SAMPLE_NOT_READY = 0x02
+} SAMPLING_STATUS;
+
 typedef struct
 { //sensor data
   //uint8_t     en;
   //uint8_t     configuring;
   //uint8_t     i2cSensor;
-  uint8_t isSampling;
+  volatile uint8_t isSampling;
   uint8_t isSdOperating;
   uint8_t isFileCreated;
   uint8_t inSdWr;
