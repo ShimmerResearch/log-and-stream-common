@@ -52,6 +52,8 @@
 #include "shimmer_include.h"
 #endif
 
+#define SAVE_DATA_FROM_RTC_INT 0x1
+
 #define FIRST_CH_BYTE_IDX (1 + 3) //0x00 + timestamp
 
 #if defined(SHIMMER3)
@@ -145,7 +147,6 @@
 #define PPG_1           0x36
 #define PPG_2           0x37
 #endif
-#define SAVE_DATA_FROM_RTC_INT 0x1
 
 typedef struct
 { //data ptr (offset)

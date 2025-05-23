@@ -60,8 +60,8 @@ I2C_TypeDef *sensing_i2c;
 I2C_TypeDef *sensing_i2c_batt;
 #endif
 
-uint8_t volatile expectedCbFlags = 0;
-uint8_t volatile currentCbFlags = 0;
+volatile uint8_t expectedCbFlags = 0;
+volatile uint8_t currentCbFlags = 0;
 #if defined(SHIMMER4_SDK)
 uint32_t temp_cnt1, temp_cnt2, temp_cnt3, temp_cnt4;
 #endif
@@ -489,12 +489,14 @@ void ShimSens_gatherData(void)
 {
 #if SAVE_DATA_FROM_RTC_INT
   if (shimmerStatus.sensing && (sensing.isSampling != SAMPLING_IN_PROGRESS))
+#else /* SAVE_DATA_FROM_RTC_INT */
+    if (shimmerStatus.sensing)
+#endif /* SAVE_DATA_FROM_RTC_INT */
   {
     sensing.isSampling = SAMPLING_IN_PROGRESS;
     ShimSens_saveTimestampToPacket();
     ShimSens_streamData();
   }
-#endif
 }
 
 void ShimSens_stepInit(void)
@@ -535,12 +537,14 @@ void ShimSens_spiCompleteCb(void)
 void ShimSens_stageCompleteCb(uint8_t stage)
 {
   currentCbFlags |= stage;
-#if SAVE_DATA_FROM_RTC_INT
   if (currentCbFlags == expectedCbFlags)
   {
+#if SAVE_DATA_FROM_RTC_INT
     sensing.isSampling = SAMPLING_COMPLETE;
-  }
+#else /* SAVE_DATA_FROM_RTC_INT */
+    ShimTask_set(TASK_SAVEDATA);
 #endif /* SAVE_DATA_FROM_RTC_INT */
+  }
 }
 
 #if defined(SHIMMER4_SDK)
