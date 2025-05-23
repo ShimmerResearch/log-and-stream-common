@@ -54,7 +54,7 @@
 
 #define SAVE_DATA_FROM_RTC_INT 0x1
 
-#define FIRST_CH_BYTE_IDX (1 + 3) //0x00 + timestamp
+#define FIRST_CH_BYTE_IDX      (1 + 3) //0x00 + timestamp
 
 #if defined(SHIMMER3)
 /* 3xanalogAccel + 3xdigiGyro + 3xdigiMag +

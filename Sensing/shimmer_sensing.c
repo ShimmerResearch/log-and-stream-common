@@ -489,8 +489,8 @@ void ShimSens_gatherData(void)
 {
 #if SAVE_DATA_FROM_RTC_INT
   if (shimmerStatus.sensing && (sensing.isSampling != SAMPLING_IN_PROGRESS))
-#else /* SAVE_DATA_FROM_RTC_INT */
-    if (shimmerStatus.sensing)
+#else  /* SAVE_DATA_FROM_RTC_INT */
+  if (shimmerStatus.sensing)
 #endif /* SAVE_DATA_FROM_RTC_INT */
   {
     sensing.isSampling = SAMPLING_IN_PROGRESS;
@@ -541,7 +541,7 @@ void ShimSens_stageCompleteCb(uint8_t stage)
   {
 #if SAVE_DATA_FROM_RTC_INT
     sensing.isSampling = SAMPLING_COMPLETE;
-#else /* SAVE_DATA_FROM_RTC_INT */
+#else  /* SAVE_DATA_FROM_RTC_INT */
     ShimTask_set(TASK_SAVEDATA);
 #endif /* SAVE_DATA_FROM_RTC_INT */
   }
