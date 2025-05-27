@@ -232,10 +232,10 @@ uint64_t multiply(uint64_t no1, uint64_t no2)
   return no1 * no2;
 }
 
-uint32_t GSR_calcResistance(uint16_t gsrMv)
+uint32_t GSR_calcResistance(float gsrMv)
 {
   //Uses op amp equation
-  return GSR_FEEDBACK_RESISTORS_OHMS[gsrActiveResistor] / ((gsrMv / 0.5) - 1.0);
+  return GSR_FEEDBACK_RESISTORS_OHMS[gsrActiveResistor] / (((gsrMv / 1000) / 0.5) - 1.0);
 }
 
 void GSR_controlRange(uint16_t ADC_val)

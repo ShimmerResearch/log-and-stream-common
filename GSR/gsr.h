@@ -73,7 +73,7 @@ void GSR_setA1(uint8_t state);
 
 //Calculates resistance from a raw ADC value using linear fit to conductance
 //ADC_val: the ADC value to be used in the calculation
-uint32_t GSR_calcResistance(uint16_t gsrMv);
+uint32_t GSR_calcResistance(float gsrMv);
 
 //Determines whether to change the currently active internal resistor based
 //on the ADC value, and if necessary change the internal resistor to a new
