@@ -2105,11 +2105,7 @@ void ShimBt_sendRsp(void)
       {
         *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
         *(resPacket + packet_length++) = STATUS_RESPONSE;
-        *(resPacket + packet_length++) = (shimmerStatus.toggleLedRedCmd << 7)
-            + (shimmerStatus.sdBadFile << 6) + (shimmerStatus.sdInserted << 5)
-            + (shimmerStatus.btStreaming << 4) + (shimmerStatus.sdLogging << 3)
-            + (isRwcTimeSet() << 2) + (shimmerStatus.sensing << 1)
-            + (shimmerStatus.docked);
+        *(resPacket + packet_length++) = ShimBt_assembleStatusByte();
         break;
       }
       case GET_VBATT_COMMAND:
@@ -2668,10 +2664,7 @@ void ShimBt_instreamStatusRespSend(void)
     }
     selfcmd[i++] = INSTREAM_CMD_RESPONSE;
     selfcmd[i++] = STATUS_RESPONSE;
-    selfcmd[i++] = (shimmerStatus.toggleLedRedCmd << 7)
-        | (shimmerStatus.sdBadFile << 6) | (shimmerStatus.sdInserted << 5)
-        | (shimmerStatus.btStreaming << 4) | (shimmerStatus.sdLogging << 3)
-        | (isRwcTimeSet() << 2) | (shimmerStatus.sensing << 1) | shimmerStatus.docked;
+    selfcmd[i++] = ShimBt_assembleStatusByte();
 
     uint8_t crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
@@ -3003,3 +2996,12 @@ uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType res
   return 0;
 }
 #endif
+
+uint8_t ShimBt_assembleStatusByte(void)
+{
+  return (shimmerStatus.toggleLedRedCmd << 7) | (shimmerStatus.sdBadFile << 6)
+      | (shimmerStatus.sdInserted << 5) | (shimmerStatus.btStreaming << 4)
+      | (shimmerStatus.sdLogging << 3) | (isRwcTimeSet() << 2)
+      | (shimmerStatus.sensing << 1) | LogAndStream_isDockedOrUsbIn();
+}
+
