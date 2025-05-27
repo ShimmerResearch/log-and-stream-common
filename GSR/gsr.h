@@ -45,11 +45,16 @@
 
 #include <stdint.h>
 
-#define HW_RES_40K    0
-#define HW_RES_287K   1
-#define HW_RES_1M     2
-#define HW_RES_3M3    3
-#define GSR_AUTORANGE 4
+enum
+{
+  HW_RES_40K = 0,
+  HW_RES_287K,
+  HW_RES_1M,
+  HW_RES_3M3,
+  GSR_AUTORANGE
+};
+
+static uint32_t GSR_FEEDBACK_RESISTORS_OHMS[] = { 40200, 287000, 1000000, 3300000 };
 
 void GSR_init(uint8_t gsrRangeToSet, uint16_t gsrSamplingRateToSet);
 
@@ -68,7 +73,7 @@ void GSR_setA1(uint8_t state);
 
 //Calculates resistance from a raw ADC value using linear fit to conductance
 //ADC_val: the ADC value to be used in the calculation
-uint32_t GSR_calcResistance(uint16_t ADC_val);
+uint32_t GSR_calcResistance(float gsrMv);
 
 //Determines whether to change the currently active internal resistor based
 //on the ADC value, and if necessary change the internal resistor to a new
