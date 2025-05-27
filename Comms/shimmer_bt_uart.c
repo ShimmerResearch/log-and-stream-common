@@ -3004,4 +3004,3 @@ uint8_t ShimBt_assembleStatusByte(void)
       | (shimmerStatus.sdLogging << 3) | (isRwcTimeSet() << 2)
       | (shimmerStatus.sensing << 1) | LogAndStream_isDockedOrUsbIn();
 }
-

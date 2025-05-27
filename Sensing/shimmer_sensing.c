@@ -119,11 +119,11 @@ uint8_t ShimSens_checkStartSensorConditions(void)
   {
     return 0;
   }
-  if (!((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START
-      && shimmerStatus.sdInserted && !shimmerStatus.sdBadFile
-      && !LogAndStream_isDockedOrUsbIn())
-      || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START
-          && shimmerStatus.btConnected)) || batteryStatus.battCritical)
+  if (!((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START && shimmerStatus.sdInserted
+            && !shimmerStatus.sdBadFile && !LogAndStream_isDockedOrUsbIn())
+          || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START
+              && shimmerStatus.btConnected))
+      || batteryStatus.battCritical)
   {
     return 0;
   }
