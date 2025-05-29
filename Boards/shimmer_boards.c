@@ -298,3 +298,12 @@ uint8_t ShimBrd_isExpBrdId(uint8_t expIdToCheck)
   return (ShimBrd_isDaughterCardIdSet()
       && (daughterCardIdPage.expansion_brd.exp_brd_id == expIdToCheck));
 }
+
+uint8_t ShimBrd_checkStateForBoot0(void)
+{
+  //return (ShimBrd_isDaughterCardIdSet() && hwId == HW_ID_SHIMMER3R
+  //    && !ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0));
+
+  /* Default = 1 */
+  return 0;
+}
