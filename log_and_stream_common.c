@@ -137,3 +137,8 @@ void LogAndStream_blinkTimerCommon(void)
     }
   }
 }
+
+uint8_t LogAndStream_isDockedOrUsbIn(void)
+{
+  return shimmerStatus.docked || shimmerStatus.usbPluggedIn;
+}

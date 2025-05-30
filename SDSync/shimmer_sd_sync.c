@@ -669,7 +669,7 @@ void ShimSdSync_handleSyncTimerTrigger(void)
   }
   else //idle: no_RC mode
   {
-    if (shimmerStatus.docked)
+    if (LogAndStream_isDockedOrUsbIn())
     {
       ShimTask_setStopSensing();
       if (shimmerStatus.btPowerOn)

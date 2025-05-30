@@ -153,7 +153,7 @@ void ShimLeds_blinkSetLwrBattStatus(void)
   }
   else
   {
-    if (shimmerStatus.docked)
+    if (LogAndStream_isDockedOrUsbIn())
     {
       batt_led = batteryStatus.battStatLedCharging;
     }
