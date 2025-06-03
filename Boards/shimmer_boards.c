@@ -299,11 +299,24 @@ uint8_t ShimBrd_isExpBrdId(uint8_t expIdToCheck)
       && (daughterCardIdPage.expansion_brd.exp_brd_id == expIdToCheck));
 }
 
-uint8_t ShimBrd_checkStateForBoot0(void)
+uint8_t ShimBrd_checkCorrectStateForBoot0(void)
 {
-  //return (ShimBrd_isDaughterCardIdSet() && hwId == HW_ID_SHIMMER3R
-  //    && !ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0));
-
-  /* Default = 1 */
-  return 0;
+  /* nBOOT0 Default = 1. Early S3R boards required nBoot to remain unchanged (SR48-6).
+   * Some boards (SR48-7-0, SR47-7-0) had inverted nBoot0 circuitry. An ECO
+   * removed this, but SR47-7-2 and SR48-7-2 are reserved for unmodified boards.
+   * Future boards rely on firmware setting nBoot0 to 0 with no external inversion circuitry. */
+  if (ShimBrd_isDaughterCardIdSet() && hwId == HW_ID_SHIMMER3R
+      && (ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 2)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 2)))
+  {
+    /* MCU comes with Default nBOOT0 = 1 */
+    return 1;
+  }
+  else
+  {
+    /* We've changed direction to match Shimmer3 for backwards compatibility
+     * with docks */
+    return 0;
+  }
 }

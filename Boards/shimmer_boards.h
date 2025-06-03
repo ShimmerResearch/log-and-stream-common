@@ -114,6 +114,6 @@ uint8_t ShimBrd_areMcuAdcsUsedForSensing(void);
 uint8_t ShimBrd_isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_brd_minor);
 uint8_t ShimBrd_isHwId(uint8_t hwIdToCheck);
 uint8_t ShimBrd_isExpBrdId(uint8_t expIdToCheck);
-uint8_t ShimBrd_checkStateForBoot0(void);
+uint8_t ShimBrd_checkCorrectStateForBoot0(void);
 
 #endif /* LOG_AND_STREAM_COMMON_BOARDS_SHIMMER_BOARDS_H_ */
