@@ -144,7 +144,7 @@ void ShimBatt_rankBattChargingStatus(void)
 void ShimBatt_determineChargingLedState(void)
 {
   batteryStatus.battStatLedFlash = 0;
-  if (shimmerStatus.docked)
+  if (LogAndStream_isDockedOrUsbIn())
   {
     if (batteryStatus.battChargingStatus == CHARGING_STATUS_SUSPENDED)
     {
