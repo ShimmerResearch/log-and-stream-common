@@ -456,12 +456,16 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
     def test_028_get_status(self, run_with_other_test=False):
         if not run_with_other_test:
             print("Test 028 - Get status command:")
+        if not self.shimmer.is_hardware_version_set():
+            self.test_004_get_shimmer_new_version(True)
+
+        num_bytes = 2 if self.shimmer.is_hardware_shimmer3r() else 1
+
         response = self.bt_cmd_test_get_common(shimmer_comms_bluetooth.BtCmds.GET_STATUS_COMMAND,
-                                               shimmer_comms_bluetooth.BtCmds.STATUS_RESPONSE, 1,
+                                               shimmer_comms_bluetooth.BtCmds.STATUS_RESPONSE, num_bytes,
                                                is_instream_response=True)
 
-        status = response[0]
-        self.shimmer.parse_status(status)
+        self.shimmer.parse_status(response)
 
     def test_029_get_baud_rate(self):
         print("Test 029 - Get baud rate response command:")
@@ -516,8 +520,8 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
         print("Test 038 - Get dir response command:")
         self.test_028_get_status(True)
 
-        if self.shimmer.status_is_docked:
-            self.assertTrue(False, "Shimmer must be undocked for this command to work reliably")
+        if self.shimmer.status_is_docked or self.shimmer.status_is_usb_plugged_in:
+            self.assertTrue(False, "Shimmer must be undocked/unplugged for this command to work reliably")
         elif not self.shimmer.status_sd_in_slot:
             self.assertTrue(False, "No SD card detected")
         elif self.shimmer.status_sd_error:

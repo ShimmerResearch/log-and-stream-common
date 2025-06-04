@@ -78,6 +78,7 @@ class Shimmer3:
     status_is_rwc_time_set = None
     status_is_sensing = None
     status_is_docked = None
+    status_is_usb_plugged_in = None
 
     bt_crc_byte_count = 0
 
@@ -142,16 +143,16 @@ class Shimmer3:
 
     def parse_status(self, status):
 
-        self.status_toggle_led_red = (status >> 7) & 0x01
-        self.status_sd_error = (status >> 6) & 0x01
-        self.status_sd_in_slot = (status >> 5) & 0x01
-        self.status_is_streaming = (status >> 4) & 0x01
-        self.status_is_logging = (status >> 3) & 0x01
-        self.status_is_rwc_time_set = (status >> 2) & 0x01
-        self.status_is_sensing = (status >> 1) & 0x01
-        self.status_is_docked = (status >> 0) & 0x01
-        print("0x%02x , Red LED state: %d, sd error: %d, sd in slot: %d, isStreaming: %d, isLogging: %d, "
-              "isRwcTimeSet: %d, isSensing: %d, isDocked: %d" % (status, self.status_toggle_led_red,
+        self.status_toggle_led_red = (status[0] >> 7) & 0x01
+        self.status_sd_error = (status[0] >> 6) & 0x01
+        self.status_sd_in_slot = (status[0] >> 5) & 0x01
+        self.status_is_streaming = (status[0] >> 4) & 0x01
+        self.status_is_logging = (status[0] >> 3) & 0x01
+        self.status_is_rwc_time_set = (status[0] >> 2) & 0x01
+        self.status_is_sensing = (status[0] >> 1) & 0x01
+        self.status_is_docked = (status[0] >> 0) & 0x01
+        print("Status#1 0x%02x, Red LED state: %d, sdError: %d, sdInserted: %d, btStreaming: %d, sdLogging: %d, "
+              "isRwcTimeSet: %d, isSensing: %d, docked: %d" % (status[0], self.status_toggle_led_red,
                                                                  self.status_sd_error,
                                                                  self.status_sd_in_slot,
                                                                  self.status_is_streaming,
@@ -159,6 +160,12 @@ class Shimmer3:
                                                                  self.status_is_rwc_time_set,
                                                                  self.status_is_sensing,
                                                                  self.status_is_docked))
+
+        if len(status) > 1:
+            self.status_is_usb_plugged_in = (status[1] >> 0) & 0x01
+            print("Status#2 0x%02x, usbPluggedIn: %d" % (status[1], self.status_is_usb_plugged_in))
+        else:
+            self.status_is_usb_plugged_in = 0
 
     def is_expansion_board_set(self):
         return (self.daughter_card_id is not None
