@@ -3000,11 +3000,10 @@ uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType res
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)
 {
   uint8_t statusByteCnt = 1;
-  *(bufPtr) = (shimmerStatus.toggleLedRedCmd << 7)
-      | (shimmerStatus.sdBadFile << 6) | (shimmerStatus.sdInserted << 5)
-      | (shimmerStatus.btStreaming << 4) | (shimmerStatus.sdLogging << 3)
-      | (isRwcTimeSet() << 2) | (shimmerStatus.sensing << 1)
-      | shimmerStatus.docked;
+  *(bufPtr) = (shimmerStatus.toggleLedRedCmd << 7) | (shimmerStatus.sdBadFile << 6)
+      | (shimmerStatus.sdInserted << 5) | (shimmerStatus.btStreaming << 4)
+      | (shimmerStatus.sdLogging << 3) | (isRwcTimeSet() << 2)
+      | (shimmerStatus.sensing << 1) | shimmerStatus.docked;
 
 #if defined(SHIMMER3R)
   *(bufPtr + 1) = shimmerStatus.usbPluggedIn;
