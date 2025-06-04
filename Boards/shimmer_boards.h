@@ -105,6 +105,7 @@ uint8_t ShimBrd_isLnAccelKxtc9_2050Present(void);
 #endif
 
 uint8_t ShimBrd_isAdxl371Present(void);
+uint8_t ShimBrd_isLis3mdlPresent(void);
 uint8_t isAds7028Present(void);
 uint8_t ShimBrd_isI2c4Supported(void);
 uint8_t ShimBrd_isBoardSr48_6_0(void);

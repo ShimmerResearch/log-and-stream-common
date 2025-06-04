@@ -250,6 +250,17 @@ uint8_t ShimBrd_isAdxl371Present(void)
           || ShimBrd_isBoardSrNumber(EXP_BRD_PROTO3_DELUXE, 4, 0)));
 }
 
+uint8_t ShimBrd_isLis3mdlPresent(void)
+{
+  return (ShimBrd_isDaughterCardIdSet() && hwId == HW_ID_SHIMMER3R
+      && (ShimBrd_isBoardSrNumber(SHIMMER3_IMU, 11, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_BR_AMP_UNIFIED, 4, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_PROTO3_DELUXE, 4, 0)));
+}
+
 uint8_t isAds7028Present(void)
 {
   return (ShimBrd_isDaughterCardIdSet() && hwId == HW_ID_SHIMMER3R
