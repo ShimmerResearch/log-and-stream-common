@@ -819,8 +819,8 @@ void ShimSdCfgFile_parse(void)
     HAL_Delay(50); //50ms
 #endif
 
-    sample_period = (round)(ShimConfig_freqDiv(sample_rate));
-    stored_config_temp.samplingRateTicks = (uint16_t)sample_period;
+    sample_period = (round) (ShimConfig_freqDiv(sample_rate));
+    stored_config_temp.samplingRateTicks = (uint16_t) sample_period;
     ShimConfig_setShimmerName();
     ShimConfig_setExpIdName();
     ShimConfig_setCfgTime();
