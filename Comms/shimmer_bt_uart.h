@@ -314,5 +314,6 @@ void ShimBt_loadTxBufForDataRateTest(void);
 #if defined(SHIMMER3R)
 uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType);
 #endif
+uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr);
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */
