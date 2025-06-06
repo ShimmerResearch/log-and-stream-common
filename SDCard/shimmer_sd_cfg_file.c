@@ -336,7 +336,7 @@ void ShimSdCfgFile_parse(void)
   char buffer[66], *equals;
   uint8_t string_length = 0;
   float sample_rate = 51.2;
-  uint16_t sample_period = 0;
+  float sample_period = 0;
   uint64_t derived_channels_val = 0;
   uint8_t gsr_range = 0;
 
@@ -819,9 +819,8 @@ void ShimSdCfgFile_parse(void)
     HAL_Delay(50); //50ms
 #endif
 
-    sample_period = ShimConfig_freqDiv(sample_rate);
-    stored_config_temp.samplingRateTicks = sample_period;
-
+    sample_period = (round) (ShimConfig_freqDiv(sample_rate));
+    stored_config_temp.samplingRateTicks = (uint16_t) sample_period;
     ShimConfig_setShimmerName();
     ShimConfig_setExpIdName();
     ShimConfig_setCfgTime();

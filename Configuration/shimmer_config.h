@@ -510,7 +510,7 @@ void ShimConfig_experimentLengthSecsMaxSet(uint16_t expLengthMins);
 uint16_t ShimConfig_experimentLengthSecsMaxGet(void);
 void ShimConfig_experimentLengthCntReset(void);
 uint8_t ShimConfig_checkAutostopCondition(void);
-uint16_t ShimConfig_freqDiv(float samplingRate);
+float ShimConfig_freqDiv(float samplingRate);
 void ShimConfig_checkBtModeFromConfig(void);
 #if defined(SHIMMER3R)
 uint8_t ShimConfig_isMicrophoneEnabled(void);

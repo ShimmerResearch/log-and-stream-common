@@ -655,9 +655,9 @@ uint8_t ShimConfig_checkAutostopCondition(void)
 }
 
 /* Note samplingRate can be either a freq or a ticks value */
-uint16_t ShimConfig_freqDiv(float samplingRate)
+float ShimConfig_freqDiv(float samplingRate)
 {
-  return (uint16_t) round(samplingClockFreqGet() / samplingRate);
+  return (samplingClockFreqGet() / samplingRate);
 }
 
 void ShimConfig_checkBtModeFromConfig(void)
