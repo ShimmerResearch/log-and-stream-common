@@ -900,7 +900,7 @@ void ShimCalib_configBytes0To127ToCalibDumpBytes(uint8_t setCalibTsZero)
   ShimCalib_configBytesToCalibDump(SC_SENSOR_LSM6DSV_ACCEL, setCalibTsZero);
   ShimCalib_configBytesToCalibDump(SC_SENSOR_LSM6DSV_GYRO, setCalibTsZero);
   ShimCalib_configBytesToCalibDump(SC_SENSOR_LIS2DW12_ACCEL, setCalibTsZero);
-  ShimCalib_configBytesToCalibDump(SC_SENSOR_LIS3MDL_MAG, setCalibTsZero);
+  ShimCalib_configBytesToCalibDump(SC_SENSOR_LIS2MDL_MAG, setCalibTsZero);
 #endif
 }
 
@@ -908,7 +908,7 @@ void ShimCalib_configBytes128To255ToCalibDumpBytes(uint8_t setCalibTsZero)
 {
 #if defined(SHIMMER3R)
   ShimCalib_configBytesToCalibDump(SC_SENSOR_ADXL371_ACCEL, setCalibTsZero);
-  ShimCalib_configBytesToCalibDump(SC_SENSOR_LIS2MDL_MAG, setCalibTsZero);
+  ShimCalib_configBytesToCalibDump(SC_SENSOR_LIS3MDL_MAG, setCalibTsZero);
 #endif
 }
 
@@ -1104,17 +1104,17 @@ void ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(uint8_t sensor)
       scs_sdhead_ts = SDH_ALT_ACCEL_CALIB_TS;
       sc1.range = SC_SENSOR_RANGE_ADXL371_RANGE;
       break;
-    case SC_SENSOR_LIS3MDL_MAG:
+    case SC_SENSOR_LIS2MDL_MAG:
       scs_infomem_offset = NV_MAG_CALIBRATION;
       scs_sdhead_offset = SDH_MAG_CALIBRATION;
       scs_sdhead_ts = SDH_MAG_CALIB_TS;
-      sc1.range = configBytes->altMagRange;
+      sc1.range = SC_SENSOR_RANGE_LIS2MDL_RANGE;
       break;
-    case SC_SENSOR_LIS2MDL_MAG:
+    case SC_SENSOR_LIS3MDL_MAG:
       scs_infomem_offset = NV_ALT_MAG_CALIBRATION;
       scs_sdhead_offset = SDH_ALT_MAG_CALIBRATION;
       scs_sdhead_ts = SDH_ALT_MAG_CALIB_TS;
-      sc1.range = SC_SENSOR_RANGE_LIS2MDL_RANGE;
+      sc1.range = configBytes->altMagRange;
       break;
     default:
       break;
