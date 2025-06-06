@@ -245,7 +245,9 @@ uint8_t ShimBrd_isAdxl371Present(void)
       && (daughterCardIdPage.expansion_brd.exp_brd_id == SHIMMER3_IMU
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 1)
           || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 1)
           || ShimBrd_isBoardSrNumber(EXP_BRD_BR_AMP_UNIFIED, 4, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_PROTO3_DELUXE, 4, 0)));
 }
@@ -256,7 +258,9 @@ uint8_t ShimBrd_isLis3mdlPresent(void)
       && (ShimBrd_isBoardSrNumber(SHIMMER3_IMU, 11, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 1)
           || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 1)
           || ShimBrd_isBoardSrNumber(EXP_BRD_BR_AMP_UNIFIED, 4, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_PROTO3_DELUXE, 4, 0)));
 }
@@ -279,10 +283,11 @@ uint8_t ShimBrd_isBoardSr48_6_0(void)
       && ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0);
 }
 
-uint8_t ShimBrd_isBoardSr48_7_0(void)
+uint8_t ShimBrd_isI2cOnPPGControlledByAdcChip(void)
 {
   return ShimBrd_isDaughterCardIdSet()
-      && ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0);
+      && (ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 1));
 }
 
 uint8_t ShimBrd_areMcuAdcsUsedForSensing(void)
@@ -308,4 +313,27 @@ uint8_t ShimBrd_isExpBrdId(uint8_t expIdToCheck)
 {
   return (ShimBrd_isDaughterCardIdSet()
       && (daughterCardIdPage.expansion_brd.exp_brd_id == expIdToCheck));
+}
+
+uint8_t ShimBrd_checkCorrectStateForBoot0(void)
+{
+  /* nBOOT0 Default = 1. Early S3R boards required nBoot to remain unchanged
+   * (SR48-6-0). The SR48-7-0 and SR47-7-0 had inverted nBoot0 circuitry. An ECO
+   * removed this and the modified boards were updated to SR47-7-1 and SR48-7-1.
+   * Future boards rely on firmware setting nBoot0 to 0 with no external
+   * inversion circuitry. */
+  if (ShimBrd_isDaughterCardIdSet() && hwId == HW_ID_SHIMMER3R
+      && (ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 0)))
+  {
+    /* MCU comes with Default nBOOT0 = 1 */
+    return 1;
+  }
+  else
+  {
+    /* We've changed direction to match Shimmer3 for backwards compatibility
+     * with docks */
+    return 0;
+  }
 }
