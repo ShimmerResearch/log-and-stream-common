@@ -726,7 +726,7 @@ void ShimCalib_setDefaultLsm6dsvGyroCalib(sc_t *sc1Ptr)
       sensitivity = 7;
     }
 
-    sensitivity = sensitivity * 100; // Scale up
+    sensitivity = sensitivity * 100; //Scale up
 
     sc1Ptr->data.dd.bias_x = bias;
     sc1Ptr->data.dd.bias_y = bias;
