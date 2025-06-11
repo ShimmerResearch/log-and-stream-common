@@ -192,6 +192,7 @@ void ShimCalib_setDefaultLis2mdlMagCalib(sc_t *sc1Ptr);
 void ShimCalib_setDefaultLis3mdlMagCalib(sc_t *sc1Ptr);
 #endif
 
+void ShimCalib_reverseBiasAndSensitivityByteOrder(sc_t *sc1Ptr);
 void ShimCalib_initFromConfigBytesAll(void);
 void ShimCalib_updateFromConfigBytesAll(void);
 void ShimCalib_configBytes0To127ToCalibDumpBytes(uint8_t setCalibTsZero);
