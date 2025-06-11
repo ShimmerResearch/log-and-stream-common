@@ -482,6 +482,8 @@ void ShimCalib_setDefaultKionixCalib(sc_t *sc1Ptr)
   sc1Ptr->data.dd.align_zx = 0;
   sc1Ptr->data.dd.align_zy = 0;
   sc1Ptr->data.dd.align_zz = -100;
+
+  ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
   ShimCalib_singleSensorWrite(sc1Ptr);
 }
 
@@ -525,6 +527,8 @@ void ShimCalib_setDefaultMpu9X50Icm20948GyroCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
+
+    ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
     ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
@@ -569,6 +573,8 @@ void ShimCalib_setDefaultLsm303AccelCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
+
+    ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
     ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
@@ -635,6 +641,8 @@ void ShimCalib_setDefaultLsm303MagCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
+
+    ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
     ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
@@ -679,6 +687,8 @@ void ShimCalib_setDefaultLsm6dsvAccelCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
+
+    ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
     ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
@@ -715,6 +725,9 @@ void ShimCalib_setDefaultLsm6dsvGyroCalib(sc_t *sc1Ptr)
     { //(sc1Ptr->range == LSM6DSV_4000dps)
       sensitivity = 7;
     }
+
+    sensitivity = sensitivity * 100; // Scale up;
+
     sc1Ptr->data.dd.bias_x = bias;
     sc1Ptr->data.dd.bias_y = bias;
     sc1Ptr->data.dd.bias_z = bias;
@@ -730,6 +743,8 @@ void ShimCalib_setDefaultLsm6dsvGyroCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
+
+    ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
     ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
@@ -759,6 +774,8 @@ void ShimCalib_setDefaultAdxl371AccelCalib(sc_t *sc1Ptr)
   sc1Ptr->data.dd.align_zx = 0;
   sc1Ptr->data.dd.align_zy = 0;
   sc1Ptr->data.dd.align_zz = -100;
+
+  ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
   ShimCalib_singleSensorWrite(sc1Ptr);
 }
 
@@ -801,6 +818,8 @@ void ShimCalib_setDefaultLis2dw12AccelCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
+
+    ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
     ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
@@ -830,6 +849,8 @@ void ShimCalib_setDefaultLis2mdlMagCalib(sc_t *sc1Ptr)
   sc1Ptr->data.dd.align_zx = 0;
   sc1Ptr->data.dd.align_zy = 0;
   sc1Ptr->data.dd.align_zz = -100;
+
+  ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
   ShimCalib_singleSensorWrite(sc1Ptr);
 }
 
@@ -872,10 +893,31 @@ void ShimCalib_setDefaultLis3mdlMagCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
+
+    ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
     ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
 #endif
+
+void ShimCalib_reverseBiasAndSensitivityByteOrder(sc_t *sc1Ptr)
+{
+  uint16_t tmpBias, tmpSens;
+
+  tmpBias = sc1Ptr->data.dd.bias_x;
+  sc1Ptr->data.dd.bias_x = (((tmpBias & 0x00FF) << 8) | ((tmpBias & 0xFF00) >> 8));
+  tmpBias = sc1Ptr->data.dd.bias_y;
+  sc1Ptr->data.dd.bias_y = (((tmpBias & 0x00FF) << 8) | ((tmpBias & 0xFF00) >> 8));
+  tmpBias = sc1Ptr->data.dd.bias_z;
+  sc1Ptr->data.dd.bias_z = (((tmpBias & 0x00FF) << 8) | ((tmpBias & 0xFF00) >> 8));
+
+  tmpSens = sc1Ptr->data.dd.sens_x;
+  sc1Ptr->data.dd.sens_x = (((tmpSens & 0x00FF) << 8) | ((tmpSens & 0xFF00) >> 8));
+  tmpSens = sc1Ptr->data.dd.sens_y;
+  sc1Ptr->data.dd.sens_y = (((tmpSens & 0x00FF) << 8) | ((tmpSens & 0xFF00) >> 8));
+  tmpSens = sc1Ptr->data.dd.sens_z;
+  sc1Ptr->data.dd.sens_z = (((tmpSens & 0x00FF) << 8) | ((tmpSens & 0xFF00) >> 8));
+}
 
 void ShimCalib_initFromConfigBytesAll(void)
 {
