@@ -56,9 +56,10 @@ typedef volatile struct STATTypeDef_t
   uint8_t configuring      : 1;
   uint8_t buttonPressed    : 1;
 
-  uint8_t btConnected      : 1;
-  uint8_t btPowerOn        : 1;
   uint8_t btSupportEnabled : 1;
+  uint8_t btPowerOn        : 1;
+  uint8_t btIsInitialised  : 1;
+  uint8_t btConnected      : 1;
   uint8_t btStreaming      : 1;
   uint8_t btstreamReady    : 1;
   uint8_t btstreamCmd      : 2;
