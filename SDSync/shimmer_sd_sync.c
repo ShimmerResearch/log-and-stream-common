@@ -46,10 +46,10 @@ uint8_t myTimeDiffLongFlagMin;
 uint8_t syncResp[SYNC_PACKET_MAX_SIZE], btSdSyncIsRunning;
 uint8_t myTimeDiff[SYNC_PACKET_PAYLOAD_SIZE];
 
-//TODO figure out how best to do away with the need for externs
 void (*btStartCb)(void);
 void (*btStopCb)(uint8_t);
 
+//TODO figure out how best to do away with the need for externs
 #if defined(SHIMMER3)
 extern uint8_t all0xff[7U];
 #elif defined(SHIMMER3R)
@@ -870,8 +870,6 @@ void ShimSdSync_startBtForSync(void)
   BT_init();
   BT_rn4xDisableRemoteConfig(1);
   BT_setUpdateBaudDuringBoot(1);
-#elif defined(SHIMMER3R)
-  //TODO
 #endif
   btStartCb();
 }
@@ -885,7 +883,7 @@ void ShimSdSync_CommTimerStart(void)
   TA0CCTL1 = CCIE;
   TA0CCR1 = GetTA0() + 16384;
 #elif defined(SHIMMER3R)
-  //TODO
+  RTC_setupAndStartSdSyncAlarm();
 #endif
   shimmerStatus.sdSyncCommTimerRunning = 1;
 }
@@ -897,7 +895,7 @@ inline void ShimSdSync_CommTimerStop(void)
   //rcommStatus=0;
   TA0CCTL1 &= ~CCIE;
 #elif defined(SHIMMER3R)
-  //TODO
+  RTC_stopSdSyncAlarm();
 #endif
   shimmerStatus.sdSyncCommTimerRunning = 0;
 }
