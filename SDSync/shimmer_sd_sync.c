@@ -29,7 +29,12 @@
 #include "shimmer_definitions.h"
 #endif
 
-uint8_t nodeName[MAX_NODES][MAX_CHARS], shortExpFlag;
+uint8_t centerNameStr[MAX_CHARS];
+uint8_t center_addr[6];
+uint8_t nodeNameStr[MAX_NODES][MAX_CHARS];
+uint8_t node_addr[MAX_NODES][6];
+
+uint8_t shortExpFlag;
 uint8_t syncNodeCnt, syncNodeNum, syncThis, syncNodeSucc, nReboot, currNodeSucc, cReboot;
 uint8_t syncSuccC, syncSuccN, syncCurrNode, syncCurrNodeDone, rcFirstOffsetRxed;
 uint8_t rcNodeR10Cnt;
@@ -41,7 +46,7 @@ uint64_t myTimeDiffLongMin;
 uint64_t myTimeDiffArr[SYNC_TRANS_IN_ONE_COMM];
 uint8_t myTimeDiffFlagArr[SYNC_TRANS_IN_ONE_COMM];
 uint16_t syncCurrNodeExpire, syncNodeWinExpire;
-uint8_t centerName[MAX_CHARS], myTimeDiffLongFlag;
+uint8_t myTimeDiffLongFlag;
 uint8_t myTimeDiffLongFlagMin;
 uint8_t syncResp[SYNC_PACKET_MAX_SIZE], btSdSyncIsRunning;
 uint8_t myTimeDiff[SYNC_PACKET_PAYLOAD_SIZE];
@@ -112,12 +117,12 @@ uint8_t ShimSdSync_syncNodeNumGet(void)
 
 uint8_t *ShimSdSync_syncNodeNamePtrForIndexGet(uint8_t index)
 {
-  return &nodeName[index][0];
+  return &nodeNameStr[index][0];
 }
 
 uint8_t *ShimSdSync_syncCenterNamePtrGet(void)
 {
-  return &centerName[0];
+  return &centerNameStr[0];
 }
 
 uint8_t ShimSdSync_rcFirstOffsetRxedGet(void)
@@ -155,7 +160,8 @@ void ShimSdSync_resetSyncVariablesBeforeParseConfig(void)
   syncNodeNum = 0;
   nodeSuccFull = 0;
 
-  memset(centerName, 0, MAX_CHARS);
+  memset(centerNameStr, 0, MAX_CHARS);
+  memset(center_addr, 0xFF, sizeof(center_addr));
 }
 
 void ShimSdSync_resetSyncVariablesDuringSyncStart(void)
@@ -195,8 +201,9 @@ void ShimSdSync_resetSyncNodeArray(void)
   int node_i;
   for (node_i = 0; node_i < MAX_NODES; node_i++)
   {
-    *nodeName[node_i] = '\0';
+    *nodeNameStr[node_i] = '\0';
   }
+  memset(node_addr, 0xFF, sizeof(node_addr));
 }
 
 uint16_t ShimSdSync_parseSyncEstExpLen(uint8_t estExpLenLsb, uint8_t estExpLenMsb)
@@ -238,20 +245,20 @@ void ShimSdSync_setSyncEstExpLen(uint32_t est_exp_len)
 void ShimSdSync_parseSyncNodeNamesFromConfig(uint8_t *storedConfigPtr)
 {
   uint8_t i;
-  uint8_t node_addr[6], byte_l, byte_h;
+  uint8_t byte_l, byte_h;
 
   while (memcmp(all0xff, storedConfigPtr + NV_NODE0 + syncNodeNum * 6, 6)
       && (syncNodeNum < MAX_NODES))
   {
-    memcpy(node_addr, storedConfigPtr + NV_NODE0 + syncNodeNum * 6, 6);
+    memcpy(&node_addr[syncNodeNum][0], storedConfigPtr + NV_NODE0 + syncNodeNum * 6, 6);
     for (i = 0; i < 6; i++)
     {
-      byte_h = (node_addr[i] >> 4) & 0x0f;
-      byte_l = node_addr[i] & 0x0f;
-      nodeName[syncNodeNum][i * 2] = byte_h + (byte_h > 9 ? 'A' - 10 : '0');
-      nodeName[syncNodeNum][i * 2 + 1] = byte_l + (byte_l > 9 ? 'A' - 10 : '0');
+      byte_h = (node_addr[syncNodeNum][i] >> 4) & 0x0f;
+      byte_l = node_addr[syncNodeNum][i] & 0x0f;
+      nodeNameStr[syncNodeNum][i * 2] = byte_h + (byte_h > 9 ? 'A' - 10 : '0');
+      nodeNameStr[syncNodeNum][i * 2 + 1] = byte_l + (byte_l > 9 ? 'A' - 10 : '0');
     }
-    *(nodeName[syncNodeNum] + 12) = 0;
+    *(nodeNameStr[syncNodeNum] + 12) = 0;
     nodeSuccFull |= ShimSdSync_nodeShift(syncNodeNum);
     syncNodeNum++;
   }
@@ -260,23 +267,23 @@ void ShimSdSync_parseSyncNodeNamesFromConfig(uint8_t *storedConfigPtr)
 void ShimSdSync_parseSyncCenterNameFromConfig(uint8_t *storedConfigPtr)
 {
   uint8_t i;
-  uint8_t center_addr[6], byte_l, byte_h;
+  uint8_t byte_l, byte_h;
 
   memcpy(center_addr, storedConfigPtr + NV_CENTER, 6);
   for (i = 0; i < 6; i++)
   {
     byte_h = (center_addr[i] >> 4) & 0x0f;
     byte_l = center_addr[i] & 0x0f;
-    centerName[i * 2] = byte_h + (byte_h > 9 ? 'A' - 10 : '0');
-    centerName[i * 2 + 1] = byte_l + (byte_l > 9 ? 'A' - 10 : '0');
+    centerNameStr[i * 2] = byte_h + (byte_h > 9 ? 'A' - 10 : '0');
+    centerNameStr[i * 2 + 1] = byte_l + (byte_l > 9 ? 'A' - 10 : '0');
   }
-  *(centerName + 12) = 0;
+  *(centerNameStr + 12) = 0;
 }
 
 void ShimSdSync_parseSyncCenterNameFromCfgFile(uint8_t *storedConfigPtr, char *equals)
 {
   uint8_t string_length = 0;
-  uint8_t i, pchar[3], center_addr[6];
+  uint8_t i, pchar[3];
 
   string_length = strlen(equals);
   if (string_length > MAX_CHARS)
@@ -293,13 +300,13 @@ void ShimSdSync_parseSyncCenterNameFromCfgFile(uint8_t *storedConfigPtr, char *e
   }
   if (string_length == 12)
   {
-    memcpy((char *) centerName, equals, string_length);
-    *(centerName + string_length) = 0;
+    memcpy((char *) centerNameStr, equals, string_length);
+    *(centerNameStr + string_length) = 0;
     pchar[2] = 0;
     for (i = 0; i < 6; i++)
     {
-      pchar[0] = *(centerName + i * 2);
-      pchar[1] = *(centerName + i * 2 + 1);
+      pchar[0] = *(centerNameStr + i * 2);
+      pchar[1] = *(centerNameStr + i * 2 + 1);
       center_addr[i] = strtoul((char *) pchar, 0, 16);
     }
     memcpy(storedConfigPtr + NV_CENTER, center_addr, 6);
@@ -309,7 +316,7 @@ void ShimSdSync_parseSyncCenterNameFromCfgFile(uint8_t *storedConfigPtr, char *e
 void ShimSdSync_parseSyncNodeNameFromCfgFile(uint8_t *storedConfigPtr, char *equals)
 {
   uint8_t string_length = 0;
-  uint8_t i, pchar[3], node_addr[6];
+  uint8_t i, pchar[3];
 
   string_length = strlen(equals);
 
@@ -327,16 +334,16 @@ void ShimSdSync_parseSyncNodeNameFromCfgFile(uint8_t *storedConfigPtr, char *equ
   }
   if ((string_length == 12) && (syncNodeNum < MAX_NODES))
   {
-    memcpy((char *) nodeName[syncNodeNum], equals, string_length);
-    *(nodeName[syncNodeNum] + string_length) = 0;
+    memcpy((char *) nodeNameStr[syncNodeNum], equals, string_length);
+    *(nodeNameStr[syncNodeNum] + string_length) = 0;
     pchar[2] = 0;
     for (i = 0; i < 6; i++)
     {
-      pchar[0] = *(nodeName[syncNodeNum] + i * 2);
-      pchar[1] = *(nodeName[syncNodeNum] + i * 2 + 1);
-      node_addr[i] = strtoul((char *) pchar, 0, 16);
+      pchar[0] = *(nodeNameStr[syncNodeNum] + i * 2);
+      pchar[1] = *(nodeNameStr[syncNodeNum] + i * 2 + 1);
+      node_addr[syncNodeNum][i] = strtoul((char *) pchar, 0, 16);
     }
-    memcpy(storedConfigPtr + NV_NODE0 + syncNodeNum * 6, node_addr, 6);
+    memcpy(storedConfigPtr + NV_NODE0 + syncNodeNum * 6, &node_addr[syncNodeNum][0], 6);
     nodeSuccFull |= ShimSdSync_nodeShift(syncNodeNum);
     syncNodeNum++;
   }
@@ -344,9 +351,9 @@ void ShimSdSync_parseSyncNodeNameFromCfgFile(uint8_t *storedConfigPtr, char *equ
 
 void ShimSdSync_checkSyncCenterName(void)
 {
-  if (strlen((char *) centerName) == 0) //if no center is appointed, let this guy be the center
+  if (strlen((char *) centerNameStr) == 0) //if no center is appointed, let this guy be the center
   {
-    strcpy((char *) centerName, "000000000000");
+    strcpy((char *) centerNameStr, "000000000000");
   }
 }
 
@@ -710,7 +717,15 @@ void ShimSdSync_handleSyncTimerTriggerCenter(void)
                   syncNodeCnt = 0;
                 }
               }
-              BT_connect(nodeName[syncNodeCnt]);
+              //TODO figure how best to handle/locate this required check
+              if (shimmerStatus.btIsInitialised)
+              {
+#if defined(SHIMMER3)
+                BT_connect(nodeNameStr[syncNodeCnt]);
+#else
+                BT_connect(&node_addr[syncNodeCnt][0]);
+#endif
+              }
               currNodeSucc = 0;
               syncCurrNodeDone = 0;
               syncCurrNodeExpire = SYNC_T_EACHNODE_C * SYNC_FACTOR;
