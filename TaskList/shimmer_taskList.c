@@ -240,3 +240,8 @@ void ShimTask_setStopSensing(void)
 {
   ShimTask_set(TASK_STOPSENSING);
 }
+
+void ShimTask_setInitialiseBluetooth(void)
+{
+  ShimTask_set(TASK_BT_TURN_ON_AFTER_BOOT);
+}

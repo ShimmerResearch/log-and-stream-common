@@ -871,10 +871,7 @@ void ShimSdSync_startBtForSync(void)
   BT_rn4xDisableRemoteConfig(1);
   BT_setUpdateBaudDuringBoot(1);
 #endif
-  //btStartCb();
-
-  //TODO revert if we can get then above working or move task setting to callback function
-  ShimTask_NORM_set(TASK_BT_TURN_ON_AFTER_BOOT);
+  btStartCb();
 }
 
 //Timer2:
