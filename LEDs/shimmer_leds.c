@@ -337,7 +337,15 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
         && shimmerStatus.sdSyncEnabled
         && !(ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER))
     {
-      Board_ledOn(LED_UPR_BLUE);
+      /*Avoid clashing with the green LED*/
+      if (Board_isLedOnUprGreen())
+      {
+        Board_ledOff(LED_UPR_BLUE);
+      }
+      else
+      {
+        Board_ledOn(LED_UPR_BLUE);
+      }
     }
     else
     {
