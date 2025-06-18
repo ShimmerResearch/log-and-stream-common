@@ -295,7 +295,7 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
   }
   else
   {
-    //good file - green1:
+    //SDLogging or SD sync - upper green LED:
     if (!shimmerStatus.sensing)
     { //standby or configuring
       if (shimmerStatus.configuring)
@@ -326,10 +326,12 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
       }
     }
 
-    //good file - blue:
+    //SDLogging or SD sync - upper blue LED:
     /* Toggle blue LED while a connection is established */
     if (shimmerStatus.btPowerOn && shimmerStatus.btConnected)
     {
+      /* turn off green LED to avoid visual clash */
+      Board_ledOff(LED_UPR_GREEN);
       Board_ledToggle(LED_UPR_BLUE);
     }
     /* Leave blue LED on solid if it's a node and a sync hasn't occurred yet (first 'outlier' not included) */
@@ -349,7 +351,7 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
     }
     else
     {
-      /* Flash if BT is on */
+      /* Quick double flash if BT is on */
       if (shimmerStatus.btPowerOn && (blinkCnt20 == 12 || blinkCnt20 == 14))
       {
         Board_ledOn(LED_UPR_BLUE);

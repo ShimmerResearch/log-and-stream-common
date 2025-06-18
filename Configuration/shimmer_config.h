@@ -521,9 +521,9 @@ void ShimConfig_loadSensorConfigAndCalib(void);
 gConfigBytes ShimConfig_createBlankConfigBytes(void);
 uint8_t ShimConfig_areConfigBytesValid(void);
 
-void ShimConfig_setShimmerName(void);
-void ShimConfig_setExpIdName(void);
-void ShimConfig_setCfgTime(void);
+void ShimConfig_parseShimmerNameFromConfigBytes(void);
+void ShimConfig_parseExpIdNameFromConfigBytes(void);
+void ShimConfig_parseCfgTimeFromConfigBytes(void);
 void ShimConfig_setConfigTimeTextIfEmpty(void);
 void ShimConfig_infomem2Names(void);
 char *ShimConfig_shimmerNamePtrGet(void);

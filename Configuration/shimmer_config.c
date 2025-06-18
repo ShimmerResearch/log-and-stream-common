@@ -797,7 +797,7 @@ uint8_t ShimConfig_areConfigBytesValid(void)
   return 0;
 }
 
-void ShimConfig_setShimmerName(void)
+void ShimConfig_parseShimmerNameFromConfigBytes(void)
 {
   uint8_t i;
   gConfigBytes *configBytes = ShimConfig_getStoredConfig();
@@ -814,7 +814,7 @@ void ShimConfig_setShimmerName(void)
   memcpy((char *) shimmerName, &(configBytes->shimmerName[0]), i);
 }
 
-void ShimConfig_setExpIdName(void)
+void ShimConfig_parseExpIdNameFromConfigBytes(void)
 {
   uint8_t i;
   gConfigBytes *configBytes = ShimConfig_getStoredConfig();
@@ -831,7 +831,7 @@ void ShimConfig_setExpIdName(void)
   memcpy((char *) expIdName, &(configBytes->expIdName[0]), i);
 }
 
-void ShimConfig_setCfgTime(void)
+void ShimConfig_parseCfgTimeFromConfigBytes(void)
 {
   uint32_t cfg_time_temp = 0;
   uint8_t i;
@@ -866,9 +866,9 @@ void ShimConfig_setConfigTimeTextIfEmpty(void)
 
 void ShimConfig_infomem2Names(void)
 {
-  ShimConfig_setShimmerName();
-  ShimConfig_setExpIdName();
-  ShimConfig_setCfgTime();
+  ShimConfig_parseShimmerNameFromConfigBytes();
+  ShimConfig_parseExpIdNameFromConfigBytes();
+  ShimConfig_parseCfgTimeFromConfigBytes();
 }
 
 char *ShimConfig_shimmerNamePtrGet(void)
