@@ -821,9 +821,9 @@ void ShimSdCfgFile_parse(void)
 
     sample_period = (round) (ShimConfig_freqDiv(sample_rate));
     stored_config_temp.samplingRateTicks = (uint16_t) sample_period;
-    ShimConfig_setShimmerName();
-    ShimConfig_setExpIdName();
-    ShimConfig_setCfgTime();
+    ShimConfig_parseShimmerNameFromConfigBytes();
+    ShimConfig_parseExpIdNameFromConfigBytes();
+    ShimConfig_parseCfgTimeFromConfigBytes();
 
     ShimConfig_experimentLengthSecsMaxSet(stored_config_temp.experimentLengthMaxInMinutes);
     ShimSdSync_setSyncEstExpLen(stored_config_temp.experimentLengthEstimatedInSec);
