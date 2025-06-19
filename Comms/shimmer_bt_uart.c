@@ -390,9 +390,9 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
         for (btVerIdx = 0; btVerIdx + 3 < btVerLen; btVerIdx++)
         {
           if ((btRxBuffFullResponse[btVerIdx] == 'C')
-            && (btRxBuffFullResponse[btVerIdx+1] == 'M')
-            && (btRxBuffFullResponse[btVerIdx+2] == 'D')
-            && (btRxBuffFullResponse[btVerIdx+3] == '>'))
+              && (btRxBuffFullResponse[btVerIdx + 1] == 'M')
+              && (btRxBuffFullResponse[btVerIdx + 2] == 'D')
+              && (btRxBuffFullResponse[btVerIdx + 3] == '>'))
           {
             btVerLen = btVerIdx;
             break;
