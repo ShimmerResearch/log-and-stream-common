@@ -1788,7 +1788,7 @@ void ShimBt_processCmd(void)
       memcpy((uint8_t *) (&temp64), args, 8); //64bits = 8bytes
       RTC_init(temp64);
 
-      setupNextRtcMinuteAlarm(); //configure RTC alarm after time set from BT.
+      RTC_setAlarmBattRead(); //configure RTC alarm after time set from BT.
 #endif
       break;
     }

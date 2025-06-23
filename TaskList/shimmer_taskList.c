@@ -65,7 +65,11 @@ void ShimTask_NORM_manage(void)
   USBX_Device_Process();
 #endif
 
+#if defined(SHIMMER3)
   if (!taskCurrent)
+#elif defined(SHIMMER3R)
+  if (!taskCurrent || shimmerStatus.pendingRebootForDfu)
+#endif
   {
     sleepWhenNoTask();
   }
@@ -119,6 +123,7 @@ void ShimTask_NORM_manage(void)
         break;
       case TASK_STOPSENSING:
         ShimSens_stopSensing();
+        ShimBt_instreamStatusRespSend();
         break;
       case TASK_SDWRITE:
         ShimSdDataFile_writeToCard();
@@ -143,7 +148,7 @@ void ShimTask_NORM_manage(void)
         }
 #elif defined(SHIMMER3R)
         manageReadBatt(0);
-        setupNextRtcMinuteAlarm();
+        RTC_setAlarmBattRead();
 #elif defined(SHIMMER4_SDK)
         S4_ADC_readBatt();
         I2C_readBatt();

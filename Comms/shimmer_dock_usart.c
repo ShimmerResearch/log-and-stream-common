@@ -449,6 +449,16 @@ void ShimDock_processCmd(void)
               }
               break;
 #endif
+#if defined(SHIMMER3R)
+            case UART_PROP_ENTER_BOOTLOADER:
+              shimmerStatus.pendingRebootForDfu = 1;
+              RTC_setAlarmRebootToBootloader();
+
+              uartSendRspAck = 1;
+            /* Exception to the general flow to ensure the response is sent before all other operations are locked out */
+              ShimDock_sendRsp();
+              break;
+#endif
             default:
               uartSendRspBadCmd = 1;
               break;
