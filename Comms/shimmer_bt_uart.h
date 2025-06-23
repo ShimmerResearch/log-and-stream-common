@@ -288,8 +288,6 @@ char *ShimBt_macIdStrPtrGet(void);
 uint8_t *ShimBt_macIdBytesPtrGet(void);
 void ShimBt_macIdVarsReset(void);
 void ShimBt_instreamStatusRespSend(void);
-void ShimBt_instreamStatusRespPendingSet(uint8_t state);
-uint8_t ShimBt_instreamStatusRespPendingGet(void);
 void ShimBt_handleBtRfCommStateChange(uint8_t isConnected);
 volatile uint8_t *ShimBt_getBtActionPtr(void);
 uint8_t *ShimBt_getBtArgsPtr(void);

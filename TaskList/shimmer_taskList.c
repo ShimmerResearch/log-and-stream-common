@@ -119,6 +119,7 @@ void ShimTask_NORM_manage(void)
         break;
       case TASK_STOPSENSING:
         ShimSens_stopSensing();
+        ShimBt_instreamStatusRespSend();
         break;
       case TASK_SDWRITE:
         ShimSdDataFile_writeToCard();
