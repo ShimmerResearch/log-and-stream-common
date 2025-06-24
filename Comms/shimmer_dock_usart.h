@@ -58,8 +58,8 @@
 #define UART_PROP_CURR_LOCAL_TIME 0x05
 #define UART_PROP_INFOMEM         0x06
 #if defined(SHIMMERGQ)
-#define UART_PROP_TOGGLE_LED0     0x07
-#define UART_PROP_POR             0x08
+#define UART_PROP_LED0_STATE      0x07
+#define UART_PROP_DEVICE_BOOT     0x08
 #endif
 #if defined(SHIMMER3R)
 #define UART_PROP_ENTER_BOOTLOADER  0x09
