@@ -268,7 +268,6 @@ void ShimSens_startSensing(void)
       if (shimmerStatus.sdSyncEnabled)
       {
         ShimSdSync_start(configBytesPtr->masterEnable, ShimConfig_experimentLengthEstimatedInSecGet());
-
         PrepareSDBuffHead();
       }
     }
@@ -700,4 +699,3 @@ void ShimSens_maxExperimentLengthSecsSet(uint16_t maxExpLenMins)
 {
   maxExpLenSecs = maxExpLenMins * 60;
 }
-
