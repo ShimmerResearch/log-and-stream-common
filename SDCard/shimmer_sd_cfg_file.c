@@ -200,10 +200,10 @@ void ShimSdCfgFile_generate(void)
       sprintf(buffer, "bluetoothDisabled=%d\r\n", storedConfig->bluetoothDisable);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      sprintf(buffer, "max_exp_len=%d\r\n", storedConfig->experimentLengthMaxInMinutes);
+      sprintf(buffer, "max_exp_len=%d\r\n", ShimConfig_experimentLengthMaxInMinutesGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      sprintf(buffer, "est_exp_len=%d\r\n", storedConfig->experimentLengthEstimatedInSec);
+      sprintf(buffer, "est_exp_len=%d\r\n", ShimConfig_experimentLengthEstimatedInSecGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
       ShimSdSync_parseSyncNodeNamesFromConfig(&storedConfig->rawBytes[0]);
@@ -339,6 +339,9 @@ void ShimSdCfgFile_parse(void)
   float sample_period = 0;
   uint64_t derived_channels_val = 0;
   uint8_t gsr_range = 0;
+
+  uint32_t est_exp_len = 0;
+  uint32_t max_exp_len = 0;
 
   uint8_t triggerSdCardUpdate = 0;
 
@@ -643,11 +646,15 @@ void ShimSdCfgFile_parse(void)
       }
       else if (strstr(buffer, "est_exp_len="))
       {
-        stored_config_temp.experimentLengthEstimatedInSec = atoi(equals);
+        est_exp_len = atoi(equals);
+        stored_config_temp.experimentLengthEstimatedInSecMsb = (est_exp_len & 0xff00) >> 8;
+        stored_config_temp.experimentLengthEstimatedInSecLsb = est_exp_len & 0xff;
       }
       else if (strstr(buffer, "max_exp_len="))
       {
-        stored_config_temp.experimentLengthMaxInMinutes = atoi(equals);
+        max_exp_len = atoi(equals);
+        stored_config_temp.experimentLengthMaxInMinutesMsb = (max_exp_len & 0xff00) >> 8;
+        stored_config_temp.experimentLengthMaxInMinutesLsb = max_exp_len & 0xff;
       }
 #if defined(SHIMMER3)
       else if (strstr(buffer, "singletouch="))

@@ -260,14 +260,14 @@ void ShimSens_startSensing(void)
       gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
 
       /* Setup auto-stop if enabled */
-      ShimSens_maxExperimentLengthSecsSet(configBytesPtr->experimentLengthMaxInMinutes);
+      ShimSens_maxExperimentLengthSecsSet(ShimConfig_experimentLengthMaxInMinutesGet());
       ShimSens_currentExperimentLengthReset();
 
       ShimSdDataFile_fileInit();
 
       if (shimmerStatus.sdSyncEnabled)
       {
-        ShimSdSync_start(configBytesPtr->masterEnable, configBytesPtr->experimentLengthEstimatedInSec);
+        ShimSdSync_start(configBytesPtr->masterEnable, ShimConfig_experimentLengthEstimatedInSecGet());
 
         PrepareSDBuffHead();
       }

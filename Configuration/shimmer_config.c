@@ -231,10 +231,12 @@ void ShimConfig_setDefaultConfig(void)
   storedConfig.btIntervalSecs = 54;
   storedConfig.bluetoothDisable = 0;
 
-  storedConfig.experimentLengthMaxInMinutes = 0;
+  /* Auto-stop disabled */
+  ShimConfig_experimentLengthMaxInMinutesSet(0);
 
-  storedConfig.experimentLengthEstimatedInSec = 1;
-  ShimSdSync_setSyncEstExpLen((uint32_t) storedConfig.experimentLengthEstimatedInSec);
+  /* SD sync */
+  ShimConfig_experimentLengthEstimatedInSecSet(1);
+  ShimSdSync_setSyncEstExpLen((uint32_t) ShimConfig_experimentLengthEstimatedInSecGet());
 
   ShimConfig_checkAndCorrectConfig(&storedConfig);
 
@@ -848,4 +850,28 @@ char *ShimConfig_expIdPtrGet(void)
 char *ShimConfig_configTimeTextPtrGet(void)
 {
   return &configTimeText[0];
+}
+
+void ShimConfig_experimentLengthEstimatedInSecSet(uint16_t value)
+{
+  storedConfig.experimentLengthEstimatedInSecMsb = (value >> 8) & 0xFF;
+  storedConfig.experimentLengthEstimatedInSecLsb = value & 0xFF;
+}
+
+uint16_t ShimConfig_experimentLengthEstimatedInSecGet(void)
+{
+  return storedConfig.experimentLengthEstimatedInSecMsb << 8
+      | storedConfig.experimentLengthEstimatedInSecLsb;
+}
+
+void ShimConfig_experimentLengthMaxInMinutesSet(uint16_t value)
+{
+  storedConfig.experimentLengthMaxInMinutesMsb = (value >> 8) & 0xFF;
+  storedConfig.experimentLengthMaxInMinutesLsb = value & 0xFF;
+}
+
+uint16_t ShimConfig_experimentLengthMaxInMinutesGet(void)
+{
+  return storedConfig.experimentLengthMaxInMinutesMsb << 8
+      | storedConfig.experimentLengthMaxInMinutesLsb;
 }

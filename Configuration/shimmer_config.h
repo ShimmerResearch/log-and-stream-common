@@ -394,8 +394,10 @@ typedef union
     uint8_t singleTouchStart   : 1;
 
     uint8_t btIntervalSecs;
-    uint16_t experimentLengthEstimatedInSec; //Used for SD Sync (min = 1)
-    uint16_t experimentLengthMaxInMinutes;   //Used for auto-stop (0ff = 0)
+    uint8_t experimentLengthEstimatedInSecMsb; //Used for SD Sync (min = 1)
+    uint8_t experimentLengthEstimatedInSecLsb; //Used for SD Sync (min = 1)
+    uint8_t experimentLengthMaxInMinutesMsb;   //Used for auto-stop (0ff = 0)
+    uint8_t experimentLengthMaxInMinutesLsb;   //Used for auto-stop (0ff = 0)
     uint8_t macAddr[6];
 
     //SDConfigDelayFlag;
@@ -525,5 +527,10 @@ void ShimConfig_configBytesToNames(void);
 char *ShimConfig_shimmerNamePtrGet(void);
 char *ShimConfig_expIdPtrGet(void);
 char *ShimConfig_configTimeTextPtrGet(void);
+
+void ShimConfig_experimentLengthEstimatedInSecSet(uint16_t value);
+uint16_t ShimConfig_experimentLengthEstimatedInSecGet(void);
+void ShimConfig_experimentLengthMaxInMinutesSet(uint16_t value);
+uint16_t ShimConfig_experimentLengthMaxInMinutesGet(void);
 
 #endif //SHIMMER_CONFIG_H
