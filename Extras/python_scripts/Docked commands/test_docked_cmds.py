@@ -260,7 +260,9 @@ class TestShimmerDockCommunication(unittest.TestCase):
 
     def test_13_enter_bootloader_mode(self):
         print(Fore.LIGHTMAGENTA_EX + "Request to enter bootloader mode via command")
-        tx_bytes = shimmer_comms_docked.assemble_tx_packet(UartPacketCmd.WRITE, UartComponent.MAIN_PROCESSOR, UartProperty.MainProcessor.ENTER_BOOTLOADER, None)
+        timeout_seconds = 5
+
+        tx_bytes = shimmer_comms_docked.assemble_tx_packet(UartPacketCmd.WRITE, UartComponent.MAIN_PROCESSOR, UartProperty.MainProcessor.ENTER_BOOTLOADER, [timeout_seconds])
         response = self.shimmer.dock_port.send_uart(tx_bytes)
 
         if isinstance(response, bool):
@@ -282,7 +284,6 @@ class TestShimmerDockCommunication(unittest.TestCase):
         print("Verifying device has become unresponsive...")
 
         import time
-        timeout_seconds = 5
         poll_interval = 0.5
         start_time = time.time()
         still_responding = False
