@@ -14,7 +14,6 @@
 #include <string.h>
 
 #include <Configuration/shimmer_config.h>
-#include <SDCard/shimmer_sd_header.h>
 #include <TaskList/shimmer_taskList.h>
 #include <log_and_stream_externs.h>
 
@@ -50,6 +49,7 @@ uint8_t myTimeDiffLongFlag;
 uint8_t myTimeDiffLongFlagMin;
 uint8_t syncResp[SYNC_PACKET_MAX_SIZE], btSdSyncIsRunning;
 uint8_t myTimeDiff[SYNC_PACKET_PAYLOAD_SIZE];
+uint8_t iAmSyncCenter;
 
 void (*btStartCb)(void);
 void (*btStopCb)(uint8_t);
@@ -178,6 +178,8 @@ void ShimSdSync_resetSyncVariablesDuringSyncStart(void)
 
   /* Needs to be reset between sessions so that blue LED goes solid again */
   rcFirstOffsetRxed = 0;
+
+  iAmSyncCenter = 0;
 }
 
 void ShimSdSync_resetSyncVariablesCenter(void)
@@ -221,7 +223,7 @@ uint16_t ShimSdSync_parseSyncEstExpLen(uint8_t estExpLenLsb, uint8_t estExpLenMs
 }
 
 /* Usually a value of 5 for a 'Short' estimate trial duration (<1hr), 45 for a
- * 'Medium' estimated trial duration (<3hrs), or 200 for a 'Long' estimated
+ * 'Medium' estimated trial duration (<3hrs), or 180 for a 'Long' estimated
  * trial duration (>3hrs) */
 void ShimSdSync_setSyncEstExpLen(uint32_t est_exp_len)
 {
@@ -365,9 +367,14 @@ void ShimSdSync_stop(void)
   btStopCb(1U);
 }
 
-void ShimSdSync_start(void)
+void ShimSdSync_start(uint8_t iAmSyncCenterToSet, uint16_t experimentLengthEstimatedInSecToSet)
 {
   btSdSyncIsRunning = 1;
+
+  ShimSdSync_resetSyncVariablesDuringSyncStart();
+
+  iAmSyncCenter = iAmSyncCenterToSet;
+  ShimSdSync_setSyncEstExpLen(experimentLengthEstimatedInSecToSet);
 
   if (SYNC_WINDOW_C < (estLen3 - SYNC_BOOT))
   {
@@ -387,7 +394,7 @@ void ShimSdSync_start(void)
     rcNodeReboot = (estLen3 / SYNC_WINDOW_N);
   }
 
-  if (ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER)
+  if (iAmSyncCenter)
   {
     firstOutlier = nodeSuccFull;
   }
@@ -395,8 +402,6 @@ void ShimSdSync_start(void)
   {
     firstOutlier = 1;
   }
-
-  ShimSdSync_resetSyncVariablesDuringSyncStart();
 
   ShimSdSync_CommTimerStart();
 }
@@ -665,7 +670,7 @@ void ShimSdSync_handleSyncTimerTrigger(void)
       syncCnt++;
     }
 
-    if (ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER)
+    if (iAmSyncCenter)
     { //i am Center
       ShimSdSync_handleSyncTimerTriggerCenter();
     }

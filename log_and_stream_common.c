@@ -125,7 +125,7 @@ void LogAndStream_blinkTimerCommon(void)
   }
   else
   {
-    if (ShimLeds_isBlinkTimerCnt1s() && ShimConfig_checkAutostopCondition())
+    if (ShimLeds_isBlinkTimerCnt1s() && ShimSens_checkAutostopCondition())
     {
       ShimTask_setStopSensing();
       ShimBt_instreamStatusRespPendingSet(1);

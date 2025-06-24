@@ -228,7 +228,7 @@ void ShimSdCfgFile_generate(void)
       sprintf(buffer, "Nshimmer=%d\r\n", storedConfig->numberOfShimmers);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      ShimConfig_infomem2Names();
+      ShimConfig_configBytesToNames();
       sprintf(buffer, "shimmername=%s\r\n", ShimConfig_shimmerNamePtrGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       sprintf(buffer, "experimentid=%s\r\n", ShimConfig_expIdPtrGet());
@@ -821,12 +821,6 @@ void ShimSdCfgFile_parse(void)
 
     sample_period = (round) (ShimConfig_freqDiv(sample_rate));
     stored_config_temp.samplingRateTicks = (uint16_t) sample_period;
-    ShimConfig_parseShimmerNameFromConfigBytes();
-    ShimConfig_parseExpIdNameFromConfigBytes();
-    ShimConfig_parseCfgTimeFromConfigBytes();
-
-    ShimConfig_experimentLengthSecsMaxSet(stored_config_temp.experimentLengthMaxInMinutes);
-    ShimSdSync_setSyncEstExpLen(stored_config_temp.experimentLengthEstimatedInSec);
 
     triggerSdCardUpdate |= ShimConfig_checkAndCorrectConfig(&stored_config_temp);
 
@@ -847,9 +841,8 @@ void ShimSdCfgFile_parse(void)
     memcpy(&storedConfig->rawBytes[NV_CENTER],
         &stored_config_temp.rawBytes[NV_CENTER], NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
 
+    ShimConfig_configBytesToNames();
     ShimSdHead_config2SdHead();
-    ShimConfig_setConfigTimeTextIfEmpty();
-    ShimSd_setDataFileNameIfEmpty();
 
 #if defined(SHIMMER3)
     InfoMem_write(0, &storedConfig->rawBytes[0], NV_NUM_SETTINGS_BYTES);

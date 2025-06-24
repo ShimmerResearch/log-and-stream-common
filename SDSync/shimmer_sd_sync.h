@@ -91,7 +91,7 @@ void ShimSdSync_parseSyncNodeNameFromCfgFile(uint8_t *storedConfigPtr, char *equ
 void ShimSdSync_checkSyncCenterName(void);
 
 void ShimSdSync_stop(void);
-void ShimSdSync_start(void);
+void ShimSdSync_start(uint8_t iAmSyncCenterToSet, uint16_t experimentLengthEstimatedInSecToSet);
 
 void ShimSdSync_centerT10(void);
 void ShimSdSync_centerR1(void);

@@ -1756,7 +1756,7 @@ void ShimBt_processCmd(void)
 #endif
 
         ShimSdHead_config2SdHead();
-        ShimConfig_infomem2Names();
+        ShimConfig_configBytesToNames();
         update_sdconfig = 1;
       }
       else

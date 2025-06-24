@@ -67,11 +67,14 @@ uint32_t temp_cnt1, temp_cnt2, temp_cnt3, temp_cnt4;
 #endif
 //I2CBatteryTypeDef *sensing_i2c_batt;
 
-//uint8_t cc[MAX_NUM_CHANNELS], nbrAdcChans, nbrDigiChans;
+uint32_t maxExpLenSecs, currentExpLenSecs;
 
 void ShimSens_init(void)
 {
   memset((uint8_t *) &sensing, 0, sizeof(sensing));
+
+  ShimSens_currentExperimentLengthReset();
+  ShimSens_maxExperimentLengthSecsSet(0);
 }
 
 SENSINGTypeDef *ShimSens_getSensing(void)
@@ -254,12 +257,17 @@ void ShimSens_startSensing(void)
 
     if (ShimSens_checkStartLoggingConditions())
     {
+      gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
+
+      /* Setup auto-stop if enabled */
+      ShimSens_maxExperimentLengthSecsSet(configBytesPtr->experimentLengthMaxInMinutes);
+      ShimSens_currentExperimentLengthReset();
+
       ShimSdDataFile_fileInit();
 
       if (shimmerStatus.sdSyncEnabled)
       {
-        ShimConfig_experimentLengthCntReset();
-        ShimSdSync_start();
+        ShimSdSync_start(configBytesPtr->masterEnable, configBytesPtr->experimentLengthEstimatedInSec);
 
         PrepareSDBuffHead();
       }
@@ -351,7 +359,7 @@ void ShimSens_stopSensing(void)
 
     ShimTask_clear(TASK_STREAMDATA);
 
-    ShimConfig_experimentLengthCntReset();
+    ShimSens_currentExperimentLengthReset();
 
     if (LogAndStream_isSdInfoSyncDelayed())
     {
@@ -664,3 +672,32 @@ uint8_t ShimSens_checkOnDefault(void)
   }
   return 0;
 }
+
+uint8_t ShimSens_checkAutostopCondition(void)
+{
+  if (shimmerStatus.sdLogging && maxExpLenSecs)
+  {
+    if (currentExpLenSecs < maxExpLenSecs)
+    {
+      currentExpLenSecs++;
+      return 0; //Continue sensing
+    }
+    else
+    {
+      ShimSens_currentExperimentLengthReset();
+      return 1; //Trigger auto-stop
+    }
+  }
+  return 0; //No action
+}
+
+void ShimSens_currentExperimentLengthReset(void)
+{
+  currentExpLenSecs = 0;
+}
+
+void ShimSens_maxExperimentLengthSecsSet(uint16_t maxExpLenMins)
+{
+  maxExpLenSecs = maxExpLenMins * 60;
+}
+

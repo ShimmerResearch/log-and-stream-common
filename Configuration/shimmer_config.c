@@ -55,8 +55,6 @@
 static gConfigBytes storedConfig;
 uint8_t calibRamFlag = 0;
 
-uint32_t maxLen, maxLenCnt;
-
 char expIdName[MAX_CHARS], shimmerName[MAX_CHARS], configTimeText[UINT32_LEN];
 
 void ShimConfig_reset(void)
@@ -67,12 +65,11 @@ void ShimConfig_reset(void)
 
   calibRamFlag = 0;
 
-  maxLen = 0;
-  ShimConfig_experimentLengthCntReset();
-
   memset(&expIdName[0], 0x00, sizeof(expIdName));
   memset(&shimmerName[0], 0x00, sizeof(shimmerName));
   memset(&configTimeText[0], 0x00, sizeof(configTimeText));
+
+  ShimConfig_setConfigTimeTextIfEmpty();
 }
 
 void ShimConfig_readRam(void)
@@ -99,7 +96,7 @@ void ShimConfig_readRam(void)
 
 #if defined(SHIMMER3)
   ShimSdHead_config2SdHead();
-  ShimConfig_infomem2Names();
+  ShimConfig_configBytesToNames();
 #endif
 
   /* Check BT module configuration after sensor configuration read from
@@ -621,39 +618,6 @@ void ShimConfig_setExgConfigForEcg(gConfigBytes *storedConfigPtr)
   storedConfigPtr->exgADS1292rRegsCh2.resp2 = 0x02;
 }
 
-void ShimConfig_experimentLengthSecsMaxSet(uint16_t expLengthMins)
-{
-  maxLen = expLengthMins * 60;
-}
-
-uint16_t ShimConfig_experimentLengthSecsMaxGet(void)
-{
-  return maxLen;
-}
-
-void ShimConfig_experimentLengthCntReset(void)
-{
-  maxLenCnt = 0;
-}
-
-uint8_t ShimConfig_checkAutostopCondition(void)
-{
-  if (shimmerStatus.sensing && maxLen)
-  {
-    if (maxLenCnt < maxLen)
-    {
-      maxLenCnt++;
-      return 0; //Continue sensing
-    }
-    else
-    {
-      ShimConfig_experimentLengthCntReset();
-      return 1; //Trigger auto-stop
-    }
-  }
-  return 0; //No action
-}
-
 /* Note samplingRate can be either a freq or a ticks value */
 float ShimConfig_freqDiv(float samplingRate)
 {
@@ -864,7 +828,7 @@ void ShimConfig_setConfigTimeTextIfEmpty(void)
   }
 }
 
-void ShimConfig_infomem2Names(void)
+void ShimConfig_configBytesToNames(void)
 {
   ShimConfig_parseShimmerNameFromConfigBytes();
   ShimConfig_parseExpIdNameFromConfigBytes();

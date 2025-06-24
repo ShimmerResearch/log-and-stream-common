@@ -94,6 +94,8 @@ void ShimSdDataFile_init(void)
   memset(&dataFile, 0x00, sizeof(dataFile));
   memset(&dataFileInfo, 0x00, sizeof(dataFileInfo));
   memset(&dataFileName[0], 0x00, sizeof(dataFileName));
+
+  ShimSd_setDataFileNameIfEmpty();
 }
 
 #define TEST_TEXT_LEN 40
@@ -225,7 +227,7 @@ uint8_t ShimSdDataFile_setBasedir(void)
   uint16_t tmp_counter = 0;
   char lfn[_MAX_LFN + 1], *fname, *scout, *dash, dirnum[8];
 
-  ShimConfig_infomem2Names();
+  ShimConfig_configBytesToNames();
 
 #if _FATFS == FATFS_V_0_08B
   fno.lfname = lfn;
