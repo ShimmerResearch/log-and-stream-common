@@ -647,7 +647,8 @@ void ShimSdCfgFile_parse(void)
       else if (strstr(buffer, "est_exp_len="))
       {
         est_exp_len = atoi(equals);
-        stored_config_temp.experimentLengthEstimatedInSecMsb = (est_exp_len & 0xff00) >> 8;
+        stored_config_temp.experimentLengthEstimatedInSecMsb
+            = (est_exp_len & 0xff00) >> 8;
         stored_config_temp.experimentLengthEstimatedInSecLsb = est_exp_len & 0xff;
       }
       else if (strstr(buffer, "max_exp_len="))
