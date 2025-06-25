@@ -228,12 +228,11 @@ void ShimSdCfgFile_generate(void)
       sprintf(buffer, "Nshimmer=%d\r\n", storedConfig->numberOfShimmers);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      ShimConfig_configBytesToNames();
-      sprintf(buffer, "shimmername=%s\r\n", ShimConfig_shimmerNamePtrGet());
+      sprintf(buffer, "shimmername=%s\r\n", ShimConfig_shimmerNameParseToTxtAndPtrGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "experimentid=%s\r\n", ShimConfig_expIdPtrGet());
+      sprintf(buffer, "experimentid=%s\r\n", ShimConfig_expIdParseToTxtAndPtrGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "configtime=%s\r\n", ShimConfig_configTimeTextPtrGet());
+      sprintf(buffer, "configtime=%s\r\n", ShimConfig_configTimeParseToTxtAndPtrGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
       temp64 = storedConfig->rawBytes[NV_DERIVED_CHANNELS_0]
@@ -339,6 +338,7 @@ void ShimSdCfgFile_parse(void)
   float sample_period = 0;
   uint64_t derived_channels_val = 0;
   uint8_t gsr_range = 0;
+  uint32_t config_time = 0;
 
   uint32_t est_exp_len = 0;
   uint32_t max_exp_len = 0;
@@ -713,7 +713,8 @@ void ShimSdCfgFile_parse(void)
       }
       else if (strstr(buffer, "configtime="))
       {
-        stored_config_temp.configTime = atol(equals);
+        config_time = atol(equals);
+        ShimConfig_configTimeSet(config_time);
       }
 
       else if (strstr(buffer, "EXG_ADS1292R_1_CONFIG1="))
@@ -848,7 +849,6 @@ void ShimSdCfgFile_parse(void)
     memcpy(&storedConfig->rawBytes[NV_CENTER],
         &stored_config_temp.rawBytes[NV_CENTER], NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
 
-    ShimConfig_configBytesToNames();
     ShimSdHead_config2SdHead();
 
 #if defined(SHIMMER3)

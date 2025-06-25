@@ -227,8 +227,6 @@ uint8_t ShimSdDataFile_setBasedir(void)
   uint16_t tmp_counter = 0;
   char lfn[_MAX_LFN + 1], *fname, *scout, *dash, dirnum[8];
 
-  ShimConfig_configBytesToNames();
-
 #if _FATFS == FATFS_V_0_08B
   fno.lfname = lfn;
   fno.lfsize = sizeof(lfn);
@@ -259,9 +257,9 @@ uint8_t ShimSdDataFile_setBasedir(void)
 #endif
 
   strcpy((char *) expDirName, "data/");
-  strcat((char *) expDirName, ShimConfig_expIdPtrGet());
+  strcat((char *) expDirName, ShimConfig_expIdParseToTxtAndPtrGet());
   strcat((char *) expDirName, "_");
-  strcat((char *) expDirName, ShimConfig_configTimeTextPtrGet());
+  strcat((char *) expDirName, ShimConfig_configTimeParseToTxtAndPtrGet());
 
   file_status = f_opendir(&dir, (char *) expDirName);
   if (file_status)
@@ -304,7 +302,7 @@ uint8_t ShimSdDataFile_setBasedir(void)
       fname = (*lfn) ? lfn : fno.fname;
 #endif
 
-      if (!strncmp(fname, ShimConfig_shimmerNamePtrGet(), strlen(fname) - 4))
+      if (!strncmp(fname, ShimConfig_shimmerNameParseToTxtAndPtrGet(), strlen(fname) - 4))
       { //-4 because of the -000 etc.
         scout = strchr(fname, '-');
         if (scout)
@@ -350,7 +348,7 @@ uint8_t ShimSdDataFile_makeBasedir(void)
 
   strcpy((char *) dirName, (char *) expDirName);
   strcat((char *) dirName, "/");
-  strcat((char *) dirName, ShimConfig_shimmerNamePtrGet());
+  strcat((char *) dirName, ShimConfig_shimmerNameParseToTxtAndPtrGet());
   strcat((char *) dirName, "-");
   strcat((char *) dirName, dir_counter_text);
 

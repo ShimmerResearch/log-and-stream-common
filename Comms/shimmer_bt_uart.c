@@ -1136,10 +1136,6 @@ void ShimBt_processCmd(void)
   gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
   char *configTimeTextPtr;
 
-  uint32_t config_time;
-  uint8_t my_config_time[4];
-  uint8_t name_len;
-
   uint8_t update_sdconfig = 0, update_calib_dump_file = 0;
   uint8_t fullSyncResp[SYNC_PACKET_MAX_SIZE] = { 0 };
   uint8_t sensorCalibId;
@@ -1308,47 +1304,24 @@ void ShimBt_processCmd(void)
     }
     case SET_SHIMMERNAME_COMMAND:
     {
-      name_len = (args[0] < sizeof(storedConfig->shimmerName)) ?
-          args[0] :
-          sizeof(storedConfig->shimmerName);
-      memset(&storedConfig->shimmerName[0], 0, sizeof(storedConfig->shimmerName));
-      memcpy(&storedConfig->shimmerName[0], &args[1], name_len);
+      ShimConfig_shimmerNameSet(&args[1], args[0]);
       InfoMem_write(NV_SD_SHIMMER_NAME, (uint8_t *) &storedConfig->shimmerName[0],
           sizeof(storedConfig->shimmerName));
-      ShimConfig_parseShimmerNameFromConfigBytes();
       update_sdconfig = 1;
       break;
     }
     case SET_EXPID_COMMAND:
     {
-      name_len = (args[0] < sizeof(storedConfig->expIdName)) ?
-          args[0] :
-          sizeof(storedConfig->expIdName);
-      memset(&storedConfig->expIdName[0], 0, sizeof(storedConfig->expIdName));
-      memcpy(&storedConfig->expIdName[0], &args[1], name_len);
+      ShimConfig_expIdSet(&args[1], args[0]);
       InfoMem_write(NV_SD_EXP_ID_NAME, (uint8_t *) &storedConfig->expIdName[0],
           sizeof(storedConfig->expIdName));
-      ShimConfig_parseExpIdNameFromConfigBytes();
       update_sdconfig = 1;
       break;
     }
     case SET_CONFIGTIME_COMMAND:
     {
-      configTimeTextPtr = ShimConfig_configTimeTextPtrGet();
-      name_len = args[0] < (MAX_CHARS - 1) ? args[0] : (MAX_CHARS - 1);
-      memcpy(configTimeTextPtr, &args[1], name_len);
-      configTimeTextPtr[name_len] = 0;
-
-      ShimConfig_setConfigTimeTextIfEmpty();
-      ShimSd_setDataFileNameIfEmpty();
-
-      config_time = atol((char *) configTimeTextPtr);
-      my_config_time[3] = *((uint8_t *) &config_time);
-      my_config_time[2] = *(((uint8_t *) &config_time) + 1);
-      my_config_time[1] = *(((uint8_t *) &config_time) + 2);
-      my_config_time[0] = *(((uint8_t *) &config_time) + 3);
-      ShimSdHead_sdHeadTextSet(&my_config_time[0], SDH_CONFIG_TIME_0, 4);
-      ShimConfig_storedConfigSet(&my_config_time[0], NV_SD_CONFIG_TIME, 4);
+      ShimConfig_configTimeSetFromStr(&args[1], args[0]);
+      ShimSdHead_sdHeadTextSet(&storedConfig->configTime0, SDH_CONFIG_TIME_0, 4);
       InfoMem_write(NV_SD_CONFIG_TIME, &storedConfig->rawBytes[NV_SD_CONFIG_TIME], 4);
       update_sdconfig = 1;
       break;
@@ -1756,7 +1729,6 @@ void ShimBt_processCmd(void)
 #endif
 
         ShimSdHead_config2SdHead();
-        ShimConfig_configBytesToNames();
         update_sdconfig = 1;
       }
       else
@@ -2137,28 +2109,27 @@ void ShimBt_sendRsp(void)
       }
       case GET_SHIMMERNAME_COMMAND:
       {
-        ShimConfig_parseShimmerNameFromConfigBytes();
-        uint8_t shimmer_name_len = strlen(ShimConfig_getStoredConfig()->shimmerName);
+        char *shimmerNameTextPtr = ShimConfig_shimmerNameParseToTxtAndPtrGet();
+        uint8_t shimmer_name_len = strlen(shimmerNameTextPtr);
         *(resPacket + packet_length++) = SHIMMERNAME_RESPONSE;
         *(resPacket + packet_length++) = shimmer_name_len;
-        memcpy((resPacket + packet_length), &storedConfig->shimmerName[0], shimmer_name_len);
+        memcpy((resPacket + packet_length), shimmerNameTextPtr, shimmer_name_len);
         packet_length += shimmer_name_len;
         break;
       }
       case GET_EXPID_COMMAND:
       {
-        ShimConfig_parseExpIdNameFromConfigBytes();
-        uint8_t exp_id_name_len = strlen((char *) storedConfig->expIdName);
+        char *expIdTextPtr = ShimConfig_expIdParseToTxtAndPtrGet();
+        uint8_t exp_id_name_len = strlen((char *) expIdTextPtr);
         *(resPacket + packet_length++) = EXPID_RESPONSE;
         *(resPacket + packet_length++) = exp_id_name_len;
-        memcpy((resPacket + packet_length), &storedConfig->expIdName[0], exp_id_name_len);
+        memcpy((resPacket + packet_length), expIdTextPtr, exp_id_name_len);
         packet_length += exp_id_name_len;
         break;
       }
       case GET_CONFIGTIME_COMMAND:
       {
-        ShimConfig_parseCfgTimeFromConfigBytes();
-        char *configTimeTextPtr = ShimConfig_configTimeTextPtrGet();
+        char *configTimeTextPtr = ShimConfig_configTimeParseToTxtAndPtrGet();
         uint8_t cfgtime_name_len = strlen(configTimeTextPtr);
         *(resPacket + packet_length++) = CONFIGTIME_RESPONSE;
         *(resPacket + packet_length++) = cfgtime_name_len;
