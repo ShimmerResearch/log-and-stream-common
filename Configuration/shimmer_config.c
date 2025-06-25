@@ -219,7 +219,7 @@ void ShimConfig_setDefaultConfig(void)
   ShimConfig_setDefaultShimmerName();
   //exp_id
   ShimConfig_setDefaultTrialId();
-  ShimConfig_configTimeSet(0);
+  ShimConfig_setDefaultConfigTime();
 
   storedConfig.myTrialID = 0;
   storedConfig.numberOfShimmers = 0;
@@ -262,13 +262,18 @@ void ShimConfig_setDefaultTrialId(void)
   memcpy(&storedConfig.expIdName[0], "DefaultTrial", 12);
 }
 
-void ShimConfig_configTimeSet(uint32_t time)
+void ShimConfig_setDefaultConfigTime(void)
+{
+  ShimConfig_configTimeSet(&storedConfig, 0);
+}
+
+void ShimConfig_configTimeSet(gConfigBytes *storedConfigPtr, uint32_t time)
 {
   // Config time is stored in MSB order in the config bytes
-  storedConfig.configTime0 = (time >> 24) & 0xFF;
-  storedConfig.configTime1 = (time >> 16) & 0xFF;
-  storedConfig.configTime2 = (time >> 8) & 0xFF;
-  storedConfig.configTime3 = (time >> 0) & 0xFF;
+  storedConfigPtr->configTime0 = (time >> 24) & 0xFF;
+  storedConfigPtr->configTime1 = (time >> 16) & 0xFF;
+  storedConfigPtr->configTime2 = (time >> 8) & 0xFF;
+  storedConfigPtr->configTime3 = (time >> 0) & 0xFF;
 }
 
 uint32_t ShimConfig_configTimeGet(void)
@@ -871,7 +876,7 @@ void ShimConfig_configTimeSetFromStr(uint8_t *strPtr, uint8_t strLen)
 
   config_time = atol((char *) &configTimeTextTemp[0]);
 
-  ShimConfig_configTimeSet(config_time);
+  ShimConfig_configTimeSet(&storedConfig, config_time);
 }
 
 void ShimConfig_experimentLengthEstimatedInSecSet(uint16_t value)

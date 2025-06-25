@@ -714,7 +714,7 @@ void ShimSdCfgFile_parse(void)
       else if (strstr(buffer, "configtime="))
       {
         config_time = atol(equals);
-        ShimConfig_configTimeSet(config_time);
+        ShimConfig_configTimeSet(&stored_config_temp, config_time);
       }
 
       else if (strstr(buffer, "EXG_ADS1292R_1_CONFIG1="))

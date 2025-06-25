@@ -484,7 +484,8 @@ void ShimConfig_setDefaultConfig(void);
 
 void ShimConfig_setDefaultShimmerName(void);
 void ShimConfig_setDefaultTrialId(void);
-void ShimConfig_configTimeSet(uint32_t time);
+void ShimConfig_setDefaultConfigTime(void);
+void ShimConfig_configTimeSet(gConfigBytes *storedConfigPtr, uint32_t time);
 uint32_t ShimConfig_configTimeGet(void);
 uint8_t ShimConfig_getSdCfgFlag(void);
 void ShimConfig_setSdCfgFlag(uint8_t flag);
