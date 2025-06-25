@@ -360,9 +360,8 @@ void ShimDock_processCmd(void)
                     ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0]);
 
                 //TODO improve, Consensys regurlarly sets RTC time while docked which cause the LEDs to effectively stop blinking
-//                /* Stop & start the LED blink timer to align blinking to RTC */
-//                stopLedBlinkTimer();
-//                startLedBlinkTimer();
+                ///* Stop & start the LED blink timer to align blinking to RTC
+                //*/ stopLedBlinkTimer(); startLedBlinkTimer();
 
                 uartSendRspAck = 1;
               }
