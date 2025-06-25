@@ -225,8 +225,8 @@ void ShimTask_setRestartSensing(void)
 {
   if (shimmerStatus.sensing)
   {
-//    ShimTask_setStopSensing();
-//    ShimTask_setStartSensing();
+    //ShimTask_setStopSensing();
+    //ShimTask_setStartSensing();
   }
 }
 
