@@ -23,6 +23,7 @@
 #define LED_ALL_OFF    0x00
 
 void ShimLeds_varsInit(void);
+void ShimLeds_resetCounters(void);
 void ShimLeds_incrementCounters(void);
 void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent);
 void ShimLeds_blink(void);

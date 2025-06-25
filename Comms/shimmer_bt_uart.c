@@ -1761,6 +1761,10 @@ void ShimBt_processCmd(void)
       RTC_init(temp64);
 
       setupNextRtcMinuteAlarm(); //configure RTC alarm after time set from BT.
+
+      /* Stop & start the LED blink timer to align blinking to RTC */
+      stopLedBlinkTimer();
+      startLedBlinkTimer();
 #endif
       break;
     }

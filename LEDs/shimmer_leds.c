@@ -27,9 +27,14 @@ void ShimLeds_blinkSetUprDeviceStatus(void);
 
 void ShimLeds_varsInit(void)
 {
+  ShimLeds_resetCounters();
+  rwcErrorFlash = 0;
+}
+
+void ShimLeds_resetCounters(void)
+{
   blinkCnt20 = blinkCnt50 = 0;
   lastLedGroup2 = 0;
-  rwcErrorFlash = 0;
 }
 
 void ShimLeds_incrementCounters(void)
