@@ -1250,21 +1250,17 @@ void ShimBt_processCmd(void)
     }
     case STOP_STREAMING_COMMAND:
     {
-      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
-      ShimTask_setStopSensing();
+      ShimTask_setStopBtStreaming();
       break;
     }
     case STOP_SDBT_COMMAND:
     {
-      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
-      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
       ShimTask_setStopSensing();
       break;
     }
     case STOP_LOGGING_COMMAND:
     {
-      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
-      ShimTask_setStopSensing();
+      ShimTask_setStopSdLogging();
       break;
     }
     case SET_SENSORS_COMMAND:

@@ -225,8 +225,8 @@ void ShimTask_setRestartSensing(void)
 {
   if (shimmerStatus.sensing)
   {
-    ShimTask_setStopSensing();
-    ShimTask_setStartSensing();
+//    ShimTask_setStopSensing();
+//    ShimTask_setStartSensing();
   }
 }
 
@@ -238,6 +238,19 @@ void ShimTask_setStartSensing(void)
 
 void ShimTask_setStopSensing(void)
 {
+  ShimTask_setStopSdLogging();
+  ShimTask_setStopBtStreaming();
+}
+
+void ShimTask_setStopSdLogging(void)
+{
+  shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
+  ShimTask_set(TASK_STOPSENSING);
+}
+
+void ShimTask_setStopBtStreaming(void)
+{
+  shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
   ShimTask_set(TASK_STOPSENSING);
 }
 
