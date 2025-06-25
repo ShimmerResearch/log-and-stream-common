@@ -269,7 +269,6 @@ void ShimSens_startSensing(void)
       {
         ShimSdSync_start(configBytesPtr->masterEnable,
             ShimConfig_experimentLengthEstimatedInSecGet());
-        PrepareSDBuffHead();
       }
     }
   }
