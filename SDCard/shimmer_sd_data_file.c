@@ -710,7 +710,8 @@ void ShimSd_findError(uint8_t err, uint8_t *name)
 
 void PrepareSDBuffHead(void)
 {
-  memcpy(&sdWrBuf[sdBufSens][sdWrLen[sdBufSens]], ShimSdSync_myTimeDiffPtrGet(), SYNC_PACKET_PAYLOAD_SIZE);
+  memcpy(&sdWrBuf[sdBufSens][sdWrLen[sdBufSens]], ShimSdSync_myTimeDiffPtrGet(),
+      SYNC_PACKET_PAYLOAD_SIZE);
   sdWrLen[sdBufSens] += SYNC_PACKET_PAYLOAD_SIZE;
   ShimSdSync_resetMyTimeDiff();
 }
