@@ -269,7 +269,7 @@ void ShimConfig_setDefaultConfigTime(void)
 
 void ShimConfig_configTimeSet(gConfigBytes *storedConfigPtr, uint32_t time)
 {
-  // Config time is stored in MSB order in the config bytes
+  //Config time is stored in MSB order in the config bytes
   storedConfigPtr->configTime0 = (time >> 24) & 0xFF;
   storedConfigPtr->configTime1 = (time >> 16) & 0xFF;
   storedConfigPtr->configTime2 = (time >> 8) & 0xFF;
@@ -870,7 +870,7 @@ void ShimConfig_expIdSet(uint8_t *strPtr, uint8_t strLen)
 void ShimConfig_configTimeSetFromStr(uint8_t *strPtr, uint8_t strLen)
 {
   uint32_t config_time;
-  char configTimeTextTemp[UINT32_LEN] = {0};
+  char configTimeTextTemp[UINT32_LEN] = { 0 };
   uint8_t lenToCpy = strLen < (UINT32_LEN - 1) ? strLen : (UINT32_LEN - 1);
   memcpy(&configTimeTextTemp[0], strPtr, lenToCpy);
 
