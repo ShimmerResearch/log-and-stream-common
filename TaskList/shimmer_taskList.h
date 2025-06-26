@@ -121,6 +121,8 @@ uint32_t ShimTask_NORM_getList(void);
 void ShimTask_setRestartSensing(void);
 void ShimTask_setStartSensing(void);
 void ShimTask_setStopSensing(void);
+void ShimTask_setStopSdLogging(void);
+void ShimTask_setStopBtStreaming(void);
 void ShimTask_setInitialiseBluetooth(void);
 
 #endif //S4_TASKLIST_H

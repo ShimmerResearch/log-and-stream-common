@@ -683,7 +683,7 @@ void ShimSdSync_handleSyncTimerTrigger(void)
   {
     if (LogAndStream_isDockedOrUsbIn())
     {
-      ShimTask_setStopSensing();
+      ShimTask_setStopSdLogging();
       if (shimmerStatus.btPowerOn)
       {
         btStopCb(0);
