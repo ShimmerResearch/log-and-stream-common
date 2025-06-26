@@ -316,4 +316,7 @@ uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType res
 #endif
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr);
 
+uint8_t ShimBt_isCmdAllowedWhileSdSyncing(uint8_t command);
+uint8_t ShimBt_isCmdBlockedWhileSensing(uint8_t command);
+
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */

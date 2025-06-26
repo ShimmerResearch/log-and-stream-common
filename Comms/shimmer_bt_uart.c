@@ -1140,703 +1140,712 @@ void ShimBt_processCmd(void)
   uint8_t fullSyncResp[SYNC_PACKET_MAX_SIZE] = { 0 };
   uint8_t sensorCalibId;
 
-  switch (gAction)
+  /* Block non-sync related commands if sync is enabled. Equally, block sync commands if sync is disabled. XOR condition will sendNack if only one is true. */
+  if (storedConfig->syncEnable ^ ShimBt_isCmdAllowedWhileSdSyncing(gAction))
   {
-    case INQUIRY_COMMAND:
-    case GET_SAMPLING_RATE_COMMAND:
-    case GET_WR_ACCEL_RANGE_COMMAND:
-    case GET_MAG_GAIN_COMMAND:
-    case GET_MAG_SAMPLING_RATE_COMMAND:
-    case GET_STATUS_COMMAND:
-    case GET_VBATT_COMMAND:
-    case GET_TRIAL_CONFIG_COMMAND:
-    case GET_CENTER_COMMAND:
-    case GET_SHIMMERNAME_COMMAND:
-    case GET_EXPID_COMMAND:
-    case GET_CONFIGTIME_COMMAND:
-    case GET_DIR_COMMAND:
-    case GET_NSHIMMER_COMMAND:
-    case GET_MYID_COMMAND:
-    case GET_WR_ACCEL_SAMPLING_RATE_COMMAND:
-    case GET_WR_ACCEL_LPMODE_COMMAND:
-    case GET_WR_ACCEL_HRMODE_COMMAND:
-    case GET_GYRO_RANGE_COMMAND:
-    case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
-    case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
-    case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
-    case GET_GYRO_SAMPLING_RATE_COMMAND:
-    case GET_ALT_ACCEL_RANGE_COMMAND:
-    case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
-    case GET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
-    case GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND:
-    case GET_CONFIG_SETUP_BYTES_COMMAND:
-    case GET_BT_VERSION_STR_COMMAND:
-    case GET_GSR_RANGE_COMMAND:
+    sendNack = 1;
+  }
+  /* Block set commands if sensing */
+  else if (shimmerStatus.sensing && ShimBt_isCmdBlockedWhileSensing(gAction))
+  {
+    sendNack = 1;
+  }
+  else
+  {
+    switch (gAction)
+    {
+      case INQUIRY_COMMAND:
+      case GET_SAMPLING_RATE_COMMAND:
+      case GET_WR_ACCEL_RANGE_COMMAND:
+      case GET_MAG_GAIN_COMMAND:
+      case GET_MAG_SAMPLING_RATE_COMMAND:
+      case GET_STATUS_COMMAND:
+      case GET_VBATT_COMMAND:
+      case GET_TRIAL_CONFIG_COMMAND:
+      case GET_CENTER_COMMAND:
+      case GET_SHIMMERNAME_COMMAND:
+      case GET_EXPID_COMMAND:
+      case GET_CONFIGTIME_COMMAND:
+      case GET_DIR_COMMAND:
+      case GET_NSHIMMER_COMMAND:
+      case GET_MYID_COMMAND:
+      case GET_WR_ACCEL_SAMPLING_RATE_COMMAND:
+      case GET_WR_ACCEL_LPMODE_COMMAND:
+      case GET_WR_ACCEL_HRMODE_COMMAND:
+      case GET_GYRO_RANGE_COMMAND:
+      case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
+      case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
+      case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
+      case GET_GYRO_SAMPLING_RATE_COMMAND:
+      case GET_ALT_ACCEL_RANGE_COMMAND:
+      case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
+      case GET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
+      case GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND:
+      case GET_CONFIG_SETUP_BYTES_COMMAND:
+      case GET_BT_VERSION_STR_COMMAND:
+      case GET_GSR_RANGE_COMMAND:
 
-    case DEPRECATED_GET_DEVICE_VERSION_COMMAND:
-    case GET_DEVICE_VERSION_COMMAND:
+      case DEPRECATED_GET_DEVICE_VERSION_COMMAND:
+      case GET_DEVICE_VERSION_COMMAND:
 
-    case GET_FW_VERSION_COMMAND:
-    case GET_CHARGE_STATUS_LED_COMMAND:
-    case GET_BUFFER_SIZE_COMMAND:
-    case GET_UNIQUE_SERIAL_COMMAND:
-    case GET_BT_COMMS_BAUD_RATE:
-    case GET_DERIVED_CHANNEL_BYTES:
-    case GET_RWC_COMMAND:
+      case GET_FW_VERSION_COMMAND:
+      case GET_CHARGE_STATUS_LED_COMMAND:
+      case GET_BUFFER_SIZE_COMMAND:
+      case GET_UNIQUE_SERIAL_COMMAND:
+      case GET_BT_COMMS_BAUD_RATE:
+      case GET_DERIVED_CHANNEL_BYTES:
+      case GET_RWC_COMMAND:
 
-    case GET_ALL_CALIBRATION_COMMAND:
-    case GET_LN_ACCEL_CALIBRATION_COMMAND:
-    case GET_GYRO_CALIBRATION_COMMAND:
-    case GET_MAG_CALIBRATION_COMMAND:
-    case GET_WR_ACCEL_CALIBRATION_COMMAND:
-    case GET_ALT_ACCEL_CALIBRATION_COMMAND:
-    case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
-    case GET_ALT_MAG_CALIBRATION_COMMAND:
-    case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
-    {
-      getCmdWaitingResponse = gAction;
-      break;
-    }
-    case DUMMY_COMMAND:
-    {
-      break;
-    }
-    case TOGGLE_LED_COMMAND:
-    {
-      shimmerStatus.toggleLedRedCmd ^= 1;
-      break;
-    }
-    case START_STREAMING_COMMAND:
-    {
-      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
-      if (!shimmerStatus.sensing)
+      case GET_ALL_CALIBRATION_COMMAND:
+      case GET_LN_ACCEL_CALIBRATION_COMMAND:
+      case GET_GYRO_CALIBRATION_COMMAND:
+      case GET_MAG_CALIBRATION_COMMAND:
+      case GET_WR_ACCEL_CALIBRATION_COMMAND:
+      case GET_ALT_ACCEL_CALIBRATION_COMMAND:
+      case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
+      case GET_ALT_MAG_CALIBRATION_COMMAND:
+      case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
       {
-        ShimTask_setStartSensing();
+        getCmdWaitingResponse = gAction;
+        break;
       }
-      break;
-    }
-    case START_SDBT_COMMAND:
-    {
-      if (!shimmerStatus.sensing)
+      case DUMMY_COMMAND:
       {
-        ShimTask_setStartSensing();
+        break;
       }
-      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
-      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
-      if (shimmerStatus.sdlogReady && !shimmerStatus.sdBadFile)
+      case TOGGLE_LED_COMMAND:
+      {
+        shimmerStatus.toggleLedRedCmd ^= 1;
+        break;
+      }
+      case START_STREAMING_COMMAND:
+      {
+        shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
+        if (!shimmerStatus.sensing)
+        {
+          ShimTask_setStartSensing();
+        }
+        break;
+      }
+      case START_SDBT_COMMAND:
+      {
+        if (!shimmerStatus.sensing)
+        {
+          ShimTask_setStartSensing();
+        }
+        shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
+        shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
+        if (shimmerStatus.sdlogReady && !shimmerStatus.sdBadFile)
+        {
+          shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
+        }
+        break;
+      }
+      case START_LOGGING_COMMAND:
       {
         shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
+        if (!shimmerStatus.sensing)
+        {
+          ShimTask_setStartSensing();
+        }
+        break;
       }
-      break;
-    }
-    case START_LOGGING_COMMAND:
-    {
-      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
-      if (!shimmerStatus.sensing)
+      case SET_CRC_COMMAND:
       {
-        ShimTask_setStartSensing();
+        ShimBt_setCrcMode((COMMS_CRC_MODE) args[0]);
+        break;
       }
-      break;
-    }
-    case SET_CRC_COMMAND:
-    {
-      ShimBt_setCrcMode((COMMS_CRC_MODE) args[0]);
-      break;
-    }
-    case SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE:
-    {
-      useAckPrefixForInstreamResponses = args[0];
-      break;
-    }
-    case STOP_STREAMING_COMMAND:
-    {
-      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
-      ShimTask_setStopSensing();
-      break;
-    }
-    case STOP_SDBT_COMMAND:
-    {
-      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
-      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
-      ShimTask_setStopSensing();
-      break;
-    }
-    case STOP_LOGGING_COMMAND:
-    {
-      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
-      ShimTask_setStopSensing();
-      break;
-    }
-    case SET_SENSORS_COMMAND:
-    {
-      ShimConfig_storedConfigSet(&args[0], NV_SENSORS0, 3);
-      ShimBt_settingChangeCommon(NV_SENSORS0, SDH_SENSORS0, 3);
-      break;
-    }
+      case SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE:
+      {
+        useAckPrefixForInstreamResponses = args[0];
+        break;
+      }
+      case STOP_STREAMING_COMMAND:
+      {
+        ShimTask_setStopBtStreaming();
+        break;
+      }
+      case STOP_SDBT_COMMAND:
+      {
+        ShimTask_setStopSensing();
+        break;
+      }
+      case STOP_LOGGING_COMMAND:
+      {
+        ShimTask_setStopSdLogging();
+        break;
+      }
+      case SET_SENSORS_COMMAND:
+      {
+        ShimConfig_storedConfigSet(&args[0], NV_SENSORS0, 3);
+        ShimBt_settingChangeCommon(NV_SENSORS0, SDH_SENSORS0, 3);
+        break;
+      }
 #if defined(SHIMMER4_SDK)
-    case GET_I2C_BATT_STATUS_COMMAND:
-    {
-      getCmdWaitingResponse = gAction;
-      break;
-    }
-    case SET_I2C_BATT_STATUS_FREQ_COMMAND:
-    {
-      temp16 = args[0] + ((uint16_t) args[1] << 8);
-      I2C_readBattSetFreq(temp16);
-      break;
-    }
+      case GET_I2C_BATT_STATUS_COMMAND:
+      {
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SET_I2C_BATT_STATUS_FREQ_COMMAND:
+      {
+        temp16 = args[0] + ((uint16_t) args[1] << 8);
+        I2C_readBattSetFreq(temp16);
+        break;
+      }
 #endif
-    case SET_TRIAL_CONFIG_COMMAND:
-    {
-      storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0] = args[0];
-      storedConfig->rawBytes[NV_SD_TRIAL_CONFIG1] = args[1];
-      storedConfig->rawBytes[NV_SD_BT_INTERVAL] = args[2];
+      case SET_TRIAL_CONFIG_COMMAND:
+      {
+        storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0] = args[0];
+        storedConfig->rawBytes[NV_SD_TRIAL_CONFIG1] = args[1];
+        storedConfig->rawBytes[NV_SD_BT_INTERVAL] = args[2];
 
-      //Save TRIAL_CONFIG0, TRIAL_CONFIG1 and BT_INTERVAL
-      ShimBt_settingChangeCommon(NV_SD_TRIAL_CONFIG0, SDH_TRIAL_CONFIG0, 3);
-      break;
-    }
-    case SET_CENTER_COMMAND:
-    {
-      storedConfig->masterEnable = args[0] & 0x01;
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
-      break;
-    }
-    case SET_SHIMMERNAME_COMMAND:
-    {
-      ShimConfig_shimmerNameSet(&args[1], args[0]);
-      InfoMem_write(NV_SD_SHIMMER_NAME, (uint8_t *) &storedConfig->shimmerName[0],
-          sizeof(storedConfig->shimmerName));
-      update_sdconfig = 1;
-      break;
-    }
-    case SET_EXPID_COMMAND:
-    {
-      ShimConfig_expIdSet(&args[1], args[0]);
-      InfoMem_write(NV_SD_EXP_ID_NAME, (uint8_t *) &storedConfig->expIdName[0],
-          sizeof(storedConfig->expIdName));
-      update_sdconfig = 1;
-      break;
-    }
-    case SET_CONFIGTIME_COMMAND:
-    {
-      ShimConfig_configTimeSetFromStr(&args[1], args[0]);
-      ShimSdHead_sdHeadTextSet(&storedConfig->configTime0, SDH_CONFIG_TIME_0, 4);
-      InfoMem_write(NV_SD_CONFIG_TIME, &storedConfig->rawBytes[NV_SD_CONFIG_TIME], 4);
-      update_sdconfig = 1;
-      break;
-    }
-    case SET_NSHIMMER_COMMAND:
-    {
-      storedConfig->numberOfShimmers = args[0];
-      ShimBt_settingChangeCommon(NV_SD_NSHIMMER, SDH_NSHIMMER, 1);
-      break;
-    }
-    case SET_MYID_COMMAND:
-    {
-      storedConfig->myTrialID = args[0];
-      ShimBt_settingChangeCommon(NV_SD_MYTRIAL_ID, SDH_MYTRIAL_ID, 1);
-      break;
-    }
-    case SET_WR_ACCEL_RANGE_COMMAND:
-    {
-      storedConfig->wrAccelRange = args[0] < 4 ? (args[0] & 0x03) : 0;
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
-      break;
-    }
-    case GET_EXG_REGS_COMMAND:
-    {
-      if (args[0] < 2 && args[1] < 10 && args[2] < 11)
-      {
-        exgChip = args[0];
-        exgStartAddr = args[1];
-        exgLength = args[2];
+        //Save TRIAL_CONFIG0, TRIAL_CONFIG1 and BT_INTERVAL
+        ShimBt_settingChangeCommon(NV_SD_TRIAL_CONFIG0, SDH_TRIAL_CONFIG0, 3);
+        break;
       }
-      else
+      case SET_CENTER_COMMAND:
       {
-        exgLength = 0;
+        storedConfig->masterEnable = args[0] & 0x01;
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
+        break;
       }
-      getCmdWaitingResponse = gAction;
-      break;
-    }
-    case SET_WR_ACCEL_SAMPLING_RATE_COMMAND:
-    {
+      case SET_SHIMMERNAME_COMMAND:
+      {
+        ShimConfig_shimmerNameSet(&args[1], args[0]);
+        InfoMem_write(NV_SD_SHIMMER_NAME, (uint8_t *) &storedConfig->shimmerName[0],
+            sizeof(storedConfig->shimmerName));
+        update_sdconfig = 1;
+        break;
+      }
+      case SET_EXPID_COMMAND:
+      {
+        ShimConfig_expIdSet(&args[1], args[0]);
+        InfoMem_write(NV_SD_EXP_ID_NAME, (uint8_t *) &storedConfig->expIdName[0],
+            sizeof(storedConfig->expIdName));
+        update_sdconfig = 1;
+        break;
+      }
+      case SET_CONFIGTIME_COMMAND:
+      {
+        ShimConfig_configTimeSetFromStr(&args[1], args[0]);
+        ShimSdHead_sdHeadTextSet(&storedConfig->configTime0, SDH_CONFIG_TIME_0, 4);
+        InfoMem_write(NV_SD_CONFIG_TIME, &storedConfig->rawBytes[NV_SD_CONFIG_TIME], 4);
+        update_sdconfig = 1;
+        break;
+      }
+      case SET_NSHIMMER_COMMAND:
+      {
+        storedConfig->numberOfShimmers = args[0];
+        ShimBt_settingChangeCommon(NV_SD_NSHIMMER, SDH_NSHIMMER, 1);
+        break;
+      }
+      case SET_MYID_COMMAND:
+      {
+        storedConfig->myTrialID = args[0];
+        ShimBt_settingChangeCommon(NV_SD_MYTRIAL_ID, SDH_MYTRIAL_ID, 1);
+        break;
+      }
+      case SET_WR_ACCEL_RANGE_COMMAND:
+      {
+        storedConfig->wrAccelRange = args[0] < 4 ? (args[0] & 0x03) : 0;
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
+        break;
+      }
+      case GET_EXG_REGS_COMMAND:
+      {
+        if (args[0] < 2 && args[1] < 10 && args[2] < 11)
+        {
+          exgChip = args[0];
+          exgStartAddr = args[1];
+          exgLength = args[2];
+        }
+        else
+        {
+          exgLength = 0;
+        }
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SET_WR_ACCEL_SAMPLING_RATE_COMMAND:
+      {
 #if defined(SHIMMER3)
-      storedConfig->wrAccelRate
-          = (args[0] <= LSM303DLHC_ACCEL_1_344kHz) ? args[0] : LSM303DLHC_ACCEL_100HZ;
+        storedConfig->wrAccelRate
+            = (args[0] <= LSM303DLHC_ACCEL_1_344kHz) ? args[0] : LSM303DLHC_ACCEL_100HZ;
 #elif defined(SHIMMER3R)
-      storedConfig->wrAccelRate
-          = (args[0] <= LIS2DW12_XL_ODR_1k6Hz) ? args[0] : LIS2DW12_XL_ODR_100Hz;
+        storedConfig->wrAccelRate
+            = (args[0] <= LIS2DW12_XL_ODR_1k6Hz) ? args[0] : LIS2DW12_XL_ODR_100Hz;
 #endif
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
-      break;
-    }
-    case SET_MAG_GAIN_COMMAND:
-    {
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
+        break;
+      }
+      case SET_MAG_GAIN_COMMAND:
+      {
 #if defined(SHIMMER3)
-      storedConfig->magRange = (args[0] <= LSM303DLHC_MAG_8_1G) ? args[0] : LSM303DLHC_MAG_1_3G;
+        storedConfig->magRange = (args[0] <= LSM303DLHC_MAG_8_1G) ? args[0] : LSM303DLHC_MAG_1_3G;
 #elif defined(SHIMMER3R)
-      storedConfig->altMagRange = (args[0] <= LIS3MDL_16_GAUSS) ? args[0] : LIS3MDL_4_GAUSS;
+        storedConfig->altMagRange = (args[0] <= LIS3MDL_16_GAUSS) ? args[0] : LIS3MDL_4_GAUSS;
 #endif
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
-      break;
-    }
-    case SET_MAG_SAMPLING_RATE_COMMAND:
-    {
-      ShimConfig_configByteMagRateSet(storedConfig, args[0]);
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
-      break;
-    }
-    case SET_WR_ACCEL_LPMODE_COMMAND:
-    {
-      ShimConfig_wrAccelLpModeSet(storedConfig, args[0] == 1 ? 1 : 0);
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
-      break;
-    }
-    case SET_WR_ACCEL_HRMODE_COMMAND:
-    {
-      storedConfig->wrAccelHrMode = (args[0] == 1) ? 1 : 0;
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
-      break;
-    }
-    case SET_GYRO_RANGE_COMMAND:
-    {
-      ShimConfig_gyroRangeSet(storedConfig, args[0]);
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
-      break;
-    }
-    case SET_GYRO_SAMPLING_RATE_COMMAND:
-    {
-      ShimConfig_gyroRateSet(storedConfig, args[0]);
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE1, SDH_CONFIG_SETUP_BYTE1, 1);
-      break;
-    }
-    case SET_ALT_ACCEL_RANGE_COMMAND:
-    {
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
+        break;
+      }
+      case SET_MAG_SAMPLING_RATE_COMMAND:
+      {
+        ShimConfig_configByteMagRateSet(storedConfig, args[0]);
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
+        break;
+      }
+      case SET_WR_ACCEL_LPMODE_COMMAND:
+      {
+        ShimConfig_wrAccelLpModeSet(storedConfig, args[0] == 1 ? 1 : 0);
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
+        break;
+      }
+      case SET_WR_ACCEL_HRMODE_COMMAND:
+      {
+        storedConfig->wrAccelHrMode = (args[0] == 1) ? 1 : 0;
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
+        break;
+      }
+      case SET_GYRO_RANGE_COMMAND:
+      {
+        ShimConfig_gyroRangeSet(storedConfig, args[0]);
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
+        break;
+      }
+      case SET_GYRO_SAMPLING_RATE_COMMAND:
+      {
+        ShimConfig_gyroRateSet(storedConfig, args[0]);
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE1, SDH_CONFIG_SETUP_BYTE1, 1);
+        break;
+      }
+      case SET_ALT_ACCEL_RANGE_COMMAND:
+      {
 #if defined(SHIMMER3)
-      storedConfig->altAccelRange = (args[0] <= ACCEL_16G) ? (args[0] & 0x03) : ACCEL_2G;
+        storedConfig->altAccelRange = (args[0] <= ACCEL_16G) ? (args[0] & 0x03) : ACCEL_2G;
 #elif defined(SHIMMER3R)
-      storedConfig->lnAccelRange = (args[0] <= LSM6DSV_16g) ? (args[0] & 0x03) : LSM6DSV_2g;
+        storedConfig->lnAccelRange = (args[0] <= LSM6DSV_16g) ? (args[0] & 0x03) : LSM6DSV_2g;
 #endif
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
-      break;
-    }
-    case SET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
-    {
-      ShimConfig_configBytePressureOversamplingRatioSet(storedConfig, args[0]);
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
-      break;
-    }
-    case SET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
-    {
-      storedConfig->expansionBoardPower = (args[0] == 1) ? 1 : 0;
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
-      break;
-    }
-    case SET_CONFIG_SETUP_BYTES_COMMAND:
-    {
-      ShimConfig_storedConfigSet(&args[0], NV_CONFIG_SETUP_BYTE0, 4);
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 4);
-      break;
-    }
-    case SET_SAMPLING_RATE_COMMAND:
-    {
-      storedConfig->samplingRateTicks = *(uint16_t *) args;
-      //ShimConfig_storedConfigSet(&args[0], NV_SAMPLING_RATE, 2);
-      ShimBt_settingChangeCommon(NV_SAMPLING_RATE, SDH_SAMPLE_RATE_0, 2);
-      break;
-    }
-    case GET_CALIB_DUMP_COMMAND:
-    {
-      //usage:
-      //0x98, offset, offset, length
-      calibRamLength = args[0];
-      calibRamOffset = args[1] + (args[2] << 8);
-      getCmdWaitingResponse = gAction;
-      break;
-    }
-    case SET_CALIB_DUMP_COMMAND:
-    {
-      //usage:
-      //0x98, offset, offset, length, data[0:127]
-      //max length of this command = 132
-      calibRamLength = args[0];
-      calibRamOffset = args[1] + (args[2] << 8);
-      if (ShimCalib_ramWrite(&args[3], calibRamLength, calibRamOffset) == 1)
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
+        break;
+      }
+      case SET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
+      {
+        ShimConfig_configBytePressureOversamplingRatioSet(storedConfig, args[0]);
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
+        break;
+      }
+      case SET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
+      {
+        storedConfig->expansionBoardPower = (args[0] == 1) ? 1 : 0;
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
+        break;
+      }
+      case SET_CONFIG_SETUP_BYTES_COMMAND:
+      {
+        ShimConfig_storedConfigSet(&args[0], NV_CONFIG_SETUP_BYTE0, 4);
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 4);
+        break;
+      }
+      case SET_SAMPLING_RATE_COMMAND:
+      {
+        storedConfig->samplingRateTicks = *(uint16_t *) args;
+        //ShimConfig_storedConfigSet(&args[0], NV_SAMPLING_RATE, 2);
+        ShimBt_settingChangeCommon(NV_SAMPLING_RATE, SDH_SAMPLE_RATE_0, 2);
+        break;
+      }
+      case GET_CALIB_DUMP_COMMAND:
+      {
+        //usage:
+        //0x98, offset, offset, length
+        calibRamLength = args[0];
+        calibRamOffset = args[1] + (args[2] << 8);
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SET_CALIB_DUMP_COMMAND:
+      {
+        //usage:
+        //0x98, offset, offset, length, data[0:127]
+        //max length of this command = 132
+        calibRamLength = args[0];
+        calibRamOffset = args[1] + (args[2] << 8);
+        if (ShimCalib_ramWrite(&args[3], calibRamLength, calibRamOffset) == 1)
+        {
+          ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+          update_calib_dump_file = 1;
+        }
+        break;
+      }
+      case UPD_CALIB_DUMP_COMMAND:
       {
         ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
         update_calib_dump_file = 1;
+        break;
       }
-      break;
-    }
-    case UPD_CALIB_DUMP_COMMAND:
-    {
-      ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
-      update_calib_dump_file = 1;
-      break;
-    }
-    case UPD_SDLOG_CFG_COMMAND:
-    {
-      ShimTask_set(TASK_SDLOG_CFG_UPDATE);
-      break;
-    }
-      //case UPD_FLASH_COMMAND:
-      //{
-      //  InfoMem_update();
-      //  //ShimmerCalibSyncFromDumpRamAll();
-      //  //update_calib_dump_file = 1;
-      //  break;
-      //}
-    case SET_LN_ACCEL_CALIBRATION_COMMAND:
-    {
-#if defined(SHIMMER3)
-      sensorCalibId = SC_SENSOR_ANALOG_ACCEL;
-#elif defined(SHIMMER3R)
-      sensorCalibId = SC_SENSOR_LSM6DSV_ACCEL;
-#endif
-      ShimBt_calibrationChangeCommon(NV_LN_ACCEL_CALIBRATION, SDH_LN_ACCEL_CALIBRATION,
-          &storedConfig->lnAccelCalib.rawBytes[0], &args[0], sensorCalibId);
-      update_calib_dump_file = 1;
-      break;
-    }
-    case SET_GYRO_CALIBRATION_COMMAND:
-    {
-#if defined(SHIMMER3)
-      sensorCalibId = SC_SENSOR_MPU9X50_ICM20948_GYRO;
-#elif defined(SHIMMER3R)
-      sensorCalibId = SC_SENSOR_LSM6DSV_GYRO;
-#endif
-      ShimBt_calibrationChangeCommon(NV_GYRO_CALIBRATION, SDH_GYRO_CALIBRATION,
-          &storedConfig->gyroCalib.rawBytes[0], &args[0], sensorCalibId);
-      update_calib_dump_file = 1;
-      break;
-    }
-    case SET_MAG_CALIBRATION_COMMAND:
-    {
-#if defined(SHIMMER3)
-      sensorCalibId = SC_SENSOR_LSM303_MAG;
-#elif defined(SHIMMER3R)
-      sensorCalibId = SC_SENSOR_LIS2MDL_MAG;
-#endif
-      ShimBt_calibrationChangeCommon(NV_MAG_CALIBRATION, SDH_MAG_CALIBRATION,
-          &storedConfig->magCalib.rawBytes[0], &args[0], sensorCalibId);
-      update_calib_dump_file = 1;
-      break;
-    }
-    case SET_WR_ACCEL_CALIBRATION_COMMAND:
-    {
-#if defined(SHIMMER3)
-      sensorCalibId = SC_SENSOR_LSM303_ACCEL;
-#elif defined(SHIMMER3R)
-      sensorCalibId = SC_SENSOR_LIS2DW12_ACCEL;
-#endif
-      ShimBt_calibrationChangeCommon(NV_WR_ACCEL_CALIBRATION, SDH_WR_ACCEL_CALIBRATION,
-          &storedConfig->wrAccelCalib.rawBytes[0], &args[0], sensorCalibId);
-      update_calib_dump_file = 1;
-      break;
-    }
-    case SET_GSR_RANGE_COMMAND:
-    {
-      storedConfig->gsrRange = (args[0] <= 4) ? (args[0] & 0x07) : GSR_AUTORANGE;
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
-      break;
-    }
-    case SET_EXG_REGS_COMMAND:
-    {
-      if (args[0] < 2 && args[1] < 10 && args[2] < 11)
+      case UPD_SDLOG_CFG_COMMAND:
       {
-        exgChip = args[0];
-        exgStartAddr = args[1];
-        exgLength = args[2];
-
-        uint16_t exgConfigOffset = (exgChip == 0) ? NV_EXG_ADS1292R_1_CONFIG1 :
-                                                    NV_EXG_ADS1292R_2_CONFIG1;
-        uint16_t exgSdHeadOffset = (exgChip == 0) ? SDH_EXG_ADS1292R_1_CONFIG1 :
-                                                    SDH_EXG_ADS1292R_2_CONFIG1;
-
-        ShimConfig_storedConfigSet(&args[3], exgConfigOffset + exgStartAddr, exgLength);
-
-        /* Check if unit is SR47-4 or greater.
-         * If so, amend configuration byte 2 of ADS chip 1 to have bit 3 set
-         * to 1. This ensures clock lines on ADS chip are correct
-         */
-        if (exgChip == 0 && (ShimBrd_getDaughtCardId()->exp_brd_id == EXP_BRD_EXG_UNIFIED)
-            && (ShimBrd_getDaughtCardId()->exp_brd_major >= 4))
+        ShimTask_set(TASK_SDLOG_CFG_UPDATE);
+        break;
+      }
+        //case UPD_FLASH_COMMAND:
+        //{
+        //  InfoMem_update();
+        //  //ShimmerCalibSyncFromDumpRamAll();
+        //  //update_calib_dump_file = 1;
+        //  break;
+        //}
+      case SET_LN_ACCEL_CALIBRATION_COMMAND:
+      {
+#if defined(SHIMMER3)
+        sensorCalibId = SC_SENSOR_ANALOG_ACCEL;
+#elif defined(SHIMMER3R)
+        sensorCalibId = SC_SENSOR_LSM6DSV_ACCEL;
+#endif
+        ShimBt_calibrationChangeCommon(NV_LN_ACCEL_CALIBRATION, SDH_LN_ACCEL_CALIBRATION,
+            &storedConfig->lnAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+        update_calib_dump_file = 1;
+        break;
+      }
+      case SET_GYRO_CALIBRATION_COMMAND:
+      {
+#if defined(SHIMMER3)
+        sensorCalibId = SC_SENSOR_MPU9X50_ICM20948_GYRO;
+#elif defined(SHIMMER3R)
+        sensorCalibId = SC_SENSOR_LSM6DSV_GYRO;
+#endif
+        ShimBt_calibrationChangeCommon(NV_GYRO_CALIBRATION, SDH_GYRO_CALIBRATION,
+            &storedConfig->gyroCalib.rawBytes[0], &args[0], sensorCalibId);
+        update_calib_dump_file = 1;
+        break;
+      }
+      case SET_MAG_CALIBRATION_COMMAND:
+      {
+#if defined(SHIMMER3)
+        sensorCalibId = SC_SENSOR_LSM303_MAG;
+#elif defined(SHIMMER3R)
+        sensorCalibId = SC_SENSOR_LIS2MDL_MAG;
+#endif
+        ShimBt_calibrationChangeCommon(NV_MAG_CALIBRATION, SDH_MAG_CALIBRATION,
+            &storedConfig->magCalib.rawBytes[0], &args[0], sensorCalibId);
+        update_calib_dump_file = 1;
+        break;
+      }
+      case SET_WR_ACCEL_CALIBRATION_COMMAND:
+      {
+#if defined(SHIMMER3)
+        sensorCalibId = SC_SENSOR_LSM303_ACCEL;
+#elif defined(SHIMMER3R)
+        sensorCalibId = SC_SENSOR_LIS2DW12_ACCEL;
+#endif
+        ShimBt_calibrationChangeCommon(NV_WR_ACCEL_CALIBRATION, SDH_WR_ACCEL_CALIBRATION,
+            &storedConfig->wrAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+        update_calib_dump_file = 1;
+        break;
+      }
+      case SET_GSR_RANGE_COMMAND:
+      {
+        storedConfig->gsrRange = (args[0] <= 4) ? (args[0] & 0x07) : GSR_AUTORANGE;
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
+        break;
+      }
+      case SET_EXG_REGS_COMMAND:
+      {
+        if (args[0] < 2 && args[1] < 10 && args[2] < 11)
         {
-          storedConfig->exgADS1292rRegsCh1.config2 |= 8;
+          exgChip = args[0];
+          exgStartAddr = args[1];
+          exgLength = args[2];
+
+          uint16_t exgConfigOffset = (exgChip == 0) ? NV_EXG_ADS1292R_1_CONFIG1 :
+                                                      NV_EXG_ADS1292R_2_CONFIG1;
+          uint16_t exgSdHeadOffset = (exgChip == 0) ? SDH_EXG_ADS1292R_1_CONFIG1 :
+                                                      SDH_EXG_ADS1292R_2_CONFIG1;
+
+          ShimConfig_storedConfigSet(&args[3], exgConfigOffset + exgStartAddr, exgLength);
+
+          /* Check if unit is SR47-4 or greater.
+           * If so, amend configuration byte 2 of ADS chip 1 to have bit 3 set
+           * to 1. This ensures clock lines on ADS chip are correct
+           */
+          if (exgChip == 0 && (ShimBrd_getDaughtCardId()->exp_brd_id == EXP_BRD_EXG_UNIFIED)
+              && (ShimBrd_getDaughtCardId()->exp_brd_major >= 4))
+          {
+            storedConfig->exgADS1292rRegsCh1.config2 |= 8;
+          }
+
+          InfoMem_write(exgConfigOffset + exgStartAddr,
+              &storedConfig->rawBytes[exgConfigOffset + exgStartAddr], exgLength);
+          ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[exgConfigOffset],
+              exgSdHeadOffset, exgLength);
+
+          update_sdconfig = 1;
         }
-
-        InfoMem_write(exgConfigOffset + exgStartAddr,
-            &storedConfig->rawBytes[exgConfigOffset + exgStartAddr], exgLength);
-        ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[exgConfigOffset],
-            exgSdHeadOffset, exgLength);
-
-        update_sdconfig = 1;
+        break;
       }
-      break;
-    }
-    case SET_DATA_RATE_TEST:
-    {
-      /* Stop test before ACK is sent */
-      if (args[0] == 0)
+      case SET_DATA_RATE_TEST:
       {
-        ShimBt_setDataRateTestState(0);
-        ShimBt_clearBtTxBuf(1);
-      }
-      getCmdWaitingResponse = gAction;
-      break;
-    }
-    case SET_FACTORY_TEST:
-    {
-      if (args[0] < FACTORY_TEST_COUNT)
-      {
-        setup_factory_test(PRINT_TO_BT_UART, (factory_test_t) args[0]);
-        ShimTask_set(TASK_FACTORY_TEST);
-      }
-      break;
-    }
-    case RESET_TO_DEFAULT_CONFIGURATION_COMMAND:
-    {
-      ShimConfig_setDefaultConfig();
-      ShimSdHead_config2SdHead();
-      update_sdconfig = 1;
-
-      //restart sensing to use settings
-      ShimTask_setRestartSensing();
-      break;
-    }
-    case RESET_CALIBRATION_VALUE_COMMAND:
-    {
-      ShimCalib_init();
-      ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
-      update_calib_dump_file = 1;
-      break;
-    }
-    case GET_DAUGHTER_CARD_ID_COMMAND:
-    {
-      dcMemLength = args[0];
-      dcMemOffset = args[1];
-      if ((dcMemLength <= 16) && (dcMemOffset <= 15) && (dcMemLength + dcMemOffset <= 16))
-      {
+        /* Stop test before ACK is sent */
+        if (args[0] == 0)
+        {
+          ShimBt_setDataRateTestState(0);
+          ShimBt_clearBtTxBuf(1);
+        }
         getCmdWaitingResponse = gAction;
+        break;
       }
-      break;
-    }
-    case SET_DAUGHTER_CARD_ID_COMMAND:
-    {
-      dcMemLength = args[0];
-      dcMemOffset = args[1];
-      if ((dcMemLength <= 16) && (dcMemOffset <= 15) && (dcMemLength + dcMemOffset <= 16))
+      case SET_FACTORY_TEST:
       {
-        eepromWrite(dcMemOffset, dcMemLength, &args[2]);
-      }
-      break;
-    }
-    case GET_DAUGHTER_CARD_MEM_COMMAND:
-    {
-      dcMemLength = args[0];
-      dcMemOffset = args[1] + (args[2] << 8);
-      if ((dcMemLength <= 128) && (dcMemOffset <= 2031) && (dcMemLength + dcMemOffset <= 2032))
-      {
-        getCmdWaitingResponse = gAction;
-      }
-      break;
-    }
-    case SET_DAUGHTER_CARD_MEM_COMMAND:
-    {
-      dcMemLength = args[0];
-      dcMemOffset = args[1] + (args[2] << 8);
-      if ((dcMemLength <= 128) && (dcMemOffset <= 2031) && (dcMemLength + dcMemOffset <= 2032))
-      {
-        eepromWrite(dcMemOffset + 16U, (uint16_t) dcMemLength, &args[3]);
-      }
-      break;
-    }
-    case SET_BT_COMMS_BAUD_RATE:
-    {
-      //TODO changing BAUD rate is not going to be supported
-      //if (btArgs[0] != storedConfig->btCommsBaudRate)
-      //{
-      //  if (args[0] <= BAUD_1000000)
-      //  {
-      //    changeBtBaudRate = args[0];
-      //  }
-      //  else
-      //  {
-      //    changeBtBaudRate = DEFAULT_BT_BAUD_RATE;
-      //  }
-      //}
-      break;
-    }
-    case SET_DERIVED_CHANNEL_BYTES:
-    {
-      memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_0], &args[0], 3);
-      memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_3], &args[3], 5);
-      InfoMem_write(NV_DERIVED_CHANNELS_0,
-          &storedConfig->rawBytes[NV_DERIVED_CHANNELS_0], 3);
-      InfoMem_write(NV_DERIVED_CHANNELS_3,
-          &storedConfig->rawBytes[NV_DERIVED_CHANNELS_3], 5);
-      ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_0],
-          SDH_DERIVED_CHANNELS_0, 3);
-      ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_3],
-          SDH_DERIVED_CHANNELS_3, 5);
-      update_sdconfig = 1;
-      break;
-    }
-    case GET_INFOMEM_COMMAND:
-    {
-      infomemLength = args[0];
-      infomemOffset = args[1] + (args[2] << 8);
-      if ((infomemLength <= 128) && (infomemOffset <= (NV_NUM_RWMEM_BYTES - 1))
-          && (infomemLength + infomemOffset <= NV_NUM_RWMEM_BYTES))
-      {
-        getCmdWaitingResponse = gAction;
-      }
-      break;
-    }
-    case SET_INFOMEM_COMMAND:
-    {
-      infomemLength = args[0];
-      infomemOffset = args[1] + (args[2] << 8);
-      if ((infomemLength <= 128) && (infomemOffset <= (NV_NUM_RWMEM_BYTES - 1))
-          && (infomemLength + infomemOffset <= NV_NUM_RWMEM_BYTES))
-      {
-        ShimConfig_storedConfigSet(&args[3], infomemOffset, infomemLength);
-
-        if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
+        if (args[0] < FACTORY_TEST_COUNT)
         {
-          /* Always overwrite MAC ID */
-          memcpy(&ShimConfig_getStoredConfig()->macAddr[0], ShimBt_macIdBytesPtrGet(), 6);
+          setup_factory_test(PRINT_TO_BT_UART, (factory_test_t) args[0]);
+          ShimTask_set(TASK_FACTORY_TEST);
         }
-
-        ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
-
-        InfoMem_write(infomemOffset, &args[3], infomemLength);
-        InfoMem_read(infomemOffset, &storedConfig->rawBytes[infomemOffset], infomemLength);
-
-        /* Save from infomem to calib dump in memory */
-        if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
-        {
-          ShimCalib_configBytes0To127ToCalibDumpBytes(0);
-          update_calib_dump_file = 1;
-        }
-#if defined(SHIMMER3R)
-        else if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
-        {
-          ShimCalib_configBytes128To255ToCalibDumpBytes(0);
-          update_calib_dump_file = 1;
-        }
-#endif
-
+        break;
+      }
+      case RESET_TO_DEFAULT_CONFIGURATION_COMMAND:
+      {
+        ShimConfig_setDefaultConfig();
         ShimSdHead_config2SdHead();
         update_sdconfig = 1;
+        break;
       }
-      else
+      case RESET_CALIBRATION_VALUE_COMMAND:
       {
-        return;
+        ShimCalib_init();
+        ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+        update_calib_dump_file = 1;
+        break;
       }
-      break;
-    }
-    case SET_RWC_COMMAND:
-    {
-      storedConfig->rtcSetByBt = 1;
-      InfoMem_write(NV_SD_TRIAL_CONFIG0, &storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
-      ShimSdHead_sdHeadTextSetByte(
-          SDH_TRIAL_CONFIG0, storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0]);
-#if defined(SHIMMER3)
-      setRwcTime(&args[0]);
-      RwcCheck();
-
-      uint64_t *rwcTimeDiffPtr = getRwcTimeDiffPtr();
-      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_7, *((uint8_t *) rwcTimeDiffPtr));
-      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_6, *(((uint8_t *) rwcTimeDiffPtr) + 1));
-      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_5, *(((uint8_t *) rwcTimeDiffPtr) + 2));
-      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_4, *(((uint8_t *) rwcTimeDiffPtr) + 3));
-      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_3, *(((uint8_t *) rwcTimeDiffPtr) + 4));
-      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_2, *(((uint8_t *) rwcTimeDiffPtr) + 5));
-      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_1, *(((uint8_t *) rwcTimeDiffPtr) + 6));
-      ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_0, *(((uint8_t *) rwcTimeDiffPtr) + 7));
-#else
-      memcpy((uint8_t *) (&temp64), args, 8); //64bits = 8bytes
-      RTC_init(temp64);
-
-      setupNextRtcMinuteAlarm(); //configure RTC alarm after time set from BT.
-#endif
-      break;
-    }
-    case SET_ALT_ACCEL_CALIBRATION_COMMAND:
-    {
-#if defined(SHIMMER3)
-      sensorCalibId = SC_SENSOR_MPU9X50_ICM20948_ACCEL;
-#elif defined(SHIMMER3R)
-      sensorCalibId = SC_SENSOR_ADXL371_ACCEL;
-#endif
-      ShimBt_calibrationChangeCommon(NV_ALT_ACCEL_CALIBRATION, SDH_ALT_ACCEL_CALIBRATION,
-          &storedConfig->altAccelCalib.rawBytes[0], &args[0], sensorCalibId);
-      update_calib_dump_file = 1;
-      break;
-    }
-    case SET_ALT_MAG_CALIBRATION_COMMAND:
-    {
-#if defined(SHIMMER3)
-      sensorCalibId = SC_SENSOR_MPU9X50_ICM20948_MAG;
-#elif defined(SHIMMER3R)
-      sensorCalibId = SC_SENSOR_LIS3MDL_MAG;
-#endif
-      ShimBt_calibrationChangeCommon(NV_ALT_MAG_CALIBRATION, SDH_ALT_MAG_CALIBRATION,
-          &storedConfig->altMagCalib.rawBytes[0], &args[0], sensorCalibId);
-      update_calib_dump_file = 1;
-      break;
-    }
-    case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
-    {
-      storedConfig->altAccelRate = args[0] & 0x03;
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
-      break;
-    }
-    case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
-    {
-      ShimConfig_configByteAltMagRateSet(storedConfig, args[0]);
-      ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
-      break;
-    }
-    case SET_SD_SYNC_COMMAND:
-    {
-      if (shimmerStatus.btInSyncMode && ShimSdSync_isBtSdSyncRunning())
+      case GET_DAUGHTER_CARD_ID_COMMAND:
       {
-        /* Reassemble full packet so that original RcNodeR10() will work without modificiation */
-        fullSyncResp[0] = gAction;
-        memcpy(&fullSyncResp[1], &args[0], SYNC_PACKET_MAX_SIZE - SYNC_PACKET_SIZE_CMD);
-        ShimSdSync_syncRespSet(&fullSyncResp[0], SYNC_PACKET_MAX_SIZE);
-        ShimTask_set(TASK_RCNODER10);
-      }
-      else
-      {
-        sendNack = 1;
-      }
-      break;
-    }
-    case ACK_COMMAND_PROCESSED:
-    {
-      if (shimmerStatus.btInSyncMode && ShimSdSync_isBtSdSyncRunning())
-      {
-        /* Slave response received by Master */
-        if (args[0] == SD_SYNC_RESPONSE)
+        dcMemLength = args[0];
+        dcMemOffset = args[1];
+        if ((dcMemLength <= 16) && (dcMemOffset <= 15) && (dcMemLength + dcMemOffset <= 16))
         {
-          /* SD Sync Center - get's into this case when the center is waiting for a 0x01 or 0xFF from a node */
-          ShimSdSync_syncRespSet(&args[1], 1U);
-          ShimTask_set(TASK_RCCENTERR1);
+          getCmdWaitingResponse = gAction;
         }
+        break;
       }
-      else
+      case SET_DAUGHTER_CARD_ID_COMMAND:
       {
-        sendNack = 1;
+        dcMemLength = args[0];
+        dcMemOffset = args[1];
+        if ((dcMemLength <= 16) && (dcMemOffset <= 15) && (dcMemLength + dcMemOffset <= 16))
+        {
+          eepromWrite(dcMemOffset, dcMemLength, &args[2]);
+        }
+        break;
       }
-      break;
-    }
-    default:
-    {
-      break;
+      case GET_DAUGHTER_CARD_MEM_COMMAND:
+      {
+        dcMemLength = args[0];
+        dcMemOffset = args[1] + (args[2] << 8);
+        if ((dcMemLength <= 128) && (dcMemOffset <= 2031)
+            && (dcMemLength + dcMemOffset <= 2032))
+        {
+          getCmdWaitingResponse = gAction;
+        }
+        break;
+      }
+      case SET_DAUGHTER_CARD_MEM_COMMAND:
+      {
+        dcMemLength = args[0];
+        dcMemOffset = args[1] + (args[2] << 8);
+        if ((dcMemLength <= 128) && (dcMemOffset <= 2031)
+            && (dcMemLength + dcMemOffset <= 2032))
+        {
+          eepromWrite(dcMemOffset + 16U, (uint16_t) dcMemLength, &args[3]);
+        }
+        break;
+      }
+      case SET_BT_COMMS_BAUD_RATE:
+      {
+        //TODO changing BAUD rate is not going to be supported
+        //if (btArgs[0] != storedConfig->btCommsBaudRate)
+        //{
+        //  if (args[0] <= BAUD_1000000)
+        //  {
+        //    changeBtBaudRate = args[0];
+        //  }
+        //  else
+        //  {
+        //    changeBtBaudRate = DEFAULT_BT_BAUD_RATE;
+        //  }
+        //}
+        break;
+      }
+      case SET_DERIVED_CHANNEL_BYTES:
+      {
+        memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_0], &args[0], 3);
+        memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_3], &args[3], 5);
+        InfoMem_write(NV_DERIVED_CHANNELS_0,
+            &storedConfig->rawBytes[NV_DERIVED_CHANNELS_0], 3);
+        InfoMem_write(NV_DERIVED_CHANNELS_3,
+            &storedConfig->rawBytes[NV_DERIVED_CHANNELS_3], 5);
+        ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_0],
+            SDH_DERIVED_CHANNELS_0, 3);
+        ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_3],
+            SDH_DERIVED_CHANNELS_3, 5);
+        update_sdconfig = 1;
+        break;
+      }
+      case GET_INFOMEM_COMMAND:
+      {
+        infomemLength = args[0];
+        infomemOffset = args[1] + (args[2] << 8);
+        if ((infomemLength <= 128) && (infomemOffset <= (NV_NUM_RWMEM_BYTES - 1))
+            && (infomemLength + infomemOffset <= NV_NUM_RWMEM_BYTES))
+        {
+          getCmdWaitingResponse = gAction;
+        }
+        break;
+      }
+      case SET_INFOMEM_COMMAND:
+      {
+        infomemLength = args[0];
+        infomemOffset = args[1] + (args[2] << 8);
+        if ((infomemLength <= 128) && (infomemOffset <= (NV_NUM_RWMEM_BYTES - 1))
+            && (infomemLength + infomemOffset <= NV_NUM_RWMEM_BYTES))
+        {
+          ShimConfig_storedConfigSet(&args[3], infomemOffset, infomemLength);
+
+          if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
+          {
+            /* Always overwrite MAC ID */
+            memcpy(&ShimConfig_getStoredConfig()->macAddr[0],
+                ShimBt_macIdBytesPtrGet(), 6);
+          }
+
+          ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
+
+          InfoMem_write(infomemOffset, &args[3], infomemLength);
+          InfoMem_read(infomemOffset, &storedConfig->rawBytes[infomemOffset], infomemLength);
+
+          /* Save from infomem to calib dump in memory */
+          if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
+          {
+            ShimCalib_configBytes0To127ToCalibDumpBytes(0);
+            update_calib_dump_file = 1;
+          }
+#if defined(SHIMMER3R)
+          else if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
+          {
+            ShimCalib_configBytes128To255ToCalibDumpBytes(0);
+            update_calib_dump_file = 1;
+          }
+#endif
+
+          ShimSdHead_config2SdHead();
+          update_sdconfig = 1;
+        }
+        else
+        {
+          return;
+        }
+        break;
+      }
+      case SET_RWC_COMMAND:
+      {
+        storedConfig->rtcSetByBt = 1;
+        InfoMem_write(NV_SD_TRIAL_CONFIG0, &storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
+        ShimSdHead_sdHeadTextSetByte(
+            SDH_TRIAL_CONFIG0, storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0]);
+#if defined(SHIMMER3)
+        setRwcTime(&args[0]);
+        RwcCheck();
+
+        uint64_t *rwcTimeDiffPtr = getRwcTimeDiffPtr();
+        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_7, *((uint8_t *) rwcTimeDiffPtr));
+        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_6, *(((uint8_t *) rwcTimeDiffPtr) + 1));
+        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_5, *(((uint8_t *) rwcTimeDiffPtr) + 2));
+        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_4, *(((uint8_t *) rwcTimeDiffPtr) + 3));
+        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_3, *(((uint8_t *) rwcTimeDiffPtr) + 4));
+        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_2, *(((uint8_t *) rwcTimeDiffPtr) + 5));
+        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_1, *(((uint8_t *) rwcTimeDiffPtr) + 6));
+        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_0, *(((uint8_t *) rwcTimeDiffPtr) + 7));
+#else
+        memcpy((uint8_t *) (&temp64), args, 8); //64bits = 8bytes
+        RTC_init(temp64);
+
+        setupNextRtcMinuteAlarm(); //configure RTC alarm after time set from BT.
+#endif
+        break;
+      }
+      case SET_ALT_ACCEL_CALIBRATION_COMMAND:
+      {
+#if defined(SHIMMER3)
+        sensorCalibId = SC_SENSOR_MPU9X50_ICM20948_ACCEL;
+#elif defined(SHIMMER3R)
+        sensorCalibId = SC_SENSOR_ADXL371_ACCEL;
+#endif
+        ShimBt_calibrationChangeCommon(NV_ALT_ACCEL_CALIBRATION, SDH_ALT_ACCEL_CALIBRATION,
+            &storedConfig->altAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+        update_calib_dump_file = 1;
+        break;
+      }
+      case SET_ALT_MAG_CALIBRATION_COMMAND:
+      {
+#if defined(SHIMMER3)
+        sensorCalibId = SC_SENSOR_MPU9X50_ICM20948_MAG;
+#elif defined(SHIMMER3R)
+        sensorCalibId = SC_SENSOR_LIS3MDL_MAG;
+#endif
+        ShimBt_calibrationChangeCommon(NV_ALT_MAG_CALIBRATION, SDH_ALT_MAG_CALIBRATION,
+            &storedConfig->altMagCalib.rawBytes[0], &args[0], sensorCalibId);
+        update_calib_dump_file = 1;
+        break;
+      }
+      case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
+      {
+        storedConfig->altAccelRate = args[0] & 0x03;
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
+        break;
+      }
+      case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
+      {
+        ShimConfig_configByteAltMagRateSet(storedConfig, args[0]);
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
+        break;
+      }
+      case SET_SD_SYNC_COMMAND:
+      {
+        if (shimmerStatus.btInSyncMode && ShimSdSync_isBtSdSyncRunning())
+        {
+          /* Reassemble full packet so that original RcNodeR10() will work without modificiation */
+          fullSyncResp[0] = gAction;
+          memcpy(&fullSyncResp[1], &args[0], SYNC_PACKET_MAX_SIZE - SYNC_PACKET_SIZE_CMD);
+          ShimSdSync_syncRespSet(&fullSyncResp[0], SYNC_PACKET_MAX_SIZE);
+          ShimTask_set(TASK_RCNODER10);
+        }
+        else
+        {
+          sendNack = 1;
+        }
+        break;
+      }
+      case ACK_COMMAND_PROCESSED:
+      {
+        if (shimmerStatus.btInSyncMode && ShimSdSync_isBtSdSyncRunning())
+        {
+          /* Slave response received by Master */
+          if (args[0] == SD_SYNC_RESPONSE)
+          {
+            /* SD Sync Center - get's into this case when the center is waiting for a 0x01 or 0xFF from a node */
+            ShimSdSync_syncRespSet(&args[1], 1U);
+            ShimTask_set(TASK_RCCENTERR1);
+          }
+        }
+        else
+        {
+          sendNack = 1;
+        }
+        break;
+      }
+      default:
+      {
+        break;
+      }
     }
   }
 
@@ -1872,9 +1881,6 @@ void ShimBt_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, ui
   ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[configByteIdx], sdHeaderIdx, len);
   //TODO don't think below is needed because we're specifically changing what's
   //new above ShimSdHead_config2SdHead();
-
-  //restart sensing to use settings
-  ShimTask_setRestartSensing();
 
   //update sdconfig
   ShimConfig_setSdCfgFlag(1);
@@ -2982,4 +2988,67 @@ uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)
 #endif /* SHIMMER3R */
 
   return statusByteCnt;
+}
+
+uint8_t ShimBt_isCmdAllowedWhileSdSyncing(uint8_t command)
+{
+  return (command == SET_SD_SYNC_COMMAND || command == ACK_COMMAND_PROCESSED);
+}
+
+uint8_t ShimBt_isCmdBlockedWhileSensing(uint8_t command)
+{
+  switch (command)
+  {
+    case SET_SAMPLING_RATE_COMMAND:               //0x05
+    case SET_SENSORS_COMMAND:                     //0x08
+    case SET_WR_ACCEL_RANGE_COMMAND:              //0x09
+    case SET_CONFIG_SETUP_BYTES_COMMAND:          //0x0E
+    case SET_LN_ACCEL_CALIBRATION_COMMAND:        //0x11
+    case SET_GYRO_CALIBRATION_COMMAND:            //0x14
+    case SET_MAG_CALIBRATION_COMMAND:             //0x17
+    case SET_WR_ACCEL_CALIBRATION_COMMAND:        //0x1A
+    case SET_GSR_RANGE_COMMAND:                   //0x21
+    case SET_MAG_GAIN_COMMAND:                    //0x37
+    case SET_MAG_SAMPLING_RATE_COMMAND:           //0x3A
+    case SET_WR_ACCEL_SAMPLING_RATE_COMMAND:      //0x40
+    case SET_WR_ACCEL_LPMODE_COMMAND:             //0x43
+    case SET_WR_ACCEL_HRMODE_COMMAND:             //0x46
+    case SET_GYRO_RANGE_COMMAND:                  //0x49
+    case SET_GYRO_SAMPLING_RATE_COMMAND:          //0x4C
+    case SET_ALT_ACCEL_RANGE_COMMAND:             //0x4F
+    case SET_PRESSURE_OVERSAMPLING_RATIO_COMMAND: //0x52
+
+    case RESET_TO_DEFAULT_CONFIGURATION_COMMAND: //0x5A
+    case RESET_CALIBRATION_VALUE_COMMAND:        //0x5B
+
+    case SET_INTERNAL_EXP_POWER_ENABLE_COMMAND: //0x5E
+    case SET_EXG_REGS_COMMAND:                  //0x61
+    case SET_DAUGHTER_CARD_ID_COMMAND:          //0x64
+    case SET_DAUGHTER_CARD_MEM_COMMAND:         //0x67
+    case SET_BT_COMMS_BAUD_RATE:                //0x6A
+    case SET_DERIVED_CHANNEL_BYTES:             //0x6D
+    case SET_TRIAL_CONFIG_COMMAND:              //0x73
+    case SET_CENTER_COMMAND:                    //0x76
+    case SET_SHIMMERNAME_COMMAND:               //0x79
+    case SET_EXPID_COMMAND:                     //0x7C
+    case SET_MYID_COMMAND:                      //0x7F
+    case SET_NSHIMMER_COMMAND:                  //0x82
+    case SET_CONFIGTIME_COMMAND:                //0x85
+    case SET_INFOMEM_COMMAND:                   //0x8C
+    case SET_CALIB_DUMP_COMMAND:                //0x98
+
+    case UPD_CALIB_DUMP_COMMAND: //0x9B
+    case UPD_SDLOG_CFG_COMMAND:  //0x9C
+
+    case SET_DATA_RATE_TEST:                  //0xA4
+    case SET_FACTORY_TEST:                    //0xA8
+    case SET_ALT_ACCEL_CALIBRATION_COMMAND:   //0xA9
+    case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND: //0xAC
+    case SET_ALT_MAG_CALIBRATION_COMMAND:     //0xAF
+    case SET_ALT_MAG_SAMPLING_RATE_COMMAND:   //0xB2
+
+      return 1;
+    default:
+      return 0;
+  }
 }
