@@ -200,10 +200,10 @@ void ShimSdCfgFile_generate(void)
       sprintf(buffer, "bluetoothDisabled=%d\r\n", storedConfig->bluetoothDisable);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      sprintf(buffer, "max_exp_len=%d\r\n", storedConfig->experimentLengthMaxInMinutes);
+      sprintf(buffer, "max_exp_len=%d\r\n", ShimConfig_experimentLengthMaxInMinutesGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      sprintf(buffer, "est_exp_len=%d\r\n", storedConfig->experimentLengthEstimatedInSec);
+      sprintf(buffer, "est_exp_len=%d\r\n", ShimConfig_experimentLengthEstimatedInSecGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
       ShimSdSync_parseSyncNodeNamesFromConfig(&storedConfig->rawBytes[0]);
@@ -228,12 +228,11 @@ void ShimSdCfgFile_generate(void)
       sprintf(buffer, "Nshimmer=%d\r\n", storedConfig->numberOfShimmers);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      ShimConfig_infomem2Names();
-      sprintf(buffer, "shimmername=%s\r\n", ShimConfig_shimmerNamePtrGet());
+      sprintf(buffer, "shimmername=%s\r\n", ShimConfig_shimmerNameParseToTxtAndPtrGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "experimentid=%s\r\n", ShimConfig_expIdPtrGet());
+      sprintf(buffer, "experimentid=%s\r\n", ShimConfig_expIdParseToTxtAndPtrGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "configtime=%s\r\n", ShimConfig_configTimeTextPtrGet());
+      sprintf(buffer, "configtime=%s\r\n", ShimConfig_configTimeParseToTxtAndPtrGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
       temp64 = storedConfig->rawBytes[NV_DERIVED_CHANNELS_0]
@@ -339,6 +338,10 @@ void ShimSdCfgFile_parse(void)
   float sample_period = 0;
   uint64_t derived_channels_val = 0;
   uint8_t gsr_range = 0;
+  uint32_t config_time = 0;
+
+  uint32_t est_exp_len = 0;
+  uint32_t max_exp_len = 0;
 
   uint8_t triggerSdCardUpdate = 0;
 
@@ -643,11 +646,16 @@ void ShimSdCfgFile_parse(void)
       }
       else if (strstr(buffer, "est_exp_len="))
       {
-        stored_config_temp.experimentLengthEstimatedInSec = atoi(equals);
+        est_exp_len = atoi(equals);
+        stored_config_temp.experimentLengthEstimatedInSecMsb
+            = (est_exp_len & 0xff00) >> 8;
+        stored_config_temp.experimentLengthEstimatedInSecLsb = est_exp_len & 0xff;
       }
       else if (strstr(buffer, "max_exp_len="))
       {
-        stored_config_temp.experimentLengthMaxInMinutes = atoi(equals);
+        max_exp_len = atoi(equals);
+        stored_config_temp.experimentLengthMaxInMinutesMsb = (max_exp_len & 0xff00) >> 8;
+        stored_config_temp.experimentLengthMaxInMinutesLsb = max_exp_len & 0xff;
       }
 #if defined(SHIMMER3)
       else if (strstr(buffer, "singletouch="))
@@ -706,7 +714,8 @@ void ShimSdCfgFile_parse(void)
       }
       else if (strstr(buffer, "configtime="))
       {
-        stored_config_temp.configTime = atol(equals);
+        config_time = atol(equals);
+        ShimConfig_configTimeSet(&stored_config_temp, config_time);
       }
 
       else if (strstr(buffer, "EXG_ADS1292R_1_CONFIG1="))
@@ -821,12 +830,6 @@ void ShimSdCfgFile_parse(void)
 
     sample_period = (round) (ShimConfig_freqDiv(sample_rate));
     stored_config_temp.samplingRateTicks = (uint16_t) sample_period;
-    ShimConfig_setShimmerName();
-    ShimConfig_setExpIdName();
-    ShimConfig_setCfgTime();
-
-    ShimConfig_experimentLengthSecsMaxSet(stored_config_temp.experimentLengthMaxInMinutes);
-    ShimSdSync_setSyncEstExpLen(stored_config_temp.experimentLengthEstimatedInSec);
 
     triggerSdCardUpdate |= ShimConfig_checkAndCorrectConfig(&stored_config_temp);
 
@@ -848,8 +851,6 @@ void ShimSdCfgFile_parse(void)
         &stored_config_temp.rawBytes[NV_CENTER], NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
 
     ShimSdHead_config2SdHead();
-    ShimConfig_setConfigTimeTextIfEmpty();
-    ShimSd_setDataFileNameIfEmpty();
 
 #if defined(SHIMMER3)
     InfoMem_write(0, &storedConfig->rawBytes[0], NV_NUM_SETTINGS_BYTES);

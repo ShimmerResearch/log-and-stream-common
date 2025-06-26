@@ -55,8 +55,6 @@
 static gConfigBytes storedConfig;
 uint8_t calibRamFlag = 0;
 
-uint32_t maxLen, maxLenCnt;
-
 char expIdName[MAX_CHARS], shimmerName[MAX_CHARS], configTimeText[UINT32_LEN];
 
 void ShimConfig_reset(void)
@@ -66,9 +64,6 @@ void ShimConfig_reset(void)
   storedConfig.rawBytes[NV_SD_EXP_ID_NAME] = '\0';
 
   calibRamFlag = 0;
-
-  maxLen = 0;
-  ShimConfig_experimentLengthCntReset();
 
   memset(&expIdName[0], 0x00, sizeof(expIdName));
   memset(&shimmerName[0], 0x00, sizeof(shimmerName));
@@ -99,7 +94,7 @@ void ShimConfig_readRam(void)
 
 #if defined(SHIMMER3)
   ShimSdHead_config2SdHead();
-  ShimConfig_infomem2Names();
+  ShimConfig_configBytesToNames();
 #endif
 
   /* Check BT module configuration after sensor configuration read from
@@ -224,7 +219,7 @@ void ShimConfig_setDefaultConfig(void)
   ShimConfig_setDefaultShimmerName();
   //exp_id
   ShimConfig_setDefaultTrialId();
-  storedConfig.configTime = 0;
+  ShimConfig_setDefaultConfigTime();
 
   storedConfig.myTrialID = 0;
   storedConfig.numberOfShimmers = 0;
@@ -234,10 +229,12 @@ void ShimConfig_setDefaultConfig(void)
   storedConfig.btIntervalSecs = 54;
   storedConfig.bluetoothDisable = 0;
 
-  storedConfig.experimentLengthMaxInMinutes = 0;
+  /* Auto-stop disabled */
+  ShimConfig_experimentLengthMaxInMinutesSet(0);
 
-  storedConfig.experimentLengthEstimatedInSec = 1;
-  ShimSdSync_setSyncEstExpLen((uint32_t) storedConfig.experimentLengthEstimatedInSec);
+  /* SD sync */
+  ShimConfig_experimentLengthEstimatedInSecSet(1);
+  ShimSdSync_setSyncEstExpLen((uint32_t) ShimConfig_experimentLengthEstimatedInSecGet());
 
   ShimConfig_checkAndCorrectConfig(&storedConfig);
 
@@ -263,6 +260,30 @@ void ShimConfig_setDefaultShimmerName(void)
 void ShimConfig_setDefaultTrialId(void)
 {
   memcpy(&storedConfig.expIdName[0], "DefaultTrial", 12);
+}
+
+void ShimConfig_setDefaultConfigTime(void)
+{
+  ShimConfig_configTimeSet(&storedConfig, 0);
+}
+
+void ShimConfig_configTimeSet(gConfigBytes *storedConfigPtr, uint32_t time)
+{
+  //Config time is stored in MSB order in the config bytes
+  storedConfigPtr->configTime0 = (time >> 24) & 0xFF;
+  storedConfigPtr->configTime1 = (time >> 16) & 0xFF;
+  storedConfigPtr->configTime2 = (time >> 8) & 0xFF;
+  storedConfigPtr->configTime3 = (time >> 0) & 0xFF;
+}
+
+uint32_t ShimConfig_configTimeGet(void)
+{
+  uint32_t time = 0;
+  time |= ((uint32_t) storedConfig.configTime0) << 24;
+  time |= ((uint32_t) storedConfig.configTime1) << 16;
+  time |= ((uint32_t) storedConfig.configTime2) << 8;
+  time |= ((uint32_t) storedConfig.configTime3);
+  return time;
 }
 
 uint8_t ShimConfig_getSdCfgFlag(void)
@@ -621,39 +642,6 @@ void ShimConfig_setExgConfigForEcg(gConfigBytes *storedConfigPtr)
   storedConfigPtr->exgADS1292rRegsCh2.resp2 = 0x02;
 }
 
-void ShimConfig_experimentLengthSecsMaxSet(uint16_t expLengthMins)
-{
-  maxLen = expLengthMins * 60;
-}
-
-uint16_t ShimConfig_experimentLengthSecsMaxGet(void)
-{
-  return maxLen;
-}
-
-void ShimConfig_experimentLengthCntReset(void)
-{
-  maxLenCnt = 0;
-}
-
-uint8_t ShimConfig_checkAutostopCondition(void)
-{
-  if (shimmerStatus.sensing && maxLen)
-  {
-    if (maxLenCnt < maxLen)
-    {
-      maxLenCnt++;
-      return 0; //Continue sensing
-    }
-    else
-    {
-      ShimConfig_experimentLengthCntReset();
-      return 1; //Trigger auto-stop
-    }
-  }
-  return 0; //No action
-}
-
 /* Note samplingRate can be either a freq or a ticks value */
 float ShimConfig_freqDiv(float samplingRate)
 {
@@ -797,58 +785,45 @@ uint8_t ShimConfig_areConfigBytesValid(void)
   return 0;
 }
 
-void ShimConfig_setShimmerName(void)
+void ShimConfig_parseShimmerNameFromConfigBytes(void)
 {
   uint8_t i;
-  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
-
   memset(&shimmerName[0], 0x00, sizeof(shimmerName));
 
-  for (i = 0; (i < MAX_CHARS - 1) && isprint((uint8_t) configBytes->shimmerName[i]); i++)
+  for (i = 0; (i < MAX_CHARS - 1) && isprint((uint8_t) storedConfig.shimmerName[i]); i++)
     ;
   if (i == 0)
   {
     ShimConfig_setDefaultShimmerName();
     i = 12;
   }
-  memcpy((char *) shimmerName, &(configBytes->shimmerName[0]), i);
+  memcpy((char *) shimmerName, &(storedConfig.shimmerName[0]), i);
 }
 
-void ShimConfig_setExpIdName(void)
+void ShimConfig_parseExpIdNameFromConfigBytes(void)
 {
   uint8_t i;
-  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
-
   memset(&expIdName[0], 0x00, sizeof(expIdName));
 
-  for (i = 0; (i < MAX_CHARS - 1) && (isprint((uint8_t) configBytes->expIdName[i])); i++)
+  for (i = 0; (i < MAX_CHARS - 1) && (isprint((uint8_t) storedConfig.expIdName[i])); i++)
     ;
   if (i == 0)
   {
     ShimConfig_setDefaultTrialId();
     i = 12;
   }
-  memcpy((char *) expIdName, &(configBytes->expIdName[0]), i);
+  memcpy((char *) expIdName, &(storedConfig.expIdName[0]), i);
 }
 
-void ShimConfig_setCfgTime(void)
+void ShimConfig_parseCfgTimeFromConfigBytes(void)
 {
-  uint32_t cfg_time_temp = 0;
-  uint8_t i;
-  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
-
   memset(&configTimeText[0], 0x00, sizeof(configTimeText));
 
-  //MSB order
-  for (i = 0; i < 4; i++)
+  uint32_t configTime = ShimConfig_configTimeGet();
+  /* Convert configTime to string */
+  if (configTime > 0)
   {
-    cfg_time_temp <<= 8;
-    cfg_time_temp |= configBytes->rawBytes[NV_SD_CONFIG_TIME + i];
-  }
-
-  if (cfg_time_temp)
-  {
-    ShimUtil_ItoaNo0((uint64_t) cfg_time_temp, configTimeText, UINT32_LEN);
+    ShimUtil_ItoaNo0((uint64_t) configTime, configTimeText, sizeof(configTimeText));
   }
   else
   {
@@ -856,32 +831,74 @@ void ShimConfig_setCfgTime(void)
   }
 }
 
-void ShimConfig_setConfigTimeTextIfEmpty(void)
+char *ShimConfig_shimmerNameParseToTxtAndPtrGet(void)
 {
-  if (strlen((char *) configTimeText) == 0)
-  {
-    strcpy((char *) configTimeText, "0");
-  }
-}
-
-void ShimConfig_infomem2Names(void)
-{
-  ShimConfig_setShimmerName();
-  ShimConfig_setExpIdName();
-  ShimConfig_setCfgTime();
-}
-
-char *ShimConfig_shimmerNamePtrGet(void)
-{
+  ShimConfig_parseShimmerNameFromConfigBytes();
   return &shimmerName[0];
 }
 
-char *ShimConfig_expIdPtrGet(void)
+char *ShimConfig_expIdParseToTxtAndPtrGet(void)
 {
+  ShimConfig_parseExpIdNameFromConfigBytes();
   return &expIdName[0];
 }
 
-char *ShimConfig_configTimeTextPtrGet(void)
+char *ShimConfig_configTimeParseToTxtAndPtrGet(void)
 {
+  ShimConfig_parseCfgTimeFromConfigBytes();
   return &configTimeText[0];
+}
+
+void ShimConfig_shimmerNameSet(uint8_t *strPtr, uint8_t strLen)
+{
+  uint8_t lenToCpy = (strLen < sizeof(storedConfig.shimmerName)) ?
+      strLen :
+      sizeof(storedConfig.shimmerName);
+  memset(&storedConfig.shimmerName[0], 0, sizeof(storedConfig.shimmerName));
+  memcpy(&storedConfig.shimmerName[0], strPtr, lenToCpy);
+}
+
+void ShimConfig_expIdSet(uint8_t *strPtr, uint8_t strLen)
+{
+  uint8_t lenToCpy = (strLen < sizeof(storedConfig.expIdName)) ?
+      strLen :
+      sizeof(storedConfig.expIdName);
+  memset(&storedConfig.expIdName[0], 0, sizeof(storedConfig.expIdName));
+  memcpy(&storedConfig.expIdName[0], strPtr, lenToCpy);
+}
+
+void ShimConfig_configTimeSetFromStr(uint8_t *strPtr, uint8_t strLen)
+{
+  uint32_t config_time;
+  char configTimeTextTemp[UINT32_LEN] = { 0 };
+  uint8_t lenToCpy = strLen < (UINT32_LEN - 1) ? strLen : (UINT32_LEN - 1);
+  memcpy(&configTimeTextTemp[0], strPtr, lenToCpy);
+
+  config_time = atol((char *) &configTimeTextTemp[0]);
+
+  ShimConfig_configTimeSet(&storedConfig, config_time);
+}
+
+void ShimConfig_experimentLengthEstimatedInSecSet(uint16_t value)
+{
+  storedConfig.experimentLengthEstimatedInSecMsb = (value >> 8) & 0xFF;
+  storedConfig.experimentLengthEstimatedInSecLsb = value & 0xFF;
+}
+
+uint16_t ShimConfig_experimentLengthEstimatedInSecGet(void)
+{
+  return storedConfig.experimentLengthEstimatedInSecMsb << 8
+      | storedConfig.experimentLengthEstimatedInSecLsb;
+}
+
+void ShimConfig_experimentLengthMaxInMinutesSet(uint16_t value)
+{
+  storedConfig.experimentLengthMaxInMinutesMsb = (value >> 8) & 0xFF;
+  storedConfig.experimentLengthMaxInMinutesLsb = value & 0xFF;
+}
+
+uint16_t ShimConfig_experimentLengthMaxInMinutesGet(void)
+{
+  return storedConfig.experimentLengthMaxInMinutesMsb << 8
+      | storedConfig.experimentLengthMaxInMinutesLsb;
 }

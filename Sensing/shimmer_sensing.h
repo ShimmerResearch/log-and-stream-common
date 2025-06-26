@@ -253,4 +253,8 @@ void ShimSens_saveData(void);
 uint8_t ShimSens_getNumEnabledChannels(void);
 uint8_t ShimSens_checkOnDefault(void);
 
+uint8_t ShimSens_checkAutostopCondition(void);
+void ShimSens_currentExperimentLengthReset(void);
+void ShimSens_maxExperimentLengthSecsSet(uint16_t expLengthMins);
+
 #endif //SHIMMER_SENSING_H

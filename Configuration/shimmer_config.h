@@ -369,7 +369,10 @@ typedef union
 
     char shimmerName[12];
     char expIdName[12];
-    uint32_t configTime;
+    uint8_t configTime0; //MSB
+    uint8_t configTime1;
+    uint8_t configTime2;
+    uint8_t configTime3; //LSB
     uint8_t myTrialID;
     uint8_t numberOfShimmers;
 
@@ -394,8 +397,10 @@ typedef union
     uint8_t singleTouchStart   : 1;
 
     uint8_t btIntervalSecs;
-    uint16_t experimentLengthEstimatedInSec; //Used for SD Sync (min = 1)
-    uint16_t experimentLengthMaxInMinutes;   //Used for auto-stop (0ff = 0)
+    uint8_t experimentLengthEstimatedInSecMsb; //Used for SD Sync (min = 1)
+    uint8_t experimentLengthEstimatedInSecLsb; //Used for SD Sync (min = 1)
+    uint8_t experimentLengthMaxInMinutesMsb;   //Used for auto-stop (0ff = 0)
+    uint8_t experimentLengthMaxInMinutesLsb;   //Used for auto-stop (0ff = 0)
     uint8_t macAddr[6];
 
     //SDConfigDelayFlag;
@@ -479,6 +484,9 @@ void ShimConfig_setDefaultConfig(void);
 
 void ShimConfig_setDefaultShimmerName(void);
 void ShimConfig_setDefaultTrialId(void);
+void ShimConfig_setDefaultConfigTime(void);
+void ShimConfig_configTimeSet(gConfigBytes *storedConfigPtr, uint32_t time);
+uint32_t ShimConfig_configTimeGet(void);
 uint8_t ShimConfig_getSdCfgFlag(void);
 void ShimConfig_setSdCfgFlag(uint8_t flag);
 uint8_t ShimConfig_getCalibFlag();
@@ -506,10 +514,6 @@ uint8_t ShimConfig_configByteAltMagRateGet(void);
 uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfig);
 void ShimConfig_setExgConfigForTestSignal(gConfigBytes *storedConfigPtr);
 void ShimConfig_setExgConfigForEcg(gConfigBytes *storedConfigPtr);
-void ShimConfig_experimentLengthSecsMaxSet(uint16_t expLengthMins);
-uint16_t ShimConfig_experimentLengthSecsMaxGet(void);
-void ShimConfig_experimentLengthCntReset(void);
-uint8_t ShimConfig_checkAutostopCondition(void);
 float ShimConfig_freqDiv(float samplingRate);
 void ShimConfig_checkBtModeFromConfig(void);
 #if defined(SHIMMER3R)
@@ -521,13 +525,19 @@ void ShimConfig_loadSensorConfigAndCalib(void);
 gConfigBytes ShimConfig_createBlankConfigBytes(void);
 uint8_t ShimConfig_areConfigBytesValid(void);
 
-void ShimConfig_setShimmerName(void);
-void ShimConfig_setExpIdName(void);
-void ShimConfig_setCfgTime(void);
-void ShimConfig_setConfigTimeTextIfEmpty(void);
-void ShimConfig_infomem2Names(void);
-char *ShimConfig_shimmerNamePtrGet(void);
-char *ShimConfig_expIdPtrGet(void);
-char *ShimConfig_configTimeTextPtrGet(void);
+void ShimConfig_parseShimmerNameFromConfigBytes(void);
+void ShimConfig_parseExpIdNameFromConfigBytes(void);
+void ShimConfig_parseCfgTimeFromConfigBytes(void);
+char *ShimConfig_shimmerNameParseToTxtAndPtrGet(void);
+char *ShimConfig_expIdParseToTxtAndPtrGet(void);
+char *ShimConfig_configTimeParseToTxtAndPtrGet(void);
+void ShimConfig_shimmerNameSet(uint8_t *strPtr, uint8_t strLen);
+void ShimConfig_expIdSet(uint8_t *strPtr, uint8_t strLen);
+void ShimConfig_configTimeSetFromStr(uint8_t *strPtr, uint8_t strLen);
+
+void ShimConfig_experimentLengthEstimatedInSecSet(uint16_t value);
+uint16_t ShimConfig_experimentLengthEstimatedInSecGet(void);
+void ShimConfig_experimentLengthMaxInMinutesSet(uint16_t value);
+uint16_t ShimConfig_experimentLengthMaxInMinutesGet(void);
 
 #endif //SHIMMER_CONFIG_H
