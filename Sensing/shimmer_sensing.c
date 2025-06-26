@@ -163,15 +163,6 @@ uint8_t ShimSens_checkStartStreamingConditions(void)
       shimmerStatus.btStreaming = 1;
       shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
     }
-    if (shimmerStatus.btStreaming && (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP))
-    {
-      shimmerStatus.btStreaming = 0;
-      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
-    }
-  }
-  else
-  {
-    shimmerStatus.btStreaming = 0;
   }
   return 0;
 }
@@ -269,72 +260,51 @@ void ShimSens_startSensing(void)
   shimmerStatus.configuring = 0;
 }
 
-uint8_t ShimSens_checkStopSensorConditions(void)
+uint8_t ShimSens_checkStopSdLoggingConditions(void)
 {
-  if (!shimmerStatus.sdLogging && shimmerStatus.btStreaming)
-  { //streaming only case
-    if (shimmerStatus.btstreamCmd != BT_STREAM_CMD_STATE_STOP)
-    {
-      return 0;
-    }
-  }
-  else if (shimmerStatus.sdLogging && !shimmerStatus.btStreaming)
-  { //logging only case
-    if (shimmerStatus.sdlogCmd != SD_LOG_CMD_STATE_STOP)
-    {
-      return 0;
-    }
-  }
-  else if (shimmerStatus.sdLogging && shimmerStatus.btStreaming)
-  {
-    if ((shimmerStatus.btstreamCmd != BT_STREAM_CMD_STATE_STOP)
-        || (shimmerStatus.sdlogCmd != SD_LOG_CMD_STATE_STOP))
-    {
-      return 0;
-    }
-  }
-  else
-  {
-  }
-
-  return 1;
+  return (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP) || !shimmerStatus.sdlogReady;
 }
 
-uint8_t ShimSens_checkStopLoggingConditions(void)
+uint8_t ShimSens_checkStopBtStreamingConditions(void)
 {
-  if (shimmerStatus.sdlogCmd != SD_LOG_CMD_STATE_STOP)
-  {
-    return 0;
-  }
-  else
-  {
-    shimmerStatus.sdLogging = 0;
-    shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
-    return 1;
-  }
+  return (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP) || !shimmerStatus.btstreamReady;
 }
 
-void ShimSens_stopSensing(void)
+void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
 {
+  /* If not sensing, do nothing */
   if (!shimmerStatus.sensing)
   {
     return;
   }
-  if (ShimSens_checkStopLoggingConditions())
+
+  /* If stop logging has been activated, stop that activity first. */
+  if (ShimSens_checkStopSdLoggingConditions())
   {
+    shimmerStatus.sdLogging = 0;
+    shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
+
+    ShimTask_clear(TASK_SDWRITE);
+
     ShimSdDataFile_close();
 #if defined(SHIMMER3)
     _delay_cycles(240000); //10ms @ 24MHz
 #elif defined(SHIMMER3R)
     HAL_Delay(10); //10ms
 #endif
-    ShimTask_clear(TASK_SDWRITE);
   }
-  if (ShimSens_checkStopSensorConditions())
+
+  if (ShimSens_checkStopBtStreamingConditions())
+  {
+    shimmerStatus.btStreaming = 0;
+    shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
+  }
+
+  /* Both logging and streaming have been stopped, so we can stop sensing. */
+  if (!shimmerStatus.sdLogging && !shimmerStatus.btStreaming)
   {
     shimmerStatus.configuring = 1;
     shimmerStatus.sensing = 0;
-    shimmerStatus.btStreaming = 0;
     sensing.startTs = 0;
     sensing.isSampling = SAMPLE_NOT_READY;
     ShimSens_stopPeripherals();
@@ -344,7 +314,7 @@ void ShimSens_stopSensing(void)
       ShimSdSync_stop();
     }
 
-    if (shimmerStatus.docked)
+    if (enableDockUartIfDocked && shimmerStatus.docked)
     {
       DockUart_enable();
     }
@@ -360,9 +330,6 @@ void ShimSens_stopSensing(void)
 
     stopSensingWrapup();
   }
-
-  //shimmerStatus.sdlogCmd = 0;
-  shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
 
   shimmerStatus.configuring = 0;
 }
@@ -610,7 +577,7 @@ void ShimSens_stepDone(void)
 void ShimSens_saveData(void)
 {
 #if USE_SD
-  if (shimmerStatus.sdLogging)
+  if (shimmerStatus.sdLogging && shimmerStatus.sdlogReady && shimmerStatus.sdlogCmd != SD_LOG_CMD_STATE_STOP)
   {
     PeriStat_Set(STAT_PERI_SDMMC);
     ShimSdDataFile_writeToBuff(sensing.dataBuf + 1, sensing.dataLen - 1);
@@ -619,7 +586,7 @@ void ShimSens_saveData(void)
 #endif
 #if USE_BT
   ShimSens_checkStartStreamingConditions();
-  if (shimmerStatus.btStreaming)
+  if (shimmerStatus.btStreaming && shimmerStatus.btstreamReady && shimmerStatus.btstreamCmd != BT_STREAM_CMD_STATE_STOP)
   {
     uint8_t crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
@@ -633,10 +600,6 @@ void ShimSens_saveData(void)
 
   /* Data packet has moved off dataBuf, device is free to start new packet */
   sensing.isSampling = SAMPLING_COMPLETE;
-  if ((!shimmerStatus.sdLogging) && (!shimmerStatus.btStreaming))
-  {
-    ShimTask_set(TASK_STOPSENSING);
-  }
 }
 
 uint8_t ShimSens_getNumEnabledChannels(void)
