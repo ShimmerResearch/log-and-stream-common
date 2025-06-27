@@ -378,13 +378,17 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
       {
         setBtFwVersion(btFwVerNew);
 
-        /* When storing the BT version, ignore from "\r" onwards */
+        /* When storing the BT version, ignore "CMD>" that appears at the end for the RN4678 */
         uint8_t btVerLen
             = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
         uint8_t btVerIdx;
-        for (btVerIdx = 0; btVerIdx < btVerLen; btVerIdx++)
+        //+3 here to make sure we don't go past the end of the array
+        for (btVerIdx = 0; btVerIdx + 3 < btVerLen; btVerIdx++)
         {
-          if (btRxBuffFullResponse[btVerIdx] == '\r')
+          if ((btRxBuffFullResponse[btVerIdx] == 'C')
+              && (btRxBuffFullResponse[btVerIdx + 1] == 'M')
+              && (btRxBuffFullResponse[btVerIdx + 2] == 'D')
+              && (btRxBuffFullResponse[btVerIdx + 3] == '>'))
           {
             btVerLen = btVerIdx;
             break;
