@@ -121,10 +121,8 @@ void ShimSens_configureChannels(void)
  */
 uint8_t ShimSens_checkStartLoggingConditions(void)
 {
-  return shimmerStatus.sdInserted
-      && !shimmerStatus.sdBadFile
-      && shimmerStatus.sdlogReady
-      && !shimmerStatus.sdLogging;
+  return shimmerStatus.sdInserted && !shimmerStatus.sdBadFile
+      && shimmerStatus.sdlogReady && !shimmerStatus.sdLogging;
 }
 
 /* Check if the conditions are met to start streaming to BT.
@@ -132,8 +130,7 @@ uint8_t ShimSens_checkStartLoggingConditions(void)
  */
 uint8_t ShimSens_checkStartStreamingConditions(void)
 {
-  return shimmerStatus.btConnected
-      && shimmerStatus.btstreamReady
+  return shimmerStatus.btConnected && shimmerStatus.btstreamReady
       && !shimmerStatus.btStreaming;
 }
 
@@ -142,8 +139,7 @@ uint8_t ShimSens_checkStartStreamingConditions(void)
  */
 uint8_t ShimSens_checkStopLoggingConditions(void)
 {
-  return !shimmerStatus.sdlogReady
-      || (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP);
+  return !shimmerStatus.sdlogReady || (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP);
 }
 
 /* Check if the conditions are met to stop streaming to BT.
@@ -161,8 +157,8 @@ void ShimSens_startSensing(void)
 
   uint8_t sdLogPendingStart = (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START)
       && ShimSens_checkStartLoggingConditions();
-  uint8_t streamPendingStart = (shimmerStatus.btstreamCmd
-      == BT_STREAM_CMD_STATE_START) && ShimSens_checkStartStreamingConditions();
+  uint8_t streamPendingStart = (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START)
+      && ShimSens_checkStartStreamingConditions();
 
   if (sdLogPendingStart || streamPendingStart)
   {
@@ -238,7 +234,7 @@ void ShimSens_startSensing(void)
     sensing.startTs = RTC_get64();
   }
 
-  // If the conditions are met, start logging to SD card.
+  //If the conditions are met, start logging to SD card.
   if (sdLogPendingStart)
   {
     shimmerStatus.sdLogging = 1;
@@ -246,7 +242,7 @@ void ShimSens_startSensing(void)
 
     gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
 
-    // Setup auto-stop if enabled
+    //Setup auto-stop if enabled
     uint16_t maxExpLenMins = ShimConfig_experimentLengthMaxInMinutesGet();
     ShimSens_maxExperimentLengthSecsSet(maxExpLenMins);
     ShimSens_currentExperimentLengthReset();
@@ -259,7 +255,7 @@ void ShimSens_startSensing(void)
           ShimConfig_experimentLengthEstimatedInSecGet());
     }
   }
-  // If the conditions are met, start streaming to BT.
+  //If the conditions are met, start streaming to BT.
   if (streamPendingStart)
   {
     shimmerStatus.btStreaming = 1;

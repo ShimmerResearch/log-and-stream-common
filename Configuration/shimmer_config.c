@@ -553,7 +553,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
   }
 #else
   storedConfigPtr->singleTouchStart = 0;
-#endif // IS_SUPPORTED_SINGLE_TOUCH
+#endif //IS_SUPPORTED_SINGLE_TOUCH
 
   if (ShimBrd_areADS1292RClockLinesTied()
       && !(storedConfigPtr->exgADS1292rRegsCh1.config2 & 0x08))
