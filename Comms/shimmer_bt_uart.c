@@ -73,8 +73,6 @@ volatile uint8_t btTxInProgress;
 char macIdStr[12 + 1]; //+1 for null termination
 uint8_t macIdBytes[6];
 
-uint8_t instreamStatusRespPending;
-
 /* Buffer read / write macros                                                 */
 #define RINGFIFO_RESET(ringFifo)         \
   {                                      \
@@ -112,8 +110,6 @@ void ShimBt_btCommsProtocolInit(void)
   waitingForArgs = 0;
   waitingForArgsLength = 0;
   argsSize = 0;
-
-  instreamStatusRespPending = 0;
 
 #if defined(SHIMMER3)
   ShimUtil_memset_v(btStatusStr, 0, sizeof(btStatusStr));
@@ -382,13 +378,17 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
       {
         setBtFwVersion(btFwVerNew);
 
-        /* When storing the BT version, ignore from "\r" onwards */
+        /* When storing the BT version, ignore "CMD>" that appears at the end for the RN4678 */
         uint8_t btVerLen
             = ShimUtil_strlen_v(btRxBuffFullResponse, sizeof(btRxBuffFullResponse));
         uint8_t btVerIdx;
-        for (btVerIdx = 0; btVerIdx < btVerLen; btVerIdx++)
+        //+3 here to make sure we don't go past the end of the array
+        for (btVerIdx = 0; btVerIdx + 3 < btVerLen; btVerIdx++)
         {
-          if (btRxBuffFullResponse[btVerIdx] == '\r')
+          if ((btRxBuffFullResponse[btVerIdx] == 'C')
+              && (btRxBuffFullResponse[btVerIdx + 1] == 'M')
+              && (btRxBuffFullResponse[btVerIdx + 2] == 'D')
+              && (btRxBuffFullResponse[btVerIdx + 3] == '>'))
           {
             btVerLen = btVerIdx;
             break;
@@ -1748,10 +1748,10 @@ void ShimBt_processCmd(void)
         ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_1, *(((uint8_t *) rwcTimeDiffPtr) + 6));
         ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_0, *(((uint8_t *) rwcTimeDiffPtr) + 7));
 #else
-        memcpy((uint8_t *) (&temp64), args, 8); //64bits = 8bytes
-        RTC_init(temp64);
+      memcpy((uint8_t *) (&temp64), args, 8); //64bits = 8bytes
+      RTC_setTimeFromTicks(temp64);
 
-        setupNextRtcMinuteAlarm(); //configure RTC alarm after time set from BT.
+      RTC_setAlarmBattRead(); //configure RTC alarm after time set from BT.
 #endif
         break;
       }
@@ -2372,7 +2372,7 @@ void ShimBt_sendRsp(void)
       }
       case GET_RWC_COMMAND:
       {
-        temp_rtcCurrentTime = getRwcTime();
+        temp_rtcCurrentTime = RTC_get64();
         *(resPacket + packet_length++) = RWC_RESPONSE;
         memcpy(resPacket + packet_length, (uint8_t *) (&temp_rtcCurrentTime), 8);
         packet_length += 8;
@@ -2635,17 +2635,6 @@ void ShimBt_instreamStatusRespSend(void)
 
     ShimBt_writeToTxBufAndSend(selfcmd, i, SHIMMER_CMD);
   }
-  ShimBt_instreamStatusRespPendingSet(0);
-}
-
-void ShimBt_instreamStatusRespPendingSet(uint8_t state)
-{
-  instreamStatusRespPending = state;
-}
-
-uint8_t ShimBt_instreamStatusRespPendingGet(void)
-{
-  return instreamStatusRespPending;
 }
 
 void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
@@ -2962,7 +2951,7 @@ uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)
   uint8_t statusByteCnt = 1;
   *(bufPtr) = (shimmerStatus.toggleLedRedCmd << 7) | (shimmerStatus.sdBadFile << 6)
       | (shimmerStatus.sdInserted << 5) | (shimmerStatus.btStreaming << 4)
-      | (shimmerStatus.sdLogging << 3) | (isRwcTimeSet() << 2)
+      | (shimmerStatus.sdLogging << 3) | (ShimRtc_isRwcTimeSet() << 2)
       | (shimmerStatus.sensing << 1) | shimmerStatus.docked;
 
 #if defined(SHIMMER3R)

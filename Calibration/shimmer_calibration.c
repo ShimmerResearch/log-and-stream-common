@@ -1053,7 +1053,7 @@ void ShimCalib_singleSensorToCalibDump(uint16_t id,
     }
     else
     {
-      *(uint64_t *) (sc1.ts) = getRwcTime();
+      *(uint64_t *) (sc1.ts) = RTC_get64();
     }
 
     memcpy(sc1.data.raw, configBytePtr, sc1.data_len);

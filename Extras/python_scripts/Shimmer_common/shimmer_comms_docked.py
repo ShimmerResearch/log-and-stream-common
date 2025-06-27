@@ -34,6 +34,7 @@ class UartComponent:
     # BEACON = 0x08
     # RADIO_802154 = 0x09
     RADIO_BLUETOOTH = 0x0A
+    TEST = 0x0B
 
 
 class UartProperty:
@@ -45,9 +46,10 @@ class UartProperty:
         RTC_CFG_TIME = 0x04
         CURR_LOCAL_TIME = 0x05
         INFOMEM = 0x06
-        # LED0_STATE = 0x07  # Used by Shimmer SPAN
+        LED0_STATE = 0x07  # Used by ShimmerGQ
         # DEVICE_BOOT = 0x08  # Not in use
-        CALIBRATION = 0x07
+        # CALIBRATION = 0x07
+        ENTER_BOOTLOADER = 0x09
 
     class Bat:
         # ENABLE = 0x00  # Not in use
@@ -61,11 +63,17 @@ class UartProperty:
     class Bluetooth:
         VER = 0x03
 
+
 class UART_RX_STAGES(Enum):
     WAIT_FOR_CMD = 0
     WAIT_FOR_LENGTH = 1
     WAIT_FOR_CONTENTS = 2
     WAIT_FOR_CRC = 3
+
+class FACTORY_TEST(Enum):
+    MAIN = 0
+    LEDS = 1
+    ICS = 2
 
 
 def assemble_tx_packet(uart_cmd=None, uart_component=None, uart_property=None, uart_args=None):
@@ -108,6 +116,39 @@ class ShimmerUart:
         except SerialException:
             print("Serial port exception.")
             return False
+
+    # TODO get working
+    def reset_device(self, boot_mode=False):
+        """
+        Reset STM32 device via RTS/DTR.
+
+        Parameters:
+        - ser:       An instance of serial.Serial
+        - boot_mode: True to enter bootloader (BSL) mode; False for normal operation
+        """
+        try:
+            if not self.ser.is_open:
+                self.ser.open()
+
+            print(f"Resetting device into {'BOOTLOADER' if boot_mode else 'NORMAL'} mode")
+
+            # RTS = BOOT0 state (True = bootloader mode)
+            self.ser.rts = boot_mode
+            self.ser.flush()  # Ensure line status is pushed immediately
+            time.sleep(1)
+
+            # DTR = True -> NRST = low (reset)
+            self.ser.dtr = True
+            self.ser.flush()
+            time.sleep(1)
+
+            # DTR = False -> NRST = high (normal state)
+            self.ser.dtr = False
+            self.ser.flush()
+            time.sleep(1)
+
+        except serial.SerialException as e:
+            print("Serial exception:", e)
 
     def read_mac_id(self):
         tx_buf = assemble_tx_packet(UartPacketCmd.READ, UartComponent.MAIN_PROCESSOR,

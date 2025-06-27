@@ -228,7 +228,7 @@ void ShimSens_startSensing(void)
 #if defined(SHIMMER3)
     SampleTimerStart();
 #else
-    S4_RTC_WakeUpSet(samplingRateTicks);
+    RTC_wakeUpSet(samplingRateTicks);
 #endif
 
     sensing.startTs = RTC_get64();
@@ -336,7 +336,7 @@ void ShimSens_stopPeripherals(void)
 #elif defined(SHIMMER4_SDK)
   S4_RTC_WakeUpSetSlow();
 #elif defined(SHIMMER3R)
-  S4_RTC_WakeUpOff();
+  RTC_wakeUpOff();
 #endif
 
   if (sensing.nbrMcuAdcChans)
