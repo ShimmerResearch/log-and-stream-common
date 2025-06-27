@@ -116,64 +116,55 @@ void ShimSens_configureChannels(void)
   }
 }
 
-uint8_t ShimSens_checkStartSensorConditions(void)
-{
-  if (shimmerStatus.sensing)
-  {
-    return 0;
-  }
-  if (!((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START && shimmerStatus.sdInserted
-            && !shimmerStatus.sdBadFile && !LogAndStream_isDockedOrUsbIn())
-          || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START
-              && shimmerStatus.btConnected))
-      || batteryStatus.battCritical)
-  {
-    return 0;
-  }
-  return 1;
-}
-
+/* Check if the conditions are met to start logging to SD card.
+ * Return 1 if conditions are met, 0 otherwise.
+ */
 uint8_t ShimSens_checkStartLoggingConditions(void)
 {
-  if (shimmerStatus.sdInserted)
-  {
-    if (!shimmerStatus.sdLogging && (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START))
-    {
-      shimmerStatus.sdLogging = 1;
-      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
-      return 1; //good to go
-    }
-    if (shimmerStatus.sdLogging && (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP))
-    {
-      shimmerStatus.sdLogging = 0;
-      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
-      return 0;
-    }
-  }
-  else
-  {
-    return 0;
-  }
-  return 0;
+  return shimmerStatus.sdInserted
+      && !shimmerStatus.sdBadFile
+      && shimmerStatus.sdlogReady
+      && !shimmerStatus.sdLogging
+      && shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START;
 }
 
+/* Check if the conditions are met to start streaming to BT.
+ * Return 1 if conditions are met, 0 otherwise.
+ */
 uint8_t ShimSens_checkStartStreamingConditions(void)
 {
-  if (shimmerStatus.btConnected)
-  {
-    if (!shimmerStatus.btStreaming && (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START))
-    {
-      shimmerStatus.btStreaming = 1;
-      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
-    }
-  }
-  return 0;
+  return shimmerStatus.btConnected
+      && shimmerStatus.btstreamReady
+      && !shimmerStatus.btStreaming
+      && shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START;
+}
+
+/* Check if the conditions are met to stop logging to SD card.
+ * Return 1 if conditions are met, 0 otherwise.
+ */
+uint8_t ShimSens_checkStopLoggingConditions(void)
+{
+  return !shimmerStatus.sdlogReady
+      || (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP);
+}
+
+/* Check if the conditions are met to stop streaming to BT.
+ * Return 1 if conditions are met, 0 otherwise.
+ */
+uint8_t ShimSens_checkStopStreamingConditions(void)
+{
+  return !shimmerStatus.btstreamReady
+      || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP);
 }
 
 void ShimSens_startSensing(void)
 {
   shimmerStatus.configuring = 1;
-  if (ShimSens_checkStartSensorConditions())
+
+  uint8_t sdLogPendingStart = ShimSens_checkStartLoggingConditions();
+  uint8_t streamPendingStart = ShimSens_checkStartStreamingConditions();
+
+  if (sdLogPendingStart || streamPendingStart)
   {
     shimmerStatus.sensing = 1;
     sensing.isFileCreated = 0;
@@ -245,37 +236,37 @@ void ShimSens_startSensing(void)
 #endif
 
     sensing.startTs = RTC_get64();
+  }
 
-    if (ShimSens_checkStartLoggingConditions())
+  // If the conditions are met, start logging to SD card.
+  if (sdLogPendingStart)
+  {
+    shimmerStatus.sdLogging = 1;
+    shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
+
+    gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
+
+    // Setup auto-stop if enabled
+    uint16_t maxExpLenMins = ShimConfig_experimentLengthMaxInMinutesGet();
+    ShimSens_maxExperimentLengthSecsSet(maxExpLenMins);
+    ShimSens_currentExperimentLengthReset();
+
+    ShimSdDataFile_fileInit();
+
+    if (shimmerStatus.sdSyncEnabled)
     {
-      gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
-
-      /* Setup auto-stop if enabled */
-      ShimSens_maxExperimentLengthSecsSet(ShimConfig_experimentLengthMaxInMinutesGet());
-      ShimSens_currentExperimentLengthReset();
-
-      ShimSdDataFile_fileInit();
-
-      if (shimmerStatus.sdSyncEnabled)
-      {
-        ShimSdSync_start(configBytesPtr->masterEnable,
-            ShimConfig_experimentLengthEstimatedInSecGet());
-      }
+      ShimSdSync_start(configBytesPtr->masterEnable,
+          ShimConfig_experimentLengthEstimatedInSecGet());
     }
+  }
+  // If the conditions are met, start streaming to BT.
+  if (streamPendingStart)
+  {
+    shimmerStatus.btStreaming = 1;
+    shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
   }
 
   shimmerStatus.configuring = 0;
-}
-
-uint8_t ShimSens_checkStopSdLoggingConditions(void)
-{
-  return (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP) || !shimmerStatus.sdlogReady;
-}
-
-uint8_t ShimSens_checkStopBtStreamingConditions(void)
-{
-  return (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP)
-      || !shimmerStatus.btstreamReady;
 }
 
 void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
@@ -287,7 +278,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
   }
 
   /* If stop logging has been activated, stop that activity first. */
-  if (ShimSens_checkStopSdLoggingConditions())
+  if (ShimSens_checkStopLoggingConditions())
   {
     shimmerStatus.sdLogging = 0;
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
@@ -302,7 +293,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
 #endif
   }
 
-  if (ShimSens_checkStopBtStreamingConditions())
+  if (ShimSens_checkStopStreamingConditions())
   {
     shimmerStatus.btStreaming = 0;
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
@@ -585,8 +576,7 @@ void ShimSens_stepDone(void)
 void ShimSens_saveData(void)
 {
 #if USE_SD
-  if (shimmerStatus.sdLogging && shimmerStatus.sdlogReady
-      && shimmerStatus.sdlogCmd != SD_LOG_CMD_STATE_STOP)
+  if (shimmerStatus.sdLogging && !ShimSens_checkStopLoggingConditions())
   {
     PeriStat_Set(STAT_PERI_SDMMC);
     ShimSdDataFile_writeToBuff(sensing.dataBuf + 1, sensing.dataLen - 1);
@@ -594,9 +584,7 @@ void ShimSens_saveData(void)
   }
 #endif
 #if USE_BT
-  ShimSens_checkStartStreamingConditions();
-  if (shimmerStatus.btStreaming && shimmerStatus.btstreamReady
-      && shimmerStatus.btstreamCmd != BT_STREAM_CMD_STATE_STOP)
+  if (shimmerStatus.btStreaming && !ShimSens_checkStopStreamingConditions())
   {
     uint8_t crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
@@ -621,24 +609,16 @@ uint8_t ShimSens_getNumEnabledChannels(void)
       ;
 }
 
-uint8_t ShimSens_checkOnDefault(void)
+void ShimSens_startLoggingIfUndockStartEnabled(void)
 {
   gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
-
-  if (!storedConfigPtr->singleTouchStart && !storedConfigPtr->userButtonEnable
-      && shimmerStatus.sdlogReady && !shimmerStatus.sensing && !shimmerStatus.sdBadFile)
-  { //state == BTSD_IDLESD
-    ShimTask_setStartSensing();
-    shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
-    shimmerStatus.sensing = 1;
-    ShimBt_instreamStatusRespSend();
-    shimmerStatus.sensing = 0;
-    return 1;
+  if (!storedConfigPtr->singleTouchStart && !storedConfigPtr->userButtonEnable)
+  {
+    ShimTask_setStartLoggingIfNotAlready();
   }
-  return 0;
 }
 
-uint8_t ShimSens_checkAutostopCondition(void)
+uint8_t ShimSens_checkAutostopLoggingCondition(void)
 {
   if (shimmerStatus.sdLogging && maxExpLenSecs)
   {

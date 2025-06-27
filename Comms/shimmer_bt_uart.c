@@ -1220,34 +1220,18 @@ void ShimBt_processCmd(void)
       }
       case START_STREAMING_COMMAND:
       {
-        shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
-        if (!shimmerStatus.sensing)
-        {
-          ShimTask_setStartSensing();
-        }
+        ShimTask_setStartStreamingIfNotAlready();
         break;
       }
       case START_SDBT_COMMAND:
       {
-        if (!shimmerStatus.sensing)
-        {
-          ShimTask_setStartSensing();
-        }
-        shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
-        shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
-        if (shimmerStatus.sdlogReady && !shimmerStatus.sdBadFile)
-        {
-          shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
-        }
+        ShimTask_setStartStreamingIfNotAlready();
+        ShimTask_setStartLoggingIfNotAlready();
         break;
       }
       case START_LOGGING_COMMAND:
       {
-        shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
-        if (!shimmerStatus.sensing)
-        {
-          ShimTask_setStartSensing();
-        }
+        ShimTask_setStartLoggingIfNotAlready();
         break;
       }
       case SET_CRC_COMMAND:
@@ -1262,7 +1246,7 @@ void ShimBt_processCmd(void)
       }
       case STOP_STREAMING_COMMAND:
       {
-        ShimTask_setStopBtStreaming();
+        ShimTask_setStopStreaming();
         break;
       }
       case STOP_SDBT_COMMAND:
@@ -1272,7 +1256,7 @@ void ShimBt_processCmd(void)
       }
       case STOP_LOGGING_COMMAND:
       {
-        ShimTask_setStopSdLogging();
+        ShimTask_setStopLogging();
         break;
       }
       case SET_SENSORS_COMMAND:

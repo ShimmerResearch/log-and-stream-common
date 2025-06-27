@@ -102,7 +102,7 @@ void LogAndStream_syncConfigAndCalibOnSd(void)
   }
 
   ShimSens_configureChannels();
-  ShimSens_checkOnDefault();
+  ShimSens_startLoggingIfUndockStartEnabled();
 }
 
 uint8_t LogAndStream_isSdInfoSyncDelayed(void)
@@ -125,9 +125,9 @@ void LogAndStream_blinkTimerCommon(void)
   }
   else
   {
-    if (ShimLeds_isBlinkTimerCnt1s() && ShimSens_checkAutostopCondition())
+    if (ShimLeds_isBlinkTimerCnt1s() && ShimSens_checkAutostopLoggingCondition())
     {
-      ShimTask_setStopSdLogging();
+      ShimTask_setStopLogging();
       ShimBt_instreamStatusRespPendingSet(1);
     }
 
