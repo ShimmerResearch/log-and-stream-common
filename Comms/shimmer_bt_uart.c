@@ -1748,10 +1748,10 @@ void ShimBt_processCmd(void)
         ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_1, *(((uint8_t *) rwcTimeDiffPtr) + 6));
         ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_0, *(((uint8_t *) rwcTimeDiffPtr) + 7));
 #else
-      memcpy((uint8_t *) (&temp64), args, 8); //64bits = 8bytes
-      RTC_setTimeFromTicks(temp64);
+        memcpy((uint8_t *) (&temp64), args, 8); //64bits = 8bytes
+        RTC_setTimeFromTicks(temp64);
 
-      RTC_setAlarmBattRead(); //configure RTC alarm after time set from BT.
+        RTC_setAlarmBattRead(); //configure RTC alarm after time set from BT.
 #endif
         break;
       }
