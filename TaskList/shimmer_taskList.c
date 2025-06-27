@@ -67,10 +67,10 @@ void ShimTask_NORM_manage(void)
 
 #if defined(SHIMMER3) || defined(SHIMMER3R)
   if (!taskCurrent
-      #if defined(SHIMMER3R)
+#if defined(SHIMMER3R)
       || shimmerStatus.pendingRebootForDfu
-      #endif
-     )
+#endif
+  )
   {
     sleepWhenNoTask();
   }
