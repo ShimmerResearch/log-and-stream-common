@@ -514,10 +514,12 @@ void ShimSdSync_nodeR10(void)
     }
     else
     {
+#if IS_SUPPORTED_SINGLE_TOUCH
       if (ShimConfig_getStoredConfig()->singleTouchStart && !shimmerStatus.sensing && sd_tolog)
       {
-        ShimTask_set(TASK_STARTSENSING);
+        ShimTask_setStartLoggingIfNotAlready();
       }
+#endif
       syncNodeSucc = 1;
       if (!firstOutlier)
       {
@@ -683,7 +685,7 @@ void ShimSdSync_handleSyncTimerTrigger(void)
   {
     if (LogAndStream_isDockedOrUsbIn())
     {
-      ShimTask_setStopSdLogging();
+      ShimTask_setStopLogging();
       if (shimmerStatus.btPowerOn)
       {
         btStopCb(0);

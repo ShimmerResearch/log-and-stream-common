@@ -116,9 +116,10 @@ void ShimTask_NORM_manage(void)
         break;
       case TASK_STARTSENSING:
         ShimSens_startSensing();
+        ShimBt_instreamStatusRespSend();
         break;
       case TASK_STOPSENSING:
-        ShimSens_stopSensing();
+        ShimSens_stopSensing(1);
         break;
       case TASK_SDWRITE:
         ShimSdDataFile_writeToCard();
@@ -215,40 +216,61 @@ uint32_t ShimTask_NORM_getList()
   return taskList;
 }
 
-/* TODO this won't work in it's current form as since neither
- * shimmerStatus.sdlogCmd nor shimmerStatus.btstreamCmd are modified and written
- * back, no action will actually be taken. This shouldn't be needed as settings
- * should never be allowed to be modified over Bluetooth while sensing is
- * on-going but still could be needed if some is calling BT commands directly
- * outside of our provided software. */
-void ShimTask_setRestartSensing(void)
+void ShimTask_setStartLoggingIfReady(void)
 {
-  if (shimmerStatus.sensing)
+  if (ShimSens_checkStartLoggingConditions())
   {
-    //ShimTask_setStopSensing();
-    //ShimTask_setStartSensing();
+    shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
+    ShimTask_set(TASK_STARTSENSING);
   }
 }
 
-void ShimTask_setStartSensing(void)
+void ShimTask_setStartStreamingIfReady(void)
 {
-  ShimTask_set(TASK_SDLOG_CFG_UPDATE);
-  ShimTask_set(TASK_STARTSENSING);
+  if (ShimSens_checkStartStreamingConditions())
+  {
+    shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
+    ShimTask_set(TASK_STARTSENSING);
+  }
+}
+
+void ShimTask_setStartStreamingAndLoggingIfReady(void)
+{
+  if (ShimSens_checkStartLoggingConditions())
+  {
+    shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
+  }
+  if (ShimSens_checkStartStreamingConditions())
+  {
+    shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
+  }
+
+  if (shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START
+          || shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START)
+  {
+    ShimTask_set(TASK_STARTSENSING);
+  }
 }
 
 void ShimTask_setStopSensing(void)
 {
-  ShimTask_setStopSdLogging();
-  ShimTask_setStopBtStreaming();
+  if (shimmerStatus.sdLogging)
+  {
+    ShimTask_setStopLogging();
+  }
+  if (shimmerStatus.btStreaming)
+  {
+    ShimTask_setStopStreaming();
+  }
 }
 
-void ShimTask_setStopSdLogging(void)
+void ShimTask_setStopLogging(void)
 {
   shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
   ShimTask_set(TASK_STOPSENSING);
 }
 
-void ShimTask_setStopBtStreaming(void)
+void ShimTask_setStopStreaming(void)
 {
   shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
   ShimTask_set(TASK_STOPSENSING);

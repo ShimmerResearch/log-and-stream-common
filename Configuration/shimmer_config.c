@@ -541,6 +541,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
   }
 #endif
 
+#if IS_SUPPORTED_SINGLE_TOUCH
   //the button always works for singletouch mode
   //sync always works for singletouch mode
   if (storedConfigPtr->singleTouchStart
@@ -550,6 +551,9 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
     storedConfigPtr->syncEnable = 1;
     settingCorrected = 1;
   }
+#else
+  storedConfigPtr->singleTouchStart = 0;
+#endif //IS_SUPPORTED_SINGLE_TOUCH
 
   if (ShimBrd_areADS1292RClockLinesTied()
       && !(storedConfigPtr->exgADS1292rRegsCh1.config2 & 0x08))
