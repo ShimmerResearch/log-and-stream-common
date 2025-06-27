@@ -351,7 +351,7 @@ void ShimDock_processCmd(void)
 #else
                 uint64_t temp64;
                 memcpy((uint8_t *) (&temp64), dockRxBuf + UART_RXBUF_DATA, 8); //64bits = 8bytes
-                RTC_init(temp64);
+                RTC_setTimeFromTicks(temp64);
 #endif
                 ShimConfig_getStoredConfig()->rtcSetByBt = 0;
                 InfoMem_write(NV_SD_TRIAL_CONFIG0,
@@ -617,7 +617,7 @@ void ShimDock_sendRsp(void)
 #if defined(SHIMMER3)
     memcpy(uartRespBuf + uart_resp_len, (uint8_t *) getRwcConfigTimePtr(), 8);
 #else
-    uint64_t temp_rtcConfigTime = S4_RWC_getConfigTime();
+    uint64_t temp_rtcConfigTime = ShimRtc_getConfigTime();
     memcpy(uartRespBuf + uart_resp_len, (uint8_t *) (&temp_rtcConfigTime), 8);
 #endif
     uart_resp_len += 8;
@@ -631,7 +631,7 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_COMP_SHIMMER;
     *(uartRespBuf + uart_resp_len++) = UART_PROP_CURR_LOCAL_TIME;
 
-    uint64_t rwc_curr_time_64 = getRwcTime();
+    uint64_t rwc_curr_time_64 = RTC_get64();
     memcpy(uartRespBuf + uart_resp_len, (uint8_t *) (&rwc_curr_time_64), 8);
     uart_resp_len += 8;
   }
