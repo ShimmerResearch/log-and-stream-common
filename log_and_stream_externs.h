@@ -54,7 +54,16 @@ extern void BtStop(uint8_t isCalledFromMain);
 
 extern void sleepWhenNoTask(void);
 extern uint8_t CheckSdInslot(void);
+
 extern uint64_t RTC_get64(void);
+extern void RTC_setTimeFromTicks(uint64_t ticks);
+#if defined(SHIMMER3R)
+extern void RTC_setAlarmRebootToBootloader(uint8_t secondsFromNow);
+extern void RTC_setAlarmBattRead(void);
+extern void RTC_wakeUpOff(void);
+extern void RTC_wakeUpSet(uint16_t period);
+#endif
+
 extern void manageReadBatt(uint8_t isBlockingRead);
 extern float samplingClockFreqGet(void);
 extern void Board_setSdPower(uint8_t state);
