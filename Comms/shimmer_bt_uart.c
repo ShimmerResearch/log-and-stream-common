@@ -1786,9 +1786,9 @@ void ShimBt_processCmd(void)
       ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_0, *(((uint8_t *) rwcTimeDiffPtr) + 7));
 #else
       memcpy((uint8_t *) (&temp64), args, 8); //64bits = 8bytes
-      RTC_init(temp64);
+      RTC_setTimeFromTicks(temp64);
 
-      setupNextRtcMinuteAlarm(); //configure RTC alarm after time set from BT.
+      RTC_setAlarmBattRead(); //configure RTC alarm after time set from BT.
 #endif
       break;
     }
@@ -2412,7 +2412,7 @@ void ShimBt_sendRsp(void)
       }
       case GET_RWC_COMMAND:
       {
-        temp_rtcCurrentTime = getRwcTime();
+        temp_rtcCurrentTime = RTC_get64();
         *(resPacket + packet_length++) = RWC_RESPONSE;
         memcpy(resPacket + packet_length, (uint8_t *) (&temp_rtcCurrentTime), 8);
         packet_length += 8;
@@ -2991,7 +2991,7 @@ uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)
   uint8_t statusByteCnt = 1;
   *(bufPtr) = (shimmerStatus.toggleLedRedCmd << 7) | (shimmerStatus.sdBadFile << 6)
       | (shimmerStatus.sdInserted << 5) | (shimmerStatus.btStreaming << 4)
-      | (shimmerStatus.sdLogging << 3) | (isRwcTimeSet() << 2)
+      | (shimmerStatus.sdLogging << 3) | (ShimRtc_isRwcTimeSet() << 2)
       | (shimmerStatus.sensing << 1) | shimmerStatus.docked;
 
 #if defined(SHIMMER3R)

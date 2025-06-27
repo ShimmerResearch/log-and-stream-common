@@ -624,8 +624,8 @@ FRESULT ShimSd_setFileTimestamp(char *path)
   //fno.fdate = (WORD) (((year - 1980) << 9) | month << 5 | mday);
   //fno.ftime = (WORD) (hour << 11 | min << 5 | sec / 2);
 
-  S4_RTC_t data;
-  S4_RTC_GetDateTime(&data);
+  SHIM_RTC_t data;
+  RTC_getDateTime(&data);
   data.year += 2000;
   fno.fdate = (WORD) (((data.year - 1980) << 9) | data.month << 5 | data.date);
   fno.ftime = (WORD) (data.hours << 11 | data.minutes << 5 | data.seconds / 2);

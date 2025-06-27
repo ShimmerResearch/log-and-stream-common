@@ -498,7 +498,7 @@ void RwcCheck(void)
       = ((!getRwcTimeDiff()) && ShimConfig_getStoredConfig()->rtcErrorEnable) ? 1 : 0;
 #else
   rwcErrorFlash
-      = ((getRwcTime() > 1735689600000) && ShimConfig_getStoredConfig()->rtcErrorEnable) ? 1 : 0;
+      = ((RTC_get64() > 1735689600000) && ShimConfig_getStoredConfig()->rtcErrorEnable) ? 1 : 0;
 #endif //SHIMMER3
 #endif //TEST_RTC_ERR_FLASH_OFF
 }
