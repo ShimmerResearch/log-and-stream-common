@@ -124,8 +124,7 @@ uint8_t ShimSens_checkStartLoggingConditions(void)
   return shimmerStatus.sdInserted
       && !shimmerStatus.sdBadFile
       && shimmerStatus.sdlogReady
-      && !shimmerStatus.sdLogging
-      && shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START;
+      && !shimmerStatus.sdLogging;
 }
 
 /* Check if the conditions are met to start streaming to BT.
@@ -135,8 +134,7 @@ uint8_t ShimSens_checkStartStreamingConditions(void)
 {
   return shimmerStatus.btConnected
       && shimmerStatus.btstreamReady
-      && !shimmerStatus.btStreaming
-      && shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START;
+      && !shimmerStatus.btStreaming;
 }
 
 /* Check if the conditions are met to stop logging to SD card.
@@ -161,8 +159,10 @@ void ShimSens_startSensing(void)
 {
   shimmerStatus.configuring = 1;
 
-  uint8_t sdLogPendingStart = ShimSens_checkStartLoggingConditions();
-  uint8_t streamPendingStart = ShimSens_checkStartStreamingConditions();
+  uint8_t sdLogPendingStart = (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START)
+      && ShimSens_checkStartLoggingConditions();
+  uint8_t streamPendingStart = (shimmerStatus.btstreamCmd
+      == BT_STREAM_CMD_STATE_START) && ShimSens_checkStartStreamingConditions();
 
   if (sdLogPendingStart || streamPendingStart)
   {
@@ -612,9 +612,13 @@ uint8_t ShimSens_getNumEnabledChannels(void)
 void ShimSens_startLoggingIfUndockStartEnabled(void)
 {
   gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
+#if IS_SUPPORTED_SINGLE_TOUCH
   if (!storedConfigPtr->singleTouchStart && !storedConfigPtr->userButtonEnable)
+#else
+  if (!storedConfigPtr->userButtonEnable)
+#endif
   {
-    ShimTask_setStartLoggingIfNotAlready();
+    ShimTask_setStartLoggingIfReady();
   }
 }
 

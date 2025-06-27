@@ -216,20 +216,38 @@ uint32_t ShimTask_NORM_getList()
   return taskList;
 }
 
-void ShimTask_setStartLoggingIfNotAlready(void)
+void ShimTask_setStartLoggingIfReady(void)
 {
-  if (!shimmerStatus.sdLogging)
+  if (ShimSens_checkStartLoggingConditions())
   {
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
     ShimTask_set(TASK_STARTSENSING);
   }
 }
 
-void ShimTask_setStartStreamingIfNotAlready(void)
+void ShimTask_setStartStreamingIfReady(void)
 {
-  if (!shimmerStatus.btStreaming)
+  if (ShimSens_checkStartStreamingConditions())
   {
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
+    ShimTask_set(TASK_STARTSENSING);
+  }
+}
+
+void ShimTask_setStartStreamingAndLoggingIfReady(void)
+{
+  if (ShimSens_checkStartLoggingConditions())
+  {
+    shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
+  }
+  if (ShimSens_checkStartStreamingConditions())
+  {
+    shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
+  }
+
+  if (shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START
+      || shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START)
+  {
     ShimTask_set(TASK_STARTSENSING);
   }
 }

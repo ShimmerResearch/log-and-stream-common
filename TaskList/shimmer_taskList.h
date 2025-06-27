@@ -118,8 +118,9 @@ uint8_t ShimTask_NORM_set(uint32_t task_id);
 //return the whole tasklist
 uint32_t ShimTask_NORM_getList(void);
 
-void ShimTask_setStartLoggingIfNotAlready(void);
-void ShimTask_setStartStreamingIfNotAlready(void);
+void ShimTask_setStartLoggingIfReady(void);
+void ShimTask_setStartStreamingIfReady(void);
+void ShimTask_setStartStreamingAndLoggingIfReady(void);
 void ShimTask_setStopSensing(void);
 void ShimTask_setStopLogging(void);
 void ShimTask_setStopStreaming(void);

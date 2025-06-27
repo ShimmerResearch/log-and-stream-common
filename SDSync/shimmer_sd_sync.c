@@ -514,12 +514,12 @@ void ShimSdSync_nodeR10(void)
     }
     else
     {
-      //TODO single touch start code should be disabled/sectioned off as feature is not currently supported
+#if IS_SUPPORTED_SINGLE_TOUCH
       if (ShimConfig_getStoredConfig()->singleTouchStart && !shimmerStatus.sensing && sd_tolog)
       {
-        shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START;
-        ShimTask_set(TASK_STARTSENSING);
+        ShimTask_setStartLoggingIfNotAlready();
       }
+#endif
       syncNodeSucc = 1;
       if (!firstOutlier)
       {

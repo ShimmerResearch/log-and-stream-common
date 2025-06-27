@@ -220,8 +220,10 @@ void ShimSdCfgFile_generate(void)
         f_write(&cfgFile, buffer, strlen(buffer), &bw);
       }
 
+#if IS_SUPPORTED_SINGLE_TOUCH
       sprintf(buffer, "singletouch=%d\r\n", storedConfig->singleTouchStart);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
+#endif //IS_SUPPORTED_SINGLE_TOUCH
 
       sprintf(buffer, "myid=%d\r\n", storedConfig->myTrialID);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
@@ -657,19 +659,12 @@ void ShimSdCfgFile_parse(void)
         stored_config_temp.experimentLengthMaxInMinutesMsb = (max_exp_len & 0xff00) >> 8;
         stored_config_temp.experimentLengthMaxInMinutesLsb = max_exp_len & 0xff;
       }
-#if defined(SHIMMER3)
+#if IS_SUPPORTED_SINGLE_TOUCH
       else if (strstr(buffer, "singletouch="))
       {
-        if (IS_SUPPORTED_SINGLE_TOUCH)
-        {
-          stored_config_temp.singleTouchStart = (atoi(equals) == 0) ? 0 : 1;
-        }
-        else
-        {
-          stored_config_temp.singleTouchStart = 0;
-        }
+        stored_config_temp.singleTouchStart = (atoi(equals) == 0) ? 0 : 1;
       }
-#endif
+#endif //IS_SUPPORTED_SINGLE_TOUCH
       else if (strstr(buffer, "myid="))
       {
         stored_config_temp.myTrialID = atoi(equals);

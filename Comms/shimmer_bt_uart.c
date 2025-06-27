@@ -1220,18 +1220,17 @@ void ShimBt_processCmd(void)
       }
       case START_STREAMING_COMMAND:
       {
-        ShimTask_setStartStreamingIfNotAlready();
+        ShimTask_setStartStreamingIfReady();
         break;
       }
       case START_SDBT_COMMAND:
       {
-        ShimTask_setStartStreamingIfNotAlready();
-        ShimTask_setStartLoggingIfNotAlready();
+        ShimTask_setStartStreamingAndLoggingIfReady();
         break;
       }
       case START_LOGGING_COMMAND:
       {
-        ShimTask_setStartLoggingIfNotAlready();
+        ShimTask_setStartLoggingIfReady();
         break;
       }
       case SET_CRC_COMMAND:
