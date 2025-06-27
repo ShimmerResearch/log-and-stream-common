@@ -65,12 +65,11 @@ void ShimTask_NORM_manage(void)
   USBX_Device_Process();
 #endif
 
-#if defined(SHIMMER3) || defined(SHIMMER3R)
-  if (!taskCurrent
-#if defined(SHIMMER3R)
-      || shimmerStatus.pendingRebootForDfu
+#if defined(SHIMMER3)
+  if (!taskCurrent)
+#elif defined(SHIMMER3R)
+  if (!taskCurrent || shimmerStatus.pendingRebootForDfu)
 #endif
-  )
   {
     sleepWhenNoTask();
   }
