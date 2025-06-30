@@ -360,7 +360,8 @@ void ShimDock_processCmd(void)
               uartInfoMemLength = dockRxBuf[UART_RXBUF_DATA];
               uartInfoMemOffset = (uint16_t) dockRxBuf[UART_RXBUF_DATA + 1]
                   + (((uint16_t) dockRxBuf[UART_RXBUF_DATA + 2]) << 8);
-              if ((uartInfoMemLength <= 128) && (uartInfoMemOffset <= (STOREDCONFIG_SIZE-1))
+              if ((uartInfoMemLength <= 128)
+                  && (uartInfoMemOffset <= (STOREDCONFIG_SIZE - 1))
                   && (uartInfoMemLength + uartInfoMemOffset <= STOREDCONFIG_SIZE))
               {
                 ShimConfig_storedConfigSet(dockRxBuf + UART_RXBUF_DATA + 3,
