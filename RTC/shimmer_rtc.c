@@ -252,8 +252,7 @@ void ShimRtc_rwcErrorCheck(void)
 {
   uint8_t state = 0;
 #if !TEST_RTC_ERR_FLASH_OFF
-  state = (!RTC_isRwcTimeSet())
-      && ShimConfig_getStoredConfig()->rtcErrorEnable;
+  state = (!RTC_isRwcTimeSet()) && ShimConfig_getStoredConfig()->rtcErrorEnable;
 #endif //TEST_RTC_ERR_FLASH_OFF
   ShimLeds_setRtcErrorFlash(state);
 }

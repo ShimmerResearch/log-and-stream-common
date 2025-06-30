@@ -44,8 +44,8 @@
 
 #include <ctype.h>
 #include <math.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <log_and_stream_externs.h>
 #include <log_and_stream_includes.h>

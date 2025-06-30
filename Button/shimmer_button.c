@@ -12,7 +12,7 @@
 #include <log_and_stream_includes.h>
 
 uint64_t buttonPressTs, buttonReleaseTs, buttonLastReleaseTs;
-// Time difference calculations
+//Time difference calculations
 uint64_t buttonReleaseTd, buttonPressReleaseTd;
 
 void ShimBtn_init(void)
@@ -28,12 +28,12 @@ void ShimBtn_init(void)
 uint8_t ShimBtn_pressReleaseAction(void)
 {
   if (Board_isBtnPressed())
-  {                 //button pressed
+  { //button pressed
     shimmerStatus.buttonPressed = 1;
     buttonPressTs = RTC_get64();
   }
   else
-  {                //button released
+  { //button released
     shimmerStatus.buttonPressed = 0;
     buttonReleaseTs = RTC_get64();
     buttonPressReleaseTd = buttonReleaseTs - buttonPressTs;
@@ -82,4 +82,3 @@ uint8_t ShimBtn_pressReleaseAction(void)
   }
   return 0;
 }
-

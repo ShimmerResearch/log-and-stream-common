@@ -14,8 +14,8 @@
 #if defined(SHIMMER3)
 #include "msp430.h"
 
-#include "../../Shimmer_Driver/RN4X/RN4X.h"
 #include "../../Shimmer_Driver/RN4X/RN4678.h"
+#include "../../Shimmer_Driver/RN4X/RN4X.h"
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_CRC.h"
 #include "../5xx_HAL/hal_DMA.h"

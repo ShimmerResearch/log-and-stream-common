@@ -10,9 +10,8 @@
 
 #include "stdint.h"
 
-#define TICKS_5_SECONDS 163840
+#define TICKS_5_SECONDS   163840
 #define TICKS_0_5_SECONDS 16384
-
 
 void ShimBtn_init(void);
 uint8_t ShimBtn_pressReleaseAction(void);

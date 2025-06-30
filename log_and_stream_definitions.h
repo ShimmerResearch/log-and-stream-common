@@ -12,7 +12,7 @@
 
 #define TEST_UNDOCKED             0
 #define TEST_RTC_ERR_FLASH_OFF    0
-#define TEST_PRESS2UNDOCK      0
+#define TEST_PRESS2UNDOCK         0
 
 #define IS_SUPPORTED_SINGLE_TOUCH 0
 #define USE_FATFS                 1
