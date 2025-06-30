@@ -42,7 +42,7 @@ uint8_t uartRespBuf[UART_RSP_PACKET_SIZE];
 
 uint8_t uartDcMemLength, uartInfoMemLength;
 uint16_t uartDcMemOffset, uartInfoMemOffset;
-uint64_t uartTimeStart, uartTimeEnd;
+uint64_t uartTimeStart;
 
 void ShimDock_resetVariables(void)
 {
@@ -69,7 +69,7 @@ void ShimDock_resetVariables(void)
 #endif
   uartSendRspBtVer = 0;
 
-  uartTimeStart = uartTimeEnd = 0;
+  uartTimeStart = 0;
 }
 
 uint8_t ShimDock_rxCallback(uint8_t data)
@@ -82,7 +82,8 @@ uint8_t ShimDock_rxCallback(uint8_t data)
   uint64_t uart_time = RTC_get64();
   if (uartTimeStart)
   {
-    if (uart_time - uartTimeStart > 3276)
+    // Check for 100ms timeout between bytes
+    if (uart_time - uartTimeStart > TIMEOUT_100_MS)
     {
       uartSteps = 0;
     }
@@ -581,7 +582,7 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_COMP_SHIMMER;
     *(uartRespBuf + uart_resp_len++) = UART_PROP_CURR_LOCAL_TIME;
 
-    uint64_t rwc_curr_time_64 = RTC_get64();
+    uint64_t rwc_curr_time_64 = RTC_getRwcTime();
     memcpy(uartRespBuf + uart_resp_len, (uint8_t *) (&rwc_curr_time_64), 8);
     uart_resp_len += 8;
   }

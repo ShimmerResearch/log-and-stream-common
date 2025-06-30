@@ -26,7 +26,7 @@ extern BattStatus batteryStatus;
 extern char *HAL_GetUID(void);
 
 extern void triggerShimmerErrorState(void);
-extern uint64_t *getRwcTimeDiffPtr(void);
+extern uint64_t *RTC_getRwcTimeDiffPtr(void);
 extern uint8_t isBtModuleOverflowPinHigh(void);
 
 /* Task list */

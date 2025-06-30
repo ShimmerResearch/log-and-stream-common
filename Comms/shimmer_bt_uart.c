@@ -1527,7 +1527,6 @@ void ShimBt_sendRsp(void)
   uint8_t resPacket[RESPONSE_PACKET_SIZE + 2]; //+2 for CRC
   packet_length = 0;
 
-  uint64_t temp_rtcCurrentTime = 0;
   uint8_t *fileNamePtr;
   uint8_t bmpCalibByteLen;
   uint8_t btVerStrLen;
@@ -1919,10 +1918,12 @@ void ShimBt_sendRsp(void)
       }
       case GET_RWC_COMMAND:
       {
-        temp_rtcCurrentTime = RTC_get64();
         *(resPacket + packet_length++) = RWC_RESPONSE;
-        memcpy(resPacket + packet_length, (uint8_t *) (&temp_rtcCurrentTime), 8);
+
+        uint64_t rwc_curr_time_64 = RTC_getRwcTime();
+        memcpy(resPacket + packet_length, (uint8_t *) (&rwc_curr_time_64), 8);
         packet_length += 8;
+
         break;
       }
       case GET_ALL_CALIBRATION_COMMAND:

@@ -409,6 +409,7 @@ void ShimCalib_setDefaultForSensor(uint8_t sensor)
 {
   sc_t sc1;
 
+  // Set timestamp to 0 to symbolise default calibration in-use
   memset(sc1.ts, 0, sizeof(sc1.ts));
 
 #if defined(SHIMMER3)
@@ -1053,7 +1054,7 @@ void ShimCalib_singleSensorToCalibDump(uint16_t id,
     }
     else
     {
-      *(uint64_t *) (sc1.ts) = RTC_get64();
+      *(uint64_t *) (sc1.ts) = RTC_getRwcTime();
     }
 
     memcpy(sc1.data.raw, configBytePtr, sc1.data_len);
