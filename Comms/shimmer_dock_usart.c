@@ -360,15 +360,15 @@ void ShimDock_processCmd(void)
               uartInfoMemLength = dockRxBuf[UART_RXBUF_DATA];
               uartInfoMemOffset = (uint16_t) dockRxBuf[UART_RXBUF_DATA + 1]
                   + (((uint16_t) dockRxBuf[UART_RXBUF_DATA + 2]) << 8);
-              if ((uartInfoMemLength <= 0x80) && (uartInfoMemOffset <= 0x01ff)
-                  && (uartInfoMemLength + uartInfoMemOffset <= 0x0200))
+              if ((uartInfoMemLength <= 128) && (uartInfoMemOffset <= (STOREDCONFIG_SIZE-1))
+                  && (uartInfoMemLength + uartInfoMemOffset <= STOREDCONFIG_SIZE))
               {
-                uint8_t temp_btMacHex[6];
-                ShimConfig_storedConfigGet(temp_btMacHex, NV_MAC_ADDRESS, 6);
                 ShimConfig_storedConfigSet(dockRxBuf + UART_RXBUF_DATA + 3,
                     uartInfoMemOffset, uartInfoMemLength);
-                ShimConfig_storedConfigSet(temp_btMacHex, NV_MAC_ADDRESS, 6);
+
                 ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
+                ShimConfig_setFlagWriteCfgToSd(1, 0);
+
                 LogAndStream_infomemUpdate();
 
                 uartSendRspAck = 1;

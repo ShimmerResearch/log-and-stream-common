@@ -845,19 +845,7 @@ void ShimSdCfgFile_parse(void)
     memcpy(&storedConfig->rawBytes[NV_CENTER],
         &stored_config_temp.rawBytes[NV_CENTER], NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
 
-    ShimSdHead_config2SdHead();
-
-#if defined(SHIMMER3)
-    InfoMem_write(0, &storedConfig->rawBytes[0], NV_NUM_SETTINGS_BYTES);
-    InfoMem_write(NV_SENSORS3, &storedConfig->rawBytes[NV_SENSORS3], 5);
-    InfoMem_write(NV_DERIVED_CHANNELS_3, &storedConfig->rawBytes[NV_DERIVED_CHANNELS_3], 5);
-    InfoMem_write(NV_SD_SHIMMER_NAME,
-        &storedConfig->rawBytes[NV_SD_SHIMMER_NAME], NV_NUM_SD_BYTES);
-    InfoMem_write(NV_CENTER, &storedConfig->rawBytes[NV_CENTER],
-        NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
-#elif defined(SHIMMER3R)
     LogAndStream_infomemUpdate();
-#endif
 
     /* If the configuration needed to be corrected, update the config file */
     if (triggerSdCardUpdate)

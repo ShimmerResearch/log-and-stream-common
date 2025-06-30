@@ -1019,14 +1019,14 @@ void ShimBt_processCmd(void)
         calibRamOffset = args[1] + (args[2] << 8);
         if (ShimCalib_ramWrite(&args[3], calibRamLength, calibRamOffset) == 1)
         {
-          ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+          ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
           update_calib_dump_file = 1;
         }
         break;
       }
       case UPD_CALIB_DUMP_COMMAND:
       {
-        ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+        ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
         update_calib_dump_file = 1;
         break;
       }
@@ -1160,7 +1160,7 @@ void ShimBt_processCmd(void)
       case RESET_CALIBRATION_VALUE_COMMAND:
       {
         ShimCalib_init();
-        ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+        ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
         update_calib_dump_file = 1;
         break;
       }
@@ -1397,7 +1397,7 @@ void ShimBt_processCmd(void)
 
   if (update_sdconfig)
   {
-    ShimConfig_setSdCfgFlag(1);
+    ShimConfig_setFlagWriteCfgToSd(1, 1);
   }
   if (update_calib_dump_file)
   {
@@ -1410,14 +1410,10 @@ void ShimBt_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, ui
   gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
 
   ShimConfig_checkAndCorrectConfig(storedConfig);
+  ShimConfig_setFlagWriteCfgToSd(1, 0);
 
   InfoMem_write(configByteIdx, &storedConfig->rawBytes[configByteIdx], len);
   ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[configByteIdx], sdHeaderIdx, len);
-  //TODO don't think below is needed because we're specifically changing what's
-  //new above ShimSdHead_config2SdHead();
-
-  //update sdconfig
-  ShimConfig_setSdCfgFlag(1);
 }
 
 void ShimBt_calibrationChangeCommon(uint16_t configByteIdx,

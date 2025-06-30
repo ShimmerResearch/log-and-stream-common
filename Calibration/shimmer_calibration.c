@@ -359,12 +359,12 @@ uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
   if (shimmerCalib_ramTempLen >= shimmerCalib_ramTempMax)
   {
     memcpy(shimmerCalib_ram, shimmerCalib_ramTemp, shimmerCalib_ramTempMax);
-    //TODO why done for Shimmer3R and not Shimmer3?
-#if defined(SHIMMER3R)
-    LogAndStream_infomemUpdate();
-#endif
+
     ShimCalib_initVer();
     ShimCalib_ramTempInit();
+
+    // Update config bytes with latest & current calib from calib dump
+    ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
     return 1;
   }
 
@@ -1062,24 +1062,24 @@ void ShimCalib_singleSensorToCalibDump(uint16_t id,
 }
 
 //
-void ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(void)
+void ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(uint8_t writeToFlash)
 {
 #if defined(SHIMMER3)
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_ANALOG_ACCEL);
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_MPU9X50_ICM20948_GYRO);
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LSM303_MAG);
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LSM303_ACCEL);
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_ANALOG_ACCEL, writeToFlash);
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_MPU9X50_ICM20948_GYRO, writeToFlash);
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LSM303_MAG, writeToFlash);
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LSM303_ACCEL, writeToFlash);
 #elif defined(SHIMMER3R)
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LSM6DSV_ACCEL);
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LSM6DSV_GYRO);
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LIS2DW12_ACCEL);
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_ADXL371_ACCEL);
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LIS3MDL_MAG);
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LIS2MDL_MAG);
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LSM6DSV_ACCEL, writeToFlash);
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LSM6DSV_GYRO, writeToFlash);
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LIS2DW12_ACCEL, writeToFlash);
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_ADXL371_ACCEL, writeToFlash);
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LIS3MDL_MAG, writeToFlash);
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LIS2MDL_MAG, writeToFlash);
 #endif
 }
 
-void ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(uint8_t sensor)
+void ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(uint8_t sensor, uint8_t writeToFlash)
 {
   sc_t sc1;
   uint16_t scs_infomem_offset, scs_sdhead_offset, scs_sdhead_ts;
@@ -1166,7 +1166,10 @@ void ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(uint8_t sensor)
   ShimCalib_singleSensorRead(&sc1);
 
   memcpy(&configBytes->rawBytes[scs_infomem_offset], sc1.data.raw, sc1.data_len);
-  InfoMem_write(scs_infomem_offset, sc1.data.raw, sc1.data_len);
+  if (writeToFlash)
+  {
+    InfoMem_write(scs_infomem_offset, sc1.data.raw, sc1.data_len);
+  }
 
   memcpy(ShimSdHead_getSdHeadText() + scs_sdhead_offset, sc1.data.raw, sc1.data_len);
   memcpy(ShimSdHead_getSdHeadText() + scs_sdhead_ts, sc1.ts, 8);

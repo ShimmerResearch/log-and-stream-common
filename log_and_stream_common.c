@@ -36,7 +36,7 @@ void LogAndStream_init(void)
   ShimTask_set(TASK_BATT_READ);
 }
 
-void setBootStage(boot_stage_t bootStageNew)
+void LogAndStream_setBootStage(boot_stage_t bootStageNew)
 {
   bootStage = bootStageNew;
 
@@ -66,7 +66,7 @@ void setBootStage(boot_stage_t bootStageNew)
   return;
 }
 
-boot_stage_t getBootStage(void)
+boot_stage_t LogAndStream_getBootStage(void)
 {
   return bootStage;
 }
@@ -74,11 +74,11 @@ boot_stage_t getBootStage(void)
 void LogAndStream_syncConfigAndCalibOnSd(void)
 {
   LogAndStream_setSdInfoSyncDelayed(0);
-  if (ShimConfig_getSdCfgFlag())
+  if (ShimConfig_getFlagWriteCfgToSd())
   { //info > sdcard
     ShimConfig_readRam();
     ShimSdCfgFile_generate();
-    ShimConfig_setSdCfgFlag(0);
+    ShimConfig_setFlagWriteCfgToSd(0, 1);
   }
   else
   {
@@ -99,7 +99,7 @@ void LogAndStream_syncConfigAndCalibOnSd(void)
     else
     {
       //only need to do this when file2Ram succeeds
-      ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+      ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
     }
   }
 

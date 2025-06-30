@@ -204,7 +204,7 @@ void ShimCalib_singleSensorToCalibDump(uint16_t id,
     uint8_t *configBytePtr,
     uint8_t setCalibTsZero);
 
-void ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(void);
-void ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(uint8_t sensor);
+void ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(uint8_t writeToFlash);
+void ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(uint8_t sensor, uint8_t writeToFlash);
 
 #endif //SHIMMER_CALIBRATION_H
