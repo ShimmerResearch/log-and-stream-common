@@ -22,6 +22,11 @@
 #define RTC_CHAR2NUM(x)        ((x) - '0')
 #define RTC_CHARISNUM(x)       ((x) >= '0' && (x) <= '9')
 
+#if defined(SHIMMER3R)
+// For Shimmer3R, we use the RTC to get the time from the RWC
+#define RTC_getRwcTime RTC_get64
+#endif //SHIMMER3R
+
 typedef struct
 {
   uint8_t seconds;     /*!< Seconds parameter, from 00 to 59 */
