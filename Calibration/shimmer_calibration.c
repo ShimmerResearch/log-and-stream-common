@@ -40,7 +40,7 @@
 #include "ff.h"
 #endif
 
-void ShimmerCalib_initVer(void);
+void ShimCalib_initVer(void);
 uint8_t ShimCalib_findLength(sc_t *sc1);
 
 uint8_t shimmerCalib_ram[SHIMMER_CALIB_RAM_MAX], shimmerCalib_macId[5],
@@ -57,12 +57,12 @@ void ShimCalib_init(void)
   memset(shimmerCalib_ram, 0, SHIMMER_CALIB_RAM_MAX);
   shimmerCalib_ram[SC_OFFSET_LENGTH_L] = shimmerCalib_ramLen & 0xff;
   shimmerCalib_ram[SC_OFFSET_LENGTH_H] = (shimmerCalib_ramLen >> 8) & 0xff;
-  ShimmerCalib_initVer();
+  ShimCalib_initVer();
 
   ShimCalib_defaultAll();
 }
 
-void ShimmerCalib_initVer(void)
+void ShimCalib_initVer(void)
 {
   shimmerCalib_ram[SC_OFFSET_VER_HW_ID_L] = DEVICE_VER & 0xff;
   shimmerCalib_ram[SC_OFFSET_VER_HW_ID_H] = (DEVICE_VER >> 8) & 0xff;
@@ -361,9 +361,9 @@ uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
     memcpy(shimmerCalib_ram, shimmerCalib_ramTemp, shimmerCalib_ramTempMax);
     //TODO why done for Shimmer3R and not Shimmer3?
 #if defined(SHIMMER3R)
-    InfoMem_update();
+    LogAndStream_infomemUpdate();
 #endif
-    ShimmerCalib_initVer();
+    ShimCalib_initVer();
     ShimCalib_ramTempInit();
     return 1;
   }

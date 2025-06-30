@@ -26,6 +26,8 @@ void LogAndStream_init(void)
   ShimDock_resetVariables();
   ShimBrd_resetDaughterCardId();
   ShimLeds_varsInit();
+  ShimBtn_init();
+  ShimRtc_init();
 
   LogAndStream_setSdInfoSyncDelayed(0);
 
@@ -141,4 +143,13 @@ void LogAndStream_blinkTimerCommon(void)
 uint8_t LogAndStream_isDockedOrUsbIn(void)
 {
   return shimmerStatus.docked || shimmerStatus.usbPluggedIn;
+}
+
+void LogAndStream_infomemUpdate(void)
+{
+#if defined(SHIMMER3)
+  InfoMem_update(ShimConfig_getStoredConfig()->rawBytes);
+#else
+  InfoMem_update(ShimConfig_getStoredConfig()->rawBytes, ShimCalib_getRam());
+#endif
 }

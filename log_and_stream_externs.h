@@ -24,7 +24,6 @@ extern BattStatus batteryStatus;
 
 #if defined(SHIMMER3)
 extern char *HAL_GetUID(void);
-extern void RwcCheck(void);
 
 extern void triggerShimmerErrorState(void);
 extern uint64_t *getRwcTimeDiffPtr(void);
@@ -45,6 +44,7 @@ extern void SampleTimerStop(void);
 #endif //SHIMMER3
 
 extern void Board_setExpansionBrdPower(uint8_t state);
+extern uint8_t Board_isBtnPressed(void);
 
 extern void DockUart_enable(void);
 extern void DockUart_disable(void);
@@ -56,7 +56,8 @@ extern void sleepWhenNoTask(void);
 extern uint8_t CheckSdInslot(void);
 
 extern uint64_t RTC_get64(void);
-extern void RTC_setTimeFromTicks(uint64_t ticks);
+extern void RTC_setTimeFromTicksPtr(uint8_t *ticksPtr);
+extern uint8_t RTC_isRwcTimeSet(void);
 #if defined(SHIMMER3R)
 extern void RTC_setAlarmRebootToBootloader(uint8_t secondsFromNow);
 extern void RTC_setAlarmBattRead(void);

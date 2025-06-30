@@ -8,6 +8,9 @@
 #include "shimmer_rtc.h"
 #include <stdint.h>
 
+#include <log_and_stream_includes.h>
+
+/* Stores the time at which the RWC was last set. */
 uint64_t rwcConfigTime64;
 
 /* Days in a month */
@@ -16,17 +19,22 @@ const uint8_t RTC_Months[2][12] = {
   { 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }  /* Leap year */
 };
 
-uint8_t ShimRtc_isRwcTimeSet(void)
+void ShimRtc_init(void)
 {
-  return ((rwcConfigTime64 > 0) ? 1 : 0);
+  ShimRtc_setRwcConfigTime(0);
 }
 
-void ShimRtc_setConfigTime(uint64_t val)
+uint8_t ShimRtc_isRwcConfigTimeSet(void)
+{
+  return rwcConfigTime64 != 0;
+}
+
+void ShimRtc_setRwcConfigTime(uint64_t val)
 {
   rwcConfigTime64 = val;
 } //64bits = 8bytes
 
-uint64_t ShimRtc_getConfigTime(void)
+uint64_t ShimRtc_getRwcConfigTime(void)
 {
   return rwcConfigTime64;
 }
@@ -238,4 +246,14 @@ uint8_t ShimRtc_isDateValid(SHIM_RTC_t *data)
     return 0;
   }
   return 1; //Valid date
+}
+
+void ShimRtc_rwcErrorCheck(void)
+{
+  uint8_t state = 0;
+#if !TEST_RTC_ERR_FLASH_OFF
+  state = (!RTC_isRwcTimeSet())
+      && ShimConfig_getStoredConfig()->rtcErrorEnable;
+#endif //TEST_RTC_ERR_FLASH_OFF
+  ShimLeds_setRtcErrorFlash(state);
 }

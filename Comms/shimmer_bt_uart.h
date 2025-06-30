@@ -13,6 +13,7 @@
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_CRC.h"
+#include "../RN4X/RN4678.h"
 #elif defined(SHIMMER3R)
 #include "hal_CRC.h"
 #include "shimmer_definitions.h"
@@ -259,7 +260,6 @@ void ShimBt_resetBtRxBuff(void);
 #endif
 #if defined(SHIMMER3)
 uint8_t ShimBt_dmaConversionDone(void);
-uint8_t ShimBt_parseRn4678Status(void);
 #elif defined(SHIMMER3R)
 uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff);
 #endif

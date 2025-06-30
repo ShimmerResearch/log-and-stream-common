@@ -856,7 +856,7 @@ void ShimSdCfgFile_parse(void)
     InfoMem_write(NV_CENTER, &storedConfig->rawBytes[NV_CENTER],
         NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
 #elif defined(SHIMMER3R)
-    InfoMem_update();
+    LogAndStream_infomemUpdate();
 #endif
 
     /* If the configuration needed to be corrected, update the config file */

@@ -498,17 +498,7 @@ uint8_t ShimLeds_isBlinkTimerCnt2s(void)
   return (blinkCnt20 == 0);
 }
 
-void RwcCheck(void)
+void ShimLeds_setRtcErrorFlash(uint8_t state)
 {
-#if TEST_RTC_ERR_FLASH_OFF
-  rwcErrorFlash = 0;
-#else //TEST_RTC_ERR_FLASH_OFF
-#if defined(SHIMMER3)
-  rwcErrorFlash
-      = ((!getRwcTimeDiff()) && ShimConfig_getStoredConfig()->rtcErrorEnable) ? 1 : 0;
-#else
-  rwcErrorFlash
-      = ((RTC_get64() > 1735689600000) && ShimConfig_getStoredConfig()->rtcErrorEnable) ? 1 : 0;
-#endif //SHIMMER3
-#endif //TEST_RTC_ERR_FLASH_OFF
+  rwcErrorFlash = state;
 }

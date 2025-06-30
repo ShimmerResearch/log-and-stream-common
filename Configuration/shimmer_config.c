@@ -45,6 +45,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include <log_and_stream_externs.h>
 #include <log_and_stream_includes.h>
@@ -91,11 +92,6 @@ void ShimConfig_readRam(void)
     ShimConfig_storedConfigSet(temp_storedConfig.rawBytes, 0, STOREDCONFIG_SIZE);
   }
 #endif //USE_DEFAULT_SENSOR
-
-#if defined(SHIMMER3)
-  ShimSdHead_config2SdHead();
-  ShimConfig_configBytesToNames();
-#endif
 
   /* Check BT module configuration after sensor configuration read from
    * infomem to see if it is in the correct state (i.e., BT on vs. BT off vs.
@@ -247,7 +243,7 @@ void ShimConfig_setDefaultConfig(void)
   InfoMem_write(NV_SD_SHIMMER_NAME, &storedConfig.rawBytes[NV_SD_SHIMMER_NAME], NV_NUM_SD_BYTES);
   InfoMem_write(NV_MAC_ADDRESS + 7, &storedConfig.rawBytes[NV_MAC_ADDRESS + 7], 153); //25+128
 #elif defined(SHIMMER3R)
-  InfoMem_update();
+  LogAndStream_infomemUpdate();
 #endif
 }
 

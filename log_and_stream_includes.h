@@ -10,6 +10,7 @@
 
 #include <Battery/shimmer_battery.h>
 #include <Boards/shimmer_boards.h>
+#include <Button/shimmer_button.h>
 #include <Calibration/shimmer_calibration.h>
 #include <Comms/shimmer_bt_uart.h>
 #include <Comms/shimmer_dock_usart.h>
