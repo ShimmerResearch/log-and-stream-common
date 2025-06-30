@@ -150,6 +150,6 @@ void LogAndStream_infomemUpdate(void)
 #if defined(SHIMMER3)
   InfoMem_update(ShimConfig_getStoredConfig()->rawBytes);
 #else
-  InfoMem_update(ShimConfig_getStoredConfig()->rawBytes, ShimCalib_getRam());
+  InfoMem_update(ShimConfig_getStoredConfig()->rawBytes, ShimCalib_getBytesPtr());
 #endif
 }

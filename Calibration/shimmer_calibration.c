@@ -103,9 +103,9 @@ uint8_t ShimCalib_findLength(sc_t *sc1)
   }
 }
 
-uint8_t *ShimCalib_getRam(void)
+uint8_t *ShimCalib_getBytesPtr(void)
 {
-  return shimmerCalib_ram;
+  return &shimmerCalib_ram[0];
 }
 
 void ShimCalib_ram2File(void)

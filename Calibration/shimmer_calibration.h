@@ -158,7 +158,7 @@ typedef struct shimmer_calib_t
 
 void ShimCalib_init(void);
 
-uint8_t *ShimCalib_getRam(void);
+uint8_t *ShimCalib_getBytesPtr(void);
 
 void ShimCalib_ram2File(void);
 
