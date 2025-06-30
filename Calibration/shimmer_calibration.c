@@ -409,7 +409,7 @@ void ShimCalib_setDefaultForSensor(uint8_t sensor)
 {
   sc_t sc1;
 
-  // Set timestamp to 0 to symbolise default calibration in-use
+  //Set timestamp to 0 to symbolise default calibration in-use
   memset(sc1.ts, 0, sizeof(sc1.ts));
 
 #if defined(SHIMMER3)

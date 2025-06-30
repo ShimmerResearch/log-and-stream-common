@@ -30,7 +30,7 @@
 #define RESPONSE_PACKET_SIZE 1024 //133
 #endif
 
-#define TIMEOUT_100_MS    (3277)
+#define TIMEOUT_100_MS     (3277)
 
 #define STAT_PERI_ADC      0x01
 #define STAT_PERI_I2C_SENS 0x02

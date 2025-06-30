@@ -82,7 +82,7 @@ uint8_t ShimDock_rxCallback(uint8_t data)
   uint64_t uart_time = RTC_get64();
   if (uartTimeStart)
   {
-    // Check for 100ms timeout between bytes
+    //Check for 100ms timeout between bytes
     if (uart_time - uartTimeStart > TIMEOUT_100_MS)
     {
       uartSteps = 0;
