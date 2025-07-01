@@ -250,7 +250,7 @@ void ShimTask_setStartStreamingAndLoggingIfReady(void)
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START;
   }
 
-  if (shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START
+  if (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START
           || shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START)
   {
     ShimTask_set(TASK_STARTSENSING);
