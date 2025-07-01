@@ -10,9 +10,9 @@
 
 #include "stdint.h"
 
-// 5 seconds = 163840 ticks @ 32768Hz
+//5 seconds = 163840 ticks @ 32768Hz
 #define TICKS_5_SECONDS   163840
-// 0.5 seconds = 16384 ticks @ 32768Hz
+//0.5 seconds = 16384 ticks @ 32768Hz
 #define TICKS_0_5_SECONDS 16384
 
 void ShimBtn_init(void);

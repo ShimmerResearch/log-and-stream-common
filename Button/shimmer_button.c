@@ -11,7 +11,7 @@
 
 #include <log_and_stream_includes.h>
 
-// Time-stamps
+//Time-stamps
 uint64_t buttonPressTs, buttonReleaseCurrentTs, buttonReleasePrevTs;
 //Time difference calculations
 uint64_t buttonReleaseTd, buttonPressReleaseTd;
