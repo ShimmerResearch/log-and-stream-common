@@ -13,9 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <Configuration/shimmer_config.h>
-#include <TaskList/shimmer_taskList.h>
 #include <log_and_stream_externs.h>
+#include <log_and_stream_includes.h>
 
 #if defined(SHIMMER3)
 #include "msp430.h"
@@ -147,7 +146,7 @@ uint8_t ShimSdSync_syncCntGet(void)
 
 void ShimSdSync_saveLocalTime(void)
 {
-  myLocalTimeLong = RTC_get64();
+  myLocalTimeLong = RTC_getRwcTime();
 }
 
 void ShimSdSync_resetSyncRcNodeR10Cnt(void)
@@ -489,8 +488,10 @@ void ShimSdSync_nodeR10(void)
   if (!BT_SD_SYNC_CRC_MODE
       || checkCrc(BT_SD_SYNC_CRC_MODE, &syncResp[0], SYNC_PACKET_SIZE_CMD + SYNC_PACKET_PAYLOAD_SIZE))
   { //if received the correct 6 bytes:
+#if IS_SUPPORTED_SINGLE_TOUCH
     uint8_t sd_tolog;
     sd_tolog = syncResp[SYNC_PACKET_FLG_IDX];
+#endif
     myCenterTimeLong = *(uint64_t *) (syncResp + SYNC_PACKET_TIME_IDX); //get myCenterTimeLong
 
     if (myLocalTimeLong > myCenterTimeLong)

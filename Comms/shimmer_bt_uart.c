@@ -14,6 +14,7 @@
 #if defined(SHIMMER3)
 #include "msp430.h"
 
+#include "../../Shimmer_Driver/RN4X/RN4678.h"
 #include "../../Shimmer_Driver/RN4X/RN4X.h"
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_CRC.h"
@@ -36,16 +37,13 @@ volatile uint8_t gAction;
 uint8_t args[MAX_COMMAND_ARG_SIZE], waitingForArgs, waitingForArgsLength, argsSize;
 
 #if defined(SHIMMER3)
-volatile char btStatusStr[BT_STAT_STR_LEN_LARGEST + 1U]; /* +1 to always have a null char */
 volatile char btRxBuffFullResponse[BT_VER_RESPONSE_LARGEST + 1U]; /* +1 to always have a null char */
 uint8_t btRxBuff[MAX_COMMAND_ARG_SIZE], *btRxExp;
 #endif
+
 uint8_t *btRxBuffPtr;
 volatile COMMS_CRC_MODE btCrcMode;
 
-#if defined(SHIMMER3)
-uint8_t btStatusStrIndex;
-#endif
 /* CYW20820 app=v01.04.16.16 requires size = 76 chars. Shimmer3 requires BT_VER_RESPONSE_LARGEST */
 char btVerStrResponse[100U];
 
@@ -112,7 +110,7 @@ void ShimBt_btCommsProtocolInit(void)
   argsSize = 0;
 
 #if defined(SHIMMER3)
-  ShimUtil_memset_v(btStatusStr, 0, sizeof(btStatusStr));
+  RN4678_resetStatusString();
 
   ShimUtil_memset_v(btRxBuffFullResponse, 0x00,
       sizeof(btRxBuffFullResponse) / sizeof(btRxBuffFullResponse[0]));
@@ -452,7 +450,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 #if defined(SHIMMER3)
         else if (gAction == RN4678_STATUS_STRING_SEPARATOR)
         {
-          return ShimBt_parseRn4678Status();
+          return RN4678_parseStatusString(&waitingForArgs, btRxBuffPtr);
         }
 #endif
 
@@ -631,9 +629,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
             break;
 #if defined(SHIMMER3)
           case RN4678_STATUS_STRING_SEPARATOR:
-            ShimUtil_memset_v(btStatusStr, 0, sizeof(btStatusStr));
-            btStatusStr[0U] = RN4678_STATUS_STRING_SEPARATOR;
-            btStatusStrIndex = 1U;
+            RN4678_startOfNewStatusString();
             gAction = data;
             /* Minus 1 because we've already received 1 x RN4678_STATUS_STRING_SEPARATOR */
             waitingForArgs = BT_STAT_STR_LEN_SMALLEST - 1U;
@@ -685,434 +681,6 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
   return 0;
 }
 
-#if defined(SHIMMER3)
-uint8_t ShimBt_parseRn4678Status(void)
-{
-  uint8_t numberOfCharRemaining = 0U;
-  uint8_t bringUcOutOfSleep = 0U;
-
-  ShimUtil_memcpy_v(btStatusStr + btStatusStrIndex, btRxBuffPtr, waitingForArgs);
-  memset(btRxBuffPtr, 0, waitingForArgs);
-  btStatusStrIndex += waitingForArgs;
-
-  enum BT_FIRMWARE_VERSION btFwVer = getBtFwVersion();
-
-  uint8_t firstChar = btStatusStr[1U];
-  switch (firstChar)
-  {
-    case 'A':
-      /* "%AUTHENTICATED%" */
-      if (btStatusStr[14U] == '%')
-      {
-        /* TODO */
-      }
-      /* "%AUTHEN" - Read outstanding bytes */
-      else if (btStatusStr[6U] == 'N')
-      {
-        numberOfCharRemaining = BT_STAT_STR_LEN_AUTHENTICATED - BT_STAT_STR_LEN_SMALLEST;
-      }
-      /* "%AUTH_FAIL%" */
-      else if (btStatusStr[10U] == '%')
-      {
-        /* TODO */
-      }
-      /* "%AUTH_FA" - Read outstanding bytes */
-      else if (btStatusStr[6U] == 'F')
-      {
-        numberOfCharRemaining = BT_STAT_STR_LEN_AUTH_FAIL - BT_STAT_STR_LEN_SMALLEST;
-      }
-      break;
-    case 'B':
-      /* "%BONDED%" */
-      if (btStatusStr[7U] == '%')
-      {
-        /* TODO */
-      }
-      /* "%BONDED" - Read outstanding bytes */
-      else
-      {
-        numberOfCharRemaining = BT_STAT_STR_LEN_BONDED - BT_STAT_STR_LEN_SMALLEST;
-      }
-      break;
-    case 'C':
-      if (btStatusStr[5U] == 'E')
-      {
-        /* "%CONNECT,001BDC06A3D5%" - RN4678 */
-        if (btStatusStr[21U] == '%')
-        {
-          setRn4678ConnectionState(RN4678_CONNECTED_CLASSIC);
-        }
-        /* "%CONNECT" for RN42 v4.77 or "%CONNECT,001BDC06A3D5," - RN42 v6.15 */
-        else if ((btFwVer == RN41_V4_77 && btStatusStr[7U] == 'T')
-            || (btFwVer == RN42_V4_77 && btStatusStr[7U] == 'T')
-            || (btFwVer == RN42_V6_15 && btStatusStr[21U] == ','))
-        {
-          ShimBt_handleBtRfCommStateChange(TRUE);
-          bringUcOutOfSleep = 1U;
-        }
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          if (btFwVer == RN41_V4_77 || btFwVer == RN42_V4_77)
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_RN42_v477_CONNECT;
-          }
-          else if (btFwVer == RN42_V6_15)
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_RN42_v615_CONNECT;
-          }
-          else
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_CONNECT;
-          }
-          numberOfCharRemaining -= BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-      else if (btStatusStr[5U] == '_')
-      {
-        /* "%CONN_PARAM,000C,0000,03C0%" - RN4678 */
-        if (btStatusStr[26U] == '%')
-        {
-          //TODO
-        }
-        else
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_CONN_PARAM - BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-      break;
-    case 'D':
-      /* "%DISCONN%" -> RN4678 */
-      if (btStatusStr[8U] == '%')
-      {
-        /* This if is needed here for BLE connections as a
-         * disconnect over BLE does not trigger an
-         * RFCOMM_CLOSE status change as it does for classic
-         * Bluetooth connections. */
-        if (shimmerStatus.btConnected)
-        {
-          ShimBt_handleBtRfCommStateChange(FALSE);
-          bringUcOutOfSleep = 1U;
-        }
-
-        setRn4678ConnectionState(RN4678_DISCONNECTED);
-      }
-      /* "%DISCONNECT" -> RN42 */
-      else if (btStatusStr[10U] == 'T')
-      {
-        ShimBt_handleBtRfCommStateChange(FALSE);
-        bringUcOutOfSleep = 1U;
-      }
-      /* "%DISCON" - Read outstanding bytes */
-      else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-      {
-        if (isBtDeviceRn41orRN42())
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_RN42_DISCONNECT;
-        }
-        else
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_DISCONN;
-        }
-        numberOfCharRemaining -= BT_STAT_STR_LEN_SMALLEST;
-      }
-      break;
-    case 'E':
-      if (btStatusStr[2U] == 'N')
-      {
-        if (btStatusStr[5U] == 'I')
-        {
-          /* "%END_INQ%" */
-          if (btStatusStr[8U] == '%')
-          {
-            /* TODO */
-          }
-          /* "%END_IN" - Read outstanding bytes */
-          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_END_INQ - BT_STAT_STR_LEN_SMALLEST;
-          }
-        }
-        else if (btStatusStr[5U] == 'S')
-        {
-          /* "%END_SCN%" */
-          if (btStatusStr[8U] == '%')
-          {
-            /* TODO */
-          }
-          /* "%END_SC" - Read outstanding bytes */
-          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_END_SCN - BT_STAT_STR_LEN_SMALLEST;
-          }
-        }
-      }
-      else if (btStatusStr[2U] == 'R')
-      {
-        if (btStatusStr[5U] == 'C')
-        {
-          /* %ERR_CON is common to two status strings. If detected, read two more chars to determine which one it is */
-          /* "%ERR_CONN%" */
-          if (btStatusStr[9U] == '%')
-          {
-            /* TODO */
-          }
-          /* "%ERR_CONN_PARAM%" */
-          else if (btStatusStr[15U] == '%')
-          {
-            /* TODO */
-          }
-          /* "%ERR_CONN_" - Read outstanding bytes */
-          else if (btStatusStr[9U] == '_')
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_ERR_CONN_PARAM - BT_STAT_STR_LEN_ERR_CONN;
-          }
-          /* "%ERR_CON" - Read outstanding bytes */
-          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_ERR_CONN - BT_STAT_STR_LEN_SMALLEST;
-          }
-        }
-        else if (btStatusStr[5U] == 'L')
-        {
-          /* "%ERR_LSEC%" */
-          if (btStatusStr[9U] == '%')
-          {
-            /* TODO */
-          }
-          /* "%ERR_LSE" - Read outstanding bytes */
-          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_ERR_LSEC - BT_STAT_STR_LEN_SMALLEST;
-          }
-        }
-        else if (btStatusStr[5U] == 'S')
-        {
-          /* "%ERR_SEC%" */
-          if (btStatusStr[8U] == '%')
-          {
-            /* TODO */
-          }
-          /* "%ERR_SE" - Read outstanding bytes */
-          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_ERR_SEC - BT_STAT_STR_LEN_SMALLEST;
-          }
-        }
-      }
-      break;
-    case 'F':
-      /* "%FACTORY_RESET%" */
-      if (btStatusStr[14U] == '%')
-      {
-        /* TODO */
-      }
-      /* "%FACTOR" - Read outstanding bytes */
-      else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-      {
-        numberOfCharRemaining = BT_STAT_STR_LEN_FACTORY_RESET - BT_STAT_STR_LEN_SMALLEST;
-      }
-      break;
-    case 'L':
-      if (btStatusStr[2U] == 'C')
-      {
-        /* "%LCONNECT,001BDC06A3D5,1%" - RN4678 BLE mode */
-        if (btStatusStr[24U] == '%')
-        {
-          setRn4678ConnectionState(RN4678_CONNECTED_BLE);
-
-          /* RN4678 seems to assume charactertic is advice once BLE connected */
-          ShimBt_handleBtRfCommStateChange(TRUE);
-
-          bringUcOutOfSleep = 1U;
-        }
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_LCONNECT - BT_STAT_STR_LEN_SMALLEST;
-        }
-        break;
-      }
-      else if (btStatusStr[2U] == 'B')
-      {
-        /* "%LBONDED%" */
-        if (btStatusStr[8U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%LBONDE" - Read outstanding bytes */
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_LBONDED - BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-      else if (btStatusStr[2U] == 'S')
-      {
-        if (btStatusStr[6U] == 'R')
-        {
-          /* "%LSECURED%" */
-          if (btStatusStr[9U] == '%')
-          {
-            /* TODO */
-          }
-          /* "%LSECURE_FAIL%" */
-          else if (btStatusStr[13U] == '%')
-          {
-            /* TODO */
-          }
-          /* "%LSECURE_F" */
-          else if (btStatusStr[9U] == 'F')
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_LSECURE_FAIL - BT_STAT_STR_LEN_LSECURED;
-          }
-          /* "%LSECUR" - Read outstanding bytes */
-          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_LSECURED - BT_STAT_STR_LEN_SMALLEST;
-          }
-        }
-        else if (btStatusStr[6U] == 'A')
-        {
-          /* "%LSTREAM_OPEN%" */
-          if (btStatusStr[13U] == '%')
-          {
-            /* TODO */
-          }
-          /* "%LSTREA" - Read outstanding bytes */
-          else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_LSTREAM_OPEN - BT_STAT_STR_LEN_SMALLEST;
-          }
-        }
-      }
-      break;
-    case 'M':
-      /* "%MLDP_MODE%" */
-      if (btStatusStr[10U] == '%')
-      {
-        /* TODO */
-      }
-      /* "%MLDP_M" - Read outstanding bytes */
-      else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-      {
-        numberOfCharRemaining = BT_STAT_STR_LEN_MLDP_MODE - BT_STAT_STR_LEN_SMALLEST;
-      }
-      break;
-    case 'R':
-      if (btStatusStr[2U] == 'E')
-      {
-        /* "%REBOOT%" -> RN4678 */
-        if (btStatusStr[7U] == '%')
-        {
-          /* TODO */
-          _NOP();
-        }
-        else
-        {
-          if (isBtDeviceRn41orRN42())
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_RN42_REBOOT;
-          }
-          else
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_RN4678_REBOOT;
-          }
-          numberOfCharRemaining -= BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-      else if (btStatusStr[2U] == 'F')
-      {
-        if (btStatusStr[8U] == 'C')
-        {
-          /* "%RFCOMM_CLOSE%" */
-          if (btStatusStr[13U] == '%')
-          {
-            ShimBt_handleBtRfCommStateChange(FALSE);
-            bringUcOutOfSleep = 1U;
-          }
-          /* "%RFCOMM_CLOSE" - Read outstanding bytes */
-          else if (btStatusStr[13U] == '\0')
-          {
-            numberOfCharRemaining = BT_STAT_STR_LEN_RFCOMM_CLOSE - BT_STAT_STR_LEN_RFCOMM_OPEN;
-          }
-        }
-        /* "%RFCOMM_OPEN%" */
-        else if (btStatusStr[12U] == '%')
-        {
-          ShimBt_handleBtRfCommStateChange(TRUE);
-          bringUcOutOfSleep = 1U;
-        }
-        /* "%RFCOMM" - Read outstanding bytes */
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_RFCOMM_OPEN - BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-      break;
-    case 'S':
-      if (btStatusStr[3U] == 'C')
-      {
-        /* "%SECURED%" */
-        if (btStatusStr[8U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%SECURE_FAIL%" */
-        else if (btStatusStr[12U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%SECURE_F" - Read outstanding bytes */
-        else if (btStatusStr[7U] == '_')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_SECURE_FAIL - BT_STAT_STR_LEN_SECURED;
-        }
-        /* "%SECURE" - Read outstanding bytes */
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_SECURED - BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-      else if (btStatusStr[3U] == 'S')
-      {
-        /* "%SESSION_OPEN%" */
-        if (btStatusStr[13U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%SESSION_CLOSE%" */
-        else if (btStatusStr[14U] == '%')
-        {
-          /* TODO */
-        }
-        /* "%SESSION_CLOSE" - Read outstanding bytes */
-        else if (btStatusStr[13U] == 'E')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_SESSION_CLOSE - BT_STAT_STR_LEN_SESSION_OPEN;
-        }
-        /* "%SESSIO" - Read outstanding bytes */
-        else if (btStatusStr[BT_STAT_STR_LEN_SMALLEST] == '\0')
-        {
-          numberOfCharRemaining = BT_STAT_STR_LEN_SESSION_OPEN - BT_STAT_STR_LEN_SMALLEST;
-        }
-      }
-      break;
-    default:
-      break;
-  }
-
-  if (numberOfCharRemaining)
-  {
-    waitingForArgs = numberOfCharRemaining;
-  }
-  else
-  {
-    waitingForArgs = 0;
-    numberOfCharRemaining = 1U;
-  }
-  setDmaWaitingForResponse(numberOfCharRemaining);
-  return bringUcOutOfSleep;
-}
-#endif
-
 uint8_t ShimBt_isWaitingForArgs(void)
 {
   return waitingForArgs;
@@ -1130,11 +698,7 @@ char *ShimBt_getBtVerStrPtr(void)
 
 void ShimBt_processCmd(void)
 {
-#if !defined(SHIMMER3)
-  uint64_t temp64;
-#endif
   gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
-  char *configTimeTextPtr;
 
   uint8_t update_sdconfig = 0, update_calib_dump_file = 0;
   uint8_t fullSyncResp[SYNC_PACKET_MAX_SIZE] = { 0 };
@@ -1455,14 +1019,14 @@ void ShimBt_processCmd(void)
         calibRamOffset = args[1] + (args[2] << 8);
         if (ShimCalib_ramWrite(&args[3], calibRamLength, calibRamOffset) == 1)
         {
-          ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+          ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
           update_calib_dump_file = 1;
         }
         break;
       }
       case UPD_CALIB_DUMP_COMMAND:
       {
-        ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+        ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
         update_calib_dump_file = 1;
         break;
       }
@@ -1473,7 +1037,7 @@ void ShimBt_processCmd(void)
       }
         //case UPD_FLASH_COMMAND:
         //{
-        //  InfoMem_update();
+        //  LogAndStream_infomemUpdate();
         //  //ShimmerCalibSyncFromDumpRamAll();
         //  //update_calib_dump_file = 1;
         //  break;
@@ -1596,7 +1160,7 @@ void ShimBt_processCmd(void)
       case RESET_CALIBRATION_VALUE_COMMAND:
       {
         ShimCalib_init();
-        ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+        ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
         update_calib_dump_file = 1;
         break;
       }
@@ -1734,23 +1298,10 @@ void ShimBt_processCmd(void)
         InfoMem_write(NV_SD_TRIAL_CONFIG0, &storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
         ShimSdHead_sdHeadTextSetByte(
             SDH_TRIAL_CONFIG0, storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0]);
-#if defined(SHIMMER3)
-        setRwcTime(&args[0]);
-        RwcCheck();
 
-        uint64_t *rwcTimeDiffPtr = getRwcTimeDiffPtr();
-        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_7, *((uint8_t *) rwcTimeDiffPtr));
-        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_6, *(((uint8_t *) rwcTimeDiffPtr) + 1));
-        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_5, *(((uint8_t *) rwcTimeDiffPtr) + 2));
-        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_4, *(((uint8_t *) rwcTimeDiffPtr) + 3));
-        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_3, *(((uint8_t *) rwcTimeDiffPtr) + 4));
-        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_2, *(((uint8_t *) rwcTimeDiffPtr) + 5));
-        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_1, *(((uint8_t *) rwcTimeDiffPtr) + 6));
-        ShimSdHead_sdHeadTextSetByte(SDH_RTC_DIFF_0, *(((uint8_t *) rwcTimeDiffPtr) + 7));
-#else
-        memcpy((uint8_t *) (&temp64), args, 8); //64bits = 8bytes
-        RTC_setTimeFromTicks(temp64);
-
+        RTC_setTimeFromTicksPtr(&args[0]);
+        ShimRtc_rwcErrorCheck();
+#if defined(SHIMMER3R)
         RTC_setAlarmBattRead(); //configure RTC alarm after time set from BT.
 #endif
         break;
@@ -1846,7 +1397,7 @@ void ShimBt_processCmd(void)
 
   if (update_sdconfig)
   {
-    ShimConfig_setSdCfgFlag(1);
+    ShimConfig_setFlagWriteCfgToSd(1, 1);
   }
   if (update_calib_dump_file)
   {
@@ -1859,14 +1410,10 @@ void ShimBt_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, ui
   gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
 
   ShimConfig_checkAndCorrectConfig(storedConfig);
+  ShimConfig_setFlagWriteCfgToSd(1, 0);
 
   InfoMem_write(configByteIdx, &storedConfig->rawBytes[configByteIdx], len);
   ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[configByteIdx], sdHeaderIdx, len);
-  //TODO don't think below is needed because we're specifically changing what's
-  //new above ShimSdHead_config2SdHead();
-
-  //update sdconfig
-  ShimConfig_setSdCfgFlag(1);
 }
 
 void ShimBt_calibrationChangeCommon(uint16_t configByteIdx,
@@ -1980,7 +1527,6 @@ void ShimBt_sendRsp(void)
   uint8_t resPacket[RESPONSE_PACKET_SIZE + 2]; //+2 for CRC
   packet_length = 0;
 
-  uint64_t temp_rtcCurrentTime = 0;
   uint8_t *fileNamePtr;
   uint8_t bmpCalibByteLen;
   uint8_t btVerStrLen;
@@ -2372,10 +1918,12 @@ void ShimBt_sendRsp(void)
       }
       case GET_RWC_COMMAND:
       {
-        temp_rtcCurrentTime = RTC_get64();
         *(resPacket + packet_length++) = RWC_RESPONSE;
-        memcpy(resPacket + packet_length, (uint8_t *) (&temp_rtcCurrentTime), 8);
+
+        uint64_t rwc_curr_time_64 = RTC_getRwcTime();
+        memcpy(resPacket + packet_length, (uint8_t *) (&rwc_curr_time_64), 8);
         packet_length += 8;
+
         break;
       }
       case GET_ALL_CALIBRATION_COMMAND:
@@ -2951,7 +2499,7 @@ uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)
   uint8_t statusByteCnt = 1;
   *(bufPtr) = (shimmerStatus.toggleLedRedCmd << 7) | (shimmerStatus.sdBadFile << 6)
       | (shimmerStatus.sdInserted << 5) | (shimmerStatus.btStreaming << 4)
-      | (shimmerStatus.sdLogging << 3) | (ShimRtc_isRwcTimeSet() << 2)
+      | (shimmerStatus.sdLogging << 3) | (RTC_isRwcTimeSet() << 2)
       | (shimmerStatus.sensing << 1) | shimmerStatus.docked;
 
 #if defined(SHIMMER3R)

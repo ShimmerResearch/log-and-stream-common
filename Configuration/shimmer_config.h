@@ -404,16 +404,15 @@ typedef union
     uint8_t macAddr[6];
 
     //SDConfigDelayFlag;
-    uint8_t infoSdcfg : 1;
-    /* Used to be used by older, individual calibration files. Replaced by calib
-     * dump file*/
-    uint8_t infoCalib        : 1;
+    /* Indicates that new config bytes need to be written to SD card config file at next available opportunity. */
+    uint8_t flagWriteCfgToSd : 1;
+    uint8_t unusedIdx230Bit1 : 1;
     uint8_t unusedIdx230Bit2 : 1;
     uint8_t unusedIdx230Bit3 : 1;
     uint8_t unusedIdx230Bit4 : 1;
     uint8_t unusedIdx230Bit5 : 1;
     uint8_t unusedIdx230Bit6 : 1;
-    uint8_t sdCfgFlag        : 1;
+    uint8_t unusedIdx230Bit7 : 1;
 
     uint8_t btSetPin;
     uint8_t unusedIdx232;
@@ -487,8 +486,8 @@ void ShimConfig_setDefaultTrialId(void);
 void ShimConfig_setDefaultConfigTime(void);
 void ShimConfig_configTimeSet(gConfigBytes *storedConfigPtr, uint32_t time);
 uint32_t ShimConfig_configTimeGet(void);
-uint8_t ShimConfig_getSdCfgFlag(void);
-void ShimConfig_setSdCfgFlag(uint8_t flag);
+uint8_t ShimConfig_getFlagWriteCfgToSd(void);
+void ShimConfig_setFlagWriteCfgToSd(uint8_t flag, uint8_t writeToFlash);
 uint8_t ShimConfig_getCalibFlag();
 void ShimConfig_setCalibFlag(uint8_t flag);
 uint8_t ShimConfig_getRamCalibFlag(void);

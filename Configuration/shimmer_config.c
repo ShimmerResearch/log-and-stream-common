@@ -44,6 +44,7 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <log_and_stream_externs.h>
@@ -91,11 +92,6 @@ void ShimConfig_readRam(void)
     ShimConfig_storedConfigSet(temp_storedConfig.rawBytes, 0, STOREDCONFIG_SIZE);
   }
 #endif //USE_DEFAULT_SENSOR
-
-#if defined(SHIMMER3)
-  ShimSdHead_config2SdHead();
-  ShimConfig_configBytesToNames();
-#endif
 
   /* Check BT module configuration after sensor configuration read from
    * infomem to see if it is in the correct state (i.e., BT on vs. BT off vs.
@@ -237,18 +233,12 @@ void ShimConfig_setDefaultConfig(void)
   ShimSdSync_setSyncEstExpLen((uint32_t) ShimConfig_experimentLengthEstimatedInSecGet());
 
   ShimConfig_checkAndCorrectConfig(&storedConfig);
+  ShimConfig_setFlagWriteCfgToSd(1, 0);
+
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(0);
 
   /* Write RAM contents to Infomem */
-#if defined(SHIMMER3)
-  InfoMem_write(0, &storedConfig.rawBytes[0], NV_NUM_SETTINGS_BYTES);
-  InfoMem_write(NV_SENSORS3, &storedConfig.rawBytes[NV_SENSORS3], 5);
-  InfoMem_write(NV_DERIVED_CHANNELS_3,
-      &ShimConfig_getStoredConfig()->rawBytes[NV_DERIVED_CHANNELS_3], 5);
-  InfoMem_write(NV_SD_SHIMMER_NAME, &storedConfig.rawBytes[NV_SD_SHIMMER_NAME], NV_NUM_SD_BYTES);
-  InfoMem_write(NV_MAC_ADDRESS + 7, &storedConfig.rawBytes[NV_MAC_ADDRESS + 7], 153); //25+128
-#elif defined(SHIMMER3R)
-  InfoMem_update();
-#endif
+  LogAndStream_infomemUpdate();
 }
 
 void ShimConfig_setDefaultShimmerName(void)
@@ -286,36 +276,19 @@ uint32_t ShimConfig_configTimeGet(void)
   return time;
 }
 
-uint8_t ShimConfig_getSdCfgFlag(void)
+uint8_t ShimConfig_getFlagWriteCfgToSd(void)
 {
-  return (!storedConfig.sdCfgFlag && storedConfig.infoSdcfg);
+  return (storedConfig.flagWriteCfgToSd);
 }
 
-void ShimConfig_setSdCfgFlag(uint8_t flag)
+void ShimConfig_setFlagWriteCfgToSd(uint8_t flag, uint8_t writeToFlash)
 {
-  if (flag)
+  storedConfig.flagWriteCfgToSd = flag;
+  if (writeToFlash)
   {
-    storedConfig.sdCfgFlag = 0;
+    InfoMem_write(NV_SD_CONFIG_DELAY_FLAG,
+        &storedConfig.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
   }
-  storedConfig.infoSdcfg = flag;
-  InfoMem_write(NV_SD_CONFIG_DELAY_FLAG,
-      &storedConfig.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
-}
-
-uint8_t ShimConfig_getCalibFlag()
-{
-  return (!storedConfig.sdCfgFlag && storedConfig.infoCalib);
-}
-
-void ShimConfig_setCalibFlag(uint8_t flag)
-{
-  if (flag)
-  {
-    storedConfig.sdCfgFlag = 0;
-  }
-  storedConfig.infoCalib = flag;
-  InfoMem_write(NV_SD_CONFIG_DELAY_FLAG,
-      &storedConfig.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
 }
 
 uint8_t ShimConfig_getRamCalibFlag(void)
@@ -710,11 +683,11 @@ void ShimConfig_loadSensorConfigAndCalib(void)
       //Hits here when undocked
       Board_setSdPower(1);
     }
-    if (ShimConfig_getSdCfgFlag())
+    if (ShimConfig_getFlagWriteCfgToSd())
     { //info > sdcard
       ShimConfig_readRam();
       ShimSdCfgFile_generate();
-      ShimConfig_setSdCfgFlag(0);
+      ShimConfig_setFlagWriteCfgToSd(0, 1);
       if (!ShimSd_isFileStatusOk())
       {
         shimmerStatus.sdlogReady = 0;
@@ -740,7 +713,7 @@ void ShimConfig_loadSensorConfigAndCalib(void)
     //CalibFromInfoAll();
   }
 
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
 }
 
 gConfigBytes ShimConfig_createBlankConfigBytes(void)
