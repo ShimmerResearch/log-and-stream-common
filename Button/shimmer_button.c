@@ -11,15 +11,16 @@
 
 #include <log_and_stream_includes.h>
 
-uint64_t buttonPressTs, buttonReleaseTs, buttonLastReleaseTs;
+// Time-stamps
+uint64_t buttonPressTs, buttonReleaseCurrentTs, buttonReleasePrevTs;
 //Time difference calculations
 uint64_t buttonReleaseTd, buttonPressReleaseTd;
 
 void ShimBtn_init(void)
 {
   buttonPressTs = 0;
-  buttonReleaseTs = 0;
-  buttonLastReleaseTs = 0;
+  buttonReleaseCurrentTs = 0;
+  buttonReleasePrevTs = 0;
   buttonReleaseTd = 0;
   buttonPressReleaseTd = 0;
 }
@@ -35,16 +36,16 @@ uint8_t ShimBtn_pressReleaseAction(void)
   else
   { //button released
     shimmerStatus.buttonPressed = 0;
-    buttonReleaseTs = RTC_get64();
-    buttonPressReleaseTd = buttonReleaseTs - buttonPressTs;
-    buttonReleaseTd = buttonReleaseTs - buttonLastReleaseTs;
+    buttonReleaseCurrentTs = RTC_get64();
+    buttonPressReleaseTd = buttonReleaseCurrentTs - buttonPressTs;
+    buttonReleaseTd = buttonReleaseCurrentTs - buttonReleasePrevTs;
     if (buttonPressReleaseTd >= TICKS_5_SECONDS)
     { //long button press: 5s
     }
     else if ((buttonReleaseTd > TICKS_0_5_SECONDS) && !shimmerStatus.configuring
         && !shimmerStatus.btConnected)
     {
-      buttonLastReleaseTs = buttonReleaseTs;
+      buttonReleasePrevTs = buttonReleaseCurrentTs;
 #if TEST_PRESS2UNDOCK
       if (shimmerStatus.docked)
       {
