@@ -30,10 +30,10 @@
 #define RESPONSE_PACKET_SIZE 1024 //133
 #endif
 
-#define TIMEOUT_100_MS     (3277)
+#define TIMEOUT_100_MS (3277)
 
 #if defined(SHIMMER3)
-#define __NOP()            __no_operation()
+#define __NOP() __no_operation()
 #endif
 
 #define STAT_PERI_ADC      0x01
