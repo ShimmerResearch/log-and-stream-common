@@ -88,7 +88,7 @@ typedef volatile struct STATTypeDef_t
   uint32_t testResult;
 #if defined(SHIMMER3R)
   uint8_t pendingRebootForDfu : 1;
-  uint8_t micSensing :1;
+  uint8_t micSensing          : 1;
 #endif
   uint8_t pinPvI2c : 1;
   //uint8_t pinPvSd: 1;
