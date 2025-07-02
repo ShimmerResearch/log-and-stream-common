@@ -32,6 +32,10 @@
 
 #define TIMEOUT_100_MS     (3277)
 
+#if defined(SHIMMER3)
+#define __NOP()            __no_operation()
+#endif
+
 #define STAT_PERI_ADC      0x01
 #define STAT_PERI_I2C_SENS 0x02
 #if defined(SHIMMER4_SDK)

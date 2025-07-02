@@ -33,7 +33,6 @@
 #endif
 
 #if defined(SHIMMER3)
-#define __NOP()            __no_operation()
 #define assert_param(expr) ((void) 0U)
 #endif
 

@@ -78,7 +78,7 @@ uint8_t ShimBtn_pressReleaseAction(void)
     }
     else
     {
-      _NOP();
+      __NOP();
     }
   }
   return 0;

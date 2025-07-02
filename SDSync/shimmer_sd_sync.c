@@ -33,8 +33,15 @@ uint8_t nodeNameStr[MAX_NODES][MAX_CHARS];
 uint8_t node_addr[MAX_NODES][6];
 
 uint8_t shortExpFlag;
-uint8_t syncNodeCnt, syncNodeNum, syncThis, syncNodeSucc, nReboot, currNodeSucc, cReboot;
-uint8_t syncSuccC, syncSuccN, syncCurrNode, syncCurrNodeDone, rcFirstOffsetRxed;
+// Current node device count while attempting to connect
+uint8_t syncNodeCnt;
+// Total number of node devices
+uint8_t syncNodeNum;
+uint8_t syncThis, syncNodeSucc, nReboot, currNodeSucc, cReboot;
+uint8_t syncSuccC, syncSuccN;
+// How long a center has been attempting to connect to a node in seconds
+uint8_t syncCurrNode;
+uint8_t syncCurrNodeDone, rcFirstOffsetRxed;
 uint8_t rcNodeR10Cnt;
 uint32_t firstOutlier, rcWindowC, rcNodeReboot;
 uint32_t estLen, estLen3, syncCnt;
@@ -43,7 +50,9 @@ uint64_t myLocalTimeLong, myCenterTimeLong, myTimeDiffLong;
 uint64_t myTimeDiffLongMin;
 uint64_t myTimeDiffArr[SYNC_TRANS_IN_ONE_COMM];
 uint8_t myTimeDiffFlagArr[SYNC_TRANS_IN_ONE_COMM];
-uint16_t syncCurrNodeExpire, syncNodeWinExpire;
+// Time out in seconds for attempting to connect to a node
+uint16_t syncCurrNodeExpire;
+uint16_t syncNodeWinExpire;
 uint8_t myTimeDiffLongFlag;
 uint8_t myTimeDiffLongFlagMin;
 uint8_t syncResp[SYNC_PACKET_MAX_SIZE], btSdSyncIsRunning;
@@ -738,6 +747,7 @@ void ShimSdSync_handleSyncTimerTriggerCenter(void)
               syncCurrNodeDone = 0;
               syncCurrNodeExpire = SYNC_T_EACHNODE_C * SYNC_FACTOR;
             }
+            /* If timeout while trying to connect to each node or if node was successfully sync'ed */
             else if ((syncCurrNode == syncCurrNodeExpire) || currNodeSucc)
             {
               if (currNodeSucc)
@@ -745,6 +755,7 @@ void ShimSdSync_handleSyncTimerTriggerCenter(void)
                 BT_disconnect();
                 currNodeSucc = 0;
               }
+              // Stop BT after each node timeout or success
               btStopCb(0);
               cReboot = 1;
               if (shortExpFlag)
@@ -754,6 +765,7 @@ void ShimSdSync_handleSyncTimerTriggerCenter(void)
 
               syncNodeCnt++;
             }
+            /* Reset duration attempting to connect to node if BT connection attempt hasn't yet started and timeout has occurred */
             else if (syncCurrNodeDone
                 && (syncCurrNode == syncCurrNodeDone + SYNC_CD * SYNC_FACTOR))
             {
