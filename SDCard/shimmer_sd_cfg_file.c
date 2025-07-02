@@ -829,21 +829,24 @@ void ShimSdCfgFile_parse(void)
     /* Calibration bytes are not copied over from the temporary config bytes */
     /* Infomem D - Bytes 0-33 - General settings */
     gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
-    memcpy(&storedConfig->rawBytes[0], &stored_config_temp.rawBytes[0], NV_DERIVED_CHANNELS_2 - NV_SAMPLING_RATE + 1);
+    memcpy(&storedConfig->rawBytes[0], &stored_config_temp.rawBytes[0],
+        NV_DERIVED_CHANNELS_2 - NV_SAMPLING_RATE + 1);
 
     /* Infomem D - Bytes 118-122 - Derived channel settings */
     memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_3],
-        &stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_3], NV_DERIVED_CHANNELS_7 - NV_DERIVED_CHANNELS_3 + 1);
+        &stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_3],
+        NV_DERIVED_CHANNELS_7 - NV_DERIVED_CHANNELS_3 + 1);
 
     /* Infomem C - Bytes 128-132 - MPL related settings - no longer used/supported */
-    memcpy(&storedConfig->rawBytes[NV_SENSORS3],
-        &stored_config_temp.rawBytes[NV_SENSORS3], NV_CONFIG_SETUP_BYTE6 - NV_SENSORS3 + 1);
+    memcpy(&storedConfig->rawBytes[NV_SENSORS3], &stored_config_temp.rawBytes[NV_SENSORS3],
+        NV_CONFIG_SETUP_BYTE6 - NV_SENSORS3 + 1);
 
     /* Infomem C - Bytes 187-223 - Shimmer name, exp ID, config time, trial ID,
      * num Shimmers, trial config, BT interval, est exp len, max exp len.
      * MAC ID is also included as it's corrected above. */
     memcpy(&storedConfig->rawBytes[NV_SD_SHIMMER_NAME],
-        &stored_config_temp.rawBytes[NV_SD_SHIMMER_NAME], NV_MAX_EXP_LEN_LSB - NV_SD_SHIMMER_NAME + 1);
+        &stored_config_temp.rawBytes[NV_SD_SHIMMER_NAME],
+        NV_MAX_EXP_LEN_LSB - NV_SD_SHIMMER_NAME + 1);
 
     /* Infomem B - Bytes 256-381 - Center and Node MAC addresses */
     memcpy(&storedConfig->rawBytes[NV_CENTER],
