@@ -2236,7 +2236,7 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   else
   { //BT is disconnected
     shimmerStatus.btstreamReady = 0;
-    shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP;
+    ShimTask_setStopStreaming();
 
     ShimBt_setDataRateTestState(0);
 
