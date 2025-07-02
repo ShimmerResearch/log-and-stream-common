@@ -58,7 +58,6 @@
 //Infomem contents
 //#define NV_NUM_CONFIG_BYTES             100
 //Infomem contents
-#define NV_NUM_SETTINGS_BYTES    34
 #define NV_NUM_CALIBRATION_BYTES 84
 #define NV_NUM_SD_BYTES          37
 #define NV_TOTAL_NUM_CONFIG_BYTES \
