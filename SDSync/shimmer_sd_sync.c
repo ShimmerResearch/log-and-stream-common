@@ -33,13 +33,13 @@ uint8_t nodeNameStr[MAX_NODES][MAX_CHARS];
 uint8_t node_addr[MAX_NODES][6];
 
 uint8_t shortExpFlag;
-// Current node device count while attempting to connect
+//Current node device count while attempting to connect
 uint8_t syncNodeCnt;
-// Total number of node devices
+//Total number of node devices
 uint8_t syncNodeNum;
 uint8_t syncThis, syncNodeSucc, nReboot, currNodeSucc, cReboot;
 uint8_t syncSuccC, syncSuccN;
-// How long a center has been attempting to connect to a node in seconds
+//How long a center has been attempting to connect to a node in seconds
 uint8_t syncCurrNode;
 uint8_t syncCurrNodeDone, rcFirstOffsetRxed;
 uint8_t rcNodeR10Cnt;
@@ -50,7 +50,7 @@ uint64_t myLocalTimeLong, myCenterTimeLong, myTimeDiffLong;
 uint64_t myTimeDiffLongMin;
 uint64_t myTimeDiffArr[SYNC_TRANS_IN_ONE_COMM];
 uint8_t myTimeDiffFlagArr[SYNC_TRANS_IN_ONE_COMM];
-// Time out in seconds for attempting to connect to a node
+//Time out in seconds for attempting to connect to a node
 uint16_t syncCurrNodeExpire;
 uint16_t syncNodeWinExpire;
 uint8_t myTimeDiffLongFlag;
@@ -755,7 +755,7 @@ void ShimSdSync_handleSyncTimerTriggerCenter(void)
                 BT_disconnect();
                 currNodeSucc = 0;
               }
-              // Stop BT after each node timeout or success
+              //Stop BT after each node timeout or success
               btStopCb(0);
               cReboot = 1;
               if (shortExpFlag)
