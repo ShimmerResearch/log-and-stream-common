@@ -734,15 +734,11 @@ void ShimSdSync_handleSyncTimerTriggerCenter(void)
                   syncNodeCnt = 0;
                 }
               }
-              //TODO figure how best to handle/locate this required check
-              if (shimmerStatus.btIsInitialised)
-              {
 #if defined(SHIMMER3)
                 BT_connect(nodeNameStr[syncNodeCnt]);
 #else
                 BT_connect(&node_addr[syncNodeCnt][0]);
 #endif
-              }
               currNodeSucc = 0;
               syncCurrNodeDone = 0;
               syncCurrNodeExpire = SYNC_T_EACHNODE_C * SYNC_FACTOR;
