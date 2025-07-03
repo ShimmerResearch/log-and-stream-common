@@ -781,7 +781,7 @@ void ShimSdSync_handleSyncTimerTriggerCenter(void)
             }
             else if ((cReboot >= 2) && (cReboot < 5 * SYNC_FACTOR))
             {
-              if (shimmerStatus.btPowerOn)
+              if (shimmerStatus.btIsInitialised)
               {
                 syncCurrNodeDone = syncCurrNode + SYNC_CD * SYNC_FACTOR - 1;
                 cReboot = 0;
