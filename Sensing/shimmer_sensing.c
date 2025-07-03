@@ -287,12 +287,30 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
 #elif defined(SHIMMER3R)
     HAL_Delay(10); //10ms
 #endif
+
+    if (shimmerStatus.sdSyncEnabled)
+    {
+      ShimSdSync_stop();
+    }
+
+    ShimSens_currentExperimentLengthReset();
+
+    if (LogAndStream_isSdInfoSyncDelayed())
+    {
+      LogAndStream_syncConfigAndCalibOnSd();
+    }
   }
 
   if (ShimSens_checkStopStreamingConditions())
   {
     shimmerStatus.btStreaming = 0;
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
+    ShimTask_clear(TASK_STREAMDATA);
+
+    if (enableDockUartIfDocked && shimmerStatus.docked && !shimmerStatus.sdLogging)
+    {
+      DockUart_enable();
+    }
   }
 
   /* Both logging and streaming have been stopped, so we can stop sensing. */
@@ -304,29 +322,10 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     sensing.isSampling = SAMPLE_NOT_READY;
     ShimSens_stopPeripherals();
 
-    if (shimmerStatus.sdSyncEnabled)
-    {
-      ShimSdSync_stop();
-    }
+    ShimSens_stopSensingWrapup();
 
-    if (enableDockUartIfDocked && shimmerStatus.docked)
-    {
-      DockUart_enable();
-    }
-
-    ShimTask_clear(TASK_STREAMDATA);
-
-    ShimSens_currentExperimentLengthReset();
-
-    if (LogAndStream_isSdInfoSyncDelayed())
-    {
-      LogAndStream_syncConfigAndCalibOnSd();
-    }
-
-    stopSensingWrapup();
+    shimmerStatus.configuring = 0;
   }
-
-  shimmerStatus.configuring = 0;
 }
 
 void ShimSens_stopPeripherals(void)
@@ -365,6 +364,12 @@ void ShimSens_stopPeripherals(void)
   { //EXT_RESET_N
     Board_setExpansionBrdPower(0);
   }
+}
+
+//Can be overwritten by main application
+__attribute__((weak)) void ShimSens_stopSensingWrapup(void)
+{
+  __NOP();
 }
 
 void ShimSens_streamData(void)
