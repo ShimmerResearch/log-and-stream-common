@@ -90,7 +90,6 @@ extern void SPI_startSensing(void);
 extern void ADC_stopSensing(void);
 extern void I2C_stopSensing(void);
 extern void SPI_stopSensing(void);
-extern void stopSensingWrapup(void);
 
 extern void ADC_gatherDataStart(void);
 extern void I2C_pollSensors(void);

@@ -228,6 +228,7 @@ uint8_t ShimSens_checkStopStreamingConditions(void);
 void ShimSens_startSensing(void);
 void ShimSens_stopSensing(uint8_t enableDockUartIfDocked);
 void ShimSens_stopPeripherals(void);
+void ShimSens_stopSensingWrapup(void);
 void ShimSens_streamData(void);
 void ShimSens_bufPoll(void);
 void ShimSens_saveTimestampToPacket(void);
