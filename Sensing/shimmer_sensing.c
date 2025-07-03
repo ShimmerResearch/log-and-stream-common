@@ -366,7 +366,7 @@ void ShimSens_stopPeripherals(void)
   }
 }
 
-// Can be overwritten by main application
+//Can be overwritten by main application
 __attribute__((weak)) void ShimSens_stopSensingWrapup(void)
 {
   __NOP();
