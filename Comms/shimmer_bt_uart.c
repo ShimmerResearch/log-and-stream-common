@@ -71,6 +71,8 @@ volatile uint8_t btTxInProgress;
 char macIdStr[12 + 1]; //+1 for null termination
 uint8_t macIdBytes[6];
 
+uint8_t btBaudRateToUse;
+
 /* Buffer read / write macros                                                 */
 #define RINGFIFO_RESET(ringFifo)         \
   {                                      \
@@ -109,14 +111,13 @@ void ShimBt_btCommsProtocolInit(void)
   waitingForArgsLength = 0;
   argsSize = 0;
 
+  ShimBt_resetBtRxBuffs();
+
 #if defined(SHIMMER3)
   RN4678_resetStatusString();
 
-  ShimUtil_memset_v(btRxBuffFullResponse, 0x00,
-      sizeof(btRxBuffFullResponse) / sizeof(btRxBuffFullResponse[0]));
   setBtRxFullResponsePtr(btRxBuffFullResponse);
 
-  memset(btRxBuff, 0x00, sizeof(btRxBuff) / sizeof(btRxBuff[0]));
   DMA2_init((uint16_t *) &UCA1RXBUF, (uint16_t *) btRxBuff, sizeof(btRxBuff));
   DMA2_transferDoneFunction(&ShimBt_dmaConversionDone);
   //DMA2SZ = 1U;
@@ -133,6 +134,29 @@ void ShimBt_btCommsProtocolInit(void)
   ShimBt_clearBtTxBuf(1U);
 
   ShimBt_btTxInProgressSet(0);
+}
+
+void ShimBt_startCommon(void)
+{
+  if (!shimmerStatus.sensing)
+  {
+    shimmerStatus.configuring = 1;
+  }
+  shimmerStatus.btInSyncMode = shimmerStatus.sdSyncEnabled;
+}
+
+void ShimBt_stopCommon(uint8_t isCalledFromMain)
+{
+  ShimTask_clear(TASK_BT_RESPOND);
+  ShimTask_clear(TASK_RCCENTERR1);
+  ShimTask_clear(TASK_RCNODER10);
+
+  ShimBt_clearBtTxBuf(isCalledFromMain);
+  ShimBt_resetBtRxBuffs();
+
+  shimmerStatus.btConnected = 0;
+  shimmerStatus.btIsInitialised = 0;
+  shimmerStatus.btInSyncMode = 0;
 }
 
 void ShimBt_resetBtResponseVars(void)
@@ -155,12 +179,16 @@ void ShimBt_resetBtRxVariablesOnConnect(void)
   waitingForArgsLength = 0;
 }
 
-#if defined(SHIMMER3)
-void ShimBt_resetBtRxBuff(void)
+void ShimBt_resetBtRxBuffs(void)
 {
+#if defined(SHIMMER3)
+  ShimUtil_memset_v(btRxBuffFullResponse, 0x00,
+      sizeof(btRxBuffFullResponse) / sizeof(btRxBuffFullResponse[0]));
   memset(btRxBuff, 0, sizeof(btRxBuff));
-}
+#else
+  resetBtRxBuff();
 #endif
+}
 
 #if defined(SHIMMER3)
 /* Return of 1 brings MSP out of low-power mode */
@@ -2283,6 +2311,8 @@ void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain)
     //{
     //*(&gBtTxFifo.data[0]+i) = 0xFF;
     //}
+
+    ShimBt_btTxInProgressSet(0);
   }
   else
   {
@@ -2571,4 +2601,29 @@ uint8_t ShimBt_isCmdBlockedWhileSensing(uint8_t command)
     default:
       return 0;
   }
+}
+
+void ShimBt_setBtBaudRateToUse(uint8_t baudRate)
+{
+#if defined(SHIMMER3)
+  if (baudRate <= BAUD_1000000)
+  {
+    //RN4678 doesn't support 1200, overwrite it with the next highest value
+    if (isBtDeviceRn4678() && baudRate == BAUD_1200)
+    {
+      btBaudRateToUse = BAUD_2400;
+    }
+    else
+    {
+      btBaudRateToUse = baudRate;
+    }
+  }
+#else
+  btBaudRateToUse = baudRate;
+#endif
+}
+
+uint8_t ShimBt_getBtBaudRateToUse(void)
+{
+  return btBaudRateToUse;
 }
