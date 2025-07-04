@@ -71,7 +71,8 @@ volatile uint8_t btTxInProgress;
 char macIdStr[12 + 1]; //+1 for null termination
 uint8_t macIdBytes[6];
 
-uint8_t btBaudRateToUse;
+// Enum for Shimmer3. Actual Baud value for Shimmer3R.
+uint32_t btBaudRateToUse;
 
 /* Buffer read / write macros                                                 */
 #define RINGFIFO_RESET(ringFifo)         \
@@ -2603,7 +2604,7 @@ uint8_t ShimBt_isCmdBlockedWhileSensing(uint8_t command)
   }
 }
 
-void ShimBt_setBtBaudRateToUse(uint8_t baudRate)
+void ShimBt_setBtBaudRateToUse(uint32_t baudRate)
 {
 #if defined(SHIMMER3)
   if (baudRate <= BAUD_1000000)
@@ -2623,7 +2624,7 @@ void ShimBt_setBtBaudRateToUse(uint8_t baudRate)
 #endif
 }
 
-uint8_t ShimBt_getBtBaudRateToUse(void)
+uint32_t ShimBt_getBtBaudRateToUse(void)
 {
   return btBaudRateToUse;
 }

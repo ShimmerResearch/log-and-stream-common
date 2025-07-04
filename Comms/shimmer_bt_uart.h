@@ -339,7 +339,7 @@ uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr);
 uint8_t ShimBt_isCmdAllowedWhileSdSyncing(uint8_t command);
 uint8_t ShimBt_isCmdBlockedWhileSensing(uint8_t command);
 
-void ShimBt_setBtBaudRateToUse(uint8_t baudRate);
-uint8_t ShimBt_getBtBaudRateToUse(void);
+void ShimBt_setBtBaudRateToUse(uint32_t baudRate);
+uint32_t ShimBt_getBtBaudRateToUse(void);
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */
