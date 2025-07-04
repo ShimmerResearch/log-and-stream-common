@@ -51,6 +51,7 @@
 #define SYNC_CD                  2
 #define SYNC_EXTEND              4 //should have SYNC_BOOT>SYNC_CD
 //below were params in sdlog.cfg
+// Allow 12 seconds for the center to try and connect to each node
 #define SYNC_T_EACHNODE_C        12
 #define SYNC_WINDOW_C            800
 #define SYNC_WINDOW_N            50
@@ -91,7 +92,7 @@ void ShimSdSync_parseSyncNodeNameFromCfgFile(uint8_t *storedConfigPtr, char *equ
 void ShimSdSync_checkSyncCenterName(void);
 
 void ShimSdSync_stop(void);
-void ShimSdSync_start(void);
+void ShimSdSync_start(uint8_t iAmSyncCenterToSet, uint16_t experimentLengthEstimatedInSecToSet);
 
 void ShimSdSync_centerT10(void);
 void ShimSdSync_centerR1(void);

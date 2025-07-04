@@ -33,7 +33,6 @@
 #endif
 
 #if defined(SHIMMER3)
-#define __NOP()            __no_operation()
 #define assert_param(expr) ((void) 0U)
 #endif
 
@@ -41,10 +40,17 @@ void ShimSd_openNewDataFile(void);
 void ShimSd_writeSdHeaderToFile(void);
 void ShimSd_closeDataFile(void);
 
-uint8_t fileName[64], dirName[64], expDirName[32], dataBuf[100],
-    sdWrBuf[NUM_SDWRBUF][SD_WRITE_BUF_SIZE], sdBufInQ, dirLen, sdBufSens = 0,
-                                                               sdBufWr = 0;
-uint16_t fileNum, dirCounter, sdWrLen[NUM_SDWRBUF];
+/* Two-dimensional SD write buffer */
+uint8_t sdWrBuf[NUM_SDWRBUF][SD_WRITE_BUF_SIZE];
+/* Current sensing buffer index in-which new data is being saved into */
+uint8_t sdBufSens = 0;
+/* Current write buffer index that is being written to the SD card */
+uint8_t sdBufWr = 0;
+/* Length of data within each buffer */
+uint16_t sdWrLen[NUM_SDWRBUF];
+
+uint8_t fileName[64], dirName[64], expDirName[32], sdBufInQ;
+uint16_t fileNum, dirCounter;
 uint64_t sdFileCrTs, sdFileSyncTs;
 #if USE_FATFS
 FRESULT file_status;
@@ -76,11 +82,9 @@ void ShimSdDataFile_init(void)
   memset(&fileName[0], 0x00, sizeof(fileName));
   memset(&dirName[0], 0x00, sizeof(dirName));
   memset(&expDirName[0], 0x00, sizeof(expDirName));
-  memset(&dataBuf[0], 0x00, sizeof(dataBuf));
   memset(&sdWrBuf[0][0], 0x00, sizeof(sdWrBuf));
   sdBufInQ = 0;
 
-  dirLen = 0;
   sdBufSens = 0;
   sdBufWr = 0;
   fileNum = 0;
@@ -94,6 +98,8 @@ void ShimSdDataFile_init(void)
   memset(&dataFile, 0x00, sizeof(dataFile));
   memset(&dataFileInfo, 0x00, sizeof(dataFileInfo));
   memset(&dataFileName[0], 0x00, sizeof(dataFileName));
+
+  ShimSd_setDataFileNameIfEmpty();
 }
 
 #define TEST_TEXT_LEN 40
@@ -225,8 +231,6 @@ uint8_t ShimSdDataFile_setBasedir(void)
   uint16_t tmp_counter = 0;
   char lfn[_MAX_LFN + 1], *fname, *scout, *dash, dirnum[8];
 
-  ShimConfig_infomem2Names();
-
 #if _FATFS == FATFS_V_0_08B
   fno.lfname = lfn;
   fno.lfsize = sizeof(lfn);
@@ -257,9 +261,9 @@ uint8_t ShimSdDataFile_setBasedir(void)
 #endif
 
   strcpy((char *) expDirName, "data/");
-  strcat((char *) expDirName, ShimConfig_expIdPtrGet());
+  strcat((char *) expDirName, ShimConfig_expIdParseToTxtAndPtrGet());
   strcat((char *) expDirName, "_");
-  strcat((char *) expDirName, ShimConfig_configTimeTextPtrGet());
+  strcat((char *) expDirName, ShimConfig_configTimeParseToTxtAndPtrGet());
 
   file_status = f_opendir(&dir, (char *) expDirName);
   if (file_status)
@@ -302,7 +306,7 @@ uint8_t ShimSdDataFile_setBasedir(void)
       fname = (*lfn) ? lfn : fno.fname;
 #endif
 
-      if (!strncmp(fname, ShimConfig_shimmerNamePtrGet(), strlen(fname) - 4))
+      if (!strncmp(fname, ShimConfig_shimmerNameParseToTxtAndPtrGet(), strlen(fname) - 4))
       { //-4 because of the -000 etc.
         scout = strchr(fname, '-');
         if (scout)
@@ -348,7 +352,7 @@ uint8_t ShimSdDataFile_makeBasedir(void)
 
   strcpy((char *) dirName, (char *) expDirName);
   strcat((char *) dirName, "/");
-  strcat((char *) dirName, ShimConfig_shimmerNamePtrGet());
+  strcat((char *) dirName, ShimConfig_shimmerNameParseToTxtAndPtrGet());
   strcat((char *) dirName, "-");
   strcat((char *) dirName, dir_counter_text);
 
@@ -364,7 +368,6 @@ uint8_t ShimSdDataFile_makeBasedir(void)
 
   memset(fileName, 0, 64);
   strcpy((char *) fileName, (char *) dirName);
-  dirLen = strlen((char *) dirName);
   strcat((char *) fileName, "/000");
   fileNum = 0;
   //sprintf((char*)fileName, "/%03d", fileNum++);
@@ -404,7 +407,7 @@ void ShimSdDataFile_fileInit(void)
 
   sensing.isSdOperating = 0;
   sensing.isFileCreated = 1;
-  memset(sdWrLen, 0, NUM_SDWRBUF * sizeof(sdWrLen[0]));
+  memset(sdWrLen, 0, sizeof(sdWrLen));
   sdBufInQ = sdBufSens = sdBufWr = 0;
 }
 
@@ -426,6 +429,12 @@ void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len)
     return;
   }
   //sdWrBuf[NUM_SDWRBUF][SD_WRITE_BUF_SIZE], sdBufSens, sdBufWr, sdBufInQ;
+
+  /* If enabled, write the sync offset to the start of the buffer */
+  if (sdWrLen[sdBufSens] == 0 && shimmerStatus.sdSyncEnabled)
+  {
+    PrepareSDBuffHead();
+  }
 
   memcpy(sdWrBuf[sdBufSens] + sdWrLen[sdBufSens], buf, len);
   sdWrLen[sdBufSens] += len;
@@ -521,11 +530,6 @@ void ShimSdDataFile_writeToCard(void)
   sensing.inSdWr = 0;
   sensing.inSdWrCnt = 0;
   //__enable_irq();
-
-  if (shimmerStatus.sdSyncEnabled)
-  {
-    PrepareSDBuffHead();
-  }
 }
 
 void ShimSd_openNewDataFile(void)
@@ -705,7 +709,8 @@ void ShimSd_findError(uint8_t err, uint8_t *name)
 
 void PrepareSDBuffHead(void)
 {
-  memcpy(&sdWrBuf[sdBufWr][sdBufWr], ShimSdSync_myTimeDiffPtrGet(), SYNC_PACKET_PAYLOAD_SIZE);
-  sdBufWr += SYNC_PACKET_PAYLOAD_SIZE;
+  memcpy(&sdWrBuf[sdBufSens][sdWrLen[sdBufSens]], ShimSdSync_myTimeDiffPtrGet(),
+      SYNC_PACKET_PAYLOAD_SIZE);
+  sdWrLen[sdBufSens] += SYNC_PACKET_PAYLOAD_SIZE;
   ShimSdSync_resetMyTimeDiff();
 }

@@ -295,7 +295,7 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
   }
   else
   {
-    //good file - green1:
+    //SDLogging or SD sync - upper green LED:
     if (!shimmerStatus.sensing)
     { //standby or configuring
       if (shimmerStatus.configuring)
@@ -326,10 +326,12 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
       }
     }
 
-    //good file - blue:
+    //SDLogging or SD sync - upper blue LED:
     /* Toggle blue LED while a connection is established */
     if (shimmerStatus.btPowerOn && shimmerStatus.btConnected)
     {
+      /* turn off green LED to avoid visual clash */
+      Board_ledOff(LED_UPR_GREEN);
       Board_ledToggle(LED_UPR_BLUE);
     }
     /* Leave blue LED on solid if it's a node and a sync hasn't occurred yet (first 'outlier' not included) */
@@ -337,11 +339,19 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
         && shimmerStatus.sdSyncEnabled
         && !(ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER))
     {
-      Board_ledOn(LED_UPR_BLUE);
+      /*Avoid clashing with the green LED*/
+      if (Board_isLedOnUprGreen())
+      {
+        Board_ledOff(LED_UPR_BLUE);
+      }
+      else
+      {
+        Board_ledOn(LED_UPR_BLUE);
+      }
     }
     else
     {
-      /* Flash if BT is on */
+      /* Quick double flash if BT is on */
       if (shimmerStatus.btPowerOn && (blinkCnt20 == 12 || blinkCnt20 == 14))
       {
         Board_ledOn(LED_UPR_BLUE);
@@ -488,17 +498,7 @@ uint8_t ShimLeds_isBlinkTimerCnt2s(void)
   return (blinkCnt20 == 0);
 }
 
-void RwcCheck(void)
+void ShimLeds_setRtcErrorFlash(uint8_t state)
 {
-#if TEST_RTC_ERR_FLASH_OFF
-  rwcErrorFlash = 0;
-#else //TEST_RTC_ERR_FLASH_OFF
-#if defined(SHIMMER3)
-  rwcErrorFlash
-      = ((!getRwcTimeDiff()) && ShimConfig_getStoredConfig()->rtcErrorEnable) ? 1 : 0;
-#else
-  rwcErrorFlash
-      = ((RTC_get64() > 1735689600000) && ShimConfig_getStoredConfig()->rtcErrorEnable) ? 1 : 0;
-#endif //SHIMMER3
-#endif //TEST_RTC_ERR_FLASH_OFF
+  rwcErrorFlash = state;
 }

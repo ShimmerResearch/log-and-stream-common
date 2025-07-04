@@ -259,6 +259,15 @@ class TestShimmerDockCommunication(unittest.TestCase):
         print("")
 
     def test_13_enter_bootloader_mode(self):
+        if not self.shimmer.is_hardware_version_set():
+            if not self.shimmer.dock_port.read_hw_fw_ver():
+                print("Error reading hardware version")
+                self.assertTrue(False)
+
+        if self.shimmer.is_hardware_shimmer3():
+            print("Bootloader command not supported")
+            return
+
         print(Fore.LIGHTMAGENTA_EX + "Request to enter bootloader mode via command")
         timeout_seconds = 5
 

@@ -11,13 +11,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <Boards/shimmer_boards.h>
-#include <Comms/shimmer_bt_uart.h>
-#include <Configuration/shimmer_config.h>
-#include <SDCard/shimmer_sd_data_file.h>
-#include <TaskList/shimmer_taskList.h>
-#include <log_and_stream_definitions.h>
 #include <log_and_stream_externs.h>
+#include <log_and_stream_includes.h>
 
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
@@ -47,7 +42,7 @@ uint8_t uartRespBuf[UART_RSP_PACKET_SIZE];
 
 uint8_t uartDcMemLength, uartInfoMemLength;
 uint16_t uartDcMemOffset, uartInfoMemOffset;
-uint64_t uartTimeStart, uartTimeEnd;
+uint64_t uartTimeStart;
 
 void ShimDock_resetVariables(void)
 {
@@ -74,7 +69,7 @@ void ShimDock_resetVariables(void)
 #endif
   uartSendRspBtVer = 0;
 
-  uartTimeStart = uartTimeEnd = 0;
+  uartTimeStart = 0;
 }
 
 uint8_t ShimDock_rxCallback(uint8_t data)
@@ -87,7 +82,8 @@ uint8_t ShimDock_rxCallback(uint8_t data)
   uint64_t uart_time = RTC_get64();
   if (uartTimeStart)
   {
-    if (uart_time - uartTimeStart > 3276)
+    //Check for 100ms timeout between bytes
+    if (uart_time - uartTimeStart > TIMEOUT_100_MS)
     {
       uartSteps = 0;
     }
@@ -345,14 +341,9 @@ void ShimDock_processCmd(void)
             case UART_PROP_RWC_CFG_TIME:
               if (dockRxBuf[UART_RXBUF_LEN] == 10)
               {
-#if defined(SHIMMER3)
-                setRwcTime(dockRxBuf + UART_RXBUF_DATA);
-                RwcCheck();
-#else
-                uint64_t temp64;
-                memcpy((uint8_t *) (&temp64), dockRxBuf + UART_RXBUF_DATA, 8); //64bits = 8bytes
-                RTC_setTimeFromTicks(temp64);
-#endif
+                RTC_setTimeFromTicksPtr(dockRxBuf + UART_RXBUF_DATA);
+                ShimRtc_rwcErrorCheck();
+
                 ShimConfig_getStoredConfig()->rtcSetByBt = 0;
                 InfoMem_write(NV_SD_TRIAL_CONFIG0,
                     &ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
@@ -370,56 +361,18 @@ void ShimDock_processCmd(void)
               uartInfoMemLength = dockRxBuf[UART_RXBUF_DATA];
               uartInfoMemOffset = (uint16_t) dockRxBuf[UART_RXBUF_DATA + 1]
                   + (((uint16_t) dockRxBuf[UART_RXBUF_DATA + 2]) << 8);
-              if ((uartInfoMemLength <= 0x80) && (uartInfoMemOffset <= 0x01ff)
-                  && (uartInfoMemLength + uartInfoMemOffset <= 0x0200))
+              if ((uartInfoMemLength <= 128)
+                  && (uartInfoMemOffset <= (STOREDCONFIG_SIZE - 1))
+                  && (uartInfoMemLength + uartInfoMemOffset <= STOREDCONFIG_SIZE))
               {
-#if defined(SHIMMER3)
-                if (uartInfoMemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
-                {
-                  /* Read MAC address so it is not forgotten */
-                  InfoMem_read(NV_MAC_ADDRESS, ShimBt_macIdBytesPtrGet(), 6);
-                }
-                if (uartInfoMemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
-                {
-                  /* Check if unit is SR47-4 or greater.
-                   * If so, amend configuration byte 2 of ADS chip 1 to have bit 3
-                   * set to 1. This ensures clock lines on ADS chip are correct
-                   */
-                  if (ShimBrd_areADS1292RClockLinesTied())
-                  {
-                    *(dockRxBuf + UART_RXBUF_DATA + 3 + NV_EXG_ADS1292R_1_CONFIG2) |= 8;
-                  }
-                }
-#if !IS_SUPPORTED_TCXO
-                if (uartInfoMemOffset <= NV_SD_TRIAL_CONFIG1
-                    && NV_SD_TRIAL_CONFIG1 <= uartInfoMemOffset + uartInfoMemLength)
-                {
-                  uint8_t tcxoInfomemOffset = NV_SD_TRIAL_CONFIG1 - uartInfoMemOffset;
-                  dockRxBuf[3 + tcxoInfomemOffset] &= ~SDH_TCXO;
-                }
-#endif
-                /* Write received UART bytes to infomem */
-                InfoMem_write(uartInfoMemOffset,
-                    dockRxBuf + UART_RXBUF_DATA + 3, uartInfoMemLength);
-                if (uartInfoMemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
-                {
-                  /* Re-write MAC address to Infomem */
-                  InfoMem_write(NV_MAC_ADDRESS, ShimBt_macIdBytesPtrGet(), 6);
-                }
-                /* Reload latest infomem bytes to RAM */
-                InfoMem_read(uartInfoMemOffset,
-                    &ShimConfig_getStoredConfig()->rawBytes[uartInfoMemOffset],
-                    uartInfoMemLength);
-                ShimConfig_infomem2Names();
-#else
-                uint8_t temp_btMacHex[6];
-                ShimConfig_storedConfigGet(temp_btMacHex, NV_MAC_ADDRESS, 6);
                 ShimConfig_storedConfigSet(dockRxBuf + UART_RXBUF_DATA + 3,
                     uartInfoMemOffset, uartInfoMemLength);
-                ShimConfig_storedConfigSet(temp_btMacHex, NV_MAC_ADDRESS, 6);
+
                 ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
-                InfoMem_update();
-#endif
+                ShimConfig_setFlagWriteCfgToSd(1, 0);
+
+                LogAndStream_infomemUpdate();
+
                 uartSendRspAck = 1;
               }
               else
@@ -614,12 +567,10 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = 10;
     *(uartRespBuf + uart_resp_len++) = UART_COMP_SHIMMER;
     *(uartRespBuf + uart_resp_len++) = UART_PROP_RWC_CFG_TIME;
-#if defined(SHIMMER3)
-    memcpy(uartRespBuf + uart_resp_len, (uint8_t *) getRwcConfigTimePtr(), 8);
-#else
-    uint64_t temp_rtcConfigTime = ShimRtc_getConfigTime();
+
+    uint64_t temp_rtcConfigTime = ShimRtc_getRwcConfigTime();
     memcpy(uartRespBuf + uart_resp_len, (uint8_t *) (&temp_rtcConfigTime), 8);
-#endif
+
     uart_resp_len += 8;
   }
   else if (uartSendRspCurrentTime)
@@ -631,7 +582,7 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_COMP_SHIMMER;
     *(uartRespBuf + uart_resp_len++) = UART_PROP_CURR_LOCAL_TIME;
 
-    uint64_t rwc_curr_time_64 = RTC_get64();
+    uint64_t rwc_curr_time_64 = RTC_getRwcTime();
     memcpy(uartRespBuf + uart_resp_len, (uint8_t *) (&rwc_curr_time_64), 8);
     uart_resp_len += 8;
   }

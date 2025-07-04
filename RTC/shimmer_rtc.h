@@ -22,6 +22,11 @@
 #define RTC_CHAR2NUM(x)        ((x) - '0')
 #define RTC_CHARISNUM(x)       ((x) >= '0' && (x) <= '9')
 
+#if defined(SHIMMER3R)
+//For Shimmer3R, we use the RTC to get the time from the RWC
+#define RTC_getRwcTime RTC_get64
+#endif //SHIMMER3R
+
 typedef struct
 {
   uint8_t seconds;     /*!< Seconds parameter, from 00 to 59 */
@@ -39,14 +44,18 @@ typedef struct
 
 extern const uint8_t RTC_Months[2][12];
 
-uint8_t ShimRtc_isRwcTimeSet(void);
-void ShimRtc_setConfigTime(uint64_t val);
-uint64_t ShimRtc_getConfigTime(void);
+void ShimRtc_init(void);
+uint8_t ShimRtc_isRwcConfigTimeSet(void);
+void ShimRtc_setRwcConfigTime(uint64_t val);
+uint64_t ShimRtc_getRwcConfigTime(void);
 
 uint32_t ShimRtc_rtc2Unix(SHIM_RTC_t *data);
 void ShimRtc_unix2Rtc(SHIM_RTC_t *data, uint32_t unix);
 void ShimRtc_ticks2Rtc(SHIM_RTC_t *data, uint64_t ticks);
 
 uint8_t ShimRtc_isDateValid(SHIM_RTC_t *data);
+
+uint8_t ShimRtc_isTimeSet(void);
+void ShimRtc_rwcErrorCheck(void);
 
 #endif /* RTC_SHIMMER_RTC_H_ */

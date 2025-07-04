@@ -221,14 +221,14 @@ extern SENSINGTypeDef sensing;
 void ShimSens_init(void);
 SENSINGTypeDef *ShimSens_getSensing(void);
 void ShimSens_configureChannels(void);
-uint8_t ShimSens_checkStartSensorConditions(void);
 uint8_t ShimSens_checkStartLoggingConditions(void);
 uint8_t ShimSens_checkStartStreamingConditions(void);
-uint8_t ShimSens_checkStopSensorConditions(void);
 uint8_t ShimSens_checkStopLoggingConditions(void);
+uint8_t ShimSens_checkStopStreamingConditions(void);
 void ShimSens_startSensing(void);
-void ShimSens_stopSensing(void);
+void ShimSens_stopSensing(uint8_t enableDockUartIfDocked);
 void ShimSens_stopPeripherals(void);
+void ShimSens_stopSensingWrapup(void);
 void ShimSens_streamData(void);
 void ShimSens_bufPoll(void);
 void ShimSens_saveTimestampToPacket(void);
@@ -251,6 +251,10 @@ void ShimSens_stepDone(void);
 void ShimSens_saveData(void);
 
 uint8_t ShimSens_getNumEnabledChannels(void);
-uint8_t ShimSens_checkOnDefault(void);
+void ShimSens_startLoggingIfUndockStartEnabled(void);
+
+uint8_t ShimSens_checkAutostopLoggingCondition(void);
+void ShimSens_currentExperimentLengthReset(void);
+void ShimSens_maxExperimentLengthSecsSet(uint16_t expLengthMins);
 
 #endif //SHIMMER_SENSING_H
