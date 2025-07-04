@@ -71,7 +71,7 @@ volatile uint8_t btTxInProgress;
 char macIdStr[12 + 1]; //+1 for null termination
 uint8_t macIdBytes[6];
 
-// Enum for Shimmer3. Actual Baud value for Shimmer3R.
+//Enum for Shimmer3. Actual Baud value for Shimmer3R.
 uint32_t btBaudRateToUse;
 
 /* Buffer read / write macros                                                 */
