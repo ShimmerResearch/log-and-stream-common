@@ -275,7 +275,7 @@ uint8_t ShimBrd_isI2c4Supported(void)
 {
   return (ShimBrd_isDaughterCardIdSet() && hwId == HW_ID_SHIMMER3R
       && (daughterCardIdPage.expansion_brd.exp_brd_id == EXP_BRD_GSR_UNIFIED
-      || daughterCardIdPage.expansion_brd.exp_brd_id == EXP_BRD_PROTO3_DELUXE));
+          || daughterCardIdPage.expansion_brd.exp_brd_id == EXP_BRD_PROTO3_DELUXE));
 }
 
 uint8_t ShimBrd_isBoardSr48_6_0(void)
