@@ -521,7 +521,7 @@ uint8_t ShimConfig_isMicrophoneEnabled(void);
 uint8_t ShimConfig_isGSREnabled(void);
 uint8_t ShimConfig_isExpansionBoardPwrEnabled(void);
 void ShimConfig_loadSensorConfigAndCalib(void);
-gConfigBytes ShimConfig_createBlankConfigBytes(void);
+void ShimConfig_createBlankConfigBytes(void);
 uint8_t ShimConfig_areConfigBytesValid(void);
 
 void ShimConfig_parseShimmerNameFromConfigBytes(void);

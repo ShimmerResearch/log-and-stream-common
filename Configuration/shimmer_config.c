@@ -151,8 +151,7 @@ uint8_t ShimConfig_storedConfigSetByte(uint16_t offset, uint8_t val)
 
 void ShimConfig_setDefaultConfig(void)
 {
-  storedConfig = ShimConfig_createBlankConfigBytes();
-
+  ShimConfig_createBlankConfigBytes();
   storedConfig.samplingRateTicks = ShimConfig_freqDiv(51.2); //51.2Hz
   storedConfig.bufferSize = 1;
   /* core sensors enabled */
@@ -675,7 +674,6 @@ void ShimConfig_loadSensorConfigAndCalib(void)
 {
   ShimCalib_init();
   ShimCalib_initFromConfigBytesAll();
-
   if (!shimmerStatus.docked && CheckSdInslot())
   { //sd card ready to access
     if (!shimmerStatus.sdPowerOn)
@@ -716,17 +714,17 @@ void ShimConfig_loadSensorConfigAndCalib(void)
   ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
 }
 
-gConfigBytes ShimConfig_createBlankConfigBytes(void)
+void ShimConfig_createBlankConfigBytes(void)
 {
-  gConfigBytes storedConfigNew;
-
-  memset(&storedConfigNew.rawBytes[NV_SAMPLING_RATE], 0, STOREDCONFIG_SIZE);
+  memset(&storedConfig.rawBytes[0], 0, STOREDCONFIG_SIZE);
 
   /* Make all calibration bytes invalid (i.e., 0xFF) */
   memset(storedConfig.lnAccelCalib.rawBytes, 0xFF,
       sizeof(storedConfig.lnAccelCalib.rawBytes));
-  memset(storedConfig.gyroCalib.rawBytes, 0xFF, sizeof(storedConfig.gyroCalib.rawBytes));
-  memset(storedConfig.magCalib.rawBytes, 0xFF, sizeof(storedConfig.magCalib.rawBytes));
+  memset(storedConfig.gyroCalib.rawBytes, 0xFF,
+      sizeof(storedConfig.gyroCalib.rawBytes));
+  memset(storedConfig.magCalib.rawBytes, 0xFF,
+      sizeof(storedConfig.magCalib.rawBytes));
   memset(storedConfig.wrAccelCalib.rawBytes, 0xFF,
       sizeof(storedConfig.wrAccelCalib.rawBytes));
   memset(storedConfig.altAccelCalib.rawBytes, 0xFF,
@@ -735,17 +733,15 @@ gConfigBytes ShimConfig_createBlankConfigBytes(void)
       sizeof(storedConfig.altMagCalib.rawBytes));
 
   /* Copy MAC ID directly from BT module */
-  memcpy(&storedConfigNew.macAddr[0], ShimBt_macIdBytesPtrGet(), 6);
+  memcpy(&storedConfig.macAddr[0], ShimBt_macIdBytesPtrGet(), 6);
 
   /* Reset unused bytes */
-  memset(&storedConfigNew.rawBytes[NV_BT_SET_PIN + 1], 0xFF, 24);
+  memset(&storedConfig.rawBytes[NV_BT_SET_PIN + 1], 0xFF, 24);
 
   /* Reset node addresses */
-  memset(&storedConfigNew.rawBytes[NV_CENTER], 0xFF, 128);
+  memset(&storedConfig.rawBytes[NV_CENTER], 0xFF, 128);
 
-  memset(storedConfig.rawBytes, 0x00, sizeof(storedConfig.rawBytes));
-
-  return storedConfigNew;
+  return;
 }
 
 uint8_t ShimConfig_areConfigBytesValid(void)
