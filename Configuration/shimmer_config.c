@@ -721,10 +721,8 @@ void ShimConfig_createBlankConfigBytes(void)
   /* Make all calibration bytes invalid (i.e., 0xFF) */
   memset(storedConfig.lnAccelCalib.rawBytes, 0xFF,
       sizeof(storedConfig.lnAccelCalib.rawBytes));
-  memset(storedConfig.gyroCalib.rawBytes, 0xFF,
-      sizeof(storedConfig.gyroCalib.rawBytes));
-  memset(storedConfig.magCalib.rawBytes, 0xFF,
-      sizeof(storedConfig.magCalib.rawBytes));
+  memset(storedConfig.gyroCalib.rawBytes, 0xFF, sizeof(storedConfig.gyroCalib.rawBytes));
+  memset(storedConfig.magCalib.rawBytes, 0xFF, sizeof(storedConfig.magCalib.rawBytes));
   memset(storedConfig.wrAccelCalib.rawBytes, 0xFF,
       sizeof(storedConfig.wrAccelCalib.rawBytes));
   memset(storedConfig.altAccelCalib.rawBytes, 0xFF,

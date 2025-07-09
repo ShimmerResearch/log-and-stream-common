@@ -348,7 +348,8 @@ void ShimSdCfgFile_parse(void)
   uint8_t triggerSdCardUpdate = 0;
 
   CheckSdInslot();
-  gConfigBytes *storedConfig = ShimConfig_getStoredConfig(); // get the pointer as variable is not accessible
+  gConfigBytes *storedConfig
+      = ShimConfig_getStoredConfig(); //get the pointer as variable is not accessible
   char cfgname[] = "sdlog.cfg";
   cfg_file_status = f_open(&cfgFile, cfgname, FA_READ | FA_OPEN_EXISTING);
   if (cfg_file_status == FR_NO_FILE)
@@ -366,9 +367,9 @@ void ShimSdCfgFile_parse(void)
   else
   {
     gConfigBytes stored_config_temp;
-    /* update  stored_config_temp with original storedConfig contents before parsing from cfg file to check and
-    update the values from cfg_file */
-    memcpy(&(stored_config_temp.rawBytes[0]),&(storedConfig->rawBytes[0]),STOREDCONFIG_SIZE);
+    /* update  stored_config_temp with original storedConfig contents before
+    parsing from cfg file to check and update the values from cfg_file */
+    memcpy(&(stored_config_temp.rawBytes[0]), &(storedConfig->rawBytes[0]), STOREDCONFIG_SIZE);
     ShimConfig_createBlankConfigBytes();
     ShimSdSync_resetSyncVariablesBeforeParseConfig();
     ShimSdSync_resetSyncNodeArray();
@@ -829,24 +830,23 @@ void ShimSdCfgFile_parse(void)
     stored_config_temp.samplingRateTicks = (uint16_t) sample_period;
     /* restoring orignal calibration bytes which is not updated from calib file*/
     memcpy((storedConfig->lnAccelCalib.rawBytes),
-           &(stored_config_temp.lnAccelCalib.rawBytes),
-           sizeof(stored_config_temp.lnAccelCalib.rawBytes));
-    memcpy((storedConfig->gyroCalib.rawBytes),
-           &(stored_config_temp.gyroCalib.rawBytes),
-           sizeof(stored_config_temp.gyroCalib.rawBytes));
-    memcpy((storedConfig->magCalib.rawBytes),
-           &(stored_config_temp.magCalib.rawBytes),
-           sizeof(stored_config_temp.magCalib.rawBytes));
+        &(stored_config_temp.lnAccelCalib.rawBytes),
+        sizeof(stored_config_temp.lnAccelCalib.rawBytes));
+    memcpy((storedConfig->gyroCalib.rawBytes), &(stored_config_temp.gyroCalib.rawBytes),
+        sizeof(stored_config_temp.gyroCalib.rawBytes));
+    memcpy((storedConfig->magCalib.rawBytes), &(stored_config_temp.magCalib.rawBytes),
+        sizeof(stored_config_temp.magCalib.rawBytes));
     memcpy((storedConfig->wrAccelCalib.rawBytes),
-           &(stored_config_temp.wrAccelCalib.rawBytes),
-           sizeof(stored_config_temp.wrAccelCalib.rawBytes));
+        &(stored_config_temp.wrAccelCalib.rawBytes),
+        sizeof(stored_config_temp.wrAccelCalib.rawBytes));
     memcpy((storedConfig->altAccelCalib.rawBytes),
-           &(stored_config_temp.altAccelCalib.rawBytes),
-           sizeof(stored_config_temp.altAccelCalib.rawBytes));
+        &(stored_config_temp.altAccelCalib.rawBytes),
+        sizeof(stored_config_temp.altAccelCalib.rawBytes));
     memcpy((storedConfig->altMagCalib.rawBytes),
-           &(stored_config_temp.altMagCalib.rawBytes),
-           sizeof(stored_config_temp.altMagCalib.rawBytes));
-    triggerSdCardUpdate |= ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
+        &(stored_config_temp.altMagCalib.rawBytes),
+        sizeof(stored_config_temp.altMagCalib.rawBytes));
+    triggerSdCardUpdate
+        |= ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
 
     LogAndStream_infomemUpdate();
 
