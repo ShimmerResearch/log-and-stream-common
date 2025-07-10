@@ -494,7 +494,11 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
 
   if (storedConfigPtr->chEnSkinTemp || storedConfigPtr->chEnResAmp)
   {
+#if defined(SHIMMER3)
+    storedConfigPtr->chEnIntADC1 = 1;
+#elif defined(SHIMMER3R)
     storedConfigPtr->chEnIntADC3 = 1;
+#endif
   }
 
   if (storedConfigPtr->gsrRange > 4)
