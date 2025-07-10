@@ -60,6 +60,8 @@ void GSR_init(uint8_t gsrRangeToSet, uint16_t gsrSamplingRateToSet);
 
 void GSR_range(uint8_t *buf);
 
+void GSR_resetGsrRange(void);
+
 //Adjusts the GSR's range by selecting the which internal resistor is used
 //range: select the resistor to use
 //    0:  40 kohm
