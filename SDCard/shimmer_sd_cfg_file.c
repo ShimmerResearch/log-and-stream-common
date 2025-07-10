@@ -200,10 +200,10 @@ void ShimSdCfgFile_generate(void)
       sprintf(buffer, "bluetoothDisabled=%d\r\n", storedConfig->bluetoothDisable);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      sprintf(buffer, "max_exp_len=%d\r\n", storedConfig->experimentLengthMaxInMinutes);
+      sprintf(buffer, "max_exp_len=%d\r\n", ShimConfig_experimentLengthMaxInMinutesGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      sprintf(buffer, "est_exp_len=%d\r\n", storedConfig->experimentLengthEstimatedInSec);
+      sprintf(buffer, "est_exp_len=%d\r\n", ShimConfig_experimentLengthEstimatedInSecGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
       ShimSdSync_parseSyncNodeNamesFromConfig(&storedConfig->rawBytes[0]);
@@ -220,20 +220,21 @@ void ShimSdCfgFile_generate(void)
         f_write(&cfgFile, buffer, strlen(buffer), &bw);
       }
 
+#if IS_SUPPORTED_SINGLE_TOUCH
       sprintf(buffer, "singletouch=%d\r\n", storedConfig->singleTouchStart);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
+#endif //IS_SUPPORTED_SINGLE_TOUCH
 
       sprintf(buffer, "myid=%d\r\n", storedConfig->myTrialID);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
       sprintf(buffer, "Nshimmer=%d\r\n", storedConfig->numberOfShimmers);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-      ShimConfig_infomem2Names();
-      sprintf(buffer, "shimmername=%s\r\n", ShimConfig_shimmerNamePtrGet());
+      sprintf(buffer, "shimmername=%s\r\n", ShimConfig_shimmerNameParseToTxtAndPtrGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "experimentid=%s\r\n", ShimConfig_expIdPtrGet());
+      sprintf(buffer, "experimentid=%s\r\n", ShimConfig_expIdParseToTxtAndPtrGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "configtime=%s\r\n", ShimConfig_configTimeTextPtrGet());
+      sprintf(buffer, "configtime=%s\r\n", ShimConfig_configTimeParseToTxtAndPtrGet());
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
       temp64 = storedConfig->rawBytes[NV_DERIVED_CHANNELS_0]
@@ -339,11 +340,16 @@ void ShimSdCfgFile_parse(void)
   float sample_period = 0;
   uint64_t derived_channels_val = 0;
   uint8_t gsr_range = 0;
+  uint32_t config_time = 0;
+
+  uint32_t est_exp_len = 0;
+  uint32_t max_exp_len = 0;
 
   uint8_t triggerSdCardUpdate = 0;
 
   CheckSdInslot();
-
+  gConfigBytes *storedConfig
+      = ShimConfig_getStoredConfig(); //get the pointer as variable is not accessible
   char cfgname[] = "sdlog.cfg";
   cfg_file_status = f_open(&cfgFile, cfgname, FA_READ | FA_OPEN_EXISTING);
   if (cfg_file_status == FR_NO_FILE)
@@ -360,8 +366,12 @@ void ShimSdCfgFile_parse(void)
   }
   else
   {
-    gConfigBytes stored_config_temp = ShimConfig_createBlankConfigBytes();
-
+    gConfigBytes stored_config_temp;
+    /* update  stored_config_temp with original storedConfig contents before
+    parsing from cfg file to check and update the values from cfg_file */
+    memcpy(&(stored_config_temp.rawBytes[0]), &(storedConfig->rawBytes[0]), STOREDCONFIG_SIZE);
+    //Reset global configuration bytes to a blank state before parsing the config file.
+    ShimConfig_createBlankConfigBytes();
     ShimSdSync_resetSyncVariablesBeforeParseConfig();
     ShimSdSync_resetSyncNodeArray();
 
@@ -643,25 +653,23 @@ void ShimSdCfgFile_parse(void)
       }
       else if (strstr(buffer, "est_exp_len="))
       {
-        stored_config_temp.experimentLengthEstimatedInSec = atoi(equals);
+        est_exp_len = atoi(equals);
+        stored_config_temp.experimentLengthEstimatedInSecMsb
+            = (est_exp_len & 0xff00) >> 8;
+        stored_config_temp.experimentLengthEstimatedInSecLsb = est_exp_len & 0xff;
       }
       else if (strstr(buffer, "max_exp_len="))
       {
-        stored_config_temp.experimentLengthMaxInMinutes = atoi(equals);
+        max_exp_len = atoi(equals);
+        stored_config_temp.experimentLengthMaxInMinutesMsb = (max_exp_len & 0xff00) >> 8;
+        stored_config_temp.experimentLengthMaxInMinutesLsb = max_exp_len & 0xff;
       }
-#if defined(SHIMMER3)
+#if IS_SUPPORTED_SINGLE_TOUCH
       else if (strstr(buffer, "singletouch="))
       {
-        if (IS_SUPPORTED_SINGLE_TOUCH)
-        {
-          stored_config_temp.singleTouchStart = (atoi(equals) == 0) ? 0 : 1;
-        }
-        else
-        {
-          stored_config_temp.singleTouchStart = 0;
-        }
+        stored_config_temp.singleTouchStart = (atoi(equals) == 0) ? 0 : 1;
       }
-#endif
+#endif //IS_SUPPORTED_SINGLE_TOUCH
       else if (strstr(buffer, "myid="))
       {
         stored_config_temp.myTrialID = atoi(equals);
@@ -706,7 +714,8 @@ void ShimSdCfgFile_parse(void)
       }
       else if (strstr(buffer, "configtime="))
       {
-        stored_config_temp.configTime = atol(equals);
+        config_time = atol(equals);
+        ShimConfig_configTimeSet(&stored_config_temp, config_time);
       }
 
       else if (strstr(buffer, "EXG_ADS1292R_1_CONFIG1="))
@@ -818,50 +827,29 @@ void ShimSdCfgFile_parse(void)
 #elif defined(SHIMMER3R)
     HAL_Delay(50); //50ms
 #endif
-
     sample_period = (round) (ShimConfig_freqDiv(sample_rate));
     stored_config_temp.samplingRateTicks = (uint16_t) sample_period;
-    ShimConfig_setShimmerName();
-    ShimConfig_setExpIdName();
-    ShimConfig_setCfgTime();
+    /* restoring orignal calibration bytes which is not updated from calib file*/
+    memcpy((storedConfig->lnAccelCalib.rawBytes),
+        &(stored_config_temp.lnAccelCalib.rawBytes),
+        sizeof(stored_config_temp.lnAccelCalib.rawBytes));
+    memcpy((storedConfig->gyroCalib.rawBytes), &(stored_config_temp.gyroCalib.rawBytes),
+        sizeof(stored_config_temp.gyroCalib.rawBytes));
+    memcpy((storedConfig->magCalib.rawBytes), &(stored_config_temp.magCalib.rawBytes),
+        sizeof(stored_config_temp.magCalib.rawBytes));
+    memcpy((storedConfig->wrAccelCalib.rawBytes),
+        &(stored_config_temp.wrAccelCalib.rawBytes),
+        sizeof(stored_config_temp.wrAccelCalib.rawBytes));
+    memcpy((storedConfig->altAccelCalib.rawBytes),
+        &(stored_config_temp.altAccelCalib.rawBytes),
+        sizeof(stored_config_temp.altAccelCalib.rawBytes));
+    memcpy((storedConfig->altMagCalib.rawBytes),
+        &(stored_config_temp.altMagCalib.rawBytes),
+        sizeof(stored_config_temp.altMagCalib.rawBytes));
+    triggerSdCardUpdate
+        |= ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
 
-    ShimConfig_experimentLengthSecsMaxSet(stored_config_temp.experimentLengthMaxInMinutes);
-    ShimSdSync_setSyncEstExpLen(stored_config_temp.experimentLengthEstimatedInSec);
-
-    triggerSdCardUpdate |= ShimConfig_checkAndCorrectConfig(&stored_config_temp);
-
-    /* Calibration bytes are not copied over from the temporary config bytes */
-    /* Infomem D - Bytes 0-33 - General settings */
-    gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
-    memcpy(&storedConfig->rawBytes[0], &stored_config_temp.rawBytes[0], NV_NUM_SETTINGS_BYTES);
-    /* Infomem D - Bytes 118-122 - Derived channel settings */
-    memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_3],
-        &stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_3], 5);
-    /* Infomem C - Bytes 128-132 - MPL related settings - no longer used/supported */
-    memcpy(&storedConfig->rawBytes[NV_SENSORS3],
-        &stored_config_temp.rawBytes[NV_SENSORS3], 5);
-    /* Infomem C - Bytes 187-223 - Shimmer name, exp ID, config time, trial ID, num Shimmers, trial config, BT interval, est exp len, max exp len */
-    memcpy(&storedConfig->rawBytes[NV_SD_SHIMMER_NAME],
-        &stored_config_temp.rawBytes[NV_SD_SHIMMER_NAME], 37);
-    /* Infomem B - Bytes 256-381 - Center and Node MAC addresses */
-    memcpy(&storedConfig->rawBytes[NV_CENTER],
-        &stored_config_temp.rawBytes[NV_CENTER], NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
-
-    ShimSdHead_config2SdHead();
-    ShimConfig_setConfigTimeTextIfEmpty();
-    ShimSd_setDataFileNameIfEmpty();
-
-#if defined(SHIMMER3)
-    InfoMem_write(0, &storedConfig->rawBytes[0], NV_NUM_SETTINGS_BYTES);
-    InfoMem_write(NV_SENSORS3, &storedConfig->rawBytes[NV_SENSORS3], 5);
-    InfoMem_write(NV_DERIVED_CHANNELS_3, &storedConfig->rawBytes[NV_DERIVED_CHANNELS_3], 5);
-    InfoMem_write(NV_SD_SHIMMER_NAME,
-        &storedConfig->rawBytes[NV_SD_SHIMMER_NAME], NV_NUM_SD_BYTES);
-    InfoMem_write(NV_CENTER, &storedConfig->rawBytes[NV_CENTER],
-        NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
-#elif defined(SHIMMER3R)
-    InfoMem_update();
-#endif
+    LogAndStream_infomemUpdate();
 
     /* If the configuration needed to be corrected, update the config file */
     if (triggerSdCardUpdate)

@@ -13,6 +13,7 @@
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_CRC.h"
+#include "../RN4X/RN4678.h"
 #elif defined(SHIMMER3R)
 #include "hal_CRC.h"
 #include "shimmer_definitions.h"
@@ -239,6 +240,26 @@ typedef enum
   SENSOR_DATA
 } btResponseType;
 
+#if defined(SHIMMER3)
+/* Order here needs to be maintained as it's saved to the EEPROM */
+enum BT_BAUD_RATE
+{
+  BAUD_115200 = 0U,
+  BAUD_1200 = 1U, //Only supported in RN42
+  BAUD_2400 = 2U,
+  BAUD_4800 = 3U,
+  BAUD_9600 = 4U,
+  BAUD_19200 = 5U,
+  BAUD_38400 = 6U,
+  BAUD_57600 = 7U,
+  BAUD_230400 = 8U,  //Only supported in RN42
+  BAUD_460800 = 9U,  //Only supported in RN42
+  BAUD_921600 = 10U, //Only supported in RN42
+  BAUD_1000000 = 11U, //Only supported in RN4678 v1.23 (issues with v1.13.5 & v1.22)
+  BAUD_NO_CHANGE_NEEDED = 0xFF,
+};
+#endif
+
 typedef struct
 {
   uint8_t data[BT_TX_BUF_SIZE];
@@ -252,14 +273,13 @@ typedef struct
 } RingFifoTx_t;
 
 void ShimBt_btCommsProtocolInit(void);
+void ShimBt_startCommon(void);
+void ShimBt_stopCommon(uint8_t isCalledFromMain);
 void ShimBt_resetBtResponseVars(void);
 void ShimBt_resetBtRxVariablesOnConnect(void);
-#if defined(SHIMMER3)
-void ShimBt_resetBtRxBuff(void);
-#endif
+void ShimBt_resetBtRxBuffs(void);
 #if defined(SHIMMER3)
 uint8_t ShimBt_dmaConversionDone(void);
-uint8_t ShimBt_parseRn4678Status(void);
 #elif defined(SHIMMER3R)
 uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff);
 #endif
@@ -313,5 +333,11 @@ void ShimBt_loadTxBufForDataRateTest(void);
 uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType);
 #endif
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr);
+
+uint8_t ShimBt_isCmdAllowedWhileSdSyncing(uint8_t command);
+uint8_t ShimBt_isCmdBlockedWhileSensing(uint8_t command);
+
+void ShimBt_setBtBaudRateToUse(uint32_t baudRate);
+uint32_t ShimBt_getBtBaudRateToUse(void);
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */

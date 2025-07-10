@@ -12,6 +12,7 @@
 
 #define TEST_UNDOCKED             0
 #define TEST_RTC_ERR_FLASH_OFF    0
+#define TEST_PRESS2UNDOCK         0
 
 #define IS_SUPPORTED_SINGLE_TOUCH 0
 #define USE_FATFS                 1
@@ -27,6 +28,12 @@
 #define RESPONSE_PACKET_SIZE 133
 #else
 #define RESPONSE_PACKET_SIZE 1024 //133
+#endif
+
+#define TIMEOUT_100_MS (3277)
+
+#if defined(SHIMMER3)
+#define __NOP() __no_operation()
 #endif
 
 #define STAT_PERI_ADC      0x01

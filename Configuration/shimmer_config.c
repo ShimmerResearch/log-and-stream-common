@@ -44,6 +44,7 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <log_and_stream_externs.h>
@@ -55,8 +56,6 @@
 static gConfigBytes storedConfig;
 uint8_t calibRamFlag = 0;
 
-uint32_t maxLen, maxLenCnt;
-
 char expIdName[MAX_CHARS], shimmerName[MAX_CHARS], configTimeText[UINT32_LEN];
 
 void ShimConfig_reset(void)
@@ -66,9 +65,6 @@ void ShimConfig_reset(void)
   storedConfig.rawBytes[NV_SD_EXP_ID_NAME] = '\0';
 
   calibRamFlag = 0;
-
-  maxLen = 0;
-  ShimConfig_experimentLengthCntReset();
 
   memset(&expIdName[0], 0x00, sizeof(expIdName));
   memset(&shimmerName[0], 0x00, sizeof(shimmerName));
@@ -96,11 +92,6 @@ void ShimConfig_readRam(void)
     ShimConfig_storedConfigSet(temp_storedConfig.rawBytes, 0, STOREDCONFIG_SIZE);
   }
 #endif //USE_DEFAULT_SENSOR
-
-#if defined(SHIMMER3)
-  ShimSdHead_config2SdHead();
-  ShimConfig_infomem2Names();
-#endif
 
   /* Check BT module configuration after sensor configuration read from
    * infomem to see if it is in the correct state (i.e., BT on vs. BT off vs.
@@ -160,8 +151,7 @@ uint8_t ShimConfig_storedConfigSetByte(uint16_t offset, uint8_t val)
 
 void ShimConfig_setDefaultConfig(void)
 {
-  storedConfig = ShimConfig_createBlankConfigBytes();
-
+  ShimConfig_createBlankConfigBytes();
   storedConfig.samplingRateTicks = ShimConfig_freqDiv(51.2); //51.2Hz
   storedConfig.bufferSize = 1;
   /* core sensors enabled */
@@ -224,7 +214,7 @@ void ShimConfig_setDefaultConfig(void)
   ShimConfig_setDefaultShimmerName();
   //exp_id
   ShimConfig_setDefaultTrialId();
-  storedConfig.configTime = 0;
+  ShimConfig_setDefaultConfigTime();
 
   storedConfig.myTrialID = 0;
   storedConfig.numberOfShimmers = 0;
@@ -234,24 +224,20 @@ void ShimConfig_setDefaultConfig(void)
   storedConfig.btIntervalSecs = 54;
   storedConfig.bluetoothDisable = 0;
 
-  storedConfig.experimentLengthMaxInMinutes = 0;
+  /* Auto-stop disabled */
+  ShimConfig_experimentLengthMaxInMinutesSet(0);
 
-  storedConfig.experimentLengthEstimatedInSec = 1;
-  ShimSdSync_setSyncEstExpLen((uint32_t) storedConfig.experimentLengthEstimatedInSec);
+  /* SD sync */
+  ShimConfig_experimentLengthEstimatedInSecSet(1);
+  ShimSdSync_setSyncEstExpLen((uint32_t) ShimConfig_experimentLengthEstimatedInSecGet());
 
   ShimConfig_checkAndCorrectConfig(&storedConfig);
+  ShimConfig_setFlagWriteCfgToSd(1, 0);
+
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(0);
 
   /* Write RAM contents to Infomem */
-#if defined(SHIMMER3)
-  InfoMem_write(0, &storedConfig.rawBytes[0], NV_NUM_SETTINGS_BYTES);
-  InfoMem_write(NV_SENSORS3, &storedConfig.rawBytes[NV_SENSORS3], 5);
-  InfoMem_write(NV_DERIVED_CHANNELS_3,
-      &ShimConfig_getStoredConfig()->rawBytes[NV_DERIVED_CHANNELS_3], 5);
-  InfoMem_write(NV_SD_SHIMMER_NAME, &storedConfig.rawBytes[NV_SD_SHIMMER_NAME], NV_NUM_SD_BYTES);
-  InfoMem_write(NV_MAC_ADDRESS + 7, &storedConfig.rawBytes[NV_MAC_ADDRESS + 7], 153); //25+128
-#elif defined(SHIMMER3R)
-  InfoMem_update();
-#endif
+  LogAndStream_infomemUpdate();
 }
 
 void ShimConfig_setDefaultShimmerName(void)
@@ -265,36 +251,43 @@ void ShimConfig_setDefaultTrialId(void)
   memcpy(&storedConfig.expIdName[0], "DefaultTrial", 12);
 }
 
-uint8_t ShimConfig_getSdCfgFlag(void)
+void ShimConfig_setDefaultConfigTime(void)
 {
-  return (!storedConfig.sdCfgFlag && storedConfig.infoSdcfg);
+  ShimConfig_configTimeSet(&storedConfig, 0);
 }
 
-void ShimConfig_setSdCfgFlag(uint8_t flag)
+void ShimConfig_configTimeSet(gConfigBytes *storedConfigPtr, uint32_t time)
 {
-  if (flag)
+  //Config time is stored in MSB order in the config bytes
+  storedConfigPtr->configTime0 = (time >> 24) & 0xFF;
+  storedConfigPtr->configTime1 = (time >> 16) & 0xFF;
+  storedConfigPtr->configTime2 = (time >> 8) & 0xFF;
+  storedConfigPtr->configTime3 = (time >> 0) & 0xFF;
+}
+
+uint32_t ShimConfig_configTimeGet(void)
+{
+  uint32_t time = 0;
+  time |= ((uint32_t) storedConfig.configTime0) << 24;
+  time |= ((uint32_t) storedConfig.configTime1) << 16;
+  time |= ((uint32_t) storedConfig.configTime2) << 8;
+  time |= ((uint32_t) storedConfig.configTime3);
+  return time;
+}
+
+uint8_t ShimConfig_getFlagWriteCfgToSd(void)
+{
+  return (storedConfig.flagWriteCfgToSd);
+}
+
+void ShimConfig_setFlagWriteCfgToSd(uint8_t flag, uint8_t writeToFlash)
+{
+  storedConfig.flagWriteCfgToSd = flag;
+  if (writeToFlash)
   {
-    storedConfig.sdCfgFlag = 0;
+    InfoMem_write(NV_SD_CONFIG_DELAY_FLAG,
+        &storedConfig.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
   }
-  storedConfig.infoSdcfg = flag;
-  InfoMem_write(NV_SD_CONFIG_DELAY_FLAG,
-      &storedConfig.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
-}
-
-uint8_t ShimConfig_getCalibFlag()
-{
-  return (!storedConfig.sdCfgFlag && storedConfig.infoCalib);
-}
-
-void ShimConfig_setCalibFlag(uint8_t flag)
-{
-  if (flag)
-  {
-    storedConfig.sdCfgFlag = 0;
-  }
-  storedConfig.infoCalib = flag;
-  InfoMem_write(NV_SD_CONFIG_DELAY_FLAG,
-      &storedConfig.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
 }
 
 uint8_t ShimConfig_getRamCalibFlag(void)
@@ -525,6 +518,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
   }
 #endif
 
+#if IS_SUPPORTED_SINGLE_TOUCH
   //the button always works for singletouch mode
   //sync always works for singletouch mode
   if (storedConfigPtr->singleTouchStart
@@ -534,6 +528,9 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
     storedConfigPtr->syncEnable = 1;
     settingCorrected = 1;
   }
+#else
+  storedConfigPtr->singleTouchStart = 0;
+#endif //IS_SUPPORTED_SINGLE_TOUCH
 
   if (ShimBrd_areADS1292RClockLinesTied()
       && !(storedConfigPtr->exgADS1292rRegsCh1.config2 & 0x08))
@@ -626,39 +623,6 @@ void ShimConfig_setExgConfigForEcg(gConfigBytes *storedConfigPtr)
   storedConfigPtr->exgADS1292rRegsCh2.resp2 = 0x02;
 }
 
-void ShimConfig_experimentLengthSecsMaxSet(uint16_t expLengthMins)
-{
-  maxLen = expLengthMins * 60;
-}
-
-uint16_t ShimConfig_experimentLengthSecsMaxGet(void)
-{
-  return maxLen;
-}
-
-void ShimConfig_experimentLengthCntReset(void)
-{
-  maxLenCnt = 0;
-}
-
-uint8_t ShimConfig_checkAutostopCondition(void)
-{
-  if (shimmerStatus.sensing && maxLen)
-  {
-    if (maxLenCnt < maxLen)
-    {
-      maxLenCnt++;
-      return 0; //Continue sensing
-    }
-    else
-    {
-      ShimConfig_experimentLengthCntReset();
-      return 1; //Trigger auto-stop
-    }
-  }
-  return 0; //No action
-}
-
 /* Note samplingRate can be either a freq or a ticks value */
 float ShimConfig_freqDiv(float samplingRate)
 {
@@ -715,7 +679,6 @@ void ShimConfig_loadSensorConfigAndCalib(void)
 {
   ShimCalib_init();
   ShimCalib_initFromConfigBytesAll();
-
   if (!shimmerStatus.docked && CheckSdInslot())
   { //sd card ready to access
     if (!shimmerStatus.sdPowerOn)
@@ -723,11 +686,11 @@ void ShimConfig_loadSensorConfigAndCalib(void)
       //Hits here when undocked
       Board_setSdPower(1);
     }
-    if (ShimConfig_getSdCfgFlag())
+    if (ShimConfig_getFlagWriteCfgToSd())
     { //info > sdcard
       ShimConfig_readRam();
       ShimSdCfgFile_generate();
-      ShimConfig_setSdCfgFlag(0);
+      ShimConfig_setFlagWriteCfgToSd(0, 1);
       if (!ShimSd_isFileStatusOk())
       {
         shimmerStatus.sdlogReady = 0;
@@ -753,14 +716,12 @@ void ShimConfig_loadSensorConfigAndCalib(void)
     //CalibFromInfoAll();
   }
 
-  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll();
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
 }
 
-gConfigBytes ShimConfig_createBlankConfigBytes(void)
+void ShimConfig_createBlankConfigBytes(void)
 {
-  gConfigBytes storedConfigNew;
-
-  memset(&storedConfigNew.rawBytes[NV_SAMPLING_RATE], 0, STOREDCONFIG_SIZE);
+  memset(&storedConfig.rawBytes[0], 0, STOREDCONFIG_SIZE);
 
   /* Make all calibration bytes invalid (i.e., 0xFF) */
   memset(storedConfig.lnAccelCalib.rawBytes, 0xFF,
@@ -775,17 +736,15 @@ gConfigBytes ShimConfig_createBlankConfigBytes(void)
       sizeof(storedConfig.altMagCalib.rawBytes));
 
   /* Copy MAC ID directly from BT module */
-  memcpy(&storedConfigNew.macAddr[0], ShimBt_macIdBytesPtrGet(), 6);
+  memcpy(&storedConfig.macAddr[0], ShimBt_macIdBytesPtrGet(), 6);
 
   /* Reset unused bytes */
-  memset(&storedConfigNew.rawBytes[NV_BT_SET_PIN + 1], 0xFF, 24);
+  memset(&storedConfig.rawBytes[NV_BT_SET_PIN + 1], 0xFF, 24);
 
   /* Reset node addresses */
-  memset(&storedConfigNew.rawBytes[NV_CENTER], 0xFF, 128);
+  memset(&storedConfig.rawBytes[NV_CENTER], 0xFF, 128);
 
-  memset(storedConfig.rawBytes, 0x00, sizeof(storedConfig.rawBytes));
-
-  return storedConfigNew;
+  return;
 }
 
 uint8_t ShimConfig_areConfigBytesValid(void)
@@ -802,58 +761,45 @@ uint8_t ShimConfig_areConfigBytesValid(void)
   return 0;
 }
 
-void ShimConfig_setShimmerName(void)
+void ShimConfig_parseShimmerNameFromConfigBytes(void)
 {
   uint8_t i;
-  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
-
   memset(&shimmerName[0], 0x00, sizeof(shimmerName));
 
-  for (i = 0; (i < MAX_CHARS - 1) && isprint((uint8_t) configBytes->shimmerName[i]); i++)
+  for (i = 0; (i < MAX_CHARS - 1) && isprint((uint8_t) storedConfig.shimmerName[i]); i++)
     ;
   if (i == 0)
   {
     ShimConfig_setDefaultShimmerName();
     i = 12;
   }
-  memcpy((char *) shimmerName, &(configBytes->shimmerName[0]), i);
+  memcpy((char *) shimmerName, &(storedConfig.shimmerName[0]), i);
 }
 
-void ShimConfig_setExpIdName(void)
+void ShimConfig_parseExpIdNameFromConfigBytes(void)
 {
   uint8_t i;
-  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
-
   memset(&expIdName[0], 0x00, sizeof(expIdName));
 
-  for (i = 0; (i < MAX_CHARS - 1) && (isprint((uint8_t) configBytes->expIdName[i])); i++)
+  for (i = 0; (i < MAX_CHARS - 1) && (isprint((uint8_t) storedConfig.expIdName[i])); i++)
     ;
   if (i == 0)
   {
     ShimConfig_setDefaultTrialId();
     i = 12;
   }
-  memcpy((char *) expIdName, &(configBytes->expIdName[0]), i);
+  memcpy((char *) expIdName, &(storedConfig.expIdName[0]), i);
 }
 
-void ShimConfig_setCfgTime(void)
+void ShimConfig_parseCfgTimeFromConfigBytes(void)
 {
-  uint32_t cfg_time_temp = 0;
-  uint8_t i;
-  gConfigBytes *configBytes = ShimConfig_getStoredConfig();
-
   memset(&configTimeText[0], 0x00, sizeof(configTimeText));
 
-  //MSB order
-  for (i = 0; i < 4; i++)
+  uint32_t configTime = ShimConfig_configTimeGet();
+  /* Convert configTime to string */
+  if (configTime > 0)
   {
-    cfg_time_temp <<= 8;
-    cfg_time_temp |= configBytes->rawBytes[NV_SD_CONFIG_TIME + i];
-  }
-
-  if (cfg_time_temp)
-  {
-    ShimUtil_ItoaNo0((uint64_t) cfg_time_temp, configTimeText, UINT32_LEN);
+    ShimUtil_ItoaNo0((uint64_t) configTime, configTimeText, sizeof(configTimeText));
   }
   else
   {
@@ -861,32 +807,74 @@ void ShimConfig_setCfgTime(void)
   }
 }
 
-void ShimConfig_setConfigTimeTextIfEmpty(void)
+char *ShimConfig_shimmerNameParseToTxtAndPtrGet(void)
 {
-  if (strlen((char *) configTimeText) == 0)
-  {
-    strcpy((char *) configTimeText, "0");
-  }
-}
-
-void ShimConfig_infomem2Names(void)
-{
-  ShimConfig_setShimmerName();
-  ShimConfig_setExpIdName();
-  ShimConfig_setCfgTime();
-}
-
-char *ShimConfig_shimmerNamePtrGet(void)
-{
+  ShimConfig_parseShimmerNameFromConfigBytes();
   return &shimmerName[0];
 }
 
-char *ShimConfig_expIdPtrGet(void)
+char *ShimConfig_expIdParseToTxtAndPtrGet(void)
 {
+  ShimConfig_parseExpIdNameFromConfigBytes();
   return &expIdName[0];
 }
 
-char *ShimConfig_configTimeTextPtrGet(void)
+char *ShimConfig_configTimeParseToTxtAndPtrGet(void)
 {
+  ShimConfig_parseCfgTimeFromConfigBytes();
   return &configTimeText[0];
+}
+
+void ShimConfig_shimmerNameSet(uint8_t *strPtr, uint8_t strLen)
+{
+  uint8_t lenToCpy = (strLen < sizeof(storedConfig.shimmerName)) ?
+      strLen :
+      sizeof(storedConfig.shimmerName);
+  memset(&storedConfig.shimmerName[0], 0, sizeof(storedConfig.shimmerName));
+  memcpy(&storedConfig.shimmerName[0], strPtr, lenToCpy);
+}
+
+void ShimConfig_expIdSet(uint8_t *strPtr, uint8_t strLen)
+{
+  uint8_t lenToCpy = (strLen < sizeof(storedConfig.expIdName)) ?
+      strLen :
+      sizeof(storedConfig.expIdName);
+  memset(&storedConfig.expIdName[0], 0, sizeof(storedConfig.expIdName));
+  memcpy(&storedConfig.expIdName[0], strPtr, lenToCpy);
+}
+
+void ShimConfig_configTimeSetFromStr(uint8_t *strPtr, uint8_t strLen)
+{
+  uint32_t config_time;
+  char configTimeTextTemp[UINT32_LEN] = { 0 };
+  uint8_t lenToCpy = strLen < (UINT32_LEN - 1) ? strLen : (UINT32_LEN - 1);
+  memcpy(&configTimeTextTemp[0], strPtr, lenToCpy);
+
+  config_time = atol((char *) &configTimeTextTemp[0]);
+
+  ShimConfig_configTimeSet(&storedConfig, config_time);
+}
+
+void ShimConfig_experimentLengthEstimatedInSecSet(uint16_t value)
+{
+  storedConfig.experimentLengthEstimatedInSecMsb = (value >> 8) & 0xFF;
+  storedConfig.experimentLengthEstimatedInSecLsb = value & 0xFF;
+}
+
+uint16_t ShimConfig_experimentLengthEstimatedInSecGet(void)
+{
+  return storedConfig.experimentLengthEstimatedInSecMsb << 8
+      | storedConfig.experimentLengthEstimatedInSecLsb;
+}
+
+void ShimConfig_experimentLengthMaxInMinutesSet(uint16_t value)
+{
+  storedConfig.experimentLengthMaxInMinutesMsb = (value >> 8) & 0xFF;
+  storedConfig.experimentLengthMaxInMinutesLsb = value & 0xFF;
+}
+
+uint16_t ShimConfig_experimentLengthMaxInMinutesGet(void)
+{
+  return storedConfig.experimentLengthMaxInMinutesMsb << 8
+      | storedConfig.experimentLengthMaxInMinutesLsb;
 }
