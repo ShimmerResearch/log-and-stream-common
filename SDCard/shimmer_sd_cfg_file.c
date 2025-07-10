@@ -348,7 +348,8 @@ void ShimSdCfgFile_parse(void)
   uint8_t triggerSdCardUpdate = 0;
 
   CheckSdInslot();
-
+  gConfigBytes *storedConfig
+      = ShimConfig_getStoredConfig(); //get the pointer as variable is not accessible
   char cfgname[] = "sdlog.cfg";
   cfg_file_status = f_open(&cfgFile, cfgname, FA_READ | FA_OPEN_EXISTING);
   if (cfg_file_status == FR_NO_FILE)
@@ -365,8 +366,12 @@ void ShimSdCfgFile_parse(void)
   }
   else
   {
-    gConfigBytes stored_config_temp = ShimConfig_createBlankConfigBytes();
-
+    gConfigBytes stored_config_temp;
+    /* update  stored_config_temp with original storedConfig contents before
+    parsing from cfg file to check and update the values from cfg_file */
+    memcpy(&(stored_config_temp.rawBytes[0]), &(storedConfig->rawBytes[0]), STOREDCONFIG_SIZE);
+    //Reset global configuration bytes to a blank state before parsing the config file.
+    ShimConfig_createBlankConfigBytes();
     ShimSdSync_resetSyncVariablesBeforeParseConfig();
     ShimSdSync_resetSyncNodeArray();
 
@@ -822,28 +827,27 @@ void ShimSdCfgFile_parse(void)
 #elif defined(SHIMMER3R)
     HAL_Delay(50); //50ms
 #endif
-
     sample_period = (round) (ShimConfig_freqDiv(sample_rate));
     stored_config_temp.samplingRateTicks = (uint16_t) sample_period;
-
-    triggerSdCardUpdate |= ShimConfig_checkAndCorrectConfig(&stored_config_temp);
-
-    /* Calibration bytes are not copied over from the temporary config bytes */
-    /* Infomem D - Bytes 0-33 - General settings */
-    gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
-    memcpy(&storedConfig->rawBytes[0], &stored_config_temp.rawBytes[0], NV_NUM_SETTINGS_BYTES);
-    /* Infomem D - Bytes 118-122 - Derived channel settings */
-    memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_3],
-        &stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_3], 5);
-    /* Infomem C - Bytes 128-132 - MPL related settings - no longer used/supported */
-    memcpy(&storedConfig->rawBytes[NV_SENSORS3],
-        &stored_config_temp.rawBytes[NV_SENSORS3], 5);
-    /* Infomem C - Bytes 187-223 - Shimmer name, exp ID, config time, trial ID, num Shimmers, trial config, BT interval, est exp len, max exp len */
-    memcpy(&storedConfig->rawBytes[NV_SD_SHIMMER_NAME],
-        &stored_config_temp.rawBytes[NV_SD_SHIMMER_NAME], 37);
-    /* Infomem B - Bytes 256-381 - Center and Node MAC addresses */
-    memcpy(&storedConfig->rawBytes[NV_CENTER],
-        &stored_config_temp.rawBytes[NV_CENTER], NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS);
+    /* restoring orignal calibration bytes which is not updated from calib file*/
+    memcpy((storedConfig->lnAccelCalib.rawBytes),
+        &(stored_config_temp.lnAccelCalib.rawBytes),
+        sizeof(stored_config_temp.lnAccelCalib.rawBytes));
+    memcpy((storedConfig->gyroCalib.rawBytes), &(stored_config_temp.gyroCalib.rawBytes),
+        sizeof(stored_config_temp.gyroCalib.rawBytes));
+    memcpy((storedConfig->magCalib.rawBytes), &(stored_config_temp.magCalib.rawBytes),
+        sizeof(stored_config_temp.magCalib.rawBytes));
+    memcpy((storedConfig->wrAccelCalib.rawBytes),
+        &(stored_config_temp.wrAccelCalib.rawBytes),
+        sizeof(stored_config_temp.wrAccelCalib.rawBytes));
+    memcpy((storedConfig->altAccelCalib.rawBytes),
+        &(stored_config_temp.altAccelCalib.rawBytes),
+        sizeof(stored_config_temp.altAccelCalib.rawBytes));
+    memcpy((storedConfig->altMagCalib.rawBytes),
+        &(stored_config_temp.altMagCalib.rawBytes),
+        sizeof(stored_config_temp.altMagCalib.rawBytes));
+    triggerSdCardUpdate
+        |= ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
 
     LogAndStream_infomemUpdate();
 
