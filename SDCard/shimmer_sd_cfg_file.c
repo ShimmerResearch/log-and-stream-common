@@ -370,7 +370,7 @@ void ShimSdCfgFile_parse(void)
     /* update  stored_config_temp with original storedConfig contents before
     parsing from cfg file to check and update the values from cfg_file */
     memcpy(&(stored_config_temp.rawBytes[0]), &(storedConfig->rawBytes[0]), STOREDCONFIG_SIZE);
-    // Reset global configuration bytes to a blank state before parsing the config file.
+    //Reset global configuration bytes to a blank state before parsing the config file.
     ShimConfig_createBlankConfigBytes();
     ShimSdSync_resetSyncVariablesBeforeParseConfig();
     ShimSdSync_resetSyncNodeArray();
