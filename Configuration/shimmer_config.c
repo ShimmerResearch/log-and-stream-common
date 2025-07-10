@@ -492,6 +492,11 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
     settingCorrected = 1;
   }
 
+  if (storedConfigPtr->chEnSkinTemp || storedConfigPtr->chEnResAmp)
+  {
+    storedConfigPtr->chEnIntADC3 = 1;
+  }
+
   if (storedConfigPtr->gsrRange > 4)
   { //never larger than 4
     storedConfigPtr->gsrRange = GSR_AUTORANGE;
