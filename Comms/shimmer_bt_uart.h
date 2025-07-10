@@ -277,9 +277,7 @@ void ShimBt_startCommon(void);
 void ShimBt_stopCommon(uint8_t isCalledFromMain);
 void ShimBt_resetBtResponseVars(void);
 void ShimBt_resetBtRxVariablesOnConnect(void);
-#if defined(SHIMMER3)
 void ShimBt_resetBtRxBuffs(void);
-#endif
 #if defined(SHIMMER3)
 uint8_t ShimBt_dmaConversionDone(void);
 #elif defined(SHIMMER3R)
