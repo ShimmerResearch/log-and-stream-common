@@ -138,6 +138,11 @@ void GSR_range(uint8_t *buf)
   lastGsrVal = ADC_val;
 }
 
+void GSR_resetGsrRange(void)
+{
+  GSR_setActiveResistor(HW_RES_40K);
+}
+
 void GSR_setActiveResistor(uint8_t range)
 {
   switch (range)
