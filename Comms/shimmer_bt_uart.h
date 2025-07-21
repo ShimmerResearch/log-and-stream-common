@@ -202,6 +202,9 @@
 #define SET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB2
 #define ALT_MAG_SAMPLING_RATE_RESPONSE                0xB3
 #define GET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB4
+#if defined(SHIMMER3)
+#define SET_BLE_ENABLED_COMMAND                       0xB5
+#endif
 #define SET_SD_SYNC_COMMAND                           0xE0
 #define SD_SYNC_RESPONSE                              0xE1
 #define NACK_COMMAND_PROCESSED                        0xFE
@@ -339,5 +342,7 @@ uint8_t ShimBt_isCmdBlockedWhileSensing(uint8_t command);
 
 void ShimBt_setBtBaudRateToUse(uint32_t baudRate);
 uint32_t ShimBt_getBtBaudRateToUse(void);
+void ShimBt_setIsBleSupportEnabled(uint8_t state);
+uint8_t ShimBt_getIsBleSupportEnabled(void);
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */

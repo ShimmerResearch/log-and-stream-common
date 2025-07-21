@@ -223,6 +223,11 @@ void ShimConfig_setDefaultConfig(void)
   storedConfig.sdErrorEnable = 1;
   storedConfig.btIntervalSecs = 54;
   storedConfig.bluetoothDisable = 0;
+#if defined(SHIMMER3)
+  storedConfig.bleEnabled = 0;
+#else
+  storedConfig.bleEnabled = 1;
+#endif
 
   /* Auto-stop disabled */
   ShimConfig_experimentLengthMaxInMinutesSet(0);
@@ -561,6 +566,14 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
   }
 #endif
 
+#if defined(SHIMMER3)
+  /* We currently use Classic Bluetooth for SD sync so no need to turn BLE on */
+  if(storedConfigPtr->syncEnable && storedConfigPtr->bleEnabled)
+  {
+    storedConfigPtr->bleEnabled = 0;
+  }
+#endif
+
   ShimSdSync_checkSyncCenterName();
 
   uint8_t *macIdBytesPtr = ShimBt_macIdBytesPtrGet();
@@ -648,7 +661,11 @@ void ShimConfig_checkBtModeFromConfig(void)
      * turn off if BT module is not in the right configuration for SD sync.
      * Leave the SD sync code to turn on/off BT later when required. */
     if ((!shimmerStatus.btSupportEnabled && shimmerStatus.btPowerOn)
-        || (shimmerStatus.sdSyncEnabled != shimmerStatus.btInSyncMode))
+        || (shimmerStatus.sdSyncEnabled != shimmerStatus.btInSyncMode)
+#if defined(SHIMMER3)
+        || (configBytesPtr->bleEnabled != ShimBt_getIsBleSupportEnabled())
+#endif
+        )
     {
       BtStop(0);
     }
