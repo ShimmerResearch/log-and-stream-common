@@ -203,17 +203,17 @@
 #define ALT_MAG_SAMPLING_RATE_RESPONSE                0xB3
 #define GET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB4
 #if defined(SHIMMER3)
-#define SET_BLE_ENABLED_COMMAND                       0xB5
+#define SET_BLE_ENABLED_COMMAND 0xB5
 #endif
-#define SET_SD_SYNC_COMMAND                           0xE0
-#define SD_SYNC_RESPONSE                              0xE1
-#define NACK_COMMAND_PROCESSED                        0xFE
-#define ACK_COMMAND_PROCESSED                         0xFF
+#define SET_SD_SYNC_COMMAND        0xE0
+#define SD_SYNC_RESPONSE           0xE1
+#define NACK_COMMAND_PROCESSED     0xFE
+#define ACK_COMMAND_PROCESSED      0xFF
 
 //#define BT_RX_COMMS_TIMEOUT_TICKS                     3277U /* 32768*0.1s = 3276.8 */
-#define BT_RX_COMMS_TIMEOUT_TICKS                     328U /* 32768*0.01s = 327.68  */
+#define BT_RX_COMMS_TIMEOUT_TICKS  328U /* 32768*0.01s = 327.68  */
 
-#define DATA_RATE_TEST_PACKET_SIZE                    5U //1 header byte + uint32_t counter value
+#define DATA_RATE_TEST_PACKET_SIZE 5U //1 header byte + uint32_t counter value
 
 enum
 {

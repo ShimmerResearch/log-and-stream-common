@@ -350,13 +350,13 @@ typedef union
     uint8_t wrAccelLpModeMsb             : 1;
     uint8_t gyroRangeMsb                 : 1;
 #if defined(SHIMMER3)
-    uint8_t bleEnabled                   : 1;
+    uint8_t bleEnabled : 1;
 #else
-    uint8_t unusedByte130Bit4            : 1;
+    uint8_t unusedByte130Bit4 : 1;
 #endif
-    uint8_t unusedByte130Bit5            : 1;
-    uint8_t unusedByte130Bit6            : 1;
-    uint8_t altAccelRate                 : 2;
+    uint8_t unusedByte130Bit5 : 1;
+    uint8_t unusedByte130Bit6 : 1;
+    uint8_t altAccelRate      : 2;
 
     //Idx 131: Config setup byte 5
     uint8_t altMagRate        : 6;

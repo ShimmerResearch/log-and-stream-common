@@ -568,7 +568,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
 
 #if defined(SHIMMER3)
   /* We currently use Classic Bluetooth for SD sync so no need to turn BLE on */
-  if(storedConfigPtr->syncEnable && storedConfigPtr->bleEnabled)
+  if (storedConfigPtr->syncEnable && storedConfigPtr->bleEnabled)
   {
     storedConfigPtr->bleEnabled = 0;
   }
@@ -665,7 +665,7 @@ void ShimConfig_checkBtModeFromConfig(void)
 #if defined(SHIMMER3)
         || (configBytesPtr->bleEnabled != ShimBt_getIsBleSupportEnabled())
 #endif
-        )
+    )
     {
       BtStop(0);
     }

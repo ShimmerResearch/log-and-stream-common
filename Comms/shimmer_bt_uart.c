@@ -1381,17 +1381,16 @@ void ShimBt_processCmd(void)
 #if defined(SHIMMER3)
       case SET_BLE_ENABLED_COMMAND:
       {
-      if (isBtDeviceRn4678())
-      {
-        storedConfig->bleEnabled = args[0] & 0x01;
-        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4,
-            SDH_CONFIG_SETUP_BYTE4, 1);
-      }
-      else
-      {
-        // BLE not supported on RN42
-        sendNack = 1;
-      }
+        if (isBtDeviceRn4678())
+        {
+          storedConfig->bleEnabled = args[0] & 0x01;
+          ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
+        }
+        else
+        {
+          //BLE not supported on RN42
+          sendNack = 1;
+        }
         break;
       }
 #endif
@@ -2622,7 +2621,7 @@ uint8_t ShimBt_isCmdBlockedWhileSensing(uint8_t command)
     case SET_ALT_MAG_CALIBRATION_COMMAND:     //0xAF
     case SET_ALT_MAG_SAMPLING_RATE_COMMAND:   //0xB2
 #if defined(SHIMMER3)
-    case SET_BLE_ENABLED_COMMAND:             //0xB5
+    case SET_BLE_ENABLED_COMMAND: //0xB5
 #endif
 
       return 1;
