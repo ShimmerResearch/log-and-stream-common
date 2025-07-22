@@ -681,13 +681,13 @@ uint8_t ShimConfig_isExpansionBoardPwrEnabled(void)
 
 void ShimConfig_loadSensorConfigAndCalib(void)
 {
-  // Read storedConfig from flash or generate default config if not available
+  //Read storedConfig from flash or generate default config if not available
   ShimConfig_readRam();
 
   ShimCalib_init();
   ShimCalib_initFromConfigBytesAll();
 
-  // Read storedConfig from SD cfg file or update it from RAM if RAM is newer
+  //Read storedConfig from SD cfg file or update it from RAM if RAM is newer
   if (!shimmerStatus.docked && CheckSdInslot())
   { //sd card ready to access
     if (!shimmerStatus.sdPowerOn)
@@ -712,7 +712,7 @@ void ShimConfig_loadSensorConfigAndCalib(void)
       ShimSdCfgFile_readSdConfiguration();
     }
 
-    // If the calib dump file is available, read it into RAM. Else, generate it.
+    //If the calib dump file is available, read it into RAM. Else, generate it.
     if (ShimCalib_file2Ram())
     {
       //fail, i.e. no such file. use current DumpRam to generate a file

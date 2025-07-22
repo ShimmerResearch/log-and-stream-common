@@ -845,8 +845,8 @@ void ShimSdCfgFile_parse(void)
 
     /* Copy back in the NV_SD_CONFIG_DELAY_FLAG byte. This carries forward whether the CFG and/or config files need to be updated. */
     //TODO Why would the CFG file need to be updated at this point when we are reading it?
-    storedConfigPtr->rawBytes[NV_SD_CONFIG_DELAY_FLAG] =
-        storedConfigTemp.rawBytes[NV_SD_CONFIG_DELAY_FLAG];
+    storedConfigPtr->rawBytes[NV_SD_CONFIG_DELAY_FLAG]
+        = storedConfigTemp.rawBytes[NV_SD_CONFIG_DELAY_FLAG];
 
     triggerSdCardUpdate |= ShimConfig_checkAndCorrectConfig();
 
