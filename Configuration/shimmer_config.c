@@ -537,8 +537,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
   storedConfig.singleTouchStart = 0;
 #endif //IS_SUPPORTED_SINGLE_TOUCH
 
-  if (ShimBrd_areADS1292RClockLinesTied()
-      && !(storedConfig.exgADS1292rRegsCh1.config2 & 0x08))
+  if (ShimBrd_areADS1292RClockLinesTied() && !(storedConfig.exgADS1292rRegsCh1.config2 & 0x08))
   {
     /* Amend configuration byte 2 of ADS chip 1 to have bit 3 set to 1.
      * This ensures clock lines on ADS chip are correct */
