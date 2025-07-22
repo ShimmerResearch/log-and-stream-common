@@ -727,14 +727,14 @@ char *ShimBt_getBtVerStrPtr(void)
 
 void ShimBt_processCmd(void)
 {
-  gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
+  gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
 
   uint8_t update_sdconfig = 0, update_calib_dump_file = 0;
   uint8_t fullSyncResp[SYNC_PACKET_MAX_SIZE] = { 0 };
   uint8_t sensorCalibId;
 
   /* Block non-sync related commands if sync is enabled. Equally, block sync commands if sync is disabled. XOR condition will sendNack if only one is true. */
-  if (storedConfig->syncEnable ^ ShimBt_isCmdAllowedWhileSdSyncing(gAction))
+  if (storedConfigPtr->syncEnable ^ ShimBt_isCmdAllowedWhileSdSyncing(gAction))
   {
     sendNack = 1;
   }
@@ -872,9 +872,9 @@ void ShimBt_processCmd(void)
 #endif
       case SET_TRIAL_CONFIG_COMMAND:
       {
-        storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0] = args[0];
-        storedConfig->rawBytes[NV_SD_TRIAL_CONFIG1] = args[1];
-        storedConfig->rawBytes[NV_SD_BT_INTERVAL] = args[2];
+        storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0] = args[0];
+        storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG1] = args[1];
+        storedConfigPtr->rawBytes[NV_SD_BT_INTERVAL] = args[2];
 
         //Save TRIAL_CONFIG0, TRIAL_CONFIG1 and BT_INTERVAL
         ShimBt_settingChangeCommon(NV_SD_TRIAL_CONFIG0, SDH_TRIAL_CONFIG0, 3);
@@ -882,49 +882,49 @@ void ShimBt_processCmd(void)
       }
       case SET_CENTER_COMMAND:
       {
-        storedConfig->masterEnable = args[0] & 0x01;
+        storedConfigPtr->masterEnable = args[0] & 0x01;
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
         break;
       }
       case SET_SHIMMERNAME_COMMAND:
       {
         ShimConfig_shimmerNameSet(&args[1], args[0]);
-        InfoMem_write(NV_SD_SHIMMER_NAME, (uint8_t *) &storedConfig->shimmerName[0],
-            sizeof(storedConfig->shimmerName));
+        InfoMem_write(NV_SD_SHIMMER_NAME, (uint8_t *) &storedConfigPtr->shimmerName[0],
+            sizeof(storedConfigPtr->shimmerName));
         update_sdconfig = 1;
         break;
       }
       case SET_EXPID_COMMAND:
       {
         ShimConfig_expIdSet(&args[1], args[0]);
-        InfoMem_write(NV_SD_EXP_ID_NAME, (uint8_t *) &storedConfig->expIdName[0],
-            sizeof(storedConfig->expIdName));
+        InfoMem_write(NV_SD_EXP_ID_NAME, (uint8_t *) &storedConfigPtr->expIdName[0],
+            sizeof(storedConfigPtr->expIdName));
         update_sdconfig = 1;
         break;
       }
       case SET_CONFIGTIME_COMMAND:
       {
         ShimConfig_configTimeSetFromStr(&args[1], args[0]);
-        ShimSdHead_sdHeadTextSet(&storedConfig->configTime0, SDH_CONFIG_TIME_0, 4);
-        InfoMem_write(NV_SD_CONFIG_TIME, &storedConfig->rawBytes[NV_SD_CONFIG_TIME], 4);
+        ShimSdHead_sdHeadTextSet(&storedConfigPtr->configTime0, SDH_CONFIG_TIME_0, 4);
+        InfoMem_write(NV_SD_CONFIG_TIME, &storedConfigPtr->rawBytes[NV_SD_CONFIG_TIME], 4);
         update_sdconfig = 1;
         break;
       }
       case SET_NSHIMMER_COMMAND:
       {
-        storedConfig->numberOfShimmers = args[0];
+        storedConfigPtr->numberOfShimmers = args[0];
         ShimBt_settingChangeCommon(NV_SD_NSHIMMER, SDH_NSHIMMER, 1);
         break;
       }
       case SET_MYID_COMMAND:
       {
-        storedConfig->myTrialID = args[0];
+        storedConfigPtr->myTrialID = args[0];
         ShimBt_settingChangeCommon(NV_SD_MYTRIAL_ID, SDH_MYTRIAL_ID, 1);
         break;
       }
       case SET_WR_ACCEL_RANGE_COMMAND:
       {
-        storedConfig->wrAccelRange = args[0] < 4 ? (args[0] & 0x03) : 0;
+        storedConfigPtr->wrAccelRange = args[0] < 4 ? (args[0] & 0x03) : 0;
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
         break;
       }
@@ -946,10 +946,10 @@ void ShimBt_processCmd(void)
       case SET_WR_ACCEL_SAMPLING_RATE_COMMAND:
       {
 #if defined(SHIMMER3)
-        storedConfig->wrAccelRate
+        storedConfigPtr->wrAccelRate
             = (args[0] <= LSM303DLHC_ACCEL_1_344kHz) ? args[0] : LSM303DLHC_ACCEL_100HZ;
 #elif defined(SHIMMER3R)
-        storedConfig->wrAccelRate
+        storedConfigPtr->wrAccelRate
             = (args[0] <= LIS2DW12_XL_ODR_1k6Hz) ? args[0] : LIS2DW12_XL_ODR_100Hz;
 #endif
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
@@ -958,62 +958,64 @@ void ShimBt_processCmd(void)
       case SET_MAG_GAIN_COMMAND:
       {
 #if defined(SHIMMER3)
-        storedConfig->magRange = (args[0] <= LSM303DLHC_MAG_8_1G) ? args[0] : LSM303DLHC_MAG_1_3G;
+        storedConfigPtr->magRange
+            = (args[0] <= LSM303DLHC_MAG_8_1G) ? args[0] : LSM303DLHC_MAG_1_3G;
 #elif defined(SHIMMER3R)
-        storedConfig->altMagRange = (args[0] <= LIS3MDL_16_GAUSS) ? args[0] : LIS3MDL_4_GAUSS;
+        storedConfigPtr->altMagRange = (args[0] <= LIS3MDL_16_GAUSS) ? args[0] : LIS3MDL_4_GAUSS;
 #endif
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
         break;
       }
       case SET_MAG_SAMPLING_RATE_COMMAND:
       {
-        ShimConfig_configByteMagRateSet(storedConfig, args[0]);
+        ShimConfig_configByteMagRateSet(args[0]);
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
         break;
       }
       case SET_WR_ACCEL_LPMODE_COMMAND:
       {
-        ShimConfig_wrAccelLpModeSet(storedConfig, args[0] == 1 ? 1 : 0);
+        ShimConfig_wrAccelLpModeSet(args[0] == 1 ? 1 : 0);
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
         break;
       }
       case SET_WR_ACCEL_HRMODE_COMMAND:
       {
-        storedConfig->wrAccelHrMode = (args[0] == 1) ? 1 : 0;
+        storedConfigPtr->wrAccelHrMode = (args[0] == 1) ? 1 : 0;
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 1);
         break;
       }
       case SET_GYRO_RANGE_COMMAND:
       {
-        ShimConfig_gyroRangeSet(storedConfig, args[0]);
+        ShimConfig_gyroRangeSet(args[0]);
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE2, SDH_CONFIG_SETUP_BYTE2, 1);
         break;
       }
       case SET_GYRO_SAMPLING_RATE_COMMAND:
       {
-        ShimConfig_gyroRateSet(storedConfig, args[0]);
+        ShimConfig_gyroRateSet(args[0]);
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE1, SDH_CONFIG_SETUP_BYTE1, 1);
         break;
       }
       case SET_ALT_ACCEL_RANGE_COMMAND:
       {
 #if defined(SHIMMER3)
-        storedConfig->altAccelRange = (args[0] <= ACCEL_16G) ? (args[0] & 0x03) : ACCEL_2G;
+        storedConfigPtr->altAccelRange = (args[0] <= ACCEL_16G) ? (args[0] & 0x03) : ACCEL_2G;
 #elif defined(SHIMMER3R)
-        storedConfig->lnAccelRange = (args[0] <= LSM6DSV_16g) ? (args[0] & 0x03) : LSM6DSV_2g;
+        storedConfigPtr->lnAccelRange
+            = (args[0] <= LSM6DSV_16g) ? (args[0] & 0x03) : LSM6DSV_2g;
 #endif
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
         break;
       }
       case SET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
       {
-        ShimConfig_configBytePressureOversamplingRatioSet(storedConfig, args[0]);
+        ShimConfig_configBytePressureOversamplingRatioSet(args[0]);
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
         break;
       }
       case SET_INTERNAL_EXP_POWER_ENABLE_COMMAND:
       {
-        storedConfig->expansionBoardPower = (args[0] == 1) ? 1 : 0;
+        storedConfigPtr->expansionBoardPower = (args[0] == 1) ? 1 : 0;
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
         break;
       }
@@ -1025,7 +1027,7 @@ void ShimBt_processCmd(void)
       }
       case SET_SAMPLING_RATE_COMMAND:
       {
-        storedConfig->samplingRateTicks = *(uint16_t *) args;
+        storedConfigPtr->samplingRateTicks = *(uint16_t *) args;
         //ShimConfig_storedConfigSet(&args[0], NV_SAMPLING_RATE, 2);
         ShimBt_settingChangeCommon(NV_SAMPLING_RATE, SDH_SAMPLE_RATE_0, 2);
         break;
@@ -1079,7 +1081,7 @@ void ShimBt_processCmd(void)
         sensorCalibId = SC_SENSOR_LSM6DSV_ACCEL;
 #endif
         ShimBt_calibrationChangeCommon(NV_LN_ACCEL_CALIBRATION, SDH_LN_ACCEL_CALIBRATION,
-            &storedConfig->lnAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+            &storedConfigPtr->lnAccelCalib.rawBytes[0], &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
@@ -1091,7 +1093,7 @@ void ShimBt_processCmd(void)
         sensorCalibId = SC_SENSOR_LSM6DSV_GYRO;
 #endif
         ShimBt_calibrationChangeCommon(NV_GYRO_CALIBRATION, SDH_GYRO_CALIBRATION,
-            &storedConfig->gyroCalib.rawBytes[0], &args[0], sensorCalibId);
+            &storedConfigPtr->gyroCalib.rawBytes[0], &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
@@ -1103,7 +1105,7 @@ void ShimBt_processCmd(void)
         sensorCalibId = SC_SENSOR_LIS2MDL_MAG;
 #endif
         ShimBt_calibrationChangeCommon(NV_MAG_CALIBRATION, SDH_MAG_CALIBRATION,
-            &storedConfig->magCalib.rawBytes[0], &args[0], sensorCalibId);
+            &storedConfigPtr->magCalib.rawBytes[0], &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
@@ -1115,13 +1117,13 @@ void ShimBt_processCmd(void)
         sensorCalibId = SC_SENSOR_LIS2DW12_ACCEL;
 #endif
         ShimBt_calibrationChangeCommon(NV_WR_ACCEL_CALIBRATION, SDH_WR_ACCEL_CALIBRATION,
-            &storedConfig->wrAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+            &storedConfigPtr->wrAccelCalib.rawBytes[0], &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
       case SET_GSR_RANGE_COMMAND:
       {
-        storedConfig->gsrRange = (args[0] <= 4) ? (args[0] & 0x07) : GSR_AUTORANGE;
+        storedConfigPtr->gsrRange = (args[0] <= 4) ? (args[0] & 0x07) : GSR_AUTORANGE;
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
         break;
       }
@@ -1147,12 +1149,12 @@ void ShimBt_processCmd(void)
           if (exgChip == 0 && (ShimBrd_getDaughtCardId()->exp_brd_id == EXP_BRD_EXG_UNIFIED)
               && (ShimBrd_getDaughtCardId()->exp_brd_major >= 4))
           {
-            storedConfig->exgADS1292rRegsCh1.config2 |= 8;
+            storedConfigPtr->exgADS1292rRegsCh1.config2 |= 8;
           }
 
           InfoMem_write(exgConfigOffset + exgStartAddr,
-              &storedConfig->rawBytes[exgConfigOffset + exgStartAddr], exgLength);
-          ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[exgConfigOffset],
+              &storedConfigPtr->rawBytes[exgConfigOffset + exgStartAddr], exgLength);
+          ShimSdHead_sdHeadTextSet(&storedConfigPtr->rawBytes[exgConfigOffset],
               exgSdHeadOffset, exgLength);
 
           update_sdconfig = 1;
@@ -1253,15 +1255,15 @@ void ShimBt_processCmd(void)
       }
       case SET_DERIVED_CHANNEL_BYTES:
       {
-        memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_0], &args[0], 3);
-        memcpy(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_3], &args[3], 5);
+        memcpy(&storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_0], &args[0], 3);
+        memcpy(&storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_3], &args[3], 5);
         InfoMem_write(NV_DERIVED_CHANNELS_0,
-            &storedConfig->rawBytes[NV_DERIVED_CHANNELS_0], 3);
+            &storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_0], 3);
         InfoMem_write(NV_DERIVED_CHANNELS_3,
-            &storedConfig->rawBytes[NV_DERIVED_CHANNELS_3], 5);
-        ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_0],
+            &storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_3], 5);
+        ShimSdHead_sdHeadTextSet(&storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_0],
             SDH_DERIVED_CHANNELS_0, 3);
-        ShimSdHead_sdHeadTextSet(&storedConfig->rawBytes[NV_DERIVED_CHANNELS_3],
+        ShimSdHead_sdHeadTextSet(&storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_3],
             SDH_DERIVED_CHANNELS_3, 5);
         update_sdconfig = 1;
         break;
@@ -1293,10 +1295,10 @@ void ShimBt_processCmd(void)
                 ShimBt_macIdBytesPtrGet(), 6);
           }
 
-          ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
+          ShimConfig_checkAndCorrectConfig();
 
           InfoMem_write(infomemOffset, &args[3], infomemLength);
-          InfoMem_read(infomemOffset, &storedConfig->rawBytes[infomemOffset], infomemLength);
+          InfoMem_read(infomemOffset, &storedConfigPtr->rawBytes[infomemOffset], infomemLength);
 
           /* Save from infomem to calib dump in memory */
           if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
@@ -1323,10 +1325,11 @@ void ShimBt_processCmd(void)
       }
       case SET_RWC_COMMAND:
       {
-        storedConfig->rtcSetByBt = 1;
-        InfoMem_write(NV_SD_TRIAL_CONFIG0, &storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
+        storedConfigPtr->rtcSetByBt = 1;
+        InfoMem_write(NV_SD_TRIAL_CONFIG0,
+            &storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
         ShimSdHead_sdHeadTextSetByte(
-            SDH_TRIAL_CONFIG0, storedConfig->rawBytes[NV_SD_TRIAL_CONFIG0]);
+            SDH_TRIAL_CONFIG0, storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0]);
 
         RTC_setTimeFromTicksPtr(&args[0]);
         ShimRtc_rwcErrorCheck();
@@ -1343,7 +1346,7 @@ void ShimBt_processCmd(void)
         sensorCalibId = SC_SENSOR_ADXL371_ACCEL;
 #endif
         ShimBt_calibrationChangeCommon(NV_ALT_ACCEL_CALIBRATION, SDH_ALT_ACCEL_CALIBRATION,
-            &storedConfig->altAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+            &storedConfigPtr->altAccelCalib.rawBytes[0], &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
@@ -1355,19 +1358,19 @@ void ShimBt_processCmd(void)
         sensorCalibId = SC_SENSOR_LIS3MDL_MAG;
 #endif
         ShimBt_calibrationChangeCommon(NV_ALT_MAG_CALIBRATION, SDH_ALT_MAG_CALIBRATION,
-            &storedConfig->altMagCalib.rawBytes[0], &args[0], sensorCalibId);
+            &storedConfigPtr->altMagCalib.rawBytes[0], &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
       case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
       {
-        storedConfig->altAccelRate = args[0] & 0x03;
+        storedConfigPtr->altAccelRate = args[0] & 0x03;
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
         break;
       }
       case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
       {
-        ShimConfig_configByteAltMagRateSet(storedConfig, args[0]);
+        ShimConfig_configByteAltMagRateSet(args[0]);
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
         break;
       }
@@ -1438,7 +1441,7 @@ void ShimBt_settingChangeCommon(uint16_t configByteIdx, uint16_t sdHeaderIdx, ui
 {
   gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
 
-  ShimConfig_checkAndCorrectConfig(storedConfig);
+  ShimConfig_checkAndCorrectConfig();
   ShimConfig_setFlagWriteCfgToSd(1, 0);
 
   InfoMem_write(configByteIdx, &storedConfig->rawBytes[configByteIdx], len);
