@@ -484,7 +484,7 @@ void ShimConfig_setDefaultConfig(void);
 void ShimConfig_setDefaultShimmerName(void);
 void ShimConfig_setDefaultTrialId(void);
 void ShimConfig_setDefaultConfigTime(void);
-void ShimConfig_configTimeSet(gConfigBytes *storedConfigPtr, uint32_t time);
+void ShimConfig_configTimeSet(uint32_t time);
 uint32_t ShimConfig_configTimeGet(void);
 uint8_t ShimConfig_getFlagWriteCfgToSd(void);
 void ShimConfig_setFlagWriteCfgToSd(uint8_t flag, uint8_t writeToFlash);
@@ -494,25 +494,24 @@ uint8_t ShimConfig_getRamCalibFlag(void);
 void ShimConfig_setRamCalibFlag(uint8_t flag);
 float ShimConfig_getShimmerSamplingFreq(void);
 
-void ShimConfig_gyroRangeSet(gConfigBytes *storedConfigPtr, uint8_t value);
+void ShimConfig_gyroRangeSet(uint8_t value);
 uint8_t ShimConfig_gyroRangeGet(void);
-void ShimConfig_gyroRateSet(gConfigBytes *storedConfigPtr, uint8_t value);
-void ShimConfig_wrAccelLpModeSet(gConfigBytes *storedConfigPtr, uint8_t value);
+void ShimConfig_gyroRateSet(uint8_t value);
+void ShimConfig_wrAccelLpModeSet(uint8_t value);
 uint8_t ShimConfig_wrAccelLpModeGet(void);
 #if defined(SHIMMER3R)
-void ShimConfig_wrAccelModeSet(gConfigBytes *storedConfigPtr, lis2dw12_mode_t value);
+void ShimConfig_wrAccelModeSet(lis2dw12_mode_t value);
 lis2dw12_mode_t ShimConfig_wrAccelModeGet(void);
 #endif
-void ShimConfig_configBytePressureOversamplingRatioSet(gConfigBytes *storedConfigPtr,
-    uint8_t value);
+void ShimConfig_configBytePressureOversamplingRatioSet(uint8_t value);
 uint8_t ShimConfig_configBytePressureOversamplingRatioGet(void);
-void ShimConfig_configByteMagRateSet(gConfigBytes *storedConfigPtr, uint8_t value);
+void ShimConfig_configByteMagRateSet(uint8_t value);
 uint8_t ShimConfig_configByteMagRateGet(void);
-void ShimConfig_configByteAltMagRateSet(gConfigBytes *storedConfigPtr, uint8_t value);
+void ShimConfig_configByteAltMagRateSet(uint8_t value);
 uint8_t ShimConfig_configByteAltMagRateGet(void);
-uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfig);
-void ShimConfig_setExgConfigForTestSignal(gConfigBytes *storedConfigPtr);
-void ShimConfig_setExgConfigForEcg(gConfigBytes *storedConfigPtr);
+uint8_t ShimConfig_checkAndCorrectConfig(void);
+void ShimConfig_setExgConfigForTestSignal(void);
+void ShimConfig_setExgConfigForEcg(void);
 float ShimConfig_freqDiv(float samplingRate);
 void ShimConfig_checkBtModeFromConfig(void);
 #if defined(SHIMMER3R)

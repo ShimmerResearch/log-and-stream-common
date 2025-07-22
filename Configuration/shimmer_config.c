@@ -165,33 +165,33 @@ void ShimConfig_setDefaultConfig(void)
   storedConfig.wrAccelRate = LSM303DLHC_ACCEL_100HZ;
   storedConfig.wrAccelRange = ACCEL_2G;
   storedConfig.wrAccelHrMode = 0;
-  ShimConfig_wrAccelLpModeSet(&storedConfig, 0);
+  ShimConfig_wrAccelLpModeSet(0);
   /* MPU9X50/ICM20948 sampling rate of 8kHz/(155+1), i.e. 51.282Hz */
-  ShimConfig_gyroRateSet(&storedConfig, 0x9B);
+  ShimConfig_gyroRateSet(0x9B);
   /* LSM303 Mag 75Hz, +/-1.3 Gauss, MPU9150 Gyro +/-500 degrees per second */
   storedConfig.magRange = LSM303DLHC_MAG_1_3G;
-  ShimConfig_configByteMagRateSet(&storedConfig, LSM303DLHC_MAG_75HZ);
-  ShimConfig_gyroRangeSet(&storedConfig, MPU9X50_GYRO_500DPS);
+  ShimConfig_configByteMagRateSet(LSM303DLHC_MAG_75HZ);
+  ShimConfig_gyroRangeSet(MPU9X50_GYRO_500DPS);
   /* MPU9X50/ICM20948 Accel +/-2G */
   storedConfig.altAccelRange = ACCEL_2G;
   /* BMP pressure oversampling ratio 1 */
-  ShimConfig_configBytePressureOversamplingRatioSet(&storedConfig, BMPX80_OSS_1);
+  ShimConfig_configBytePressureOversamplingRatioSet(BMPX80_OSS_1);
 #elif defined(SHIMMER3R)
   /* LIS2DW12 Accel 100Hz, +/-2G, Low Power and High Resolution modes off */
   storedConfig.wrAccelRate = LIS2DW12_XL_ODR_100Hz;
   storedConfig.wrAccelRange = LIS2DW12_2g;
-  ShimConfig_wrAccelModeSet(&storedConfig, LIS2DW12_HIGH_PERFORMANCE);
+  ShimConfig_wrAccelModeSet(LIS2DW12_HIGH_PERFORMANCE);
   /* LSM6DSV Gyro sampling rate, next highest to 51.2Hz */
-  ShimConfig_gyroRateSet(&storedConfig, LSM6DSV_ODR_AT_60Hz);
+  ShimConfig_gyroRateSet(LSM6DSV_ODR_AT_60Hz);
   /* LIS2MDL Mag 100Hz */
-  ShimConfig_configByteMagRateSet(&storedConfig, LIS2MDL_ODR_100Hz);
+  ShimConfig_configByteMagRateSet(LIS2MDL_ODR_100Hz);
   /* LIS3MDL Mag 80Hz, +/-4 Gauss */
   storedConfig.altMagRange = LIS3MDL_4_GAUSS;
-  ShimConfig_configByteAltMagRateSet(&storedConfig, LIS3MDL_UHP_80Hz);
+  ShimConfig_configByteAltMagRateSet(LIS3MDL_UHP_80Hz);
   /* LSM6DSV Gyro +/-500 degrees per second */
-  ShimConfig_gyroRangeSet(&storedConfig, LSM6DSV_500dps);
+  ShimConfig_gyroRangeSet(LSM6DSV_500dps);
   storedConfig.lnAccelRange = LSM6DSV_2g;
-  ShimConfig_configBytePressureOversamplingRatioSet(&storedConfig, BMP3_NO_OVERSAMPLING);
+  ShimConfig_configBytePressureOversamplingRatioSet(BMP3_NO_OVERSAMPLING);
 #endif
   /* GSR auto range */
   storedConfig.gsrRange = GSR_AUTORANGE;
@@ -200,8 +200,8 @@ void ShimConfig_setDefaultConfig(void)
   storedConfig.expansionBoardPower = 0;
 
   //set all ExG registers to their reset values
-  //setExgConfigForTestSignal(&storedConfig);
-  ShimConfig_setExgConfigForEcg(&storedConfig);
+  //setExgConfigForTestSignal();
+  ShimConfig_setExgConfigForEcg();
 
   /*BT Baud Rate*/
   if (storedConfig.btCommsBaudRate == 0xFF)
@@ -231,7 +231,7 @@ void ShimConfig_setDefaultConfig(void)
   ShimConfig_experimentLengthEstimatedInSecSet(1);
   ShimSdSync_setSyncEstExpLen((uint32_t) ShimConfig_experimentLengthEstimatedInSecGet());
 
-  ShimConfig_checkAndCorrectConfig(&storedConfig);
+  ShimConfig_checkAndCorrectConfig();
   ShimConfig_setFlagWriteCfgToSd(1, 0);
 
   ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(0);
@@ -253,16 +253,16 @@ void ShimConfig_setDefaultTrialId(void)
 
 void ShimConfig_setDefaultConfigTime(void)
 {
-  ShimConfig_configTimeSet(&storedConfig, 0);
+  ShimConfig_configTimeSet(0);
 }
 
-void ShimConfig_configTimeSet(gConfigBytes *storedConfigPtr, uint32_t time)
+void ShimConfig_configTimeSet(uint32_t time)
 {
   //Config time is stored in MSB order in the config bytes
-  storedConfigPtr->configTime0 = (time >> 24) & 0xFF;
-  storedConfigPtr->configTime1 = (time >> 16) & 0xFF;
-  storedConfigPtr->configTime2 = (time >> 8) & 0xFF;
-  storedConfigPtr->configTime3 = (time >> 0) & 0xFF;
+  storedConfig.configTime0 = (time >> 24) & 0xFF;
+  storedConfig.configTime1 = (time >> 16) & 0xFF;
+  storedConfig.configTime2 = (time >> 8) & 0xFF;
+  storedConfig.configTime3 = (time >> 0) & 0xFF;
 }
 
 uint32_t ShimConfig_configTimeGet(void)
@@ -307,16 +307,16 @@ float ShimConfig_getShimmerSamplingFreq(void)
   return 32768.0 / (float) storedConfig.samplingRateTicks;
 }
 
-void ShimConfig_gyroRangeSet(gConfigBytes *storedConfigPtr, uint8_t value)
+void ShimConfig_gyroRangeSet(uint8_t value)
 {
 #if defined(SHIMMER3)
   value = (value <= MPU9X50_GYRO_2000DPS) ? value : MPU9X50_GYRO_500DPS;
 #elif defined(SHIMMER3R)
   value = (value <= (LSM6DSV_2000dps + 1)) ? value : LSM6DSV_500dps;
 #endif
-  storedConfigPtr->gyroRangeLsb = value & 0x03;
+  storedConfig.gyroRangeLsb = value & 0x03;
 #if defined(SHIMMER3R)
-  storedConfigPtr->gyroRangeMsb = (value >> 2) & 0x01;
+  storedConfig.gyroRangeMsb = (value >> 2) & 0x01;
 #endif
 }
 
@@ -329,24 +329,24 @@ uint8_t ShimConfig_gyroRangeGet(void)
 #endif
 }
 
-void ShimConfig_gyroRateSet(gConfigBytes *storedConfigPtr, uint8_t value)
+void ShimConfig_gyroRateSet(uint8_t value)
 {
 #if defined(SHIMMER3R)
   value = (value < LSM6DSV_ODR_AT_7680Hz) ? value : LSM6DSV_ODR_AT_60Hz;
 #endif
-  storedConfigPtr->gyroRate = value;
+  storedConfig.gyroRate = value;
 }
 
-void ShimConfig_wrAccelLpModeSet(gConfigBytes *storedConfigPtr, uint8_t value)
+void ShimConfig_wrAccelLpModeSet(uint8_t value)
 {
 #if defined(SHIMMER3)
   value = (value == 1) ? 1 : 0;
 #elif defined(SHIMMER3R)
   value = (value <= 3) ? value : 0;
 #endif
-  storedConfigPtr->wrAccelLpModeLsb = value & 0x01;
+  storedConfig.wrAccelLpModeLsb = value & 0x01;
 #if defined(SHIMMER3R)
-  storedConfigPtr->wrAccelLpModeMsb = (value >> 1) & 0x01;
+  storedConfig.wrAccelLpModeMsb = (value >> 1) & 0x01;
 #endif
 }
 
@@ -360,10 +360,10 @@ uint8_t ShimConfig_wrAccelLpModeGet(void)
 }
 
 #if defined(SHIMMER3R)
-void ShimConfig_wrAccelModeSet(gConfigBytes *storedConfigPtr, lis2dw12_mode_t value)
+void ShimConfig_wrAccelModeSet(lis2dw12_mode_t value)
 {
-  storedConfigPtr->wrAccelHrMode = (value >> 2) & 0x01;
-  ShimConfig_wrAccelLpModeSet(storedConfigPtr, value & 0x03);
+  storedConfig.wrAccelHrMode = (value >> 2) & 0x01;
+  ShimConfig_wrAccelLpModeSet(value & 0x03);
 }
 
 lis2dw12_mode_t ShimConfig_wrAccelModeGet(void)
@@ -374,16 +374,16 @@ lis2dw12_mode_t ShimConfig_wrAccelModeGet(void)
 }
 #endif
 
-void ShimConfig_configBytePressureOversamplingRatioSet(gConfigBytes *storedConfigPtr, uint8_t value)
+void ShimConfig_configBytePressureOversamplingRatioSet(uint8_t value)
 {
 #if defined(SHIMMER3)
   value = (value <= BMPX80_OSS_8) ? (value & 0x03) : BMPX80_OSS_1;
 #elif defined(SHIMMER3R)
   value = (value <= BMP3_OVERSAMPLING_32X) ? value : BMP3_NO_OVERSAMPLING;
 #endif
-  storedConfigPtr->pressureOversamplingRatioLsb = value & 0x03;
+  storedConfig.pressureOversamplingRatioLsb = value & 0x03;
 #if defined(SHIMMER3R)
-  storedConfigPtr->pressureOversamplingRatioMsb = (value >> 2) & 0x01;
+  storedConfig.pressureOversamplingRatioMsb = (value >> 2) & 0x01;
 #endif
 }
 
@@ -397,14 +397,14 @@ uint8_t ShimConfig_configBytePressureOversamplingRatioGet(void)
 #endif
 }
 
-void ShimConfig_configByteMagRateSet(gConfigBytes *storedConfigPtr, uint8_t value)
+void ShimConfig_configByteMagRateSet(uint8_t value)
 {
 #if defined(SHIMMER3)
   value = (value < LSM303DLHC_MAG_220HZ) ? value : LSM303DLHC_MAG_75HZ;
 #else
   value = (value <= LIS2MDL_ODR_100Hz) ? value : LIS2MDL_ODR_100Hz;
 #endif
-  storedConfigPtr->magRate = value;
+  storedConfig.magRate = value;
 }
 
 uint8_t ShimConfig_configByteMagRateGet(void)
@@ -412,14 +412,14 @@ uint8_t ShimConfig_configByteMagRateGet(void)
   return storedConfig.magRate;
 }
 
-void ShimConfig_configByteAltMagRateSet(gConfigBytes *storedConfigPtr, uint8_t value)
+void ShimConfig_configByteAltMagRateSet(uint8_t value)
 {
 #if defined(SHIMMER3)
   value = 0; //not used
 #elif defined(SHIMMER3R)
   value = value <= (LIS3MDL_UHP_80Hz) ? value : LIS3MDL_UHP_80Hz;
 #endif
-  storedConfigPtr->altMagRate = value;
+  storedConfig.altMagRate = value;
 }
 
 uint8_t ShimConfig_configByteAltMagRateGet(void)
@@ -427,97 +427,97 @@ uint8_t ShimConfig_configByteAltMagRateGet(void)
   return storedConfig.altMagRate;
 }
 
-uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
+uint8_t ShimConfig_checkAndCorrectConfig(void)
 {
   uint8_t settingCorrected = 0;
   uint8_t i = 0;
 
-  if (storedConfigPtr->chEnGsr
+  if (storedConfig.chEnGsr
 #if defined(SHIMMER3)
-      && storedConfigPtr->chEnIntADC1)
+      && storedConfig.chEnIntADC1)
 #elif defined(SHIMMER3R)
-      && storedConfigPtr->chEnIntADC3)
+      && storedConfig.chEnIntADC3)
 #endif
   {
 #if defined(SHIMMER3)
     //they are sharing Shimmer3 adc1, so ban intch1 when gsr is on
-    storedConfigPtr->chEnIntADC1 = 0;
+    storedConfig.chEnIntADC1 = 0;
 #elif defined(SHIMMER3R)
-    storedConfigPtr->chEnIntADC3 = 0;
+    storedConfig.chEnIntADC3 = 0;
 #endif
     settingCorrected = 1;
   }
-  if (storedConfigPtr->chEnBridgeAmp
+  if (storedConfig.chEnBridgeAmp
 #if defined(SHIMMER3)
-      && (storedConfigPtr->chEnIntADC13 || storedConfigPtr->chEnIntADC14))
+      && (storedConfig.chEnIntADC13 || storedConfig.chEnIntADC14))
 #elif defined(SHIMMER3R)
-      && (storedConfigPtr->chEnIntADC1 || storedConfigPtr->chEnIntADC2))
+      && (storedConfig.chEnIntADC1 || storedConfig.chEnIntADC2))
 #endif
   {
 #if defined(SHIMMER3)
     //they are sharing adc13 and adc14
-    storedConfigPtr->chEnIntADC13 = 0;
-    storedConfigPtr->chEnIntADC14 = 0;
+    storedConfig.chEnIntADC13 = 0;
+    storedConfig.chEnIntADC14 = 0;
 #elif defined(SHIMMER3R)
-    storedConfigPtr->chEnIntADC1 = 0;
-    storedConfigPtr->chEnIntADC2 = 0;
+    storedConfig.chEnIntADC1 = 0;
+    storedConfig.chEnIntADC2 = 0;
 #endif
     settingCorrected = 1;
   }
-  if (storedConfigPtr->chEnExg1_24Bit && storedConfigPtr->chEnExg1_16Bit)
+  if (storedConfig.chEnExg1_24Bit && storedConfig.chEnExg1_16Bit)
   {
-    storedConfigPtr->chEnExg1_16Bit = 0;
+    storedConfig.chEnExg1_16Bit = 0;
     settingCorrected = 1;
   }
-  if (storedConfigPtr->chEnExg2_24Bit && storedConfigPtr->chEnExg2_16Bit)
+  if (storedConfig.chEnExg2_24Bit && storedConfig.chEnExg2_16Bit)
   {
-    storedConfigPtr->chEnExg2_16Bit = 0;
+    storedConfig.chEnExg2_16Bit = 0;
     settingCorrected = 1;
   }
-  if ((storedConfigPtr->chEnExg1_24Bit || storedConfigPtr->chEnExg2_24Bit
-          || storedConfigPtr->chEnExg1_16Bit || storedConfigPtr->chEnExg2_16Bit)
+  if ((storedConfig.chEnExg1_24Bit || storedConfig.chEnExg2_24Bit
+          || storedConfig.chEnExg1_16Bit || storedConfig.chEnExg2_16Bit)
 #if defined(SHIMMER3)
-      && (storedConfigPtr->chEnIntADC1 || storedConfigPtr->chEnIntADC14))
+      && (storedConfig.chEnIntADC1 || storedConfig.chEnIntADC14))
 #elif defined(SHIMMER3R)
-      && (storedConfigPtr->chEnIntADC3 || storedConfigPtr->chEnIntADC2))
+      && (storedConfig.chEnIntADC3 || storedConfig.chEnIntADC2))
 #endif
   {
 #if defined(SHIMMER3)
-    storedConfigPtr->chEnIntADC1 = 0;
-    storedConfigPtr->chEnIntADC14 = 0;
+    storedConfig.chEnIntADC1 = 0;
+    storedConfig.chEnIntADC14 = 0;
 #elif defined(SHIMMER3R)
-    storedConfigPtr->chEnIntADC3 = 0;
-    storedConfigPtr->chEnIntADC2 = 0;
+    storedConfig.chEnIntADC3 = 0;
+    storedConfig.chEnIntADC2 = 0;
 #endif
     settingCorrected = 1;
   }
 
-  if (storedConfigPtr->chEnSkinTemp || storedConfigPtr->chEnResAmp)
+  if (storedConfig.chEnSkinTemp || storedConfig.chEnResAmp)
   {
 #if defined(SHIMMER3)
-    storedConfigPtr->chEnIntADC1 = 1;
+    storedConfig.chEnIntADC1 = 1;
 #elif defined(SHIMMER3R)
-    storedConfigPtr->chEnIntADC3 = 1;
+    storedConfig.chEnIntADC3 = 1;
 #endif
   }
 
-  if (storedConfigPtr->gsrRange > 4)
+  if (storedConfig.gsrRange > 4)
   { //never larger than 4
-    storedConfigPtr->gsrRange = GSR_AUTORANGE;
+    storedConfig.gsrRange = GSR_AUTORANGE;
     settingCorrected = 1;
   }
 
   //minimum sync broadcast interval is 54 seconds
-  if (storedConfigPtr->syncEnable && storedConfigPtr->btIntervalSecs < SYNC_INT_C)
+  if (storedConfig.syncEnable && storedConfig.btIntervalSecs < SYNC_INT_C)
   {
-    storedConfigPtr->btIntervalSecs = SYNC_INT_C;
+    storedConfig.btIntervalSecs = SYNC_INT_C;
     settingCorrected = 1;
   }
 
 #if !IS_SUPPORTED_TCXO
-  if (storedConfigPtr->tcxo)
+  if (storedConfig.tcxo)
   {
-    storedConfigPtr->tcxo = 0; /* Disable TCXO */
+    storedConfig.tcxo = 0; /* Disable TCXO */
     settingCorrected = 1;
   }
 #endif
@@ -525,38 +525,38 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
 #if IS_SUPPORTED_SINGLE_TOUCH
   //the button always works for singletouch mode
   //sync always works for singletouch mode
-  if (storedConfigPtr->singleTouchStart
-      && (!storedConfigPtr->userButtonEnable || !storedConfigPtr->syncEnable))
+  if (storedConfig.singleTouchStart
+      && (!storedConfig.userButtonEnable || !storedConfig.syncEnable))
   {
-    storedConfigPtr->userButtonEnable = 1;
-    storedConfigPtr->syncEnable = 1;
+    storedConfig.userButtonEnable = 1;
+    storedConfig.syncEnable = 1;
     settingCorrected = 1;
   }
 #else
-  storedConfigPtr->singleTouchStart = 0;
+  storedConfig.singleTouchStart = 0;
 #endif //IS_SUPPORTED_SINGLE_TOUCH
 
   if (ShimBrd_areADS1292RClockLinesTied()
-      && !(storedConfigPtr->exgADS1292rRegsCh1.config2 & 0x08))
+      && !(storedConfig.exgADS1292rRegsCh1.config2 & 0x08))
   {
     /* Amend configuration byte 2 of ADS chip 1 to have bit 3 set to 1.
      * This ensures clock lines on ADS chip are correct */
-    storedConfigPtr->exgADS1292rRegsCh1.config2 |= 8;
+    storedConfig.exgADS1292rRegsCh1.config2 |= 8;
     settingCorrected = 1;
   }
 
   /* This used to be used to trigger reset of the Bluetooth advertising name
    * and pin code but is no longer needed due to BT driver updates. */
-  if (storedConfigPtr->btPinSetup)
+  if (storedConfig.btPinSetup)
   {
-    storedConfigPtr->btPinSetup = 0;
+    storedConfig.btPinSetup = 0;
     settingCorrected = 1;
   }
 
 #if defined(SHIMMER3)
-  if (!ShimBrd_isWrAccelInUseLsm303dlhc() && storedConfigPtr->magRange != 0)
+  if (!ShimBrd_isWrAccelInUseLsm303dlhc() && storedConfig.magRange != 0)
   {
-    storedConfigPtr->magRange = 0;
+    storedConfig.magRange = 0;
     settingCorrected = 1;
   }
 #endif
@@ -566,9 +566,9 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
   uint8_t *macIdBytesPtr = ShimBt_macIdBytesPtrGet();
   for (i = 0; i < 6; i++)
   {
-    if (*(macIdBytesPtr + i) != storedConfigPtr->macAddr[i])
+    if (*(macIdBytesPtr + i) != storedConfig.macAddr[i])
     {
-      memcpy(&storedConfigPtr->macAddr[0], macIdBytesPtr, 6);
+      memcpy(&storedConfig.macAddr[0], macIdBytesPtr, 6);
       settingCorrected = 1;
       break;
     }
@@ -577,54 +577,54 @@ uint8_t ShimConfig_checkAndCorrectConfig(gConfigBytes *storedConfigPtr)
   return settingCorrected;
 }
 
-void ShimConfig_setExgConfigForTestSignal(gConfigBytes *storedConfigPtr)
+void ShimConfig_setExgConfigForTestSignal(void)
 {
   //square wave test
-  storedConfigPtr->exgADS1292rRegsCh1.config1 = 0x04;
-  storedConfigPtr->exgADS1292rRegsCh1.config2 = 0xab; //was 0xa3 for rev1
-  storedConfigPtr->exgADS1292rRegsCh1.loff = 0x10;
-  storedConfigPtr->exgADS1292rRegsCh1.ch1set = 0x05;
-  storedConfigPtr->exgADS1292rRegsCh1.ch2set = 0x05;
-  storedConfigPtr->exgADS1292rRegsCh1.rldSens = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh1.loffSens = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh1.loffStat = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh1.resp1 = 0x02;
-  storedConfigPtr->exgADS1292rRegsCh1.resp2 = 0x01;
-  storedConfigPtr->exgADS1292rRegsCh2.config1 = 0x04;
-  storedConfigPtr->exgADS1292rRegsCh2.config2 = 0xa3;
-  storedConfigPtr->exgADS1292rRegsCh2.loff = 0x10;
-  storedConfigPtr->exgADS1292rRegsCh2.ch1set = 0x05;
-  storedConfigPtr->exgADS1292rRegsCh2.ch2set = 0x05;
-  storedConfigPtr->exgADS1292rRegsCh2.rldSens = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh2.loffSens = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh2.loffStat = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh2.resp1 = 0x02;
-  storedConfigPtr->exgADS1292rRegsCh2.resp2 = 0x01;
+  storedConfig.exgADS1292rRegsCh1.config1 = 0x04;
+  storedConfig.exgADS1292rRegsCh1.config2 = 0xab; //was 0xa3 for rev1
+  storedConfig.exgADS1292rRegsCh1.loff = 0x10;
+  storedConfig.exgADS1292rRegsCh1.ch1set = 0x05;
+  storedConfig.exgADS1292rRegsCh1.ch2set = 0x05;
+  storedConfig.exgADS1292rRegsCh1.rldSens = 0x00;
+  storedConfig.exgADS1292rRegsCh1.loffSens = 0x00;
+  storedConfig.exgADS1292rRegsCh1.loffStat = 0x00;
+  storedConfig.exgADS1292rRegsCh1.resp1 = 0x02;
+  storedConfig.exgADS1292rRegsCh1.resp2 = 0x01;
+  storedConfig.exgADS1292rRegsCh2.config1 = 0x04;
+  storedConfig.exgADS1292rRegsCh2.config2 = 0xa3;
+  storedConfig.exgADS1292rRegsCh2.loff = 0x10;
+  storedConfig.exgADS1292rRegsCh2.ch1set = 0x05;
+  storedConfig.exgADS1292rRegsCh2.ch2set = 0x05;
+  storedConfig.exgADS1292rRegsCh2.rldSens = 0x00;
+  storedConfig.exgADS1292rRegsCh2.loffSens = 0x00;
+  storedConfig.exgADS1292rRegsCh2.loffStat = 0x00;
+  storedConfig.exgADS1292rRegsCh2.resp1 = 0x02;
+  storedConfig.exgADS1292rRegsCh2.resp2 = 0x01;
 }
 
-void ShimConfig_setExgConfigForEcg(gConfigBytes *storedConfigPtr)
+void ShimConfig_setExgConfigForEcg(void)
 {
   //ecg
-  storedConfigPtr->exgADS1292rRegsCh1.config1 = 0x02;
-  storedConfigPtr->exgADS1292rRegsCh1.config2 = 0x80;
-  storedConfigPtr->exgADS1292rRegsCh1.loff = 0x10;
-  storedConfigPtr->exgADS1292rRegsCh1.ch1set = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh1.ch2set = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh1.rldSens = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh1.loffSens = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh1.loffStat = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh1.resp1 = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh1.resp2 = 0x02;
-  storedConfigPtr->exgADS1292rRegsCh2.config1 = 0x02;
-  storedConfigPtr->exgADS1292rRegsCh2.config2 = 0x80;
-  storedConfigPtr->exgADS1292rRegsCh2.loff = 0x10;
-  storedConfigPtr->exgADS1292rRegsCh2.ch1set = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh2.ch2set = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh2.rldSens = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh2.loffSens = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh2.loffStat = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh2.resp1 = 0x00;
-  storedConfigPtr->exgADS1292rRegsCh2.resp2 = 0x02;
+  storedConfig.exgADS1292rRegsCh1.config1 = 0x02;
+  storedConfig.exgADS1292rRegsCh1.config2 = 0x80;
+  storedConfig.exgADS1292rRegsCh1.loff = 0x10;
+  storedConfig.exgADS1292rRegsCh1.ch1set = 0x00;
+  storedConfig.exgADS1292rRegsCh1.ch2set = 0x00;
+  storedConfig.exgADS1292rRegsCh1.rldSens = 0x00;
+  storedConfig.exgADS1292rRegsCh1.loffSens = 0x00;
+  storedConfig.exgADS1292rRegsCh1.loffStat = 0x00;
+  storedConfig.exgADS1292rRegsCh1.resp1 = 0x00;
+  storedConfig.exgADS1292rRegsCh1.resp2 = 0x02;
+  storedConfig.exgADS1292rRegsCh2.config1 = 0x02;
+  storedConfig.exgADS1292rRegsCh2.config2 = 0x80;
+  storedConfig.exgADS1292rRegsCh2.loff = 0x10;
+  storedConfig.exgADS1292rRegsCh2.ch1set = 0x00;
+  storedConfig.exgADS1292rRegsCh2.ch2set = 0x00;
+  storedConfig.exgADS1292rRegsCh2.rldSens = 0x00;
+  storedConfig.exgADS1292rRegsCh2.loffSens = 0x00;
+  storedConfig.exgADS1292rRegsCh2.loffStat = 0x00;
+  storedConfig.exgADS1292rRegsCh2.resp1 = 0x00;
+  storedConfig.exgADS1292rRegsCh2.resp2 = 0x02;
 }
 
 /* Note samplingRate can be either a freq or a ticks value */
@@ -856,7 +856,7 @@ void ShimConfig_configTimeSetFromStr(uint8_t *strPtr, uint8_t strLen)
 
   config_time = atol((char *) &configTimeTextTemp[0]);
 
-  ShimConfig_configTimeSet(&storedConfig, config_time);
+  ShimConfig_configTimeSet(config_time);
 }
 
 void ShimConfig_experimentLengthEstimatedInSecSet(uint16_t value)

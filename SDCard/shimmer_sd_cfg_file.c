@@ -348,8 +348,7 @@ void ShimSdCfgFile_parse(void)
   uint8_t triggerSdCardUpdate = 0;
 
   CheckSdInslot();
-  gConfigBytes *storedConfig
-      = ShimConfig_getStoredConfig(); //get the pointer as variable is not accessible
+  gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
   char cfgname[] = "sdlog.cfg";
   cfg_file_status = f_open(&cfgFile, cfgname, FA_READ | FA_OPEN_EXISTING);
   if (cfg_file_status == FR_NO_FILE)
@@ -366,27 +365,27 @@ void ShimSdCfgFile_parse(void)
   }
   else
   {
-    gConfigBytes stored_config_temp;
-    /* update  stored_config_temp with original storedConfig contents before
-    parsing from cfg file to check and update the values from cfg_file */
-    memcpy(&(stored_config_temp.rawBytes[0]), &(storedConfig->rawBytes[0]), STOREDCONFIG_SIZE);
+    /* Backup configuration bytes before parsing from cfg file */
+    gConfigBytes storedConfigTemp;
+    memcpy(&(storedConfigTemp.rawBytes[0]), &(storedConfigPtr->rawBytes[0]), STOREDCONFIG_SIZE);
+
     //Reset global configuration bytes to a blank state before parsing the config file.
     ShimConfig_createBlankConfigBytes();
     ShimSdSync_resetSyncVariablesBeforeParseConfig();
     ShimSdSync_resetSyncNodeArray();
 
-    InfoMem_read(NV_SD_CONFIG_DELAY_FLAG,
-        &stored_config_temp.rawBytes[NV_SD_CONFIG_DELAY_FLAG], 1);
+    /* Copy back in the NV_SD_CONFIG_DELAY_FLAG byte */
+    storedConfigPtr->rawBytes[NV_SD_CONFIG_DELAY_FLAG] = storedConfigTemp.rawBytes[NV_SD_CONFIG_DELAY_FLAG];
 
 #if defined(SHIMMER3)
-    stored_config_temp.rawBytes[NV_SD_TRIAL_CONFIG0] &= ~SDH_SET_PMUX; //PMUX reserved as 0
+    storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0] &= ~SDH_SET_PMUX; //PMUX reserved as 0
 //stored_config_temp.rawBytes[NV_SD_TRIAL_CONFIG0] |= SDH_TIME_STAMP; //TIME_STAMP always = 1
 #endif
-    stored_config_temp.gsrRange = GSR_AUTORANGE;
-    stored_config_temp.bufferSize = 1;
-    stored_config_temp.btCommsBaudRate = getDefaultBaudForBtVersion();
-    stored_config_temp.bluetoothDisable = 0;
-    stored_config_temp.btIntervalSecs = SYNC_INT_C;
+    storedConfigPtr->gsrRange = GSR_AUTORANGE;
+    storedConfigPtr->bufferSize = 1;
+    storedConfigPtr->btCommsBaudRate = getDefaultBaudForBtVersion();
+    storedConfigPtr->bluetoothDisable = 0;
+    storedConfigPtr->btIntervalSecs = SYNC_INT_C;
 
     while (f_gets(buffer, 64, &cfgFile))
     {
@@ -397,129 +396,129 @@ void ShimSdCfgFile_parse(void)
       equals++; //this is the value
       if (strstr(buffer, "accel="))
       {
-        stored_config_temp.chEnLnAccel = atoi(equals);
+        storedConfigPtr->chEnLnAccel = atoi(equals);
       }
       else if (strstr(buffer, "gyro="))
       {
-        stored_config_temp.chEnGyro = atoi(equals);
+        storedConfigPtr->chEnGyro = atoi(equals);
       }
       else if (strstr(buffer, "mag="))
       {
-        stored_config_temp.chEnMag = atoi(equals);
+        storedConfigPtr->chEnMag = atoi(equals);
       }
       else if (strstr(buffer, "exg1_24bit="))
       {
-        stored_config_temp.chEnExg1_24Bit = atoi(equals);
+        storedConfigPtr->chEnExg1_24Bit = atoi(equals);
       }
       else if (strstr(buffer, "exg2_24bit="))
       {
-        stored_config_temp.chEnExg2_24Bit = atoi(equals);
+        storedConfigPtr->chEnExg2_24Bit = atoi(equals);
       }
       else if (strstr(buffer, "gsr="))
       {
-        stored_config_temp.chEnGsr = atoi(equals);
+        storedConfigPtr->chEnGsr = atoi(equals);
       }
 #if defined(SHIMMER3)
       else if (strstr(buffer, "extch7="))
       {
-        stored_config_temp.chEnExtADC7 = atoi(equals);
+        storedConfigPtr->chEnExtADC7 = atoi(equals);
       }
       else if (strstr(buffer, "extch6="))
       {
-        stored_config_temp.chEnExtADC6 = atoi(equals);
+        storedConfigPtr->chEnExtADC6 = atoi(equals);
       }
 #elif defined(SHIMMER3R)
       else if (strstr(buffer, "extch0="))
       {
-        stored_config_temp.chEnExtADC0 = atoi(equals);
+        storedConfigPtr->chEnExtADC0 = atoi(equals);
       }
       else if (strstr(buffer, "extch1="))
       {
-        stored_config_temp.chEnExtADC1 = atoi(equals);
+        storedConfigPtr->chEnExtADC1 = atoi(equals);
       }
 #endif
       else if (strstr(buffer, "str=") || strstr(buffer, "br_amp="))
       {
-        stored_config_temp.chEnBridgeAmp = atoi(equals);
+        storedConfigPtr->chEnBridgeAmp = atoi(equals);
       }
       else if (strstr(buffer, "vbat="))
       {
-        stored_config_temp.chEnVBattery = atoi(equals);
+        storedConfigPtr->chEnVBattery = atoi(equals);
       }
       else if (strstr(buffer, "accel_d="))
       {
-        stored_config_temp.chEnWrAccel = atoi(equals);
+        storedConfigPtr->chEnWrAccel = atoi(equals);
       }
 #if defined(SHIMMER3)
       else if (strstr(buffer, "extch15="))
       {
-        stored_config_temp.chEnExtADC15 = atoi(equals);
+        storedConfigPtr->chEnExtADC15 = atoi(equals);
       }
       else if (strstr(buffer, "intch1="))
       {
-        stored_config_temp.chEnIntADC1 = atoi(equals);
+        storedConfigPtr->chEnIntADC1 = atoi(equals);
       }
       else if (strstr(buffer, "intch12="))
       {
-        stored_config_temp.chEnIntADC12 = atoi(equals);
+        storedConfigPtr->chEnIntADC12 = atoi(equals);
       }
       else if (strstr(buffer, "intch13="))
       {
-        stored_config_temp.chEnIntADC13 = atoi(equals);
+        storedConfigPtr->chEnIntADC13 = atoi(equals);
       }
       else if (strstr(buffer, "intch14="))
       {
-        stored_config_temp.chEnIntADC14 = atoi(equals);
+        storedConfigPtr->chEnIntADC14 = atoi(equals);
       }
       else if (strstr(buffer, "accel_mpu="))
       {
-        stored_config_temp.chEnAltAccel = atoi(equals);
+        storedConfigPtr->chEnAltAccel = atoi(equals);
       }
       else if (strstr(buffer, "mag_mpu="))
       {
-        stored_config_temp.chEnAltMag = atoi(equals);
+        storedConfigPtr->chEnAltMag = atoi(equals);
       }
 #elif defined(SHIMMER3R)
       else if (strstr(buffer, "extch2="))
       {
-        stored_config_temp.chEnExtADC2 = atoi(equals);
+        storedConfigPtr->chEnExtADC2 = atoi(equals);
       }
       else if (strstr(buffer, "intch3="))
       {
-        stored_config_temp.chEnIntADC3 = atoi(equals);
+        storedConfigPtr->chEnIntADC3 = atoi(equals);
       }
       else if (strstr(buffer, "intch0="))
       {
-        stored_config_temp.chEnIntADC0 = atoi(equals);
+        storedConfigPtr->chEnIntADC0 = atoi(equals);
       }
       else if (strstr(buffer, "intch1="))
       {
-        stored_config_temp.chEnIntADC1 = atoi(equals);
+        storedConfigPtr->chEnIntADC1 = atoi(equals);
       }
       else if (strstr(buffer, "intch2="))
       {
-        stored_config_temp.chEnIntADC2 = atoi(equals);
+        storedConfigPtr->chEnIntADC2 = atoi(equals);
       }
       else if (strstr(buffer, "accel_alt="))
       {
-        stored_config_temp.chEnAltAccel = atoi(equals);
+        storedConfigPtr->chEnAltAccel = atoi(equals);
       }
       else if (strstr(buffer, "mag_alt="))
       {
-        stored_config_temp.chEnAltMag = atoi(equals);
+        storedConfigPtr->chEnAltMag = atoi(equals);
       }
 #endif
       else if (strstr(buffer, "exg1_16bit="))
       {
-        stored_config_temp.chEnExg1_16Bit = atoi(equals);
+        storedConfigPtr->chEnExg1_16Bit = atoi(equals);
       }
       else if (strstr(buffer, "exg2_16bit="))
       {
-        stored_config_temp.chEnExg2_16Bit = atoi(equals);
+        storedConfigPtr->chEnExg2_16Bit = atoi(equals);
       }
       else if (strstr(buffer, "pres="))
       {
-        stored_config_temp.chEnPressureAndTemperature = atoi(equals);
+        storedConfigPtr->chEnPressureAndTemperature = atoi(equals);
       }
       else if (strstr(buffer, "sample_rate="))
       {
@@ -527,45 +526,45 @@ void ShimSdCfgFile_parse(void)
       }
       else if (strstr(buffer, "mg_internal_rate="))
       {
-        ShimConfig_configByteMagRateSet(&stored_config_temp, atoi(equals));
+        ShimConfig_configByteMagRateSet(atoi(equals));
       }
 #if defined(SHIMMER3)
       else if (strstr(buffer, "mg_range="))
       {
-        stored_config_temp.magRange = atoi(equals);
+        storedConfigPtr->magRange = atoi(equals);
       }
 #else
       else if (strstr(buffer, "mag_alt_range="))
       {
-        stored_config_temp.altMagRange = atoi(equals);
+        storedConfigPtr->altMagRange = atoi(equals);
       }
 #endif
       else if (strstr(buffer, "acc_internal_rate="))
       {
-        stored_config_temp.wrAccelRate = atoi(equals);
+        storedConfigPtr->wrAccelRate = atoi(equals);
       }
 #if defined(SHIMMER3)
       else if (strstr(buffer, "accel_alt_range="))
       {
-        stored_config_temp.altAccelRange = atoi(equals);
+        storedConfigPtr->altAccelRange = atoi(equals);
       }
 #elif defined(SHIMMER3R)
       else if (strstr(buffer, "accel_ln_range="))
       {
-        stored_config_temp.lnAccelRange = atoi(equals);
+        storedConfigPtr->lnAccelRange = atoi(equals);
       }
 #endif
       else if (strstr(buffer, "acc_range="))
       {
-        stored_config_temp.wrAccelRange = atoi(equals);
+        storedConfigPtr->wrAccelRange = atoi(equals);
       }
       else if (strstr(buffer, "acc_lpm="))
       {
-        ShimConfig_wrAccelLpModeSet(&stored_config_temp, atoi(equals));
+        ShimConfig_wrAccelLpModeSet(atoi(equals));
       }
       else if (strstr(buffer, "acc_hrm="))
       {
-        stored_config_temp.wrAccelHrMode = atoi(equals);
+        storedConfigPtr->wrAccelHrMode = atoi(equals);
       }
       else if (strstr(buffer, "gsr_range="))
       { //or "gsr_range="?
@@ -575,108 +574,108 @@ void ShimSdCfgFile_parse(void)
           gsr_range = 4;
         }
 
-        stored_config_temp.gsrRange = gsr_range;
+        storedConfigPtr->gsrRange = gsr_range;
       }
       else if (strstr(buffer, "gyro_samplingrate="))
       {
-        ShimConfig_gyroRateSet(&stored_config_temp, atoi(equals));
+        ShimConfig_gyroRateSet(atoi(equals));
       }
       else if (strstr(buffer, "gyro_range="))
       {
-        ShimConfig_gyroRangeSet(&stored_config_temp, atoi(equals));
+        ShimConfig_gyroRangeSet(atoi(equals));
       }
 #if defined(SHIMMER3)
       else if (strstr(buffer, "pres_bmp180_prec=") || strstr(buffer, "pres_bmp280_prec="))
       {
-        ShimConfig_configBytePressureOversamplingRatioSet(&stored_config_temp, atoi(equals));
+        ShimConfig_configBytePressureOversamplingRatioSet(atoi(equals));
       }
 #elif defined(SHIMMER3R)
       else if (strstr(buffer, "pres_bmp390_prec="))
       {
-        ShimConfig_configBytePressureOversamplingRatioSet(&stored_config_temp, atoi(equals));
+        ShimConfig_configBytePressureOversamplingRatioSet(atoi(equals));
       }
 #endif
 
 #if defined(SHIMMER3R)
       else if (strstr(buffer, "mag_alt_rate="))
       {
-        ShimConfig_configByteAltMagRateSet(&stored_config_temp, atoi(equals));
+        ShimConfig_configByteAltMagRateSet(atoi(equals));
       }
       else if (strstr(buffer, "accel_alt_rate="))
       {
-        stored_config_temp.altAccelRate = atoi(equals);
+        storedConfigPtr->altAccelRate = atoi(equals);
       }
 #endif
       else if (strstr(buffer, "rtc_error_enable="))
       {
-        stored_config_temp.rtcErrorEnable = (atoi(equals) == 0) ? 0 : 1;
+        storedConfigPtr->rtcErrorEnable = (atoi(equals) == 0) ? 0 : 1;
       }
       else if (strstr(buffer, "sd_error_enable="))
       {
-        stored_config_temp.sdErrorEnable = (atoi(equals) == 0) ? 0 : 1;
+        storedConfigPtr->sdErrorEnable = (atoi(equals) == 0) ? 0 : 1;
       }
       else if (strstr(buffer, "user_button_enable="))
       {
-        stored_config_temp.userButtonEnable = (atoi(equals) == 0) ? 0 : 1;
+        storedConfigPtr->userButtonEnable = (atoi(equals) == 0) ? 0 : 1;
       }
       else if (strstr(buffer, "iammaster="))
       { //0=slave=node
-        stored_config_temp.masterEnable = (atoi(equals) == 0) ? 0 : 1;
+        storedConfigPtr->masterEnable = (atoi(equals) == 0) ? 0 : 1;
       }
       else if (strstr(buffer, "sync="))
       {
-        stored_config_temp.syncEnable = (atoi(equals) == 0) ? 0 : 1;
+        storedConfigPtr->syncEnable = (atoi(equals) == 0) ? 0 : 1;
       }
       else if (strstr(buffer, "bluetoothDisabled="))
       {
-        stored_config_temp.bluetoothDisable = (atoi(equals) == 0) ? 0 : 1;
+        storedConfigPtr->bluetoothDisable = (atoi(equals) == 0) ? 0 : 1;
       }
       else if (strstr(buffer, "low_battery_autostop="))
       {
-        stored_config_temp.lowBatteryAutoStop = (atoi(equals) == 0) ? 0 : 1;
+        storedConfigPtr->lowBatteryAutoStop = (atoi(equals) == 0) ? 0 : 1;
       }
       else if (strstr(buffer, "interval="))
       {
-        stored_config_temp.btIntervalSecs = atoi(equals) > 255 ? 255 : atoi(equals);
+        storedConfigPtr->btIntervalSecs = atoi(equals) > 255 ? 255 : atoi(equals);
       }
       else if (strstr(buffer, "exp_power="))
       {
-        stored_config_temp.expansionBoardPower = (atoi(equals) == 0) ? 0 : 1;
+        storedConfigPtr->expansionBoardPower = (atoi(equals) == 0) ? 0 : 1;
       }
       else if (strstr(buffer, "center="))
       {
-        ShimSdSync_parseSyncCenterNameFromCfgFile(&stored_config_temp.rawBytes[0], equals);
+        ShimSdSync_parseSyncCenterNameFromCfgFile(&storedConfigPtr->rawBytes[0], equals);
       }
       else if (strstr(buffer, "node"))
       {
-        ShimSdSync_parseSyncNodeNameFromCfgFile(&stored_config_temp.rawBytes[0], equals);
+        ShimSdSync_parseSyncNodeNameFromCfgFile(&storedConfigPtr->rawBytes[0], equals);
       }
       else if (strstr(buffer, "est_exp_len="))
       {
         est_exp_len = atoi(equals);
-        stored_config_temp.experimentLengthEstimatedInSecMsb
+        storedConfigPtr->experimentLengthEstimatedInSecMsb
             = (est_exp_len & 0xff00) >> 8;
-        stored_config_temp.experimentLengthEstimatedInSecLsb = est_exp_len & 0xff;
+        storedConfigPtr->experimentLengthEstimatedInSecLsb = est_exp_len & 0xff;
       }
       else if (strstr(buffer, "max_exp_len="))
       {
         max_exp_len = atoi(equals);
-        stored_config_temp.experimentLengthMaxInMinutesMsb = (max_exp_len & 0xff00) >> 8;
-        stored_config_temp.experimentLengthMaxInMinutesLsb = max_exp_len & 0xff;
+        storedConfigPtr->experimentLengthMaxInMinutesMsb = (max_exp_len & 0xff00) >> 8;
+        storedConfigPtr->experimentLengthMaxInMinutesLsb = max_exp_len & 0xff;
       }
 #if IS_SUPPORTED_SINGLE_TOUCH
       else if (strstr(buffer, "singletouch="))
       {
-        stored_config_temp.singleTouchStart = (atoi(equals) == 0) ? 0 : 1;
+        storedConfigPtr->singleTouchStart = (atoi(equals) == 0) ? 0 : 1;
       }
 #endif //IS_SUPPORTED_SINGLE_TOUCH
       else if (strstr(buffer, "myid="))
       {
-        stored_config_temp.myTrialID = atoi(equals);
+        storedConfigPtr->myTrialID = atoi(equals);
       }
       else if (strstr(buffer, "Nshimmer="))
       {
-        stored_config_temp.numberOfShimmers = atoi(equals);
+        storedConfigPtr->numberOfShimmers = atoi(equals);
       }
       else if (strstr(buffer, "shimmername="))
       {
@@ -693,7 +692,7 @@ void ShimSdCfgFile_parse(void)
         {
           string_length = 0;
         }
-        memcpy(&stored_config_temp.shimmerName[0], equals, string_length);
+        memcpy(&storedConfigPtr->shimmerName[0], equals, string_length);
       }
       else if (strstr(buffer, "experimentid="))
       {
@@ -710,113 +709,113 @@ void ShimSdCfgFile_parse(void)
         {
           string_length = 0;
         }
-        memcpy(&stored_config_temp.expIdName[0], equals, string_length);
+        memcpy(&storedConfigPtr->expIdName[0], equals, string_length);
       }
       else if (strstr(buffer, "configtime="))
       {
         config_time = atol(equals);
-        ShimConfig_configTimeSet(&stored_config_temp, config_time);
+        ShimConfig_configTimeSet(config_time);
       }
 
       else if (strstr(buffer, "EXG_ADS1292R_1_CONFIG1="))
       {
-        stored_config_temp.exgADS1292rRegsCh1.config1 = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh1.config1 = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_CONFIG2="))
       {
-        stored_config_temp.exgADS1292rRegsCh1.config2 = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh1.config2 = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_LOFF="))
       {
-        stored_config_temp.exgADS1292rRegsCh1.loff = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh1.loff = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_CH1SET="))
       {
-        stored_config_temp.exgADS1292rRegsCh1.ch1set = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh1.ch1set = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_CH2SET="))
       {
-        stored_config_temp.exgADS1292rRegsCh1.ch2set = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh1.ch2set = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_RLD_SENS="))
       {
-        stored_config_temp.exgADS1292rRegsCh1.rldSens = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh1.rldSens = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_LOFF_SENS="))
       {
-        stored_config_temp.exgADS1292rRegsCh1.loffSens = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh1.loffSens = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_LOFF_STAT="))
       {
-        stored_config_temp.exgADS1292rRegsCh1.loffStat = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh1.loffStat = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_RESP1="))
       {
-        stored_config_temp.exgADS1292rRegsCh1.resp1 = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh1.resp1 = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_1_RESP2="))
       {
-        stored_config_temp.exgADS1292rRegsCh1.resp2 = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh1.resp2 = atoi(equals);
       }
 
       else if (strstr(buffer, "EXG_ADS1292R_2_CONFIG1="))
       {
-        stored_config_temp.exgADS1292rRegsCh2.config1 = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh2.config1 = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_CONFIG2="))
       {
-        stored_config_temp.exgADS1292rRegsCh2.config2 = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh2.config2 = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_LOFF="))
       {
-        stored_config_temp.exgADS1292rRegsCh2.loff = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh2.loff = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_CH1SET="))
       {
-        stored_config_temp.exgADS1292rRegsCh2.ch1set = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh2.ch1set = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_CH2SET="))
       {
-        stored_config_temp.exgADS1292rRegsCh2.ch2set = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh2.ch2set = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_RLD_SENS="))
       {
-        stored_config_temp.exgADS1292rRegsCh2.rldSens = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh2.rldSens = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_LOFF_SENS="))
       {
-        stored_config_temp.exgADS1292rRegsCh2.loffSens = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh2.loffSens = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_LOFF_STAT="))
       {
-        stored_config_temp.exgADS1292rRegsCh2.loffStat = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh2.loffStat = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_RESP1="))
       {
-        stored_config_temp.exgADS1292rRegsCh2.resp1 = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh2.resp1 = atoi(equals);
       }
       else if (strstr(buffer, "EXG_ADS1292R_2_RESP2="))
       {
-        stored_config_temp.exgADS1292rRegsCh2.resp2 = atoi(equals);
+        storedConfigPtr->exgADS1292rRegsCh2.resp2 = atoi(equals);
       }
 
       else if (strstr(buffer, "derived_channels="))
       {
         derived_channels_val = atoll(equals);
-        stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_0] = derived_channels_val & 0xFF;
-        stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_1]
+        storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_0] = derived_channels_val & 0xFF;
+        storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_1]
             = (derived_channels_val >> 8) & 0xFF;
-        stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_2]
+        storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_2]
             = (derived_channels_val >> 16) & 0xFF;
-        stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_3]
+        storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_3]
             = (derived_channels_val >> 24) & 0xFF;
-        stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_4]
+        storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_4]
             = (derived_channels_val >> 32) & 0xFF;
-        stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_5]
+        storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_5]
             = (derived_channels_val >> 40) & 0xFF;
-        stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_6]
+        storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_6]
             = (derived_channels_val >> 48) & 0xFF;
-        stored_config_temp.rawBytes[NV_DERIVED_CHANNELS_7]
+        storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_7]
             = (derived_channels_val >> 56) & 0xFF;
       }
     }
@@ -828,27 +827,29 @@ void ShimSdCfgFile_parse(void)
     HAL_Delay(50); //50ms
 #endif
     sample_period = (round) (ShimConfig_freqDiv(sample_rate));
-    stored_config_temp.samplingRateTicks = (uint16_t) sample_period;
-    /* restoring orignal calibration bytes which is not updated from calib file*/
-    memcpy((storedConfig->lnAccelCalib.rawBytes),
-        &(stored_config_temp.lnAccelCalib.rawBytes),
-        sizeof(stored_config_temp.lnAccelCalib.rawBytes));
-    memcpy((storedConfig->gyroCalib.rawBytes), &(stored_config_temp.gyroCalib.rawBytes),
-        sizeof(stored_config_temp.gyroCalib.rawBytes));
-    memcpy((storedConfig->magCalib.rawBytes), &(stored_config_temp.magCalib.rawBytes),
-        sizeof(stored_config_temp.magCalib.rawBytes));
-    memcpy((storedConfig->wrAccelCalib.rawBytes),
-        &(stored_config_temp.wrAccelCalib.rawBytes),
-        sizeof(stored_config_temp.wrAccelCalib.rawBytes));
-    memcpy((storedConfig->altAccelCalib.rawBytes),
-        &(stored_config_temp.altAccelCalib.rawBytes),
-        sizeof(stored_config_temp.altAccelCalib.rawBytes));
-    memcpy((storedConfig->altMagCalib.rawBytes),
-        &(stored_config_temp.altMagCalib.rawBytes),
-        sizeof(stored_config_temp.altMagCalib.rawBytes));
-    triggerSdCardUpdate
-        |= ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
-    memcpy(&(storedConfig->rawBytes[0]), &(stored_config_temp.rawBytes[0]), STOREDCONFIG_SIZE);
+    storedConfigPtr->samplingRateTicks = (uint16_t) sample_period;
+
+    /* restoring original calibration bytes which is not updated from calib file*/
+    memcpy((storedConfigPtr->lnAccelCalib.rawBytes),
+        &(storedConfigTemp.lnAccelCalib.rawBytes),
+        sizeof(storedConfigTemp.lnAccelCalib.rawBytes));
+    memcpy((storedConfigPtr->gyroCalib.rawBytes),
+        &(storedConfigTemp.gyroCalib.rawBytes),
+        sizeof(storedConfigTemp.gyroCalib.rawBytes));
+    memcpy((storedConfigPtr->magCalib.rawBytes),
+        &(storedConfigTemp.magCalib.rawBytes),
+        sizeof(storedConfigTemp.magCalib.rawBytes));
+    memcpy((storedConfigPtr->wrAccelCalib.rawBytes),
+        &(storedConfigTemp.wrAccelCalib.rawBytes),
+        sizeof(storedConfigTemp.wrAccelCalib.rawBytes));
+    memcpy((storedConfigPtr->altAccelCalib.rawBytes),
+        &(storedConfigTemp.altAccelCalib.rawBytes),
+        sizeof(storedConfigTemp.altAccelCalib.rawBytes));
+    memcpy((storedConfigPtr->altMagCalib.rawBytes),
+        &(storedConfigTemp.altMagCalib.rawBytes),
+        sizeof(storedConfigTemp.altMagCalib.rawBytes));
+
+    triggerSdCardUpdate |= ShimConfig_checkAndCorrectConfig();
 
     LogAndStream_infomemUpdate();
     /* If the configuration needed to be corrected, update the config file */
