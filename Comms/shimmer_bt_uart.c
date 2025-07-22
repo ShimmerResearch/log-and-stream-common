@@ -958,7 +958,8 @@ void ShimBt_processCmd(void)
       case SET_MAG_GAIN_COMMAND:
       {
 #if defined(SHIMMER3)
-        storedConfigPtr->magRange = (args[0] <= LSM303DLHC_MAG_8_1G) ? args[0] : LSM303DLHC_MAG_1_3G;
+        storedConfigPtr->magRange
+            = (args[0] <= LSM303DLHC_MAG_8_1G) ? args[0] : LSM303DLHC_MAG_1_3G;
 #elif defined(SHIMMER3R)
         storedConfigPtr->altMagRange = (args[0] <= LIS3MDL_16_GAUSS) ? args[0] : LIS3MDL_4_GAUSS;
 #endif
@@ -1000,7 +1001,8 @@ void ShimBt_processCmd(void)
 #if defined(SHIMMER3)
         storedConfigPtr->altAccelRange = (args[0] <= ACCEL_16G) ? (args[0] & 0x03) : ACCEL_2G;
 #elif defined(SHIMMER3R)
-        storedConfigPtr->lnAccelRange = (args[0] <= LSM6DSV_16g) ? (args[0] & 0x03) : LSM6DSV_2g;
+        storedConfigPtr->lnAccelRange
+            = (args[0] <= LSM6DSV_16g) ? (args[0] & 0x03) : LSM6DSV_2g;
 #endif
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE3, SDH_CONFIG_SETUP_BYTE3, 1);
         break;
@@ -1324,7 +1326,8 @@ void ShimBt_processCmd(void)
       case SET_RWC_COMMAND:
       {
         storedConfigPtr->rtcSetByBt = 1;
-        InfoMem_write(NV_SD_TRIAL_CONFIG0, &storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
+        InfoMem_write(NV_SD_TRIAL_CONFIG0,
+            &storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
         ShimSdHead_sdHeadTextSetByte(
             SDH_TRIAL_CONFIG0, storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0]);
 

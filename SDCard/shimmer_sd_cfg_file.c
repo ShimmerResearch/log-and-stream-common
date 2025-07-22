@@ -375,7 +375,8 @@ void ShimSdCfgFile_parse(void)
     ShimSdSync_resetSyncNodeArray();
 
     /* Copy back in the NV_SD_CONFIG_DELAY_FLAG byte */
-    storedConfigPtr->rawBytes[NV_SD_CONFIG_DELAY_FLAG] = storedConfigTemp.rawBytes[NV_SD_CONFIG_DELAY_FLAG];
+    storedConfigPtr->rawBytes[NV_SD_CONFIG_DELAY_FLAG]
+        = storedConfigTemp.rawBytes[NV_SD_CONFIG_DELAY_FLAG];
 
 #if defined(SHIMMER3)
     storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0] &= ~SDH_SET_PMUX; //PMUX reserved as 0
@@ -653,8 +654,7 @@ void ShimSdCfgFile_parse(void)
       else if (strstr(buffer, "est_exp_len="))
       {
         est_exp_len = atoi(equals);
-        storedConfigPtr->experimentLengthEstimatedInSecMsb
-            = (est_exp_len & 0xff00) >> 8;
+        storedConfigPtr->experimentLengthEstimatedInSecMsb = (est_exp_len & 0xff00) >> 8;
         storedConfigPtr->experimentLengthEstimatedInSecLsb = est_exp_len & 0xff;
       }
       else if (strstr(buffer, "max_exp_len="))
@@ -833,11 +833,9 @@ void ShimSdCfgFile_parse(void)
     memcpy((storedConfigPtr->lnAccelCalib.rawBytes),
         &(storedConfigTemp.lnAccelCalib.rawBytes),
         sizeof(storedConfigTemp.lnAccelCalib.rawBytes));
-    memcpy((storedConfigPtr->gyroCalib.rawBytes),
-        &(storedConfigTemp.gyroCalib.rawBytes),
+    memcpy((storedConfigPtr->gyroCalib.rawBytes), &(storedConfigTemp.gyroCalib.rawBytes),
         sizeof(storedConfigTemp.gyroCalib.rawBytes));
-    memcpy((storedConfigPtr->magCalib.rawBytes),
-        &(storedConfigTemp.magCalib.rawBytes),
+    memcpy((storedConfigPtr->magCalib.rawBytes), &(storedConfigTemp.magCalib.rawBytes),
         sizeof(storedConfigTemp.magCalib.rawBytes));
     memcpy((storedConfigPtr->wrAccelCalib.rawBytes),
         &(storedConfigTemp.wrAccelCalib.rawBytes),
