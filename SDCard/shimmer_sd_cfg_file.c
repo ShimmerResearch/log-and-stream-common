@@ -374,9 +374,6 @@ void ShimSdCfgFile_parse(void)
     ShimSdSync_resetSyncVariablesBeforeParseConfig();
     ShimSdSync_resetSyncNodeArray();
 
-    /* Copy back in the NV_SD_CONFIG_DELAY_FLAG byte */
-    storedConfigPtr->rawBytes[NV_SD_CONFIG_DELAY_FLAG] = storedConfigTemp.rawBytes[NV_SD_CONFIG_DELAY_FLAG];
-
 #if defined(SHIMMER3)
     storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0] &= ~SDH_SET_PMUX; //PMUX reserved as 0
 //stored_config_temp.rawBytes[NV_SD_TRIAL_CONFIG0] |= SDH_TIME_STAMP; //TIME_STAMP always = 1
@@ -848,6 +845,11 @@ void ShimSdCfgFile_parse(void)
     memcpy((storedConfigPtr->altMagCalib.rawBytes),
         &(storedConfigTemp.altMagCalib.rawBytes),
         sizeof(storedConfigTemp.altMagCalib.rawBytes));
+
+    /* Copy back in the NV_SD_CONFIG_DELAY_FLAG byte. This carries forward whether the CFG and/or config files need to be updated. */
+    //TODO Why would the CFG file need to be updated at this point when we are reading it?
+    storedConfigPtr->rawBytes[NV_SD_CONFIG_DELAY_FLAG] =
+        storedConfigTemp.rawBytes[NV_SD_CONFIG_DELAY_FLAG];
 
     triggerSdCardUpdate |= ShimConfig_checkAndCorrectConfig();
 
