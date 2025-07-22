@@ -848,9 +848,9 @@ void ShimSdCfgFile_parse(void)
         sizeof(stored_config_temp.altMagCalib.rawBytes));
     triggerSdCardUpdate
         |= ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
-
+    memcpy( &(storedConfig->rawBytes[0]), &(stored_config_temp.rawBytes[0]), STOREDCONFIG_SIZE);
+   
     LogAndStream_infomemUpdate();
-
     /* If the configuration needed to be corrected, update the config file */
     if (triggerSdCardUpdate)
     {
