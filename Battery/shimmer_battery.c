@@ -33,6 +33,13 @@ void ShimBatt_updateStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3
   batteryStatus.battStatusRaw.STAT2 = lm3658sdStat2;
   batteryStatus.battValMV = battValMV;
 
+  /* Override the raw status byte if the battery voltage is too low */
+  if (batteryStatus.battStatusRaw.rawBytes[2] == CHRG_CHIP_STATUS_SUSPENDED
+      && batteryStatus.battValMV <= BATTERY_ERROR_VOLTAGE_MIN)
+  {
+    batteryStatus.battStatusRaw.rawBytes[2] = CHRG_CHIP_STATUS_BAD_BATTERY;
+  }
+
   ShimBatt_rankBattUndockedVoltage();
   ShimBatt_rankBattChargingStatus();
   ShimBatt_determineChargingLedState();
@@ -47,6 +54,8 @@ void ShimBatt_updateStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3
       ShimTask_setStopSensing();
     }
   }
+
+//  SHIMMER_PRINTF("BATT = %dmV, 0x%02X\r\n", batteryStatus.battValMV, batteryStatus.battStatusRaw.rawBytes[2]);
 }
 
 void ShimBatt_rankBattUndockedVoltage(void)
@@ -111,14 +120,7 @@ void ShimBatt_rankBattChargingStatus(void)
     switch (batteryStatus.battStatusRaw.rawBytes[2])
     {
       case CHRG_CHIP_STATUS_SUSPENDED:
-        if (batteryStatus.battValMV <= BATTERY_ERROR_VOLTAGE_MIN)
-        {
-          batteryStatus.battChargingStatus = CHARGING_STATUS_BAD_BATTERY;
-        }
-        else
-        {
-          batteryStatus.battChargingStatus = CHARGING_STATUS_SUSPENDED;
-        }
+        batteryStatus.battChargingStatus = CHARGING_STATUS_SUSPENDED;
         break;
       case CHRG_CHIP_STATUS_FULLY_CHARGED:
         batteryStatus.battChargingStatus = CHARGING_STATUS_FULLY_CHARGED;
@@ -152,8 +154,7 @@ void ShimBatt_determineChargingLedState(void)
       batteryStatus.battStatLedCharging = LED_RGB_YELLOW;
 #endif
     }
-    else if (batteryStatus.battChargingStatus == CHARGING_STATUS_UNKNOWN
-        || batteryStatus.battChargingStatus == CHARGING_STATUS_BAD_BATTERY
+    else if (batteryStatus.battChargingStatus == CHARGING_STATUS_BAD_BATTERY
         || batteryStatus.battChargingStatus == CHARGING_STATUS_ERROR)
     {
 #if defined(SHIMMER3)
@@ -182,6 +183,7 @@ void ShimBatt_determineChargingLedState(void)
     }
     else
     {
+      // Unknown charging status
 #if defined(SHIMMER3)
       batteryStatus.battStatLedCharging = LED_ALL_OFF;
 #elif defined(SHIMMER3R)
@@ -277,4 +279,10 @@ uint8_t ShimBatt_checkIfBatteryCritical(void)
     ShimBatt_setBattCritical(1);
   }
   return batteryStatus.battCritical;
+}
+
+void ShimBatt_resetChargingStatus(void)
+{
+  batteryStatus.battChargingStatus = CHARGING_STATUS_UNKNOWN;
+  ShimBatt_determineChargingLedState();
 }
