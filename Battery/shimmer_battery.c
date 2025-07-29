@@ -55,7 +55,7 @@ void ShimBatt_updateStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3
     }
   }
 
-//  SHIMMER_PRINTF("BATT = %dmV, 0x%02X\r\n", batteryStatus.battValMV, batteryStatus.battStatusRaw.rawBytes[2]);
+  //SHIMMER_PRINTF("BATT = %dmV, 0x%02X\r\n", batteryStatus.battValMV, batteryStatus.battStatusRaw.rawBytes[2]);
 }
 
 void ShimBatt_rankBattUndockedVoltage(void)
@@ -183,7 +183,7 @@ void ShimBatt_determineChargingLedState(void)
     }
     else
     {
-      // Unknown charging status
+      //Unknown charging status
 #if defined(SHIMMER3)
       batteryStatus.battStatLedCharging = LED_ALL_OFF;
 #elif defined(SHIMMER3R)
