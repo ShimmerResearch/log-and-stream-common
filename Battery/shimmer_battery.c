@@ -183,8 +183,8 @@ void ShimBatt_determineChargingLedState(void)
     }
     else
     {
-      // Unknown charging status: This case occurs when the charging status does not match any known state.
-      // To avoid displaying incorrect or misleading information to the user, all LEDs are turned off.
+      //Unknown charging status: This case occurs when the charging status does not match any known state.
+      //To avoid displaying incorrect or misleading information to the user, all LEDs are turned off.
 #if defined(SHIMMER3)
       batteryStatus.battStatLedCharging = LED_ALL_OFF;
 #elif defined(SHIMMER3R)
