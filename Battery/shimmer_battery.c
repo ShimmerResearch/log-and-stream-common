@@ -291,6 +291,7 @@ uint8_t ShimBatt_checkIfBatteryCritical(void)
  */
 void ShimBatt_resetChargingStatus(void)
 {
+  batteryStatus.battStatusRaw.rawBytes[2] = CHRG_CHIP_STATUS_UNKNOWN;
   batteryStatus.battChargingStatus = CHARGING_STATUS_UNKNOWN;
   ShimBatt_determineChargingLedState();
 }
