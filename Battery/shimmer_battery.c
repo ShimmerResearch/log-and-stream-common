@@ -54,8 +54,6 @@ void ShimBatt_updateStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3
       ShimTask_setStopSensing();
     }
   }
-
-  //SHIMMER_PRINTF("BATT = %dmV, 0x%02X\r\n", batteryStatus.battValMV, batteryStatus.battStatusRaw.rawBytes[2]);
 }
 
 void ShimBatt_rankBattUndockedVoltage(void)
