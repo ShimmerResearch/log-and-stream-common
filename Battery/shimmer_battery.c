@@ -28,8 +28,8 @@ void ShimBatt_init(void)
 void ShimBatt_updateStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3658sdStat1, uint8_t lm3658sdStat2)
 {
   batteryStatus.battStatusRaw.adcBattVal = adc_battVal;
-  // Save charging chip status only if Shimmer is docked or USB is connected
-  if(LogAndStream_isDockedOrUsbIn())
+  //Save charging chip status only if Shimmer is docked or USB is connected
+  if (LogAndStream_isDockedOrUsbIn())
   {
     batteryStatus.battStatusRaw.rawBytes[2] = 0;
     batteryStatus.battStatusRaw.STAT1 = lm3658sdStat1;
