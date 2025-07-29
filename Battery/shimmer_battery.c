@@ -283,11 +283,11 @@ uint8_t ShimBatt_checkIfBatteryCritical(void)
 
 /**
  * @brief Resets the battery charging status to an unknown state.
- * 
- * This function is used to reset the charging status of the battery to 
- * CHARGING_STATUS_UNKNOWN. It also updates the charging LED state to 
- * reflect this change. This function should be called when the charging 
- * status needs to be re-evaluated, such as during initialization or when 
+ *
+ * This function is used to reset the charging status of the battery to
+ * CHARGING_STATUS_UNKNOWN. It also updates the charging LED state to
+ * reflect this change. This function should be called when the charging
+ * status needs to be re-evaluated, such as during initialization or when
  * the charging state is uncertain.
  */
 void ShimBatt_resetChargingStatus(void)
