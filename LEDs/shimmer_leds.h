@@ -16,13 +16,13 @@
 
 /* Original approach for 5 individual LEDs on Shimmer3. The Shimmer3R has two
  * RGB LEDs instead but the original approach is still supported. */
-#define LED_LWR_RED    0x01
-#define LED_LWR_GREEN  0x02
-#define LED_LWR_YELLOW 0x04
-#define LED_UPR_GREEN  0x08
-#define LED_UPR_BLUE   0x10
-#define LED_ALL        0xFF
-#define LED_ALL_OFF    0x00
+#define LED_LWR_RED                   0x01
+#define LED_LWR_GREEN                 0x02
+#define LED_LWR_YELLOW                0x04
+#define LED_UPR_GREEN                 0x08
+#define LED_UPR_BLUE                  0x10
+#define LED_ALL                       0xFF
+#define LED_ALL_OFF                   0x00
 
 void ShimLeds_varsInit(void);
 void ShimLeds_incrementCounters(void);

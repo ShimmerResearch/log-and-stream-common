@@ -19,8 +19,9 @@ uint16_t blinkCnt20, blinkCnt50;
 uint8_t lastLedGroup2, rwcErrorFlash;
 
 static int ledIndex = 0;
-static int direction = 1; // 1: forward, -1: backward
-const uint8_t ledOrder[5] = {LED_UPR_GREEN, LED_UPR_BLUE, LED_LWR_GREEN, LED_LWR_YELLOW, LED_LWR_RED};
+static int direction = 1; //1: forward, -1: backward
+const uint8_t ledOrder[5]
+    = { LED_UPR_GREEN, LED_UPR_BLUE, LED_LWR_GREEN, LED_LWR_YELLOW, LED_LWR_RED };
 
 void ShimLeds_blinkSetLwrRedOn(void);
 void ShimLeds_blinkSetLwrSdError(void);
@@ -53,11 +54,11 @@ void ShimLeds_incrementCounters(void)
 void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
 {
 #if defined(SHIMMER3R)
-  // If the bootloader is initialising, toggle the LEDs to indicate this
+  //If the bootloader is initialising, toggle the LEDs to indicate this
   if (shimmerStatus.bslCheckTimeMs > 0)
   {
-    // Toggle upper and lower LEDs purple every 200ms
-    if(ShimLeds_isBlinkTimerCnt200ms())
+    //Toggle upper and lower LEDs purple every 200ms
+    if (ShimLeds_isBlinkTimerCnt200ms())
     {
       Board_ledUprSetColourRgb(0, 0, 0);
       Board_ledLwrSetColourRgb(128, 0, 128);
@@ -71,9 +72,8 @@ void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
   }
 #endif
 
-  // If timeout has occurred, show boot stage failure point by toggling individual LEDs
-  if (bootStageCurrent
-      == BOOT_STAGE_I2C && shimmerStatus.bootTimePerStageMs > BOOT_STAGE_TIMEOUT_MS_I2C)
+  //If timeout has occurred, show boot stage failure point by toggling individual LEDs
+  if (bootStageCurrent == BOOT_STAGE_I2C && shimmerStatus.bootTimePerStageMs > BOOT_STAGE_TIMEOUT_MS_I2C)
   {
     Board_ledToggle(LED_LWR_RED);
   }
@@ -81,52 +81,56 @@ void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
   {
     Board_ledToggle(LED_LWR_YELLOW);
   }
-  else if (bootStageCurrent
-      == BOOT_STAGE_CONFIGURATION && shimmerStatus.bootTimePerStageMs > BOOT_STAGE_TIMEOUT_MS_CONFIGURATION)
+  else if (bootStageCurrent == BOOT_STAGE_CONFIGURATION
+      && shimmerStatus.bootTimePerStageMs > BOOT_STAGE_TIMEOUT_MS_CONFIGURATION)
   {
     Board_ledToggle(LED_LWR_GREEN);
   }
   else
   {
-    // If the boot stage is not yet complete, toggle the LEDs to indicate booting
+    //If the boot stage is not yet complete, toggle the LEDs to indicate booting
     shimmerStatus.bootTimePerStageMs += SHIMMER_BLINK_TIMER_PERIOD_MS;
 
-    // Note: This is a placeholder for legacy behavior, can be removed if not needed
+    //Note: This is a placeholder for legacy behavior, can be removed if not needed
 
-//    // Toggle upper and lower LEDs green every 200ms to indicate booting
-//    if(ShimLeds_isBlinkTimerCnt200ms())
-//    {
-//      if(Board_isLedOnUprGreen())
-//      {
-//        Board_ledOn(LED_LWR_GREEN);
-//        Board_ledOff(LED_UPR_GREEN);
-//      }
-//      else
-//      {
-//        Board_ledOff(LED_LWR_GREEN);
-//        Board_ledOn(LED_UPR_GREEN);
-//      }
-//    }
+    //// Toggle upper and lower LEDs green every 200ms to indicate booting
+    //if(ShimLeds_isBlinkTimerCnt200ms())
+    //{
+    //  if(Board_isLedOnUprGreen())
+    //  {
+    //    Board_ledOn(LED_LWR_GREEN);
+    //    Board_ledOff(LED_UPR_GREEN);
+    //  }
+    //  else
+    //  {
+    //    Board_ledOff(LED_LWR_GREEN);
+    //    Board_ledOn(LED_UPR_GREEN);
+    //  }
+    //}
 
-    // Cycle through the LEDs in a specific order
+    //Cycle through the LEDs in a specific order
     if (ShimLeds_isBlinkTimerCnt200ms())
     {
-      // Turn off all LEDs first
+      //Turn off all LEDs first
       Board_ledOff(LED_ALL);
 
-      // Turn on the current LED
+      //Turn on the current LED
       Board_ledOn(ledOrder[ledIndex]);
 
-      // Update index for next call
+      //Update index for next call
       ledIndex += direction;
       if (ledIndex == 4)
-        direction = -1; // Reverse at red
+      {
+        direction = -1; //Reverse at red
+      }
       else if (ledIndex == 0)
-        direction = 1; // Forward at green1
+      {
+        direction = 1; //Forward at green1
+      }
     }
 
-//    // Turn on LEDs as per legacy behavior in Shimmer3
-//    Board_ledOn(LED_UPR_GREEN + LED_UPR_BLUE + LED_LWR_GREEN + LED_LWR_YELLOW + LED_LWR_RED);
+    //// Turn on LEDs as per legacy behavior in Shimmer3
+    //Board_ledOn(LED_UPR_GREEN + LED_UPR_BLUE + LED_LWR_GREEN + LED_LWR_YELLOW + LED_LWR_RED);
   }
 }
 

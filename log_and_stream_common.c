@@ -40,7 +40,7 @@ void LogAndStream_setBootStage(boot_stage_t bootStageNew)
 {
   bootStage = bootStageNew;
 
-  // Reset the boot stage time
+  //Reset the boot stage time
   shimmerStatus.bootTimePerStageMs = 0;
 }
 
