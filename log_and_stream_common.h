@@ -20,6 +20,7 @@ uint8_t LogAndStream_isSdInfoSyncDelayed(void);
 void LogAndStream_setSdInfoSyncDelayed(uint8_t state);
 void LogAndStream_blinkTimerCommon(void);
 uint8_t LogAndStream_isDockedOrUsbIn(void);
+void LogAndStream_dockedStateChange(void);
 void LogAndStream_infomemUpdate(void);
 
 #endif /* LOG_AND_STREAM_COMMON_LOG_AND_STREAM_COMMON_H_ */

@@ -368,7 +368,7 @@ void ShimDock_processCmd(void)
                 ShimConfig_storedConfigSet(dockRxBuf + UART_RXBUF_DATA + 3,
                     uartInfoMemOffset, uartInfoMemLength);
 
-                ShimConfig_checkAndCorrectConfig(ShimConfig_getStoredConfig());
+                ShimConfig_checkAndCorrectConfig();
                 ShimConfig_setFlagWriteCfgToSd(1, 0);
 
                 LogAndStream_infomemUpdate();
