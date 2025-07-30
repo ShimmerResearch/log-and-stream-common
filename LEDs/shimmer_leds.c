@@ -230,7 +230,7 @@ void ShimLeds_blinkSetLwrBattStatus(void)
     {
       batt_led = batteryStatus.battStatLedCharging;
     }
-    else if (!blinkCnt50)
+    else if (ShimLeds_isBlinkTimerCnt5s())
     {
       batt_led = batteryStatus.battStatLed;
     }
@@ -471,6 +471,11 @@ uint8_t ShimLeds_isBlinkTimerCnt1s(void)
 uint8_t ShimLeds_isBlinkTimerCnt2s(void)
 {
   return (blinkCnt20 == 0);
+}
+
+uint8_t ShimLeds_isBlinkTimerCnt5s(void)
+{
+  return (blinkCnt50 == 0);
 }
 
 void ShimLeds_setRtcErrorFlash(uint8_t state)
