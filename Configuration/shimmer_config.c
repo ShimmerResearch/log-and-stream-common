@@ -225,8 +225,6 @@ void ShimConfig_setDefaultConfig(void)
   storedConfig.bluetoothDisable = 0;
 #if defined(SHIMMER3)
   storedConfig.bleEnabled = 0;
-#else
-  storedConfig.bleEnabled = 1;
 #endif
 
   /* Auto-stop disabled */
