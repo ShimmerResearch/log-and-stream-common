@@ -12,6 +12,8 @@
 
 #include <log_and_stream_definitions.h>
 
+#define SHIMMER_BLINK_TIMER_PERIOD_MS 100
+
 /* Original approach for 5 individual LEDs on Shimmer3. The Shimmer3R has two
  * RGB LEDs instead but the original approach is still supported. */
 #define LED_LWR_RED    0x01

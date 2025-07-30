@@ -18,6 +18,10 @@
 uint16_t blinkCnt20, blinkCnt50;
 uint8_t lastLedGroup2, rwcErrorFlash;
 
+static int ledIndex = 0;
+static int direction = 1; // 1: forward, -1: backward
+const uint8_t ledOrder[5] = {LED_UPR_GREEN, LED_UPR_BLUE, LED_LWR_GREEN, LED_LWR_YELLOW, LED_LWR_RED};
+
 void ShimLeds_blinkSetLwrRedOn(void);
 void ShimLeds_blinkSetLwrSdError(void);
 void ShimLeds_blinkSetLwrBattStatus(void);
@@ -48,16 +52,81 @@ void ShimLeds_incrementCounters(void)
 
 void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
 {
-  switch (bootStageCurrent)
+#if defined(SHIMMER3R)
+  // If the bootloader is initialising, toggle the LEDs to indicate this
+  if (shimmerStatus.bslCheckTimeMs > 0)
   {
-    case BOOT_STAGE_I2C:
-      Board_ledToggle(LED_LWR_RED);
-      break;
-    case BOOT_STAGE_BLUETOOTH_FAILURE:
-      Board_ledToggle(LED_LWR_YELLOW);
-      break;
-    default:
-      break;
+    // Toggle upper and lower LEDs purple every 200ms
+    if(ShimLeds_isBlinkTimerCnt200ms())
+    {
+      Board_ledUprSetColourRgb(0, 0, 0);
+      Board_ledLwrSetColourRgb(128, 0, 128);
+    }
+    else
+    {
+      Board_ledUprSetColourRgb(128, 0, 128);
+      Board_ledLwrSetColourRgb(0, 0, 0);
+    }
+    return;
+  }
+#endif
+
+  // If timeout has occurred, show boot stage failure point by toggling individual LEDs
+  if (bootStageCurrent
+      == BOOT_STAGE_I2C && shimmerStatus.bootTimePerStageMs > BOOT_STAGE_TIMEOUT_MS_I2C)
+  {
+    Board_ledToggle(LED_LWR_RED);
+  }
+  else if (bootStageCurrent == BOOT_STAGE_BLUETOOTH_FAILURE)
+  {
+    Board_ledToggle(LED_LWR_YELLOW);
+  }
+  else if (bootStageCurrent
+      == BOOT_STAGE_CONFIGURATION && shimmerStatus.bootTimePerStageMs > BOOT_STAGE_TIMEOUT_MS_CONFIGURATION)
+  {
+    Board_ledToggle(LED_LWR_GREEN);
+  }
+  else
+  {
+    // If the boot stage is not yet complete, toggle the LEDs to indicate booting
+    shimmerStatus.bootTimePerStageMs += SHIMMER_BLINK_TIMER_PERIOD_MS;
+
+    // Note: This is a placeholder for legacy behavior, can be removed if not needed
+
+//    // Toggle upper and lower LEDs green every 200ms to indicate booting
+//    if(ShimLeds_isBlinkTimerCnt200ms())
+//    {
+//      if(Board_isLedOnUprGreen())
+//      {
+//        Board_ledOn(LED_LWR_GREEN);
+//        Board_ledOff(LED_UPR_GREEN);
+//      }
+//      else
+//      {
+//        Board_ledOff(LED_LWR_GREEN);
+//        Board_ledOn(LED_UPR_GREEN);
+//      }
+//    }
+
+    // Cycle through the LEDs in a specific order
+    if (ShimLeds_isBlinkTimerCnt200ms())
+    {
+      // Turn off all LEDs first
+      Board_ledOff(LED_ALL);
+
+      // Turn on the current LED
+      Board_ledOn(ledOrder[ledIndex]);
+
+      // Update index for next call
+      ledIndex += direction;
+      if (ledIndex == 4)
+        direction = -1; // Reverse at red
+      else if (ledIndex == 0)
+        direction = 1; // Forward at green1
+    }
+
+//    // Turn on LEDs as per legacy behavior in Shimmer3
+//    Board_ledOn(LED_UPR_GREEN + LED_UPR_BLUE + LED_LWR_GREEN + LED_LWR_YELLOW + LED_LWR_RED);
   }
 }
 
@@ -383,104 +452,6 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
       //}
     }
   }
-  //#else
-  //  //green1
-  //  uint8_t greenUprStateToSet = 0;
-  //  if (shimmerStatus.configuring)
-  //  {
-  //    greenUprStateToSet = ShimLeds_isBlinkTimerCnt200ms() ? 0 : 1;
-  //  }
-  //  else if (shimmerStatus.sdLogging)
-  //  {
-  //    greenUprStateToSet = (blinkCnt20 >= 10) ? 0 : 1;
-  //  }
-  //#if defined(SHIMMER4_SDK)
-  //  else if (shimmerStatus.isSdInserted)
-  //  {
-  //    greenUprStateToSet = ShimLeds_isBlinkTimerCnt2s() ? 1 : 0;
-  //  }
-  //#endif
-  //  else
-  //  {
-  //    greenUprStateToSet = 0;
-  //  }
-  //
-  //#if defined(SHIMMER4_SDK)
-  //  if (greenUprStateToSet)
-  //  {
-  //    Board_ledOn(LED_GREEN_UPR);
-  //  }
-  //  else
-  //  {
-  //    Board_ledOff(LED_GREEN_UPR);
-  //  }
-  //#endif
-  //
-  //  //blue
-  //  uint8_t blueUprStateToSet = 0;
-  //  if (isBtIsInitialised())
-  //  {
-  //    if (!shimmerStatus.btConnected)
-  //    {
-  //      blueUprStateToSet = ShimLeds_isBlinkTimerCnt2s() ? 1 : 0;
-  //    }
-  //    else if (shimmerStatus.btStreaming)
-  //    {
-  //      if (ShimLeds_isBlinkTimerCnt1s())
-  //      {
-  //        blueUprStateToSet = isLedOnUprBlue() ? 0 : 1;
-  //      }
-  //      else
-  //      {
-  //        blueUprStateToSet = isLedOnUprBlue();
-  //      }
-  //    }
-  //    else
-  //    {
-  //      blueUprStateToSet = 1;
-  //    }
-  //  }
-  //  else
-  //  {
-  //    blueUprStateToSet = 0;
-  //  }
-  //
-  //#if defined(SHIMMER4_SDK)
-  //  if (blueUprStateToSet)
-  //  {
-  //    Board_ledOn(LED_BLUE_UPR);
-  //  }
-  //  else
-  //  {
-  //    Board_ledOff(LED_BLUE_UPR);
-  //  }
-  //#endif
-  //
-  //#if defined(SHIMMER3R)
-  //  //TODO handle different LED blinks for logging/streaming
-  //  //if (shimmerStatus.isStreaming && shimmerStatus.isLogging)
-  //  //{
-  //  //
-  //  //}
-  //  //else if (shimmerStatus.btStreaming)
-  //  //{
-  //  //  if(!(cntBlink % 10))
-  //  //  {
-  //  //    blueUprStateToSet = isLedOnUprBlue()? 0:1;
-  //  //  }
-  //  //}
-  //  //else if (shimmerStatus.sdLogging)
-  //  //{
-  //  //  if(!(cntBlink % 10))
-  //  //  {
-  //  //    greenUprStateToSet = isLedOnUprGreen()? 0:1;
-  //  //  }
-  //  //}
-  //
-  //  Board_ledUprSetColourRgb(LED_PWM_OFF, greenUprStateToSet ? LED_PWM_ON : LED_PWM_OFF,
-  //      blueUprStateToSet ? LED_PWM_ON : LED_PWM_OFF);
-  //#endif
-  //#endif
 }
 
 uint8_t ShimLeds_isBlinkTimerCnt200ms(void)

@@ -36,6 +36,9 @@
 #define __NOP() __no_operation()
 #endif
 
+#define BOOT_STAGE_TIMEOUT_MS_I2C  1000
+#define BOOT_STAGE_TIMEOUT_MS_CONFIGURATION  2000
+
 #define STAT_PERI_ADC      0x01
 #define STAT_PERI_I2C_SENS 0x02
 #if defined(SHIMMER4_SDK)
@@ -96,6 +99,8 @@ typedef volatile struct STATTypeDef_t
 #if defined(SHIMMER3R)
   uint8_t pendingRebootForDfu : 1;
   uint8_t micSensing          : 1;
+  uint16_t bslCheckTimeMs;
+  uint16_t bootTimePerStageMs;
 #endif
   uint8_t pinPvI2c : 1;
   //uint8_t pinPvSd: 1;
