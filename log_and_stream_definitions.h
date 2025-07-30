@@ -100,8 +100,8 @@ typedef volatile struct STATTypeDef_t
   uint8_t pendingRebootForDfu : 1;
   uint8_t micSensing          : 1;
   uint16_t bslCheckTimeMs;
-  uint16_t bootTimePerStageMs;
 #endif
+  uint16_t bootTimePerStageMs;
   uint8_t pinPvI2c : 1;
   //uint8_t pinPvSd: 1;
   uint8_t pinPvExt : 1;
