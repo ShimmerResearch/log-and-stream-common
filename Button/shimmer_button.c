@@ -55,7 +55,7 @@ uint8_t ShimBtn_pressReleaseAction(void)
       {
         shimmerStatus.docked = 1;
       }
-      ShimTask_set(TASK_SETUP_DOCK);
+      LogAndStream_dockedStateChange();
       if (!shimmerStatus.sensing)
       {
         return 1;

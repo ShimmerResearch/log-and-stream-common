@@ -123,6 +123,15 @@ uint8_t LogAndStream_isDockedOrUsbIn(void)
   return shimmerStatus.docked || shimmerStatus.usbPluggedIn;
 }
 
+void LogAndStream_dockedStateChange(void)
+{
+  /* Reset battery charging status on dock/undock so that we don't display an
+   * invalid state. Called directly here to set correct LED state while waiting
+   * for TASK_SETUP_DOCK to trigger. */
+  ShimBatt_resetBatteryChargingStatus();
+  ShimTask_set(TASK_SETUP_DOCK);
+}
+
 void LogAndStream_infomemUpdate(void)
 {
 #if defined(SHIMMER3)
