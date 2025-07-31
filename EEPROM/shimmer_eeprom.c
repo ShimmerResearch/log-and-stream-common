@@ -16,7 +16,7 @@ gEepromBtSettings eepromBtSettings;
 
 void ShimEeprom_init(void)
 {
-  eepromIsPresent = 0;
+  ShimEeprom_setIsPresent(0);
   memset((uint8_t *) &eepromBtSettings, 0xFF, sizeof(eepromBtSettings));
 }
 

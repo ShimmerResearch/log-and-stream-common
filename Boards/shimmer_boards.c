@@ -26,9 +26,9 @@ void ShimBrd_init(void)
   ShimBrd_resetDaughterCardId();
   memset(daughtCardIdStr, 0, sizeof(daughtCardIdStr));
 
-  hwId = 0;
-  wrAccelAndMagInUse = 0;
-  gyroInUse = 0;
+  ShimBrd_setHwId(0);
+  ShimBrd_setWrAccelAndMagInUse(WR_ACCEL_AND_MAG_NONE_IN_USE);
+  ShimBrd_setGyroInUse(GYRO_NONE_IN_USE);
 }
 
 void ShimBrd_resetDaughterCardId(void)
