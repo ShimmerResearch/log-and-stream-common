@@ -823,7 +823,7 @@ void ShimSdCfgFile_parse(void)
 #if defined(SHIMMER3)
       else if (strstr(buffer, "ble_enabled="))
       {
-        stored_config_temp.bleEnabled = atoi(equals);
+        storedConfigPtr->bleEnabled = atoi(equals);
       }
 #endif
     }

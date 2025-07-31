@@ -1377,13 +1377,8 @@ void ShimBt_processCmd(void)
       }
       case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
       {
-<<<<<<< HEAD
-        ShimConfig_configByteAltMagRateSet(storedConfig, args[0]);
-        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE5, SDH_CONFIG_SETUP_BYTE5, 1);
-=======
         ShimConfig_configByteAltMagRateSet(args[0]);
-        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
->>>>>>> refs/remotes/origin/main
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE5, SDH_CONFIG_SETUP_BYTE5, 1);
         break;
       }
 #if defined(SHIMMER3)
@@ -1391,7 +1386,7 @@ void ShimBt_processCmd(void)
       {
         if (isBtDeviceRn4678())
         {
-          storedConfig->bleEnabled = args[0] & 0x01;
+          storedConfigPtr->bleEnabled = args[0] & 0x01;
           ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
         }
         else
