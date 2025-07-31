@@ -650,7 +650,7 @@ void ShimConfig_checkBtModeFromConfig(void)
     if ((!shimmerStatus.btSupportEnabled && shimmerStatus.btPowerOn)
         || (shimmerStatus.sdSyncEnabled != shimmerStatus.btInSyncMode)
 #if defined(SHIMMER3)
-        || (ShimEeprom_getRadioDetails()->rn4678BleDisabled != isBleCurrentlyDisabled())
+        || (ShimEeprom_isRn4678BleDisabled() != isBleCurrentlyDisabled())
 #endif
     )
     {

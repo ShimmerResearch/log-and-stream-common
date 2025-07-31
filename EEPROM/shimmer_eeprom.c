@@ -94,8 +94,9 @@ gEepromBtSettings *ShimEeprom_getRadioDetails(void)
 #if defined(SHIMMER3)
 uint8_t ShimEeprom_isRn4678BleDisabled(void)
 {
-  return eepromBtSettings.bleDisabled;
+  return eepromBtSettings.rn4678BleDisabled;
 }
+#endif
 
 enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void)
 {
