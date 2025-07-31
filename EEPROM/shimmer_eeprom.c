@@ -91,6 +91,12 @@ gEepromBtSettings *ShimEeprom_getRadioDetails(void)
   return &eepromBtSettings;
 }
 
+#if defined(SHIMMER3)
+uint8_t ShimEeprom_isRn4678BleDisabled(void)
+{
+  return eepromBtSettings.bleDisabled;
+}
+
 enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void)
 {
 #if defined(SHIMMER4_SDK)
@@ -117,7 +123,7 @@ enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void)
 /* This function skips the first page of the EEPROM as this is reserved
  * for HW information and therefore an offset of 0 is actually the start
  * of the second page in the EEPROM. */
-uint8_t ShimEeprom_writeDaugherCardMem(uint16_t memOffset, uint8_t memLength, uint8_t *buf)
+uint8_t ShimEeprom_writeDaughterCardMem(uint16_t memOffset, uint8_t memLength, uint8_t *buf)
 {
   if ((memLength <= 128) && (memOffset < EEPROM_AVAILABLE_SIZE)
       && ((uint16_t) memLength + memOffset <= EEPROM_AVAILABLE_SIZE))
