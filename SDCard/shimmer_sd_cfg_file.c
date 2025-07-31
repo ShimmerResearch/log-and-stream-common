@@ -249,11 +249,6 @@ void ShimSdCfgFile_generate(void)
       sprintf(buffer, "derived_channels=%s\r\n", val_char); //todo: got value 0?
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
-#if defined(SHIMMER3)
-      sprintf(buffer, "ble_enabled=%d\r\n", storedConfig->bleEnabled);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-#endif
-
       sprintf(buffer, "EXG_ADS1292R_1_CONFIG1=%d\r\n",
           storedConfig->rawBytes[NV_EXG_ADS1292R_1_CONFIG1]);
       f_write(&cfgFile, buffer, strlen(buffer), &bw);
@@ -819,13 +814,6 @@ void ShimSdCfgFile_parse(void)
         storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_7]
             = (derived_channels_val >> 56) & 0xFF;
       }
-
-#if defined(SHIMMER3)
-      else if (strstr(buffer, "ble_enabled="))
-      {
-        storedConfigPtr->bleEnabled = atoi(equals);
-      }
-#endif
     }
     cfg_file_status = f_close(&cfgFile);
 

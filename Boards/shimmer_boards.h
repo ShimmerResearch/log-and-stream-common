@@ -10,6 +10,10 @@
 
 #include <stdint.h>
 
+#include <EEPROM/shimmer_eeprom.h>
+
+#include "../Shimmer_Driver/CAT24C16/cat24c16.h"
+
 enum SR_HW_IDS
 {
   HW_ID_SHIMMER3 = 3,
@@ -50,24 +54,7 @@ enum GYRO_IN_USE
   GYRO_ICM20948_IN_USE
 };
 
-typedef struct
-{
-  uint8_t exp_brd_id;
-  uint8_t exp_brd_major;
-  uint8_t exp_brd_minor;
-} shimmer_expansion_brd;
-
-typedef union
-{
-  uint8_t raw[16];
-
-  struct __attribute__((packed))
-  {
-    shimmer_expansion_brd expansion_brd;
-    uint8_t padding[13];
-  };
-} daughter_card_id_page;
-
+void ShimBrd_init(void);
 void ShimBrd_resetDaughterCardId(void);
 void ShimBrd_setHwId(uint8_t hwIdToSet);
 void ShimBrd_setDaugherCardIdPage(uint8_t *pagePtr);
@@ -96,9 +83,6 @@ void ShimBrd_setGyroInUse(uint8_t gyro_in_use);
 uint8_t ShimBrd_isGyroInUseMpu9x50(void);
 uint8_t ShimBrd_isGyroInUseIcm20948(void);
 #endif
-
-void ShimBrd_setEepromIsPresent(uint8_t eeprom_is_preset);
-uint8_t ShimBrd_isEepromIsPresent(void);
 
 #if defined(SHIMMER3)
 uint8_t ShimBrd_isLnAccelKxtc9_2050Present(void);

@@ -74,8 +74,6 @@ uint8_t macIdBytes[6];
 //Enum for Shimmer3. Actual Baud value for Shimmer3R.
 uint32_t btBaudRateToUse;
 
-uint8_t bleSupportIsEn = 1;
-
 /* Buffer read / write macros                                                 */
 #define RINGFIFO_RESET(ringFifo)         \
   {                                      \
@@ -113,8 +111,6 @@ void ShimBt_btCommsProtocolInit(void)
   waitingForArgs = 0;
   waitingForArgsLength = 0;
   argsSize = 0;
-
-  bleSupportIsEn = 1;
 
   ShimBt_resetBtRxBuffs();
 
@@ -620,9 +616,6 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case SET_FACTORY_TEST:
           case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
           case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
-#if defined(SHIMMER3)
-          case SET_BLE_ENABLED_COMMAND:
-#endif
             gAction = data;
             waitingForArgs = 1U;
             break;
@@ -1237,10 +1230,9 @@ void ShimBt_processCmd(void)
       {
         dcMemLength = args[0];
         dcMemOffset = args[1] + (args[2] << 8);
-        if ((dcMemLength <= 128) && (dcMemOffset <= 2031)
-            && (dcMemLength + dcMemOffset <= 2032))
+        if(!ShimEeprom_writeDaugherCardMem(dcMemOffset, dcMemLength, &args[3]))
         {
-          eepromWrite(dcMemOffset + 16U, (uint16_t) dcMemLength, &args[3]);
+          sendNack = 1;
         }
         break;
       }
@@ -1381,22 +1373,6 @@ void ShimBt_processCmd(void)
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE5, SDH_CONFIG_SETUP_BYTE5, 1);
         break;
       }
-#if defined(SHIMMER3)
-      case SET_BLE_ENABLED_COMMAND:
-      {
-        if (isBtDeviceRn4678())
-        {
-          storedConfigPtr->bleEnabled = args[0] & 0x01;
-          ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
-        }
-        else
-        {
-          //BLE not supported on RN42
-          sendNack = 1;
-        }
-        break;
-      }
-#endif
       case SET_SD_SYNC_COMMAND:
       {
         if (shimmerStatus.btInSyncMode && ShimSdSync_isBtSdSyncRunning())
@@ -2623,9 +2599,6 @@ uint8_t ShimBt_isCmdBlockedWhileSensing(uint8_t command)
     case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND: //0xAC
     case SET_ALT_MAG_CALIBRATION_COMMAND:     //0xAF
     case SET_ALT_MAG_SAMPLING_RATE_COMMAND:   //0xB2
-#if defined(SHIMMER3)
-    case SET_BLE_ENABLED_COMMAND: //0xB5
-#endif
 
       return 1;
     default:
@@ -2656,14 +2629,4 @@ void ShimBt_setBtBaudRateToUse(uint32_t baudRate)
 uint32_t ShimBt_getBtBaudRateToUse(void)
 {
   return btBaudRateToUse;
-}
-
-void ShimBt_setIsBleSupportEnabled(uint8_t state)
-{
-  bleSupportIsEn = state;
-}
-
-uint8_t ShimBt_getIsBleSupportEnabled(void)
-{
-  return bleSupportIsEn;
 }

@@ -95,8 +95,13 @@ extern void ADC_gatherDataStart(void);
 extern void I2C_pollSensors(void);
 extern void SPI_pollSensors(void);
 
-#if defined(SHIMMER3)
+#if defined(SHIMMER3) || defined(SHIMMER4_SDK)
 extern void calculateClassicBtTxSampleSetBufferSize(uint8_t len, uint16_t samplingRateTicks);
+extern uint8_t isBtDeviceRn41orRN42(void);
+extern uint8_t isBtDeviceRn41(void);
+extern uint8_t isBtDeviceRn42(void);
+extern uint8_t isBtDeviceRn4678(void);
+extern uint8_t isBleCurrentlyDisabled(void);
 #endif //SHIMMER3
 
 #endif /* SHIMMER_EXTERNS_H_ */

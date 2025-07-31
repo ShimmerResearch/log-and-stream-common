@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <EEPROM/shimmer_eeprom.h>
+
 #if defined(SHIMMER3)
 #include "../BMPX80/bmpX80.h"
 #endif
@@ -17,7 +19,17 @@
 uint8_t hwId;
 daughter_card_id_page daughterCardIdPage;
 char daughtCardIdStr[26];
-uint8_t wrAccelAndMagInUse, gyroInUse, eepromIsPresent;
+uint8_t wrAccelAndMagInUse, gyroInUse;
+
+void ShimBrd_init(void)
+{
+  ShimBrd_resetDaughterCardId();
+  memset(daughtCardIdStr, 0, sizeof(daughtCardIdStr));
+
+  hwId = 0;
+  wrAccelAndMagInUse = 0;
+  gyroInUse = 0;
+}
 
 void ShimBrd_resetDaughterCardId(void)
 {
@@ -50,7 +62,7 @@ uint8_t ShimBrd_isRn4678PresentAndCmdModeSupport(void)
 
   /* Checking EEPROM here to rule out older sensors in factory test which
    * don't have EEPROM fitted */
-  return (ShimBrd_isEepromIsPresent() && hwId == HW_ID_SHIMMER3
+  return (ShimEeprom_isPresent() && hwId == HW_ID_SHIMMER3
       && ((srId == SHIMMER3_IMU && srRevMajor >= 10)
           || (srId == EXP_BRD_EXG_UNIFIED && srRevMajor >= 6)
           || (srId == EXP_BRD_GSR_UNIFIED && srRevMajor >= 5)
@@ -219,16 +231,6 @@ uint8_t ShimBrd_isGyroInUseIcm20948(void)
   return gyroInUse == GYRO_ICM20948_IN_USE;
 }
 #endif
-
-void ShimBrd_setEepromIsPresent(uint8_t eeprom_is_preset)
-{
-  eepromIsPresent = eeprom_is_preset;
-}
-
-uint8_t ShimBrd_isEepromIsPresent(void)
-{
-  return eepromIsPresent;
-}
 
 #if defined(SHIMMER3)
 uint8_t ShimBrd_isLnAccelKxtc9_2050Present(void)

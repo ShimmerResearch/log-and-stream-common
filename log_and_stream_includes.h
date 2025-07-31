@@ -15,6 +15,7 @@
 #include <Comms/shimmer_bt_uart.h>
 #include <Comms/shimmer_dock_usart.h>
 #include <Configuration/shimmer_config.h>
+#include <EEPROM/shimmer_eeprom.h>
 #include <GSR/gsr.h>
 #include <LEDs/shimmer_leds.h>
 #include <RTC/shimmer_rtc.h>

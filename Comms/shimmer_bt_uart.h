@@ -202,13 +202,10 @@
 #define SET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB2
 #define ALT_MAG_SAMPLING_RATE_RESPONSE                0xB3
 #define GET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB4
-#if defined(SHIMMER3)
-#define SET_BLE_ENABLED_COMMAND 0xB5
-#endif
-#define SET_SD_SYNC_COMMAND        0xE0
-#define SD_SYNC_RESPONSE           0xE1
-#define NACK_COMMAND_PROCESSED     0xFE
-#define ACK_COMMAND_PROCESSED      0xFF
+#define SET_SD_SYNC_COMMAND                           0xE0
+#define SD_SYNC_RESPONSE                              0xE1
+#define NACK_COMMAND_PROCESSED                        0xFE
+#define ACK_COMMAND_PROCESSED                         0xFF
 
 //#define BT_RX_COMMS_TIMEOUT_TICKS                     3277U /* 32768*0.1s = 3276.8 */
 #define BT_RX_COMMS_TIMEOUT_TICKS  328U /* 32768*0.01s = 327.68  */
@@ -259,6 +256,7 @@ enum BT_BAUD_RATE
   BAUD_460800 = 9U,  //Only supported in RN42
   BAUD_921600 = 10U, //Only supported in RN42
   BAUD_1000000 = 11U, //Only supported in RN4678 v1.23 (issues with v1.13.5 & v1.22)
+  BAUD_2000000 = 12U, //Only supported on CYW20820
   BAUD_NO_CHANGE_NEEDED = 0xFF,
 };
 #endif
@@ -342,7 +340,5 @@ uint8_t ShimBt_isCmdBlockedWhileSensing(uint8_t command);
 
 void ShimBt_setBtBaudRateToUse(uint32_t baudRate);
 uint32_t ShimBt_getBtBaudRateToUse(void);
-void ShimBt_setIsBleSupportEnabled(uint8_t state);
-uint8_t ShimBt_getIsBleSupportEnabled(void);
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */
