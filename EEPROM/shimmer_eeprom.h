@@ -75,15 +75,15 @@ typedef union
 #if defined(SHIMMER3)
     uint8_t rn4678BleDisabled : 1;
 #else
-    uint8_t unusedIdx3Bit0    : 1;
+    uint8_t unusedIdx3Bit0 : 1;
 #endif
-    uint8_t unusedIdx3Bit1    : 1;
-    uint8_t unusedIdx3Bit2    : 1;
-    uint8_t unusedIdx3Bit3    : 1;
-    uint8_t unusedIdx3Bit4    : 1;
-    uint8_t unusedIdx3Bit5    : 1;
-    uint8_t unusedIdx3Bit6    : 1;
-    uint8_t unusedIdx3Bit7    : 1;
+    uint8_t unusedIdx3Bit1 : 1;
+    uint8_t unusedIdx3Bit2 : 1;
+    uint8_t unusedIdx3Bit3 : 1;
+    uint8_t unusedIdx3Bit4 : 1;
+    uint8_t unusedIdx3Bit5 : 1;
+    uint8_t unusedIdx3Bit6 : 1;
+    uint8_t unusedIdx3Bit7 : 1;
 
     uint8_t padding[13];
   };
@@ -102,7 +102,7 @@ gEepromBtSettings *ShimEeprom_getRadioDetails(void);
 #if defined(SHIMMER3)
 uint8_t ShimEeprom_isRn4678BleDisabled(void);
 #endif
-    enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void);
+enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void);
 uint8_t ShimEeprom_writeDaughterCardMem(uint16_t memOffset, uint8_t memLength, uint8_t *buf);
 
 #endif /* LOG_AND_STREAM_COMMON_COMMS_SHIMMER_EEPROM_H_ */
