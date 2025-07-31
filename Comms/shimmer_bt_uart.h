@@ -208,9 +208,9 @@
 #define ACK_COMMAND_PROCESSED                         0xFF
 
 //#define BT_RX_COMMS_TIMEOUT_TICKS                     3277U /* 32768*0.1s = 3276.8 */
-#define BT_RX_COMMS_TIMEOUT_TICKS  328U /* 32768*0.01s = 327.68  */
+#define BT_RX_COMMS_TIMEOUT_TICKS                     328U /* 32768*0.01s = 327.68  */
 
-#define DATA_RATE_TEST_PACKET_SIZE 5U //1 header byte + uint32_t counter value
+#define DATA_RATE_TEST_PACKET_SIZE                    5U //1 header byte + uint32_t counter value
 
 enum
 {

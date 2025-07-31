@@ -45,12 +45,14 @@ void ShimEeprom_readHwDetails(void)
 
 void ShimEeprom_readRadioDetails(void)
 {
-  eepromRead(EEPROM_ADDRESS_BLUETOOTH_DETAILS, sizeof(eepromBtSettings.rawBytes), &eepromBtSettings.rawBytes[0]);
+  eepromRead(EEPROM_ADDRESS_BLUETOOTH_DETAILS,
+      sizeof(eepromBtSettings.rawBytes), &eepromBtSettings.rawBytes[0]);
 }
 
 void ShimEeprom_writeRadioDetails(void)
 {
-  eepromWrite(EEPROM_ADDRESS_BLUETOOTH_DETAILS, sizeof(eepromBtSettings.rawBytes), &eepromBtSettings.rawBytes[0]);
+  eepromWrite(EEPROM_ADDRESS_BLUETOOTH_DETAILS,
+      sizeof(eepromBtSettings.rawBytes), &eepromBtSettings.rawBytes[0]);
 }
 
 void ShimEeprom_updateRadioDetails(void)
@@ -68,7 +70,7 @@ void ShimEeprom_updateRadioDetails(void)
 #else
   eepromBtSettings.baudRate = ShimBt_getBtBaudRateToUse();
 #endif
-  // leave eepromBtSettings.bleDisabled as is
+  //leave eepromBtSettings.bleDisabled as is
 }
 
 uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
@@ -81,7 +83,7 @@ uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
 #else
       || eepromBtSettings.baudRate != ShimBt_getBtBaudRateToUse()
 #endif
-      );
+  );
 }
 
 gEepromBtSettings *ShimEeprom_getRadioDetails(void)
@@ -120,8 +122,7 @@ uint8_t ShimEeprom_writeDaugherCardMem(uint16_t memOffset, uint8_t memLength, ui
   if ((memLength <= 128) && (memOffset < EEPROM_AVAILABLE_SIZE)
       && ((uint16_t) memLength + memOffset <= EEPROM_AVAILABLE_SIZE))
   {
-    eepromWrite(memOffset + CAT24C16_PAGE_SIZE,
-        (uint16_t) memLength, buf);
+    eepromWrite(memOffset + CAT24C16_PAGE_SIZE, (uint16_t) memLength, buf);
 
     /* Handle if the RN4678 BLE state is being changed */
     if (memOffset == EEPROM_ADDRESS_BLUETOOTH_DETAILS_MINUS_OFFSET

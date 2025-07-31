@@ -14,8 +14,10 @@
 
 //Bluetooth information is stored in the last EEPROM page
 #define EEPROM_ADDRESS_HW_DETAILS 0
-#define EEPROM_ADDRESS_BLUETOOTH_DETAILS (CAT24C16_TOTAL_SIZE - CAT24C16_PAGE_SIZE)
-#define EEPROM_ADDRESS_BLUETOOTH_DETAILS_MINUS_OFFSET (EEPROM_ADDRESS_BLUETOOTH_DETAILS - CAT24C16_PAGE_SIZE)
+#define EEPROM_ADDRESS_BLUETOOTH_DETAILS \
+  (CAT24C16_TOTAL_SIZE - CAT24C16_PAGE_SIZE)
+#define EEPROM_ADDRESS_BLUETOOTH_DETAILS_MINUS_OFFSET \
+  (EEPROM_ADDRESS_BLUETOOTH_DETAILS - CAT24C16_PAGE_SIZE)
 
 #define EEPROM_AVAILABLE_SIZE (CAT24C16_TOTAL_SIZE - CAT24C16_PAGE_SIZE)
 
@@ -70,14 +72,14 @@ typedef union
     uint8_t radioHwVer;
     uint8_t baudRate;
 
-    uint8_t rn4678BleDisabled:1;
-    uint8_t unusedIdx3Bit1:1;
-    uint8_t unusedIdx3Bit2:1;
-    uint8_t unusedIdx3Bit3:1;
-    uint8_t unusedIdx3Bit4:1;
-    uint8_t unusedIdx3Bit5:1;
-    uint8_t unusedIdx3Bit6:1;
-    uint8_t unusedIdx3Bit7:1;
+    uint8_t rn4678BleDisabled : 1;
+    uint8_t unusedIdx3Bit1    : 1;
+    uint8_t unusedIdx3Bit2    : 1;
+    uint8_t unusedIdx3Bit3    : 1;
+    uint8_t unusedIdx3Bit4    : 1;
+    uint8_t unusedIdx3Bit5    : 1;
+    uint8_t unusedIdx3Bit6    : 1;
+    uint8_t unusedIdx3Bit7    : 1;
 
     uint8_t padding[13];
   };

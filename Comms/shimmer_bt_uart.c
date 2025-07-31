@@ -1230,7 +1230,7 @@ void ShimBt_processCmd(void)
       {
         dcMemLength = args[0];
         dcMemOffset = args[1] + (args[2] << 8);
-        if(!ShimEeprom_writeDaugherCardMem(dcMemOffset, dcMemLength, &args[3]))
+        if (!ShimEeprom_writeDaugherCardMem(dcMemOffset, dcMemLength, &args[3]))
         {
           sendNack = 1;
         }

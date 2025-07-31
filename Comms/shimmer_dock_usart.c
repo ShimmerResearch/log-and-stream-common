@@ -444,7 +444,8 @@ void ShimDock_processCmd(void)
               uartDcMemOffset = (uint16_t) dockRxBuf[UART_RXBUF_DATA + 1]
                   + (((uint16_t) dockRxBuf[UART_RXBUF_DATA + 2]) << 8);
 
-              if (ShimEeprom_writeDaugherCardMem(uartDcMemOffset, uartDcMemLength, dockRxBuf + UART_RXBUF_DATA + 3U))
+              if (ShimEeprom_writeDaugherCardMem(uartDcMemOffset,
+                      uartDcMemLength, dockRxBuf + UART_RXBUF_DATA + 3U))
               {
                 uartSendRspAck = 1;
               }
