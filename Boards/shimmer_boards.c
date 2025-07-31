@@ -19,7 +19,9 @@
 uint8_t hwId;
 daughter_card_id_page daughterCardIdPage;
 char daughtCardIdStr[26];
+#if defined(SHIMMER3)
 uint8_t wrAccelAndMagInUse, gyroInUse;
+#endif
 
 void ShimBrd_init(void)
 {
@@ -27,8 +29,10 @@ void ShimBrd_init(void)
   memset(daughtCardIdStr, 0, sizeof(daughtCardIdStr));
 
   ShimBrd_setHwId(0);
+#if defined(SHIMMER3)
   ShimBrd_setWrAccelAndMagInUse(WR_ACCEL_AND_MAG_NONE_IN_USE);
   ShimBrd_setGyroInUse(GYRO_NONE_IN_USE);
+#endif
 }
 
 void ShimBrd_resetDaughterCardId(void)
