@@ -648,7 +648,11 @@ void ShimConfig_checkBtModeFromConfig(void)
      * turn off if BT module is not in the right configuration for SD sync.
      * Leave the SD sync code to turn on/off BT later when required. */
     if ((!shimmerStatus.btSupportEnabled && shimmerStatus.btPowerOn)
-        || (shimmerStatus.sdSyncEnabled != shimmerStatus.btInSyncMode))
+        || (shimmerStatus.sdSyncEnabled != shimmerStatus.btInSyncMode)
+#if defined(SHIMMER3)
+        || (ShimEeprom_isRn4678BleDisabled() != isBleCurrentlyDisabled())
+#endif
+    )
     {
       BtStop(0);
     }

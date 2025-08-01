@@ -1230,10 +1230,9 @@ void ShimBt_processCmd(void)
       {
         dcMemLength = args[0];
         dcMemOffset = args[1] + (args[2] << 8);
-        if ((dcMemLength <= 128) && (dcMemOffset <= 2031)
-            && (dcMemLength + dcMemOffset <= 2032))
+        if (!ShimEeprom_writeDaughterCardMem(dcMemOffset, dcMemLength, &args[3]))
         {
-          eepromWrite(dcMemOffset + 16U, (uint16_t) dcMemLength, &args[3]);
+          sendNack = 1;
         }
         break;
       }
@@ -1371,7 +1370,7 @@ void ShimBt_processCmd(void)
       case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
       {
         ShimConfig_configByteAltMagRateSet(args[0]);
-        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
+        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE5, SDH_CONFIG_SETUP_BYTE5, 1);
         break;
       }
       case SET_SD_SYNC_COMMAND:

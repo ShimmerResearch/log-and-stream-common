@@ -24,7 +24,8 @@ void LogAndStream_init(void)
   ShimSdHead_reset();
   ShimSens_init();
   ShimDock_resetVariables();
-  ShimBrd_resetDaughterCardId();
+  ShimBrd_init();
+  ShimEeprom_init();
   ShimLeds_varsInit();
   ShimBtn_init();
   ShimRtc_init();

@@ -73,7 +73,8 @@ typedef volatile struct STATTypeDef_t
   uint8_t btStreaming      : 1;
   uint8_t btstreamReady    : 1;
   uint8_t btstreamCmd      : 2;
-  uint8_t btInSyncMode     : 1;
+  /* Indicates whether BT module is currently in SD Sync mode */
+  uint8_t btInSyncMode : 1;
 
 #if defined(SHIMMER3R)
   uint8_t sdPeripheralInit : 1;
@@ -83,10 +84,11 @@ typedef volatile struct STATTypeDef_t
 #if defined(SHIMMER3R)
   uint8_t sdMcu0Pc1 : 1;
 #endif
-  uint8_t sdLogging              : 1;
-  uint8_t sdlogReady             : 1;
-  uint8_t sdlogCmd               : 2;
-  uint8_t sdBadFile              : 1;
+  uint8_t sdLogging  : 1;
+  uint8_t sdlogReady : 1;
+  uint8_t sdlogCmd   : 2;
+  uint8_t sdBadFile  : 1;
+  /* Indicates whether SD Sync has been enabled by config */
   uint8_t sdSyncEnabled          : 1;
   uint8_t sdSyncCommTimerRunning : 1;
 

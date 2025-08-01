@@ -256,6 +256,7 @@ enum BT_BAUD_RATE
   BAUD_460800 = 9U,  //Only supported in RN42
   BAUD_921600 = 10U, //Only supported in RN42
   BAUD_1000000 = 11U, //Only supported in RN4678 v1.23 (issues with v1.13.5 & v1.22)
+  BAUD_2000000 = 12U, //Only supported on CYW20820
   BAUD_NO_CHANGE_NEEDED = 0xFF,
 };
 #endif
