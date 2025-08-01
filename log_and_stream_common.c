@@ -40,30 +40,8 @@ void LogAndStream_setBootStage(boot_stage_t bootStageNew)
 {
   bootStage = bootStageNew;
 
-  switch (bootStage)
-  {
-    case BOOT_STAGE_START:
-      Board_ledOn(LED_ALL);
-      break;
-    case BOOT_STAGE_I2C:
-      Board_ledOff(LED_ALL);
-      break;
-    case BOOT_STAGE_BLUETOOTH:
-      Board_ledOn(LED_ALL);
-      break;
-    case BOOT_STAGE_BLUETOOTH_FAILURE:
-      Board_ledOff(LED_ALL);
-      break;
-    case BOOT_STAGE_CONFIGURATION:
-      Board_ledOn(LED_ALL);
-      break;
-    case BOOT_STAGE_END:
-      Board_ledOff(LED_ALL);
-      break;
-    default:
-      break;
-  }
-  return;
+  //Reset the boot stage time
+  shimmerStatus.bootTimePerStageMs = 0;
 }
 
 boot_stage_t LogAndStream_getBootStage(void)
