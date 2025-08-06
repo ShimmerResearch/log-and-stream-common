@@ -122,7 +122,7 @@ void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
 
       //Update index for next call
       ledIndex += direction;
-      if (ledIndex == (sizeof(ledOrder) - 1))
+      if (ledIndex == (sizeof(ledOrder)/sizeof(ledOrder[0]) - 1))
       {
         direction = -1; //Reverse at red
       }
