@@ -16,11 +16,11 @@
 #endif
 
 uint16_t blinkCnt20, blinkCnt50;
-uint8_t lastLedGroup2, rwcErrorFlash;
+uint8_t lastLedToggle, rwcErrorFlash;
 
-static int ledIndex = 0;
-static int direction = 1; //1: forward, -1: backward
-const uint8_t ledOrder[3] = { LED_LWR_GREEN, LED_LWR_YELLOW, LED_LWR_RED };
+static int bootLedIndex = 0;
+static int bootLedDirection = 1; //1: forward, -1: backward
+const uint8_t bootLedOrder[3] = { LED_LWR_GREEN, LED_LWR_YELLOW, LED_LWR_RED };
 
 void ShimLeds_blinkSetLwrRedOn(void);
 void ShimLeds_blinkSetLwrSdError(void);
@@ -32,11 +32,11 @@ void ShimLeds_blinkSetUprDeviceStatus(void);
 void ShimLeds_varsInit(void)
 {
   blinkCnt20 = blinkCnt50 = 0;
-  lastLedGroup2 = 0;
+  lastLedToggle = 0;
   rwcErrorFlash = 0;
 
-  ledIndex = 0;
-  direction = 1;
+  bootLedIndex = 0;
+  bootLedDirection = 1;
 }
 
 void ShimLeds_incrementCounters(void)
@@ -59,17 +59,17 @@ void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
   //If the bootloader is initialising, toggle the LEDs to indicate this
   if (shimmerStatus.bslCheckTimeMs > 0)
   {
+    Board_ledUprSetColourRgb(0, 0, 0);
     //Toggle upper and lower LEDs purple every 200ms
-    if (ShimLeds_isBlinkTimerCnt200ms())
+    if (lastLedToggle)
     {
-      Board_ledUprSetColourRgb(0, 0, 0);
       Board_ledLwrSetColourRgb(128, 0, 128);
     }
     else
     {
-      Board_ledUprSetColourRgb(128, 0, 128);
       Board_ledLwrSetColourRgb(0, 0, 0);
     }
+    lastLedToggle ^= 1;
     return;
   }
 #endif
@@ -94,45 +94,29 @@ void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
     shimmerStatus.bootTimePerStageMs += SHIMMER_BLINK_TIMER_PERIOD_MS;
 
     //Note: This is a placeholder for legacy behavior, can be removed if not needed
-
-    //// Toggle upper and lower LEDs green every 200ms to indicate booting
-    //if(ShimLeds_isBlinkTimerCnt200ms())
-    //{
-    //  if(Board_isLedOnUprGreen())
-    //  {
-    //    Board_ledOn(LED_LWR_GREEN);
-    //    Board_ledOff(LED_UPR_GREEN);
-    //  }
-    //  else
-    //  {
-    //    Board_ledOff(LED_LWR_GREEN);
-    //    Board_ledOn(LED_UPR_GREEN);
-    //  }
-    //}
+    //// Turn on LEDs as per legacy behavior in Shimmer3
+    //Board_ledOn(LED_UPR_GREEN + LED_UPR_BLUE + LED_LWR_GREEN + LED_LWR_YELLOW + LED_LWR_RED);
 
     //Cycle through the LEDs in a specific order
-    if (ShimLeds_isBlinkTimerCnt200ms())
+    if (ShimLeds_isBlinkTimerCnt500ms())
     {
       //Turn off all LEDs first
       Board_ledOff(LED_ALL);
 
       //Turn on the current LED
-      Board_ledOn(ledOrder[ledIndex]);
+      Board_ledOn(bootLedOrder[bootLedIndex]);
 
       //Update index for next call
-      ledIndex += direction;
-      if (ledIndex == (sizeof(ledOrder) / sizeof(ledOrder[0]) - 1))
+      bootLedIndex += bootLedDirection;
+      if (bootLedIndex == (sizeof(bootLedOrder) / sizeof(bootLedOrder[0]) - 1))
       {
-        direction = -1; //Reverse at red
+        bootLedDirection = -1; //Reverse at red
       }
-      else if (ledIndex == 0)
+      else if (bootLedIndex == 0)
       {
-        direction = 1; //Forward at green1
+        bootLedDirection = 1; //Forward at green1
       }
     }
-
-    //// Turn on LEDs as per legacy behavior in Shimmer3
-    //Board_ledOn(LED_UPR_GREEN + LED_UPR_BLUE + LED_LWR_GREEN + LED_LWR_YELLOW + LED_LWR_RED);
   }
 }
 
@@ -316,16 +300,15 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
           }
           else
           {
-            if (lastLedGroup2)
+            if (lastLedToggle)
             {
               Board_ledOn(LED_UPR_BLUE);
-              lastLedGroup2 ^= 1;
             }
             else
             {
               Board_ledOn(LED_UPR_GREEN);
-              lastLedGroup2 ^= 1;
             }
+            lastLedToggle ^= 1;
           }
         }
       }
@@ -463,6 +446,11 @@ void ShimLeds_blinkSetUprDeviceStatus(void)
 uint8_t ShimLeds_isBlinkTimerCnt200ms(void)
 {
   return (blinkCnt20 % 2);
+}
+
+uint8_t ShimLeds_isBlinkTimerCnt500ms(void)
+{
+  return (blinkCnt20 % 5 == 0);
 }
 
 uint8_t ShimLeds_isBlinkTimerCnt1s(void)
