@@ -91,12 +91,15 @@ gEepromBtSettings *ShimEeprom_getRadioDetails(void)
   return &eepromBtSettings;
 }
 
-#if defined(SHIMMER3)
-uint8_t ShimEeprom_isRn4678BleDisabled(void)
+uint8_t ShimEeprom_isBleEnabled(void)
 {
-  return eepromBtSettings.rn4678BleDisabled;
+  return eepromBtSettings.bleEnabled;
 }
-#endif
+
+uint8_t ShimEeprom_isBtClassicEnabled(void)
+{
+  return eepromBtSettings.btClassicEnabled;
+}
 
 enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void)
 {

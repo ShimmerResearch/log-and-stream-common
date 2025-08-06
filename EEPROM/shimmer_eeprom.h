@@ -72,12 +72,8 @@ typedef union
     uint8_t radioHwVer;
     uint8_t baudRate;
 
-#if defined(SHIMMER3)
-    uint8_t rn4678BleDisabled : 1;
-#else
-    uint8_t unusedIdx3Bit0 : 1;
-#endif
-    uint8_t unusedIdx3Bit1 : 1;
+    uint8_t bleEnabled : 1;
+    uint8_t btClassicEnabled : 1;
     uint8_t unusedIdx3Bit2 : 1;
     uint8_t unusedIdx3Bit3 : 1;
     uint8_t unusedIdx3Bit4 : 1;
@@ -99,9 +95,8 @@ void ShimEeprom_writeRadioDetails(void);
 void ShimEeprom_updateRadioDetails(void);
 uint8_t ShimEeprom_areRadioDetailsIncorrect(void);
 gEepromBtSettings *ShimEeprom_getRadioDetails(void);
-#if defined(SHIMMER3)
-uint8_t ShimEeprom_isRn4678BleDisabled(void);
-#endif
+uint8_t ShimEeprom_isBleEnabled(void);
+uint8_t ShimEeprom_isBtClassicEnabled(void);
 enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void);
 uint8_t ShimEeprom_writeDaughterCardMem(uint16_t memOffset, uint8_t memLength, uint8_t *buf);
 

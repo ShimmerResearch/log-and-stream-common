@@ -96,6 +96,8 @@ uint32_t btBaudRateToUse;
 
 volatile RingFifoTx_t gBtTxFifo;
 
+uint8_t bleCurrentlyEnabled = 1, btClassicCurrentlyEnabled = 1;
+
 void ShimBt_btCommsProtocolInit(void)
 {
   ShimBt_setCrcMode(CRC_OFF);
@@ -135,6 +137,8 @@ void ShimBt_btCommsProtocolInit(void)
   ShimBt_clearBtTxBuf(1U);
 
   ShimBt_btTxInProgressSet(0);
+
+  ShimBt_setBtMode(1, 1);
 }
 
 void ShimBt_startCommon(void)
@@ -2630,3 +2634,20 @@ uint32_t ShimBt_getBtBaudRateToUse(void)
 {
   return btBaudRateToUse;
 }
+
+void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn)
+{
+  btClassicCurrentlyEnabled = btClassicEn;
+  bleCurrentlyEnabled = bleEn;
+}
+
+uint8_t ShimBt_isBleCurrentlyEnabled(void)
+{
+  return bleCurrentlyEnabled;
+}
+
+uint8_t ShimBt_isBtClassicCurrentlyEnabled(void)
+{
+  return btClassicCurrentlyEnabled;
+}
+
