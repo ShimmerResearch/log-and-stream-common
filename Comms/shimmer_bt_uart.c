@@ -2650,4 +2650,3 @@ uint8_t ShimBt_isBtClassicCurrentlyEnabled(void)
 {
   return btClassicCurrentlyEnabled;
 }
-
