@@ -20,8 +20,8 @@ uint8_t lastLedGroup2, rwcErrorFlash;
 
 static int ledIndex = 0;
 static int direction = 1; //1: forward, -1: backward
-const uint8_t ledOrder[5]
-    = { LED_UPR_GREEN, LED_UPR_BLUE, LED_LWR_GREEN, LED_LWR_YELLOW, LED_LWR_RED };
+const uint8_t ledOrder[3]
+    = { LED_LWR_GREEN, LED_LWR_YELLOW, LED_LWR_RED };
 
 void ShimLeds_blinkSetLwrRedOn(void);
 void ShimLeds_blinkSetLwrSdError(void);
@@ -35,6 +35,9 @@ void ShimLeds_varsInit(void)
   blinkCnt20 = blinkCnt50 = 0;
   lastLedGroup2 = 0;
   rwcErrorFlash = 0;
+
+  ledIndex = 0;
+  direction = 1;
 }
 
 void ShimLeds_incrementCounters(void)
@@ -119,7 +122,7 @@ void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
 
       //Update index for next call
       ledIndex += direction;
-      if (ledIndex == 4)
+      if (ledIndex == (sizeof(ledOrder) - 1))
       {
         direction = -1; //Reverse at red
       }
