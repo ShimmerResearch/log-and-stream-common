@@ -20,8 +20,7 @@ uint8_t lastLedGroup2, rwcErrorFlash;
 
 static int ledIndex = 0;
 static int direction = 1; //1: forward, -1: backward
-const uint8_t ledOrder[3]
-    = { LED_LWR_GREEN, LED_LWR_YELLOW, LED_LWR_RED };
+const uint8_t ledOrder[3] = { LED_LWR_GREEN, LED_LWR_YELLOW, LED_LWR_RED };
 
 void ShimLeds_blinkSetLwrRedOn(void);
 void ShimLeds_blinkSetLwrSdError(void);
