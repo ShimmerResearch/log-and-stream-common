@@ -101,7 +101,6 @@ extern uint8_t isBtDeviceRn41orRN42(void);
 extern uint8_t isBtDeviceRn41(void);
 extern uint8_t isBtDeviceRn42(void);
 extern uint8_t isBtDeviceRn4678(void);
-extern uint8_t isBleCurrentlyDisabled(void);
 #endif //SHIMMER3
 
 #endif /* SHIMMER_EXTERNS_H_ */

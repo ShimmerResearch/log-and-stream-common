@@ -341,4 +341,8 @@ uint8_t ShimBt_isCmdBlockedWhileSensing(uint8_t command);
 void ShimBt_setBtBaudRateToUse(uint32_t baudRate);
 uint32_t ShimBt_getBtBaudRateToUse(void);
 
+void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
+uint8_t ShimBt_isBleCurrentlyEnabled(void);
+uint8_t ShimBt_isBtClassicCurrentlyEnabled(void);
+
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */
