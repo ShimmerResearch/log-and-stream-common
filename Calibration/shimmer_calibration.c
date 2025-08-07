@@ -24,6 +24,7 @@
 #include "msp430.h"
 
 #include "../../shimmer_btsd.h"
+#include "../../version.h"
 #include "../5xx_HAL/hal_Board.h"
 #include "../5xx_HAL/hal_RTC.h"
 #include "../BMPX80/bmpX80.h"
@@ -68,10 +69,10 @@ void ShimCalib_initVer(void)
   shimmerCalib_ram[SC_OFFSET_VER_HW_ID_H] = (DEVICE_VER >> 8) & 0xff;
   shimmerCalib_ram[SC_OFFSET_VER_FW_ID_L] = FW_IDENTIFIER & 0xff;
   shimmerCalib_ram[SC_OFFSET_VER_FW_ID_H] = (FW_IDENTIFIER >> 8) & 0xff;
-  shimmerCalib_ram[SC_OFFSET_VER_FW_MAJOR_L] = FW_VER_MAJOR & 0xff;
-  shimmerCalib_ram[SC_OFFSET_VER_FW_MAJOR_H] = (FW_VER_MAJOR >> 8) & 0xff;
-  shimmerCalib_ram[SC_OFFSET_VER_FW_MINOR_L] = FW_VER_MINOR & 0xff;
-  shimmerCalib_ram[SC_OFFSET_VER_FW_INTER_L] = FW_VER_REL & 0xff;
+  shimmerCalib_ram[SC_OFFSET_VER_FW_MAJOR_L] = FW_VERSION_MAJOR & 0xff;
+  shimmerCalib_ram[SC_OFFSET_VER_FW_MAJOR_H] = (FW_VERSION_MAJOR >> 8) & 0xff;
+  shimmerCalib_ram[SC_OFFSET_VER_FW_MINOR_L] = FW_VERSION_MINOR & 0xff;
+  shimmerCalib_ram[SC_OFFSET_VER_FW_INTER_L] = FW_VERSION_PATCH & 0xff;
 }
 
 uint8_t ShimCalib_findLength(sc_t *sc1)

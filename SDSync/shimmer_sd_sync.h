@@ -11,7 +11,7 @@
 #include <stdint.h>
 
 #if defined(SHIMMER3)
-#include "../../shimmer_btsd.h"
+#include "../../version.h"
 #include "../5xx_HAL/hal_CRC.h"
 #include "msp430.h"
 #elif defined(SHIMMER3R)

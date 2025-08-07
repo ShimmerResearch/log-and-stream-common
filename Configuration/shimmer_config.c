@@ -49,7 +49,9 @@
 
 #include <log_and_stream_externs.h>
 #include <log_and_stream_includes.h>
-#if defined(SHIMMER3R)
+#if defined(SHIMMER3)
+#include "../shimmer_btsd.h"
+#elif defined(SHIMMER3R)
 #include "shimmer_definitions.h"
 #endif
 

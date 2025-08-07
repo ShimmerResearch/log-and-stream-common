@@ -17,6 +17,7 @@
 #include "../../Shimmer_Driver/RN4X/RN4678.h"
 #include "../../Shimmer_Driver/RN4X/RN4X.h"
 #include "../../shimmer_btsd.h"
+#include "../../version.h"
 #include "../5xx_HAL/hal_CRC.h"
 #include "../5xx_HAL/hal_DMA.h"
 #include "../5xx_HAL/hal_RTC.h"
@@ -1902,10 +1903,10 @@ void ShimBt_sendRsp(void)
         *(resPacket + packet_length++) = FW_VERSION_RESPONSE;
         *(resPacket + packet_length++) = FW_IDENTIFIER & 0xFF;
         *(resPacket + packet_length++) = (FW_IDENTIFIER & 0xFF00) >> 8;
-        *(resPacket + packet_length++) = FW_VER_MAJOR & 0xFF;
-        *(resPacket + packet_length++) = (FW_VER_MAJOR & 0xFF00) >> 8;
-        *(resPacket + packet_length++) = FW_VER_MINOR;
-        *(resPacket + packet_length++) = FW_VER_REL;
+        *(resPacket + packet_length++) = FW_VERSION_MAJOR & 0xFF;
+        *(resPacket + packet_length++) = (FW_VERSION_MAJOR & 0xFF00) >> 8;
+        *(resPacket + packet_length++) = FW_VERSION_MINOR;
+        *(resPacket + packet_length++) = FW_VERSION_PATCH;
         break;
       }
       case GET_CHARGE_STATUS_LED_COMMAND:

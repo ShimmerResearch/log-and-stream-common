@@ -16,6 +16,7 @@
 
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
+#include "../../version.h"
 #include "../5xx_HAL/hal_CRC.h"
 #include "../5xx_HAL/hal_FactoryTest.h"
 #include "../5xx_HAL/hal_InfoMem.h"
@@ -538,10 +539,10 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = DEVICE_VER;
     *(uartRespBuf + uart_resp_len++) = FW_IDENTIFIER & 0xFF;
     *(uartRespBuf + uart_resp_len++) = (FW_IDENTIFIER & 0xFF00) >> 8;
-    *(uartRespBuf + uart_resp_len++) = FW_VER_MAJOR & 0xFF;
-    *(uartRespBuf + uart_resp_len++) = (FW_VER_MAJOR & 0xFF00) >> 8;
-    *(uartRespBuf + uart_resp_len++) = FW_VER_MINOR;
-    *(uartRespBuf + uart_resp_len++) = FW_VER_REL;
+    *(uartRespBuf + uart_resp_len++) = FW_VERSION_MAJOR & 0xFF;
+    *(uartRespBuf + uart_resp_len++) = (FW_VERSION_MAJOR & 0xFF00) >> 8;
+    *(uartRespBuf + uart_resp_len++) = FW_VERSION_MINOR;
+    *(uartRespBuf + uart_resp_len++) = FW_VERSION_PATCH;
   }
   else if (uartSendRspBat)
   {

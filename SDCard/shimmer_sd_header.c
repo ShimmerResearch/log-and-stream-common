@@ -13,6 +13,7 @@
 
 #if defined(SHIMMER3)
 #include "../../shimmer_btsd.h"
+#include "../../version.h"
 #include "../BMPX80/bmpX80.h"
 #elif defined(SHIMMER3R)
 #include "bmp3_defs.h"
@@ -99,10 +100,10 @@ void ShimSdHead_config2SdHead(void)
   sdHeadText[SDH_SHIMMERVERSION_BYTE_1] = DEVICE_VER & 0xff;
   sdHeadText[SDH_FW_VERSION_TYPE_0] = FW_IDENTIFIER >> 8;
   sdHeadText[SDH_FW_VERSION_TYPE_1] = FW_IDENTIFIER & 0xff;
-  sdHeadText[SDH_FW_VERSION_MAJOR_0] = FW_VER_MAJOR >> 8;
-  sdHeadText[SDH_FW_VERSION_MAJOR_1] = FW_VER_MAJOR & 0xff;
-  sdHeadText[SDH_FW_VERSION_MINOR] = FW_VER_MINOR;
-  sdHeadText[SDH_FW_VERSION_INTERNAL] = FW_VER_REL;
+  sdHeadText[SDH_FW_VERSION_MAJOR_0] = FW_VERSION_MAJOR >> 8;
+  sdHeadText[SDH_FW_VERSION_MAJOR_1] = FW_VERSION_MAJOR & 0xff;
+  sdHeadText[SDH_FW_VERSION_MINOR] = FW_VERSION_MINOR;
+  sdHeadText[SDH_FW_VERSION_INTERNAL] = FW_VERSION_PATCH;
   /* exg */
   sdHeadText[SDH_EXG_ADS1292R_1_CONFIG1] = configBytes->rawBytes[NV_EXG_ADS1292R_1_CONFIG1];
   sdHeadText[SDH_EXG_ADS1292R_1_CONFIG2] = configBytes->rawBytes[NV_EXG_ADS1292R_1_CONFIG2];
