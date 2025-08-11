@@ -10,8 +10,9 @@
 
 #include <stdint.h>
 
+#include <version.h>
+
 #if defined(SHIMMER3)
-#include "../../version.h"
 #include "../5xx_HAL/hal_CRC.h"
 #include "msp430.h"
 #elif defined(SHIMMER3R)

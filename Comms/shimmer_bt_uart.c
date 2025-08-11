@@ -14,14 +14,12 @@
 #if defined(SHIMMER3)
 #include "msp430.h"
 
-#include "../../Shimmer_Driver/RN4X/RN4678.h"
-#include "../../Shimmer_Driver/RN4X/RN4X.h"
-#include "../../shimmer_btsd.h"
-#include "../../version.h"
-#include "../5xx_HAL/hal_CRC.h"
-#include "../5xx_HAL/hal_DMA.h"
-#include "../5xx_HAL/hal_RTC.h"
-#include "../5xx_HAL/hal_board.h"
+#include "RN4X/RN4678.h"
+#include "RN4X/RN4X.h"
+#include "5xx_HAL/hal_CRC.h"
+#include "5xx_HAL/hal_DMA.h"
+#include "5xx_HAL/hal_RTC.h"
+#include "5xx_HAL/hal_board.h"
 
 #elif defined(SHIMMER3R) || defined(SHIMMER4_SDK)
 #include "bmp3_defs.h"
@@ -32,6 +30,8 @@
 
 #include <log_and_stream_externs.h>
 #include <log_and_stream_includes.h>
+#include "shimmer_definitions.h"
+#include "version.h"
 
 uint8_t unwrappedResponse[256] = { 0 };
 volatile uint8_t gAction;

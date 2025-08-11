@@ -10,14 +10,13 @@
 #include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd_header.h>
 #include <log_and_stream_externs.h>
+#include "shimmer_definitions.h"
+#include "version.h"
 
 #if defined(SHIMMER3)
-#include "../../shimmer_btsd.h"
-#include "../../version.h"
 #include "../BMPX80/bmpX80.h"
 #elif defined(SHIMMER3R)
 #include "bmp3_defs.h"
-#include "shimmer_definitions.h"
 #endif
 
 uint8_t sdHeadText[SD_HEAD_SIZE];

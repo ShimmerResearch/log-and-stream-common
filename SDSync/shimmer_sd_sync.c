@@ -15,16 +15,14 @@
 
 #include <log_and_stream_externs.h>
 #include <log_and_stream_includes.h>
+#include <version.h>
 
 #if defined(SHIMMER3)
 #include "msp430.h"
 
-#include "../../Shimmer_Driver/RN4X/RN4X.h"
-#include "../../version.h"
-#include "../5xx_HAL/hal_RTC.h"
+#include "RN4X/RN4X.h"
+#include "5xx_HAL/hal_RTC.h"
 #include "Comms/shimmer_bt_uart.h"
-#elif defined(SHIMMER3R)
-#include "shimmer_definitions.h"
 #endif
 
 uint8_t centerNameStr[MAX_CHARS];

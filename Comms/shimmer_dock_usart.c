@@ -13,10 +13,10 @@
 
 #include <log_and_stream_externs.h>
 #include <log_and_stream_includes.h>
+#include <shimmer_definitions.h>
+#include <version.h>
 
 #if defined(SHIMMER3)
-#include "../../shimmer_btsd.h"
-#include "../../version.h"
 #include "../5xx_HAL/hal_CRC.h"
 #include "../5xx_HAL/hal_FactoryTest.h"
 #include "../5xx_HAL/hal_InfoMem.h"

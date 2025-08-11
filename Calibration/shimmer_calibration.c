@@ -19,12 +19,12 @@
 #include <SDCard/shimmer_sd_header.h>
 #include <log_and_stream_definitions.h>
 #include <log_and_stream_externs.h>
+#include "shimmer_definitions.h"
+#include "version.h"
 
 #if defined(SHIMMER3)
 #include "msp430.h"
 
-#include "../../shimmer_btsd.h"
-#include "../../version.h"
 #include "../5xx_HAL/hal_Board.h"
 #include "../5xx_HAL/hal_RTC.h"
 #include "../BMPX80/bmpX80.h"
