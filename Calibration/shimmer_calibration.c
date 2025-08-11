@@ -13,14 +13,14 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "shimmer_definitions.h"
+#include "version.h"
 #include <Boards/shimmer_boards.h>
 #include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd_data_file.h>
 #include <SDCard/shimmer_sd_header.h>
 #include <log_and_stream_definitions.h>
 #include <log_and_stream_externs.h>
-#include "shimmer_definitions.h"
-#include "version.h"
 
 #if defined(SHIMMER3)
 #include "msp430.h"

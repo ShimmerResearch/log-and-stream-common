@@ -5,13 +5,13 @@
  *      Author: MarkNolan
  */
 
+#include "shimmer_definitions.h"
+#include "version.h"
 #include <Boards/shimmer_boards.h>
 #include <Calibration/shimmer_calibration.h>
 #include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd_header.h>
 #include <log_and_stream_externs.h>
-#include "shimmer_definitions.h"
-#include "version.h"
 
 #if defined(SHIMMER3)
 #include "../BMPX80/bmpX80.h"

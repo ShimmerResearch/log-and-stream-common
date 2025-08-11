@@ -20,9 +20,9 @@
 #if defined(SHIMMER3)
 #include "msp430.h"
 
-#include "RN4X/RN4X.h"
 #include "5xx_HAL/hal_RTC.h"
 #include "Comms/shimmer_bt_uart.h"
+#include "RN4X/RN4X.h"
 #endif
 
 uint8_t centerNameStr[MAX_CHARS];

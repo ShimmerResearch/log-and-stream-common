@@ -42,9 +42,9 @@
 
 #include <Sensing/shimmer_sensing.h>
 
+#include "shimmer_definitions.h"
 #include <log_and_stream_externs.h>
 #include <log_and_stream_includes.h>
-#include "shimmer_definitions.h"
 
 #if defined(SHIMMER3)
 #include "RN4X/RN4X.h"
