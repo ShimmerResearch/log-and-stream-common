@@ -6,7 +6,7 @@
  */
 
 #include <LEDs/shimmer_leds.h>
-#include <log_and_stream_includes.h>
+#include "log_and_stream_includes.h"
 
 #if defined(SHIMMER3)
 #include "../5xx_HAL/hal_RTC.h"

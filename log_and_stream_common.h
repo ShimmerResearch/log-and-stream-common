@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 
-#include <log_and_stream_definitions.h>
+#include "log_and_stream_definitions.h"
 
 void LogAndStream_init(void);
 void LogAndStream_setBootStage(boot_stage_t bootStageNew);

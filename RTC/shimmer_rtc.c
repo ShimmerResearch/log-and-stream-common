@@ -8,7 +8,7 @@
 #include "shimmer_rtc.h"
 #include <stdint.h>
 
-#include <log_and_stream_includes.h>
+#include "log_and_stream_includes.h"
 
 /* Stores the time at which the RWC was last set. */
 uint64_t rwcConfigTime64;

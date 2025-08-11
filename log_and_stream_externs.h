@@ -9,7 +9,7 @@
 #define SHIMMER_EXTERNS_H_
 
 #include <Battery/shimmer_battery.h>
-#include <log_and_stream_definitions.h>
+#include "log_and_stream_definitions.h"
 
 #include "hal_FactoryTest.h"
 

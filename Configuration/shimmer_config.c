@@ -48,8 +48,8 @@
 #include <string.h>
 
 #include "shimmer_definitions.h"
-#include <log_and_stream_externs.h>
-#include <log_and_stream_includes.h>
+#include "log_and_stream_externs.h"
+#include "log_and_stream_includes.h"
 
 static gConfigBytes storedConfig;
 uint8_t calibRamFlag = 0;
