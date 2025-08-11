@@ -45,7 +45,7 @@
 
 #include <stdint.h>
 
-#include <log_and_stream_externs.h>
+#include "log_and_stream_externs.h"
 
 #if defined(SHIMMER3R)
 #include "shimmer_definitions.h"

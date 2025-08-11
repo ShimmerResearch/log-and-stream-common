@@ -10,7 +10,7 @@
 
 #include "stdint.h"
 
-#include <log_and_stream_definitions.h>
+#include "log_and_stream_definitions.h"
 
 #define SHIMMER_BLINK_TIMER_PERIOD_MS 100
 

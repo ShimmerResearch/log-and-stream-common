@@ -42,8 +42,8 @@
 
 #include "shimmer_taskList.h"
 
-#include <log_and_stream_externs.h>
-#include <log_and_stream_includes.h>
+#include "log_and_stream_externs.h"
+#include "log_and_stream_includes.h"
 
 #include "hal_FactoryTest.h"
 
