@@ -28,10 +28,10 @@
 #include "shimmer_definitions.h"
 #endif
 
-#include "shimmer_definitions.h"
-#include "version.h"
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
+#include "shimmer_definitions.h"
+#include "version.h"
 
 uint8_t unwrappedResponse[256] = { 0 };
 volatile uint8_t gAction;
