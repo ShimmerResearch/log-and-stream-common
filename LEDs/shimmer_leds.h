@@ -34,5 +34,8 @@ uint8_t ShimLeds_isBlinkTimerCnt1s(void);
 uint8_t ShimLeds_isBlinkTimerCnt2s(void);
 uint8_t ShimLeds_isBlinkTimerCnt5s(void);
 void ShimLeds_setRtcErrorFlash(uint8_t state);
+#if defined(SHIMMER3R)
+void ShimLeds_testOperationalStates(void);
+#endif
 
 #endif /* LED_H_ */
