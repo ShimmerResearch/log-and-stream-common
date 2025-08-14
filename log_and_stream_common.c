@@ -144,7 +144,7 @@ void LogAndStream_infomemUpdate(void)
 
 __weak void delay_ms(const uint32_t delay_time_ms)
 {
- // This function can be overridden by the main application to provide a custom delay implementation.
-  // The default implementation does nothing.
-  (void)delay_time_ms; // Suppress unused parameter warning
+  //This function can be overridden by the main application to provide a custom
+  //delay implementation. The default implementation does nothing.
+  (void) delay_time_ms; //Suppress unused parameter warning
 }

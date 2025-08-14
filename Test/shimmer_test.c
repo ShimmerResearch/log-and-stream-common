@@ -7,8 +7,8 @@
 
 #include "shimmer_test.h"
 
-#include <stdint.h>
 #include <inttypes.h>
+#include <stdint.h>
 
 #include "log_and_stream_includes.h"
 
@@ -66,7 +66,7 @@ void send_test_report(const char *str)
     return;
   }
 
-  // If the string is too long, truncate it
+  //If the string is too long, truncate it
   if (strlen(str) > MAX_TEST_REPORT_LENGTH)
   {
     char truncatedStr[MAX_TEST_REPORT_LENGTH + 1];
@@ -82,7 +82,7 @@ void send_test_report(const char *str)
 
 __weak void send_test_report_impl(const char *str, factory_test_target_t factoryTestTarget)
 {
-  // This function can be overridden by the main application to send a test report.
-  // The default implementation does nothing.
-  (void)str; // Suppress unused parameter warning
+  //This function can be overridden by the main application to send a test
+  //report. The default implementation does nothing.
+  (void) str; //Suppress unused parameter warning
 }

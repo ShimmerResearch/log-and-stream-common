@@ -17,8 +17,8 @@ void ShimLeds_testOperationalStatesSdSyncEnabled(void);
 void ShimLeds_testOperationalStatesOther(void);
 
 /**
- * @brief Test function to simulate different states of the LEDs based on the shimmerStatus.
- * This function is intended for testing purposes.
+ * @brief Test function to simulate different states of the LEDs based on the
+ * shimmerStatus. This function is intended for testing purposes.
  */
 void ShimLeds_testOperationalStates(void)
 {

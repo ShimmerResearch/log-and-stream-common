@@ -26,15 +26,15 @@ typedef enum
   FACTORY_TEST_COUNT
 } factory_test_t;
 
-#define MAX_TEST_REPORT_LENGTH                     128
-#define SELF_TEST_STR_PASS                         "PASS"
-#define SELF_TEST_STR_FAIL                         "FAIL"
-#define SELF_TEST_STR_EMPTY                        ""
-#define SELF_TEST_STR_CHIP_DETECTION               " - Chip not detected"
-#define SELF_TEST_STR_SIGNAL_ISSUE                 " - Signal issue"
-#define SELF_TEST_STR_TEMPERATURE_ISSUE            " - Temperature issue"
-#define SELF_TEST_STR_DRDY_ISSUE                   " - DRDY/INT issue"
-#define SELF_TEST_STR_UNKNOWN                      " - Unknown"
+#define MAX_TEST_REPORT_LENGTH          128
+#define SELF_TEST_STR_PASS              "PASS"
+#define SELF_TEST_STR_FAIL              "FAIL"
+#define SELF_TEST_STR_EMPTY             ""
+#define SELF_TEST_STR_CHIP_DETECTION    " - Chip not detected"
+#define SELF_TEST_STR_SIGNAL_ISSUE      " - Signal issue"
+#define SELF_TEST_STR_TEMPERATURE_ISSUE " - Temperature issue"
+#define SELF_TEST_STR_DRDY_ISSUE        " - DRDY/INT issue"
+#define SELF_TEST_STR_UNKNOWN           " - Unknown"
 
 #ifndef __weak
 #define __weak __attribute__((weak))
