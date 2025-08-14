@@ -139,8 +139,8 @@ uint8_t ShimSens_checkStartStreamingConditions(void)
  */
 uint8_t ShimSens_checkStopLoggingConditions(void)
 {
-  return shimmerStatus.sdLogging &&
-      (!shimmerStatus.sdlogReady || shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP);
+  return shimmerStatus.sdLogging
+      && (!shimmerStatus.sdlogReady || shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP);
 }
 
 /* Check if the conditions are met to stop streaming to BT.
@@ -148,8 +148,9 @@ uint8_t ShimSens_checkStopLoggingConditions(void)
  */
 uint8_t ShimSens_checkStopStreamingConditions(void)
 {
-  return shimmerStatus.btStreaming &&
-       (!shimmerStatus.btstreamReady || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP));
+  return shimmerStatus.btStreaming
+      && (!shimmerStatus.btstreamReady
+          || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP));
 }
 
 void ShimSens_startSensing(void)
