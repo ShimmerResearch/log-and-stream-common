@@ -139,7 +139,8 @@ uint8_t ShimSens_checkStartStreamingConditions(void)
  */
 uint8_t ShimSens_checkStopLoggingConditions(void)
 {
-  return !shimmerStatus.sdlogReady || (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP);
+  return shimmerStatus.sdLogging &&
+         (!shimmerStatus.sdlogReady || shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP);
 }
 
 /* Check if the conditions are met to stop streaming to BT.
@@ -147,8 +148,8 @@ uint8_t ShimSens_checkStopLoggingConditions(void)
  */
 uint8_t ShimSens_checkStopStreamingConditions(void)
 {
-  return !shimmerStatus.btstreamReady
-      || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP);
+  return shimmerStatus.btStreaming &&
+      (!shimmerStatus.btstreamReady || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP));
 }
 
 void ShimSens_startSensing(void)
@@ -577,7 +578,7 @@ void ShimSens_stepDone(void)
 void ShimSens_saveData(void)
 {
 #if USE_SD
-  if (shimmerStatus.sdLogging && !ShimSens_checkStopLoggingConditions())
+  if (!ShimSens_checkStopLoggingConditions())
   {
     PeriStat_Set(STAT_PERI_SDMMC);
     ShimSdDataFile_writeToBuff(sensing.dataBuf + 1, sensing.dataLen - 1);
@@ -585,7 +586,7 @@ void ShimSens_saveData(void)
   }
 #endif
 #if USE_BT
-  if (shimmerStatus.btStreaming && !ShimSens_checkStopStreamingConditions())
+  if (!ShimSens_checkStopStreamingConditions())
   {
     uint8_t crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
