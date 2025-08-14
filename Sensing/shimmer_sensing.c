@@ -149,7 +149,7 @@ uint8_t ShimSens_checkStopLoggingConditions(void)
 uint8_t ShimSens_checkStopStreamingConditions(void)
 {
   return shimmerStatus.btStreaming &&
-      (!shimmerStatus.btstreamReady || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP));
+       (!shimmerStatus.btstreamReady || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP));
 }
 
 void ShimSens_startSensing(void)
