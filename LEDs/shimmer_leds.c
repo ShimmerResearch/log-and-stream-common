@@ -256,12 +256,12 @@ void ShimLeds_blinkSetUprConnectedAndLogging(void)
   if (ShimLeds_isBlinkTimerCnt1s())
   {
     lastLedToggleCnt++;
-    if(lastLedToggleCnt >= 3)
+    if (lastLedToggleCnt >= 3)
     {
       lastLedToggleCnt = 0;
     }
 
-    if(lastLedToggleCnt == 2)
+    if (lastLedToggleCnt == 2)
     {
       Board_ledOn(LED_UPR_GREEN);
     }
