@@ -16,7 +16,7 @@
 #endif
 
 uint16_t blinkCnt20, blinkCnt50;
-uint8_t lastLedToggleUpr, lastLedToggleLwr, rwcErrorFlash;
+uint8_t lastLedToggleUpr, lastLedToggleCnt, lastLedToggleLwr, rwcErrorFlash;
 
 static int bootLedIndex = 0;
 static int bootLedDirection = 1; //1: forward, -1: backward
@@ -27,6 +27,7 @@ void ShimLeds_blinkSetUprRtcNotSet(void);
 void ShimLeds_blinkSetUprConfiguring(void);
 void ShimLeds_blinkSetUpLogAndStreamMode(void);
 void ShimLeds_blinkSetUprStreamingOnly(void);
+void ShimLeds_blinkSetUprConnectedAndLogging(void);
 void ShimLeds_blinkSetUprLoggingOnly(void);
 void ShimLeds_blinkSetUprLoggingAndStreaming(void);
 void ShimLeds_blinkSetUprAdvertisingLoggingIdle(void);
@@ -47,6 +48,7 @@ void ShimLeds_varsInit(void)
 {
   blinkCnt20 = blinkCnt50 = 0;
   lastLedToggleUpr = 0;
+  lastLedToggleCnt = 0;
   lastLedToggleLwr = 0;
   rwcErrorFlash = 0;
   ShimLeds_setRtcErrorFlash(0);
@@ -199,7 +201,14 @@ void ShimLeds_blinkSetUpLogAndStreamMode(void)
     else if (!(shimmerStatus.btstreamReady && shimmerStatus.btStreaming)
         && (shimmerStatus.sdlogReady && shimmerStatus.sdLogging))
     {
-      ShimLeds_blinkSetUprLoggingOnly();
+      if (shimmerStatus.btConnected)
+      {
+        ShimLeds_blinkSetUprConnectedAndLogging();
+      }
+      else
+      {
+        ShimLeds_blinkSetUprLoggingOnly();
+      }
     }
     //btstream & sdlog
     else if ((shimmerStatus.btstreamReady && shimmerStatus.btStreaming)
@@ -212,26 +221,23 @@ void ShimLeds_blinkSetUpLogAndStreamMode(void)
       Board_ledOff(LED_UPR_GREEN + LED_UPR_BLUE); //nothing to show
     }
   }
-  else //standby
+  else if (shimmerStatus.btConnected)
   {
-    if (shimmerStatus.btConnected)
-    {
-      Board_ledOn(LED_UPR_BLUE);
-      Board_ledOff(LED_UPR_GREEN); //nothing to show
-    }
+    Board_ledOn(LED_UPR_BLUE);
+    Board_ledOff(LED_UPR_GREEN); //nothing to show
+  }
 #if defined(SHIMMER3)
-    else if (isRn4678ConnectionEstablished())
-    {
-      /* BT connection established but RFComm not open */
-      Board_ledToggle(LED_UPR_BLUE);
-      Board_ledOff(LED_UPR_GREEN); //nothing to show
-    }
+  else if (isRn4678ConnectionEstablished())
+  {
+    /* BT connection established but RFComm not open */
+    Board_ledToggle(LED_UPR_BLUE);
+    Board_ledOff(LED_UPR_GREEN); //nothing to show
+  }
 #endif
-    else
-    {
-      /* BT advertising */
-      ShimLeds_blinkSetUprAdvertisingLoggingIdle();
-    }
+  else
+  {
+    /* BT advertising and logging idle*/
+    ShimLeds_blinkSetUprAdvertisingLoggingIdle();
   }
 }
 
@@ -242,6 +248,28 @@ void ShimLeds_blinkSetUprStreamingOnly(void)
     Board_ledToggle(LED_UPR_BLUE);
   }
   Board_ledOff(LED_UPR_GREEN); //nothing to show
+}
+
+void ShimLeds_blinkSetUprConnectedAndLogging(void)
+{
+  Board_ledOn(LED_UPR_BLUE);
+  if (ShimLeds_isBlinkTimerCnt1s())
+  {
+    lastLedToggleCnt++;
+    if(lastLedToggleCnt >= 3)
+    {
+      lastLedToggleCnt = 0;
+    }
+
+    if(lastLedToggleCnt == 2)
+    {
+      Board_ledOn(LED_UPR_GREEN);
+    }
+    else
+    {
+      Board_ledOff(LED_UPR_GREEN);
+    }
+  }
 }
 
 void ShimLeds_blinkSetUprLoggingOnly(void)
