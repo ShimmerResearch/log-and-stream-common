@@ -137,7 +137,7 @@ uint8_t ShimSens_checkStartStreamingConditions(void)
 /* Check if the conditions are met to stop logging to SD card.
  * Return 1 if conditions are met, 0 otherwise.
  */
-uint8_t ShimSens_checkStopLoggingConditions(void)
+uint8_t ShimSens_shouldStopLogging(void)
 {
   return shimmerStatus.sdLogging
       && (!shimmerStatus.sdlogReady || shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP);
@@ -146,7 +146,7 @@ uint8_t ShimSens_checkStopLoggingConditions(void)
 /* Check if the conditions are met to stop streaming to BT.
  * Return 1 if conditions are met, 0 otherwise.
  */
-uint8_t ShimSens_checkStopStreamingConditions(void)
+uint8_t ShimSens_shouldStopStreaming(void)
 {
   return shimmerStatus.btStreaming
       && (!shimmerStatus.btstreamReady
@@ -276,7 +276,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
   }
 
   /* If stop logging has been activated, stop that activity first. */
-  if (ShimSens_checkStopLoggingConditions())
+  if (ShimSens_shouldStopLogging())
   {
     shimmerStatus.sdLogging = 0;
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
@@ -303,7 +303,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     }
   }
 
-  if (ShimSens_checkStopStreamingConditions())
+  if (ShimSens_shouldStopStreaming())
   {
     shimmerStatus.btStreaming = 0;
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
@@ -579,7 +579,7 @@ void ShimSens_stepDone(void)
 void ShimSens_saveData(void)
 {
 #if USE_SD
-  if (!ShimSens_checkStopLoggingConditions())
+  if (!ShimSens_shouldStopLogging())
   {
     PeriStat_Set(STAT_PERI_SDMMC);
     ShimSdDataFile_writeToBuff(sensing.dataBuf + 1, sensing.dataLen - 1);
@@ -587,7 +587,7 @@ void ShimSens_saveData(void)
   }
 #endif
 #if USE_BT
-  if (!ShimSens_checkStopStreamingConditions())
+  if (!ShimSens_shouldStopStreaming())
   {
     uint8_t crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
