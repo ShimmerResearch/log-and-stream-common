@@ -130,7 +130,7 @@ void ShimTask_NORM_manage(void)
         //looks hackey but SD ERROR without it.
         if (shimmerStatus.sdLogging && sensing.isFileCreated)
         {
-        ShimSdDataFile_writeToCard();
+          ShimSdDataFile_writeToCard();
         }
         break;
       case TASK_SDLOG_CFG_UPDATE:
