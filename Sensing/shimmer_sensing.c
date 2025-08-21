@@ -165,7 +165,6 @@ void ShimSens_startSensing(void)
   if (sdLogPendingStart || streamPendingStart)
   {
     shimmerStatus.sensing = 1;
-    sensing.isFileCreated = 0;
     sensing.isSampling = SAMPLE_NOT_READY;
     ShimSens_configureChannels();
     if (ShimSens_getNumEnabledChannels() == 0)
@@ -240,6 +239,7 @@ void ShimSens_startSensing(void)
   if (sdLogPendingStart)
   {
     shimmerStatus.sdLogging = 1;
+    shimmerStatus.sdlogReady = 0;
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
 
     gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
@@ -279,6 +279,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
   if (ShimSens_shouldStopLogging())
   {
     shimmerStatus.sdLogging = 0;
+    shimmerStatus.sdlogReady = 1;
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
 
     ShimTask_clear(TASK_SDWRITE);
