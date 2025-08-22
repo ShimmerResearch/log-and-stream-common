@@ -229,7 +229,7 @@ uint8_t ShimSdDataFile_setBasedir(void)
   FILINFO fno;
   //volatile uint8_t res;
   uint16_t tmp_counter = 0;
-  char lfn[_MAX_LFN + 1], *fname, *scout, *dash, dirnum[8];
+  char lfn[_MAX_LFN + 1] = {0}, *fname, *scout, *dash, dirnum[8];
 
 #if _FATFS == FATFS_V_0_08B
   fno.lfname = lfn;
