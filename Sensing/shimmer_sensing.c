@@ -239,6 +239,7 @@ void ShimSens_startSensing(void)
   if (sdLogPendingStart)
   {
     shimmerStatus.sdLogging = 1;
+    sensing.isFileCreated = 0;
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
 
     gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
