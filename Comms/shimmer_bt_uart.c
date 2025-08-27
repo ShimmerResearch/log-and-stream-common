@@ -1316,7 +1316,9 @@ void ShimBt_processCmd(void)
             update_calib_dump_file = 1;
           }
 #endif
-
+#if defined(SHIMMER3)
+          LogAndStream_infomemUpdate();
+#endif
           ShimSdHead_config2SdHead();
           update_sdconfig = 1;
         }
