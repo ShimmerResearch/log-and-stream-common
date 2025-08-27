@@ -149,7 +149,7 @@ uint8_t ShimSens_shouldStopLogging(void)
 uint8_t ShimSens_shouldStopStreaming(void)
 {
   return shimmerStatus.btStreaming
-      && (!shimmerStatus.btstreamReady
+      && (shimmerStatus.btstreamReady
           || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP));
 }
 
@@ -586,7 +586,7 @@ void ShimSens_saveData(void)
   }
 #endif
 #if USE_BT
-  if (!ShimSens_shouldStopStreaming())
+  if (ShimSens_shouldStopStreaming())
   {
     uint8_t crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
