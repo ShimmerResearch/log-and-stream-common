@@ -292,9 +292,8 @@ uint8_t ShimBrd_isBoardSr48_6_0(void)
 
 uint8_t ShimBrd_isI2cOnPPGControlledByAdcChip(void)
 {
-  return ShimBrd_isDaughterCardIdSet()
-      && (ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0)
-          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 1));
+  return(ShimBrd_isDaughterCardIdSet()&& hwId == HW_ID_SHIMMER3R
+      && !ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0));
 }
 
 uint8_t ShimBrd_areMcuAdcsUsedForSensing(void)
