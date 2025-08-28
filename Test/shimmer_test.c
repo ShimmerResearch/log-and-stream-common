@@ -17,9 +17,9 @@ factory_test_t factoryTestToRun;
 
 char outputBuffer[100];
 
-uint32_t run_factory_test(void)
+uint32_t ShimFactoryTest_run(void)
 {
-  send_test_report("//**************************** TEST START "
+  ShimFactoryTest_sendReport("//**************************** TEST START "
                    "************************************//\r\n");
 
   shimmerStatus.testResult = 0;
@@ -44,22 +44,22 @@ uint32_t run_factory_test(void)
     {
       sprintf(outputBuffer, "\r\nOverall Result = PASS\r\n");
     }
-    send_test_report(outputBuffer);
+    ShimFactoryTest_sendReport(outputBuffer);
   }
 
-  send_test_report("//***************************** TEST END "
+  ShimFactoryTest_sendReport("//***************************** TEST END "
                    "*************************************//\r\n");
 
   return shimmerStatus.testResult;
 }
 
-void setup_factory_test(factory_test_target_t target, factory_test_t testToRun)
+void ShimFactoryTest_setup(factory_test_target_t target, factory_test_t testToRun)
 {
   factoryTestTarget = target;
   factoryTestToRun = testToRun;
 }
 
-void send_test_report(const char *str)
+void ShimFactoryTest_sendReport(const char *str)
 {
   if (str == NULL || strlen(str) == 0)
   {
@@ -72,17 +72,27 @@ void send_test_report(const char *str)
     char truncatedStr[MAX_TEST_REPORT_LENGTH + 1];
     strncpy(truncatedStr, str, MAX_TEST_REPORT_LENGTH);
     truncatedStr[MAX_TEST_REPORT_LENGTH] = '\0';
-    send_test_report_impl(truncatedStr, factoryTestTarget);
+    ShimFactoryTest_sendReportImpl(truncatedStr, factoryTestTarget);
   }
   else
   {
-    send_test_report_impl(str, factoryTestTarget);
+    ShimFactoryTest_sendReportImpl(str, factoryTestTarget);
   }
 }
 
-__weak void send_test_report_impl(const char *str, factory_test_target_t factoryTestTarget)
+__weak void ShimFactoryTest_sendReportImpl(const char *str, factory_test_target_t factoryTestTarget)
 {
   //This function can be overridden by the main application to send a test
   //report. The default implementation does nothing.
   (void) str; //Suppress unused parameter warning
+}
+
+factory_test_t ShimFactoryTest_getTestToRun(void)
+{
+  return factoryTestToRun;
+}
+
+factory_test_target_t ShimFactoryTest_getTarget(void)
+{
+  return factoryTestTarget;
 }

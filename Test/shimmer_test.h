@@ -40,11 +40,13 @@ typedef enum
 #define __weak __attribute__((weak))
 #endif /* __weak */
 
-void setup_factory_test(factory_test_target_t target, factory_test_t testToRun);
+void ShimFactoryTest_setup(factory_test_target_t target, factory_test_t testToRun);
 
-uint32_t run_factory_test(void);
+uint32_t ShimFactoryTest_run(void);
 
-void send_test_report(const char *str);
-__weak void send_test_report_impl(const char *str, factory_test_target_t factoryTestTarget);
+void ShimFactoryTest_sendReport(const char *str);
+__weak void ShimFactoryTest_sendReportImpl(const char *str, factory_test_target_t factoryTestTarget);
+factory_test_t ShimFactoryTest_getTestToRun(void);
+factory_test_target_t ShimFactoryTest_getTarget(void);
 
 #endif /* TEST_SHIMMER_TEST_H_ */

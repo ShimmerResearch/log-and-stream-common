@@ -464,7 +464,7 @@ void ShimDock_processCmd(void)
         { //set test
           if (dockRxBuf[UART_RXBUF_PROP] < FACTORY_TEST_COUNT)
           {
-            setup_factory_test(
+            ShimFactoryTest_setup(
                 PRINT_TO_DOCK_UART, (factory_test_t) dockRxBuf[UART_RXBUF_PROP]);
             ShimTask_set(TASK_FACTORY_TEST);
             uartSendRspAck = 1;

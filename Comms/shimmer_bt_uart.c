@@ -1181,7 +1181,7 @@ void ShimBt_processCmd(void)
       {
         if (args[0] < FACTORY_TEST_COUNT)
         {
-          setup_factory_test(PRINT_TO_BT_UART, (factory_test_t) args[0]);
+          ShimFactoryTest_setup(PRINT_TO_BT_UART, (factory_test_t) args[0]);
           ShimTask_set(TASK_FACTORY_TEST);
         }
         break;

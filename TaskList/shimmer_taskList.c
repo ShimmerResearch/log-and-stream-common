@@ -156,7 +156,7 @@ void ShimTask_NORM_manage(void)
 #endif
         break;
       case TASK_FACTORY_TEST:
-        run_factory_test();
+        ShimFactoryTest_run();
         break;
 #if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
       case TASK_USB_SETUP:

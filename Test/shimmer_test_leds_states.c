@@ -25,7 +25,7 @@ void ShimLeds_testOperationalStates(void)
   //Backup current shimmerStatus
   STATTypeDef shimmerStatusBckup = shimmerStatus;
 
-  send_test_report("Testing Operational LED states - Start\r\n");
+  ShimFactoryTest_sendReport("Testing Operational LED states - Start\r\n");
 
   ShimLeds_testOperationalStatesBtDisabled();
   ShimLeds_testOperationalStatesBtEnabled();
@@ -35,13 +35,13 @@ void ShimLeds_testOperationalStates(void)
   //Restore original shimmerStatus
   shimmerStatus = shimmerStatusBckup;
 
-  send_test_report("Testing Operational LED states - End\r\n");
+  ShimFactoryTest_sendReport("Testing Operational LED states - End\r\n");
 }
 
 void ShimLeds_testOperationalStatesBtDisabled(void)
 {
-  send_test_report("BT Disabled:\r\n");
-  send_test_report("\t-> Idle...\r\n");
+  ShimFactoryTest_sendReport("BT Disabled:\r\n");
+  ShimFactoryTest_sendReport("\t-> Idle...\r\n");
   shimmerStatus.sensing = 0;
   shimmerStatus.btPowerOn = 0;
   shimmerStatus.btConnected = 0;
@@ -55,7 +55,7 @@ void ShimLeds_testOperationalStatesBtDisabled(void)
   shimmerStatus.sdLogging = 0;
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  send_test_report("\t-> SD Logging...\r\n");
+  ShimFactoryTest_sendReport("\t-> SD Logging...\r\n");
   shimmerStatus.sensing = 1;
   shimmerStatus.sdLogging = 1;
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
@@ -63,8 +63,8 @@ void ShimLeds_testOperationalStatesBtDisabled(void)
 
 void ShimLeds_testOperationalStatesBtEnabled(void)
 {
-  send_test_report("BT Enabled:\r\n");
-  send_test_report("\t-> Idle...\r\n");
+  ShimFactoryTest_sendReport("BT Enabled:\r\n");
+  ShimFactoryTest_sendReport("\t-> Idle...\r\n");
   shimmerStatus.sensing = 0;
   shimmerStatus.btPowerOn = 1;
   shimmerStatus.btConnected = 0;
@@ -78,35 +78,35 @@ void ShimLeds_testOperationalStatesBtEnabled(void)
   shimmerStatus.sdLogging = 0;
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  send_test_report("\t-> SD Logging...\r\n");
+  ShimFactoryTest_sendReport("\t-> SD Logging...\r\n");
   shimmerStatus.sensing = 1;
   shimmerStatus.sdLogging = 1;
   shimmerStatus.btStreaming = 0;
   shimmerStatus.btConnected = 0;
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  send_test_report("\t-> BT Streaming...\r\n");
+  ShimFactoryTest_sendReport("\t-> BT Streaming...\r\n");
   shimmerStatus.sensing = 1;
   shimmerStatus.sdLogging = 0;
   shimmerStatus.btStreaming = 1;
   shimmerStatus.btConnected = 1;
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  send_test_report("\t-> BT Streaming and SD Logging...\r\n");
+  ShimFactoryTest_sendReport("\t-> BT Streaming and SD Logging...\r\n");
   shimmerStatus.sensing = 1;
   shimmerStatus.sdLogging = 1;
   shimmerStatus.btStreaming = 1;
   shimmerStatus.btConnected = 1;
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  send_test_report("\t-> BT Connected...\r\n");
+  ShimFactoryTest_sendReport("\t-> BT Connected...\r\n");
   shimmerStatus.sensing = 0;
   shimmerStatus.sdLogging = 0;
   shimmerStatus.btStreaming = 0;
   shimmerStatus.btConnected = 1;
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  send_test_report("\t-> BT Connected and SD Logging...\r\n");
+  ShimFactoryTest_sendReport("\t-> BT Connected and SD Logging...\r\n");
   shimmerStatus.sensing = 1;
   shimmerStatus.sdLogging = 1;
   shimmerStatus.btStreaming = 0;
@@ -116,9 +116,9 @@ void ShimLeds_testOperationalStatesBtEnabled(void)
 
 void ShimLeds_testOperationalStatesSdSyncEnabled(void)
 {
-  send_test_report("SD Sync Enabled:\r\n");
+  ShimFactoryTest_sendReport("SD Sync Enabled:\r\n");
   uint8_t trialConfig0Bckup = ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0);
-  send_test_report("\t-> Idle...\r\n");
+  ShimFactoryTest_sendReport("\t-> Idle...\r\n");
   shimmerStatus.sensing = 0;
   shimmerStatus.btPowerOn = 0;
   shimmerStatus.btConnected = 0;
@@ -133,7 +133,7 @@ void ShimLeds_testOperationalStatesSdSyncEnabled(void)
   ShimSdSync_rcFirstOffsetRxedSet(0);
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  send_test_report("\t-> SD Logging waiting for initial sync (slave)...\r\n");
+  ShimFactoryTest_sendReport("\t-> SD Logging waiting for initial sync (slave)...\r\n");
   shimmerStatus.sensing = 1;
   shimmerStatus.sdLogging = 1;
   shimmerStatus.btPowerOn = 1;
@@ -144,7 +144,7 @@ void ShimLeds_testOperationalStatesSdSyncEnabled(void)
   ShimSdHead_sdHeadTextSetByte(SDH_TRIAL_CONFIG0, trialConfig0Bckup &= !SDH_IAMMASTER);
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  send_test_report("\t-> SD Logging waiting for initial sync (master)...\r\n");
+  ShimFactoryTest_sendReport("\t-> SD Logging waiting for initial sync (master)...\r\n");
   shimmerStatus.sensing = 1;
   shimmerStatus.sdLogging = 1;
   shimmerStatus.btPowerOn = 1;
@@ -155,7 +155,7 @@ void ShimLeds_testOperationalStatesSdSyncEnabled(void)
   ShimSdHead_sdHeadTextSetByte(SDH_TRIAL_CONFIG0, trialConfig0Bckup |= SDH_IAMMASTER);
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  send_test_report("\t-> SD Logging and BT advertising...\r\n");
+  ShimFactoryTest_sendReport("\t-> SD Logging and BT advertising...\r\n");
   shimmerStatus.sensing = 1;
   shimmerStatus.sdLogging = 1;
   shimmerStatus.btPowerOn = 1;
@@ -165,7 +165,7 @@ void ShimLeds_testOperationalStatesSdSyncEnabled(void)
   ShimSdSync_rcFirstOffsetRxedSet(1);
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  send_test_report("\t-> SD Logging and syncing...\r\n");
+  ShimFactoryTest_sendReport("\t-> SD Logging and syncing...\r\n");
   shimmerStatus.sensing = 1;
   shimmerStatus.sdLogging = 1;
   shimmerStatus.btPowerOn = 1;
@@ -183,7 +183,7 @@ void ShimLeds_testOperationalStatesOther(void)
 {
   uint8_t rwcErrorFlashBckup = ShimLeds_getRtcErrorFlash();
 
-  send_test_report("Other:\r\n");
+  ShimFactoryTest_sendReport("Other:\r\n");
   shimmerStatus.sensing = 0;
   shimmerStatus.btPowerOn = 0;
   shimmerStatus.btConnected = 0;
@@ -196,12 +196,12 @@ void ShimLeds_testOperationalStatesOther(void)
   shimmerStatus.sdlogReady = 0;
   shimmerStatus.sdLogging = 0;
 
-  send_test_report("\t-> Configuring...\r\n");
+  ShimFactoryTest_sendReport("\t-> Configuring...\r\n");
   shimmerStatus.configuring = 1;
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
   shimmerStatus.configuring = 0;
 
-  send_test_report("\t-> Time not set...\r\n");
+  ShimFactoryTest_sendReport("\t-> Time not set...\r\n");
   ShimLeds_setRtcErrorFlash(1);
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
   ShimLeds_setRtcErrorFlash(rwcErrorFlashBckup);
