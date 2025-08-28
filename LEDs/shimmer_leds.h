@@ -8,7 +8,7 @@
 #ifndef LED_H_
 #define LED_H_
 
-#include "stdint.h"
+#include <stdint.h>
 
 #include "log_and_stream_definitions.h"
 
@@ -34,5 +34,6 @@ uint8_t ShimLeds_isBlinkTimerCnt1s(void);
 uint8_t ShimLeds_isBlinkTimerCnt2s(void);
 uint8_t ShimLeds_isBlinkTimerCnt5s(void);
 void ShimLeds_setRtcErrorFlash(uint8_t state);
+uint8_t ShimLeds_getRtcErrorFlash(void);
 
 #endif /* LED_H_ */

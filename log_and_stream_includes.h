@@ -26,6 +26,8 @@
 #include <SDSync/shimmer_sd_sync.h>
 #include <Sensing/shimmer_sensing.h>
 #include <TaskList/shimmer_taskList.h>
+#include <Test/shimmer_test.h>
+#include <Test/shimmer_test_leds_states.h>
 #include <Util/shimmer_util.h>
 #include <log_and_stream_common.h>
 

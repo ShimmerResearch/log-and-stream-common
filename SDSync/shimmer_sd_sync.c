@@ -136,6 +136,11 @@ uint8_t ShimSdSync_rcFirstOffsetRxedGet(void)
   return rcFirstOffsetRxed;
 }
 
+void ShimSdSync_rcFirstOffsetRxedSet(uint8_t state)
+{
+  rcFirstOffsetRxed = state;
+}
+
 uint8_t ShimSdSync_syncSuccCenterGet(void)
 {
   return syncSuccC;
@@ -183,7 +188,7 @@ void ShimSdSync_resetSyncVariablesDuringSyncStart(void)
   ShimSdSync_resetMyTimeDiff();
 
   /* Needs to be reset between sessions so that blue LED goes solid again */
-  rcFirstOffsetRxed = 0;
+  ShimSdSync_rcFirstOffsetRxedSet(0);
 
   iAmSyncCenter = 0;
 }
@@ -368,7 +373,7 @@ void ShimSdSync_checkSyncCenterName(void)
 void ShimSdSync_stop(void)
 {
   btSdSyncIsRunning = 0;
-  rcFirstOffsetRxed = 0;
+  ShimSdSync_rcFirstOffsetRxedSet(0);
   ShimSdSync_CommTimerStop();
   btStopCb(1U);
 }
@@ -531,7 +536,7 @@ void ShimSdSync_nodeR10(void)
       syncNodeSucc = 1;
       if (!firstOutlier)
       {
-        rcFirstOffsetRxed = 1;
+        ShimSdSync_rcFirstOffsetRxedSet(1);
         ShimSdSync_rcFindSmallest();
         myTimeDiff[0] = myTimeDiffLongFlagMin;
         memcpy(myTimeDiff + 1, (uint8_t *) &myTimeDiffLongMin, 8);

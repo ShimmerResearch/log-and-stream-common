@@ -69,7 +69,6 @@ extern uint8_t InfoMem_read(uint16_t addr, uint8_t *buf, uint16_t size);
 
 extern void setDmaWaitingForResponse(uint16_t count);
 
-extern void setup_factory_test(factory_test_target_t target, factory_test_t testToRun);
 extern void eepromRead(uint16_t dataAddr, uint16_t dataSize, uint8_t *dataBuf);
 extern void eepromWrite(uint16_t dataAddr, uint16_t dataSize, uint8_t *dataBuf);
 

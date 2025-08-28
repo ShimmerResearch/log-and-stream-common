@@ -62,6 +62,7 @@ void ShimEeprom_updateRadioDetails(void)
   if (isBtDeviceRn41orRN42())
   {
     eepromBtSettings.baudRate = BAUD_115200;
+    eepromBtSettings.bleEnabled = 0; //BLE not supprted in RN42
   }
   else
   {
@@ -80,6 +81,7 @@ uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
       || (isBtDeviceRn41orRN42() && eepromBtSettings.baudRate != BAUD_115200)
       || (isBtDeviceRn4678() && eepromBtSettings.baudRate != ShimBt_getBtBaudRateToUse())
+      || (isBtDeviceRn41orRN42() && eepromBtSettings.bleEnabled != 0)
 #else
       || eepromBtSettings.baudRate != ShimBt_getBtBaudRateToUse()
 #endif
@@ -129,15 +131,16 @@ enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void)
  * of the second page in the EEPROM. */
 uint8_t ShimEeprom_writeDaughterCardMem(uint16_t memOffset, uint8_t memLength, uint8_t *buf)
 {
-  if ((memLength <= 128) && (memOffset < EEPROM_AVAILABLE_SIZE)
-      && ((uint16_t) memLength + memOffset <= EEPROM_AVAILABLE_SIZE))
+  uint16_t writeStart = memOffset;
+  uint16_t writeEnd = memOffset + memLength - 1;
+  uint16_t targetAddr = EEPROM_ADDRESS_BLUETOOTH_DETAILS_MINUS_OFFSET + RADIO_SETTINGS_IDX;
+
+  if ((memLength <= 128) && (writeEnd < EEPROM_AVAILABLE_SIZE))
   {
     eepromWrite(memOffset + CAT24C16_PAGE_SIZE, (uint16_t) memLength, buf);
 
-    /* Handle if the RN4678 BLE state is being changed */
-    if (memOffset == EEPROM_ADDRESS_BLUETOOTH_DETAILS_MINUS_OFFSET
-        || ((memOffset < EEPROM_ADDRESS_BLUETOOTH_DETAILS_MINUS_OFFSET)
-            && ((memOffset + memLength) > EEPROM_ADDRESS_BLUETOOTH_DETAILS_MINUS_OFFSET)))
+    /* Handle if the BLE/BT state is being changed */
+    if (writeStart <= targetAddr && writeEnd >= targetAddr)
     {
       ShimEeprom_readRadioDetails();
     }
