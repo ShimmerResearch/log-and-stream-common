@@ -329,8 +329,8 @@ uint8_t ShimBrd_checkCorrectStateForBoot0(void)
    * Future boards rely on firmware setting nBoot0 to 0 with no external
    * inversion circuitry. */
   if (ShimBrd_isDaughterCardIdSet() && hwId == HW_ID_SHIMMER3R
-        && (daughterCardIdPage.expansion_brd.exp_brd_major == 7
-         && daughterCardIdPage.expansion_brd.exp_brd_minor == 1))
+      && (daughterCardIdPage.expansion_brd.exp_brd_major == 7
+          && daughterCardIdPage.expansion_brd.exp_brd_minor == 1))
   {
     /* MCU comes with Default nBOOT0 = 1 */
     return 1;
