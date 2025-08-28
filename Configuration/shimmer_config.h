@@ -45,7 +45,7 @@
 #ifndef SHIMMER_CONFIG_H
 #define SHIMMER_CONFIG_H
 
-#include <log_and_stream_definitions.h>
+#include "log_and_stream_definitions.h"
 
 #if defined(SHIMMER3R)
 #include "lis2dw12_reg.h"

@@ -42,13 +42,12 @@
 
 #include <Sensing/shimmer_sensing.h>
 
-#include <log_and_stream_externs.h>
-#include <log_and_stream_includes.h>
+#include "log_and_stream_externs.h"
+#include "log_and_stream_includes.h"
+#include "shimmer_definitions.h"
 
 #if defined(SHIMMER3)
-#include "../../Shimmer_Driver/RN4X/RN4X.h"
-#elif defined(SHIMMER3R)
-#include "shimmer_definitions.h"
+#include "RN4X/RN4X.h"
 #endif
 
 SENSINGTypeDef sensing;

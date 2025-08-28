@@ -8,6 +8,7 @@
 #ifndef LOG_AND_STREAM_COMMON_LOG_AND_STREAM_INCLUDES_H_
 #define LOG_AND_STREAM_COMMON_LOG_AND_STREAM_INCLUDES_H_
 
+#include "log_and_stream_definitions.h"
 #include <Battery/shimmer_battery.h>
 #include <Boards/shimmer_boards.h>
 #include <Button/shimmer_button.h>
@@ -29,6 +30,5 @@
 #include <Test/shimmer_test_leds_states.h>
 #include <Util/shimmer_util.h>
 #include <log_and_stream_common.h>
-#include <log_and_stream_definitions.h>
 
 #endif /* LOG_AND_STREAM_COMMON_LOG_AND_STREAM_INCLUDES_H_ */

@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 
-#include <log_and_stream_definitions.h>
+#include "log_and_stream_definitions.h"
 
 #ifndef __weak
 #define __weak __attribute__((weak))

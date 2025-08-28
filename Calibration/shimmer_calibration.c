@@ -13,17 +13,18 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "log_and_stream_definitions.h"
+#include "log_and_stream_externs.h"
+#include "shimmer_definitions.h"
+#include "version.h"
 #include <Boards/shimmer_boards.h>
 #include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd_data_file.h>
 #include <SDCard/shimmer_sd_header.h>
-#include <log_and_stream_definitions.h>
-#include <log_and_stream_externs.h>
 
 #if defined(SHIMMER3)
 #include "msp430.h"
 
-#include "../../shimmer_btsd.h"
 #include "../5xx_HAL/hal_Board.h"
 #include "../5xx_HAL/hal_RTC.h"
 #include "../BMPX80/bmpX80.h"
@@ -68,10 +69,10 @@ void ShimCalib_initVer(void)
   shimmerCalib_ram[SC_OFFSET_VER_HW_ID_H] = (DEVICE_VER >> 8) & 0xff;
   shimmerCalib_ram[SC_OFFSET_VER_FW_ID_L] = FW_IDENTIFIER & 0xff;
   shimmerCalib_ram[SC_OFFSET_VER_FW_ID_H] = (FW_IDENTIFIER >> 8) & 0xff;
-  shimmerCalib_ram[SC_OFFSET_VER_FW_MAJOR_L] = FW_VER_MAJOR & 0xff;
-  shimmerCalib_ram[SC_OFFSET_VER_FW_MAJOR_H] = (FW_VER_MAJOR >> 8) & 0xff;
-  shimmerCalib_ram[SC_OFFSET_VER_FW_MINOR_L] = FW_VER_MINOR & 0xff;
-  shimmerCalib_ram[SC_OFFSET_VER_FW_INTER_L] = FW_VER_REL & 0xff;
+  shimmerCalib_ram[SC_OFFSET_VER_FW_MAJOR_L] = FW_VERSION_MAJOR & 0xff;
+  shimmerCalib_ram[SC_OFFSET_VER_FW_MAJOR_H] = (FW_VERSION_MAJOR >> 8) & 0xff;
+  shimmerCalib_ram[SC_OFFSET_VER_FW_MINOR_L] = FW_VERSION_MINOR & 0xff;
+  shimmerCalib_ram[SC_OFFSET_VER_FW_INTER_L] = FW_VERSION_PATCH & 0xff;
 }
 
 uint8_t ShimCalib_findLength(sc_t *sc1)

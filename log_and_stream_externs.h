@@ -8,14 +8,14 @@
 #ifndef SHIMMER_EXTERNS_H_
 #define SHIMMER_EXTERNS_H_
 
+#include "log_and_stream_definitions.h"
 #include <Battery/shimmer_battery.h>
-#include <log_and_stream_definitions.h>
 
 #include "hal_FactoryTest.h"
 
 #if defined(SHIMMER3)
-#include "../Shimmer_Driver/BMPX80/bmpX80.h"
-#include "../Shimmer_Driver/MPU9150/mpu9150.h"
+#include "BMPX80/bmpX80.h"
+#include "MPU9150/mpu9150.h"
 #include "hal_InfoMem.h"
 #endif
 
@@ -33,11 +33,6 @@ extern uint8_t isBtModuleOverflowPinHigh(void);
 extern void checkSetupDock(void);
 extern void MPU9150_startMagMeasurement(void);
 extern void BMPX80_startMeasurement(void);
-//extern void checkStreamData(void);
-//extern void checkStartSensing(void);
-//extern void setStopSensingFlag(uint8_t state);
-//extern void setStopLoggingFlag(uint8_t state);
-//extern void setStopStreamingFlag(uint8_t state);
 
 extern void SampleTimerStart(void);
 extern void SampleTimerStop(void);
