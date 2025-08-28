@@ -36,9 +36,9 @@
 #define assert_param(expr) ((void) 0U)
 #endif
 
-void ShimSd_openNewDataFile(void);
-void ShimSd_writeSdHeaderToFile(void);
-void ShimSd_closeDataFile(void);
+void ShimSdDataFile_openNewDataFile(void);
+void ShimSdDataFile_writeSdHeaderToFile(void);
+void ShimSdDataFile_closeDataFile(void);
 
 /* Two-dimensional SD write buffer */
 uint8_t sdWrBuf[NUM_SDWRBUF][SD_WRITE_BUF_SIZE];
@@ -105,123 +105,10 @@ void ShimSdDataFile_resetVars(void)
   memset(&dataFileInfo, 0x00, sizeof(dataFileInfo));
   memset(&dataFileName[0], 0x00, sizeof(dataFileName));
 
-  ShimSd_setDataFileNameIfEmpty();
+  ShimSdDataFile_setFileNameIfEmpty();
 }
 
-#define TEST_TEXT_LEN 40
-
-uint8_t ShimSd_test1(void)
-{
-#if USE_FATFS
-  FIL test_file;
-#endif
-  char file_name[] = "test1.txt";
-  char test_text1[TEST_TEXT_LEN] = "This is the 1st line of the test file.\n";
-  char test_text2[TEST_TEXT_LEN] = "This is the 2nd line of the test file.\n";
-  char test_text3[TEST_TEXT_LEN];
-#if USE_FATFS
-  UINT bw;
-#endif
-
-#if USE_FATFS
-  shimmerStatus.sdBadFile += f_open(&test_file, file_name, FA_CREATE_ALWAYS | FA_WRITE);
-  shimmerStatus.sdBadFile += f_write(&test_file, test_text1, TEST_TEXT_LEN - 1, &bw);
-  shimmerStatus.sdBadFile += f_write(&test_file, test_text2, TEST_TEXT_LEN - 1, &bw);
-  shimmerStatus.sdBadFile += f_close(&test_file);
-
-  memset(test_text3, 0, 40);
-  shimmerStatus.sdBadFile += f_open(&test_file, file_name, FA_OPEN_EXISTING | FA_READ);
-  shimmerStatus.sdBadFile += f_read(&test_file, test_text3, TEST_TEXT_LEN - 1, &bw);
-  shimmerStatus.sdBadFile += f_close(&test_file);
-  f_unlink(file_name);
-#endif
-
-  shimmerStatus.sdBadFile += strcmp(test_text1, test_text3);
-
-  return shimmerStatus.sdBadFile;
-}
-
-uint8_t ShimSd_test2(void)
-{
-  FRESULT res = FR_OK; /* FatFs function common result code */
-#if USE_FATFS
-  uint32_t byteswritten; //, bytesread; /* File write/read counts */
-  uint8_t wtext[] = "FATFS works great!"; /* File write buffer */
-#if _USE_MKFS
-  uint8_t rtext[_MAX_SS]; /* File read buffer */
-#endif
-  FIL SDFile;
-
-  if (ShimSd_mount(1) != FR_OK)
-  {
-    shimmerStatus.sdBadFile = 1;
-  }
-  else
-  {
-#if _USE_MKFS
-    if (f_mkfs((TCHAR const *) SDPath, FM_ANY, 0, rtext, sizeof(rtext)) != FR_OK)
-    {
-      Error_Handler();
-    }
-    else
-    {
-#endif
-      //Open file for writing (Create)
-      if (f_open(&SDFile, "test2.TXT", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
-      {
-        shimmerStatus.sdBadFile = 1;
-      }
-      else
-      {
-
-        //Write to the text file
-        res = f_write(&SDFile, wtext, strlen((char *) wtext), (void *) &byteswritten);
-        if ((byteswritten == 0) || (res != FR_OK))
-        {
-          shimmerStatus.sdBadFile = 1;
-        }
-        else
-        {
-          f_close(&SDFile);
-        }
-      }
-#if _USE_MKFS
-    }
-#endif
-  }
-  ShimSd_mount(0);
-#endif
-  return res;
-}
-
-FRESULT ShimSd_mount(uint8_t val)
-{
-  FRESULT result;
-  if (1 == val)
-  {
-#if _FATFS == FATFS_V_0_08B
-    result = f_mount(0, &fatfs);
-#elif _FATFS == FATFS_V_0_12C
-    result = f_mount(&fatfs, (TCHAR const *) SDPath, 0);
-#endif
-  }
-  else
-  {
-#if _FATFS == FATFS_V_0_08B
-    f_mount(0, NULL);
-#elif _FATFS == FATFS_V_0_12C
-    f_mount(&fatfs, (TCHAR const *) NULL, 0);
-#endif
-  }
-
-#if _FATFS == FATFS_V_0_08B
-  /*TODO not sure if Shimmer added this function */
-  set_sd_detect(val);
-#endif
-  return result;
-}
-
-void ShimSd_setDataFileNameIfEmpty(void)
+void ShimSdDataFile_setFileNameIfEmpty(void)
 {
   if (strlen((char *) fileName) == 0)
   {
@@ -405,11 +292,11 @@ void ShimSdDataFile_fileInit(void)
   ShimSdDataFile_makeBasedir();
   ShimSdHead_config2SdHead();
 
-  ShimSd_openNewDataFile();
+  ShimSdDataFile_openNewDataFile();
 
   sdFileSyncTs = sdFileCrTs = RTC_get64();
 
-  ShimSd_writeSdHeaderToFile();
+  ShimSdDataFile_writeSdHeaderToFile();
 
   sensing.isSdOperating = 0;
   sensing.isFileCreated = 1;
@@ -419,7 +306,7 @@ void ShimSdDataFile_fileInit(void)
 
 void ShimSdDataFile_close(void)
 {
-  ShimSd_closeDataFile();
+  ShimSdDataFile_closeDataFile();
   //Board_sdPower(0);
   shimmerStatus.sdBadFile = 0;
 
@@ -440,7 +327,7 @@ void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len)
   /* If enabled, write the sync offset to the start of the buffer */
   if (sdWrLen[sdBufSens] == 0 && shimmerStatus.sdSyncEnabled)
   {
-    PrepareSDBuffHead();
+    ShimSdDataFile_prepareSDBuffHead();
   }
 
   memcpy(sdWrBuf[sdBufSens] + sdWrLen[sdBufSens], buf, len);
@@ -489,9 +376,9 @@ void ShimSdDataFile_writeToCard(void)
   {
     sdFileSyncTs = sdFileCrTs = RTC_get64();
 
-    ShimSd_closeDataFile();
-    ShimSd_openNewDataFile();
-    ShimSd_writeSdHeaderToFile();
+    ShimSdDataFile_closeDataFile();
+    ShimSdDataFile_openNewDataFile();
+    ShimSdDataFile_writeSdHeaderToFile();
   }
 
   /* Sync file every minute */
@@ -513,7 +400,7 @@ void ShimSdDataFile_writeToCard(void)
     sdBufWr = 0;
   }
   sdBufInQ--;
-  if (ShimSd_getNumberOfFullBuffers() > 0)
+  if (ShimSdDataFile_getNumberOfFullBuffers() > 0)
   {
     ShimTask_set(TASK_SDWRITE);
   }
@@ -537,13 +424,13 @@ void ShimSdDataFile_writeToCard(void)
 void ShimSdDataFile_writeAllBufsToSd(void)
 {
   /* 'Package up' any data that is in the current SD sensing buffer. */
-  if (ShimSd_getBytesInCurrentSensingBuffer() > 0)
+  if (ShimSdDataFile_getBytesInCurrentSensingBuffer() > 0)
   {
     ShimSdDataFile_advanceSensingBuf();
   }
 
   /* Write all buffers with data to the SD card. */
-  while (ShimSd_getNumberOfFullBuffers() > 0)
+  while (ShimSdDataFile_getNumberOfFullBuffers() > 0)
   {
     ShimSdDataFile_writeToCard();
   }
@@ -559,17 +446,17 @@ void ShimSdDataFile_advanceSensingBuf(void)
   }
 }
 
-uint8_t ShimSd_getNumberOfFullBuffers(void)
+uint8_t ShimSdDataFile_getNumberOfFullBuffers(void)
 {
   return sdBufInQ;
 }
 
-uint16_t ShimSd_getBytesInCurrentSensingBuffer(void)
+uint16_t ShimSdDataFile_getBytesInCurrentSensingBuffer(void)
 {
   return sdWrLen[sdBufSens];
 }
 
-void ShimSd_openNewDataFile(void)
+void ShimSdDataFile_openNewDataFile(void)
 {
   ShimSdDataFile_makeFileName(dataFileName);
 #if USE_FATFS //USE_FATFS
@@ -579,7 +466,7 @@ void ShimSd_openNewDataFile(void)
 #endif
 }
 
-void ShimSd_writeSdHeaderToFile(void)
+void ShimSdDataFile_writeSdHeaderToFile(void)
 {
 #if USE_FATFS
   UINT bw;
@@ -624,7 +511,7 @@ void ShimSd_writeSdHeaderToFile(void)
 #endif
 }
 
-void ShimSd_closeDataFile(void)
+void ShimSdDataFile_closeDataFile(void)
 {
 #if USE_FATFS
   file_status = f_sync(&dataFile);
@@ -635,14 +522,133 @@ void ShimSd_closeDataFile(void)
 #endif
 }
 
-uint8_t ShimSd_isFileStatusOk(void)
+uint8_t ShimSdDataFile_isFileStatusOk(void)
 {
   return file_status == FR_OK;
 }
 
-uint8_t *ShimSd_fileNamePtrGet(void)
+uint8_t *ShimSdDataFile_fileNamePtrGet(void)
 {
   return &fileName[0];
+}
+
+void ShimSdDataFile_prepareSDBuffHead(void)
+{
+  memcpy(&sdWrBuf[sdBufSens][sdWrLen[sdBufSens]], ShimSdSync_myTimeDiffPtrGet(),
+      SYNC_PACKET_PAYLOAD_SIZE);
+  sdWrLen[sdBufSens] += SYNC_PACKET_PAYLOAD_SIZE;
+  ShimSdSync_resetMyTimeDiff();
+}
+
+uint8_t ShimSd_test1(void)
+{
+#if USE_FATFS
+  FIL test_file;
+#endif
+  char file_name[] = "test1.txt";
+  char test_text1[TEST_TEXT_LEN] = "This is the 1st line of the test file.\n";
+  char test_text2[TEST_TEXT_LEN] = "This is the 2nd line of the test file.\n";
+  char test_text3[TEST_TEXT_LEN];
+#if USE_FATFS
+  UINT bw;
+#endif
+
+#if USE_FATFS
+  shimmerStatus.sdBadFile += f_open(&test_file, file_name, FA_CREATE_ALWAYS | FA_WRITE);
+  shimmerStatus.sdBadFile += f_write(&test_file, test_text1, TEST_TEXT_LEN - 1, &bw);
+  shimmerStatus.sdBadFile += f_write(&test_file, test_text2, TEST_TEXT_LEN - 1, &bw);
+  shimmerStatus.sdBadFile += f_close(&test_file);
+
+  memset(test_text3, 0, 40);
+  shimmerStatus.sdBadFile += f_open(&test_file, file_name, FA_OPEN_EXISTING | FA_READ);
+  shimmerStatus.sdBadFile += f_read(&test_file, test_text3, TEST_TEXT_LEN - 1, &bw);
+  shimmerStatus.sdBadFile += f_close(&test_file);
+  f_unlink(file_name);
+#endif
+
+  shimmerStatus.sdBadFile += strcmp(test_text1, test_text3);
+
+  return shimmerStatus.sdBadFile;
+}
+
+uint8_t ShimSd_test2(void)
+{
+  FRESULT res = FR_OK; /* FatFs function common result code */
+#if USE_FATFS
+  uint32_t byteswritten; //, bytesread; /* File write/read counts */
+  uint8_t wtext[] = "FATFS works great!"; /* File write buffer */
+#if _USE_MKFS
+  uint8_t rtext[_MAX_SS]; /* File read buffer */
+#endif
+  FIL SDFile;
+
+  if (ShimSd_mount(1) != FR_OK)
+  {
+    shimmerStatus.sdBadFile = 1;
+  }
+  else
+  {
+#if _USE_MKFS
+    if (f_mkfs((TCHAR const *) SDPath, FM_ANY, 0, rtext, sizeof(rtext)) != FR_OK)
+    {
+      Error_Handler();
+    }
+    else
+    {
+#endif
+      //Open file for writing (Create)
+      if (f_open(&SDFile, "test2.TXT", FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+      {
+        shimmerStatus.sdBadFile = 1;
+      }
+      else
+      {
+
+        //Write to the text file
+        res = f_write(&SDFile, wtext, strlen((char *) wtext), (void *) &byteswritten);
+        if ((byteswritten == 0) || (res != FR_OK))
+        {
+          shimmerStatus.sdBadFile = 1;
+        }
+        else
+        {
+          f_close(&SDFile);
+        }
+      }
+#if _USE_MKFS
+    }
+#endif
+  }
+  ShimSd_mount(0);
+#endif
+  return res;
+}
+
+FRESULT ShimSd_mount(uint8_t val)
+{
+  FRESULT result;
+  if (1 == val)
+  {
+#if _FATFS == FATFS_V_0_08B
+    result = f_mount(0, &fatfs);
+#elif _FATFS == FATFS_V_0_12C
+    result = f_mount(&fatfs, (TCHAR const *) SDPath, 0);
+#endif
+  }
+  else
+  {
+#if _FATFS == FATFS_V_0_08B
+    f_mount(0, NULL);
+#elif _FATFS == FATFS_V_0_12C
+    f_mount(&fatfs, (TCHAR const *) NULL, 0);
+#endif
+  }
+
+#if _FATFS == FATFS_V_0_08B
+  /*TODO not sure if Shimmer added this function */
+  set_sd_detect(val);
+#endif
+  return result;
 }
 
 FRESULT ShimSd_setFileTimestamp(char *path)
@@ -742,12 +748,4 @@ void ShimSd_findError(uint8_t err, uint8_t *name)
       strcpy((char *) name, "NO_REASON");
       break;
   } //FRESULT;
-}
-
-void PrepareSDBuffHead(void)
-{
-  memcpy(&sdWrBuf[sdBufSens][sdWrLen[sdBufSens]], ShimSdSync_myTimeDiffPtrGet(),
-      SYNC_PACKET_PAYLOAD_SIZE);
-  sdWrLen[sdBufSens] += SYNC_PACKET_PAYLOAD_SIZE;
-  ShimSdSync_resetMyTimeDiff();
 }

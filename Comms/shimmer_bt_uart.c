@@ -1709,7 +1709,7 @@ void ShimBt_sendRsp(void)
       }
       case GET_DIR_COMMAND:
       {
-        fileNamePtr = ShimSd_fileNamePtrGet();
+        fileNamePtr = ShimSdDataFile_fileNamePtrGet();
         uint8_t dir_len = strlen((char *) fileNamePtr) - 3;
         *(resPacket + packet_length++) = INSTREAM_CMD_RESPONSE;
         *(resPacket + packet_length++) = DIR_RESPONSE;
