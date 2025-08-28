@@ -281,6 +281,16 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     shimmerStatus.sdLogging = 0;
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
 
+    /* Save any outstanding to SD card before stop logging. */
+#if defined(SHIMMER3)
+    if(!shimmerStatus.docked)
+    {
+      ShimSdDataFile_writeAllBufsToSd();
+    }
+#else
+    ShimSdDataFile_writeAllBufsToSd();
+#endif
+
     ShimTask_clear(TASK_SDWRITE);
 
     ShimSdDataFile_close();
@@ -296,11 +306,6 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     }
 
     ShimSens_currentExperimentLengthReset();
-
-    if (LogAndStream_isSdInfoSyncDelayed())
-    {
-      LogAndStream_syncConfigAndCalibOnSd();
-    }
   }
 
   if (ShimSens_shouldStopStreaming())
@@ -318,13 +323,20 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
   /* Both logging and streaming have been stopped, so we can stop sensing. */
   if (!shimmerStatus.sdLogging && !shimmerStatus.btStreaming)
   {
+    //Set configuring flag for LED indication
     shimmerStatus.configuring = 1;
+
     shimmerStatus.sensing = 0;
     sensing.startTs = 0;
     sensing.isSampling = SAMPLE_NOT_READY;
     ShimSens_stopPeripherals();
 
     ShimSens_stopSensingWrapup();
+
+    if (LogAndStream_isSdInfoSyncDelayed())
+    {
+      LogAndStream_syncConfigAndCalibOnSd();
+    }
 
     shimmerStatus.configuring = 0;
   }

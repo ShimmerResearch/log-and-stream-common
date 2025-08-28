@@ -75,6 +75,13 @@ extern FIL SDFile;     /* File object for SD */
 
 void ShimSdDataFile_init(void)
 {
+  memset(&fatfs, 0x00, sizeof(fatfs));
+
+  ShimSdDataFile_resetVars();
+}
+
+void ShimSdDataFile_resetVars(void)
+{
   sensing.isFileCreated = 0;
   sensing.inSdWr = 0;
   sensing.inSdWrCnt = 0;
@@ -93,7 +100,6 @@ void ShimSdDataFile_init(void)
   sdFileCrTs = 0;
   sdFileSyncTs = 0;
   file_status = FR_OK;
-  memset(&fatfs, 0x00, sizeof(fatfs));
   memset(&dir, 0x00, sizeof(dir));
   memset(&dataFile, 0x00, sizeof(dataFile));
   memset(&dataFileInfo, 0x00, sizeof(dataFileInfo));
@@ -416,7 +422,8 @@ void ShimSdDataFile_close(void)
   ShimSd_closeDataFile();
   //Board_sdPower(0);
   shimmerStatus.sdBadFile = 0;
-  sensing.isFileCreated = 0;
+
+  ShimSdDataFile_resetVars();
 }
 
 void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len)
@@ -441,12 +448,7 @@ void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len)
   if (sdWrLen[sdBufSens] + len > SD_WRITE_BUF_SIZE)
   {
     ShimTask_set(TASK_SDWRITE);
-    sdBufInQ++;
-    sdBufSens++;
-    if (sdBufSens >= NUM_SDWRBUF)
-    {
-      sdBufSens = 0;
-    }
+    ShimSdDataFile_advanceSensingBuf();
   }
 }
 
@@ -458,8 +460,8 @@ void ShimSdDataFile_writeToCard(void)
   uint8_t *writing_buf;
   uint16_t *writing_buf_len;
 
-  writing_buf = sdWrBuf[sdBufWr];
-  writing_buf_len = sdWrLen + sdBufWr;
+  writing_buf = &sdWrBuf[sdBufWr][0];
+  writing_buf_len = &sdWrLen[sdBufWr];
 
   __NOP();
 
@@ -510,8 +512,8 @@ void ShimSdDataFile_writeToCard(void)
   {
     sdBufWr = 0;
   }
-  //sdBufInQ--;
-  if (--sdBufInQ)
+  sdBufInQ--;
+  if (ShimSd_getNumberOfFullBuffers() > 0)
   {
     ShimTask_set(TASK_SDWRITE);
   }
@@ -530,6 +532,41 @@ void ShimSdDataFile_writeToCard(void)
   sensing.inSdWr = 0;
   sensing.inSdWrCnt = 0;
   //__enable_irq();
+}
+
+void ShimSdDataFile_writeAllBufsToSd(void)
+{
+  /* 'Package up' any data that is in the current SD sensing buffer. */
+  if (ShimSd_getBytesInCurrentSensingBuffer() > 0)
+  {
+    ShimSdDataFile_advanceSensingBuf();
+  }
+
+  /* Write all buffers with data to the SD card. */
+  while(ShimSd_getNumberOfFullBuffers() > 0)
+  {
+    ShimSdDataFile_writeToCard();
+  }
+}
+
+void ShimSdDataFile_advanceSensingBuf(void)
+{
+  sdBufInQ++;
+  sdBufSens++;
+  if (sdBufSens >= NUM_SDWRBUF)
+  {
+    sdBufSens = 0;
+  }
+}
+
+uint8_t ShimSd_getNumberOfFullBuffers(void)
+{
+  return sdBufInQ;
+}
+
+uint16_t ShimSd_getBytesInCurrentSensingBuffer(void)
+{
+  return sdWrLen[sdBufSens];
 }
 
 void ShimSd_openNewDataFile(void)

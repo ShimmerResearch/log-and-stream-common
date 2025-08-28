@@ -28,6 +28,7 @@
 #define BIN_FILE_SYNC_TIME_TICKS  (32768 * 60)   //1 minute
 
 void ShimSdDataFile_init(void);
+void ShimSdDataFile_resetVars(void);
 
 //TODO move to general ShimSd source file?
 uint8_t ShimSd_test1(void);
@@ -43,6 +44,10 @@ void ShimSdDataFile_fileInit(void);
 void ShimSdDataFile_close(void);
 void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len);
 void ShimSdDataFile_writeToCard(void);
+void ShimSdDataFile_writeAllBufsToSd(void);
+void ShimSdDataFile_advanceSensingBuf(void);
+uint8_t ShimSd_getNumberOfFullBuffers(void);
+uint16_t ShimSd_getBytesInCurrentSensingBuffer(void);
 
 uint8_t ShimSd_isFileStatusOk(void);
 
