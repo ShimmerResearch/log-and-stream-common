@@ -702,7 +702,7 @@ void ShimConfig_loadSensorConfigAndCalib(void)
       ShimConfig_readRam();
       ShimSdCfgFile_generate();
       ShimConfig_setFlagWriteCfgToSd(0, 1);
-      if (!ShimSd_isFileStatusOk())
+      if (!ShimSdDataFile_isFileStatusOk())
       {
         shimmerStatus.sdlogReady = 0;
         shimmerStatus.sdBadFile = 1;
