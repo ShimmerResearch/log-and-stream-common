@@ -27,7 +27,7 @@
 #define BIN_FILE_SPLIT_TIME_TICKS (32768 * 3600) //1 hr
 #define BIN_FILE_SYNC_TIME_TICKS  (32768 * 60)   //1 minute
 
-#define TEST_TEXT_LEN 40
+#define TEST_TEXT_LEN             40
 
 void ShimSdDataFile_init(void);
 void ShimSdDataFile_resetVars(void);
