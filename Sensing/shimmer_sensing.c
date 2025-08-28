@@ -148,7 +148,7 @@ uint8_t ShimSens_shouldStopLogging(void)
 uint8_t ShimSens_shouldStopStreaming(void)
 {
   return (!shimmerStatus.btstreamReady
-          || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP));
+      || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP));
 }
 
 void ShimSens_startSensing(void)
