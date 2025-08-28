@@ -21,7 +21,7 @@
 #if defined(SHIMMER3)
 #define NUM_SDWRBUF 1
 #elif defined(SHIMMER3R)
-#define NUM_SDWRBUF 64
+#define NUM_SDWRBUF 4
 #endif
 
 #define BIN_FILE_SPLIT_TIME_TICKS (32768 * 3600) //1 hr
