@@ -543,7 +543,7 @@ void ShimSdDataFile_writeAllBufsToSd(void)
   }
 
   /* Write all buffers with data to the SD card. */
-  while(ShimSd_getNumberOfFullBuffers() > 0)
+  while (ShimSd_getNumberOfFullBuffers() > 0)
   {
     ShimSdDataFile_writeToCard();
   }

@@ -283,7 +283,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
 
     /* Save any outstanding to SD card before stop logging. */
 #if defined(SHIMMER3)
-    if(!shimmerStatus.docked)
+    if (!shimmerStatus.docked)
     {
       ShimSdDataFile_writeAllBufsToSd();
     }
