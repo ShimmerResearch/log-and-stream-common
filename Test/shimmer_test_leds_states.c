@@ -133,7 +133,8 @@ void ShimLeds_testOperationalStatesSdSyncEnabled(void)
   ShimSdSync_rcFirstOffsetRxedSet(0);
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  ShimFactoryTest_sendReport("\t-> SD Logging waiting for initial sync (slave)...\r\n");
+  ShimFactoryTest_sendReport(
+      "\t-> SD Logging waiting for initial sync (slave)...\r\n");
   shimmerStatus.sensing = 1;
   shimmerStatus.sdLogging = 1;
   shimmerStatus.btPowerOn = 1;
@@ -144,7 +145,8 @@ void ShimLeds_testOperationalStatesSdSyncEnabled(void)
   ShimSdHead_sdHeadTextSetByte(SDH_TRIAL_CONFIG0, trialConfig0Bckup &= !SDH_IAMMASTER);
   delay_ms(SHIMMER_LEDS_TEST_INTERVAL_MS);
 
-  ShimFactoryTest_sendReport("\t-> SD Logging waiting for initial sync (master)...\r\n");
+  ShimFactoryTest_sendReport(
+      "\t-> SD Logging waiting for initial sync (master)...\r\n");
   shimmerStatus.sensing = 1;
   shimmerStatus.sdLogging = 1;
   shimmerStatus.btPowerOn = 1;

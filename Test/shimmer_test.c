@@ -20,7 +20,7 @@ char outputBuffer[100];
 uint32_t ShimFactoryTest_run(void)
 {
   ShimFactoryTest_sendReport("//**************************** TEST START "
-                   "************************************//\r\n");
+                             "************************************//\r\n");
 
   shimmerStatus.testResult = 0;
 
@@ -48,7 +48,7 @@ uint32_t ShimFactoryTest_run(void)
   }
 
   ShimFactoryTest_sendReport("//***************************** TEST END "
-                   "*************************************//\r\n");
+                             "*************************************//\r\n");
 
   return shimmerStatus.testResult;
 }
