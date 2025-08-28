@@ -73,6 +73,7 @@ uint8_t ShimSdSync_syncNodeNumGet(void);
 uint8_t *ShimSdSync_syncNodeNamePtrForIndexGet(uint8_t index);
 uint8_t *ShimSdSync_syncCenterNamePtrGet(void);
 uint8_t ShimSdSync_rcFirstOffsetRxedGet(void);
+void ShimSdSync_rcFirstOffsetRxedSet(uint8_t state);
 uint8_t ShimSdSync_syncSuccCenterGet(void);
 uint8_t ShimSdSync_syncSuccNodeGet(void);
 uint8_t ShimSdSync_syncCntGet(void);
