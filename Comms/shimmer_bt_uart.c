@@ -1317,6 +1317,7 @@ void ShimBt_processCmd(void)
             update_calib_dump_file = 1;
           }
 #endif
+
           ShimSdHead_config2SdHead();
           update_sdconfig = 1;
         }
