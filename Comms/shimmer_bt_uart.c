@@ -1301,7 +1301,7 @@ void ShimBt_processCmd(void)
           ShimConfig_checkAndCorrectConfig();
 
           LogAndStream_infomemUpdate();
-//          InfoMem_write(infomemOffset, &args[3], infomemLength);
+          //InfoMem_write(infomemOffset, &args[3], infomemLength);
           InfoMem_read(infomemOffset, &storedConfigPtr->rawBytes[infomemOffset], infomemLength);
 
           /* Save from infomem to calib dump in memory */
