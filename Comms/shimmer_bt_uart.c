@@ -1302,7 +1302,7 @@ void ShimBt_processCmd(void)
 
           LogAndStream_infomemUpdate();
           //InfoMem_write(infomemOffset, &args[3], infomemLength);
-          InfoMem_read(infomemOffset, &storedConfigPtr->rawBytes[infomemOffset], infomemLength);
+          //InfoMem_read(infomemOffset, &storedConfigPtr->rawBytes[infomemOffset], infomemLength);
 
           /* Save from infomem to calib dump in memory */
           if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
