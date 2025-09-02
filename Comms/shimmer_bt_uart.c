@@ -22,7 +22,7 @@
 #include "RN4X/RN4X.h"
 
 #elif defined(SHIMMER3R) || defined(SHIMMER4_SDK)
-#include "bmp3_defs.h"
+#include "BMP3/BMP3_SensorAPI/bmp3_defs.h"
 #include "hal_FactoryTest.h"
 #include "hal_Infomem.h"
 #include "shimmer_definitions.h"

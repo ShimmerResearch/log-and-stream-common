@@ -16,7 +16,7 @@
 #if defined(SHIMMER3)
 #include "../BMPX80/bmpX80.h"
 #elif defined(SHIMMER3R)
-#include "bmp3_defs.h"
+#include "BMP3/BMP3_SensorAPI/bmp3_defs.h"
 #endif
 
 uint8_t sdHeadText[SD_HEAD_SIZE];

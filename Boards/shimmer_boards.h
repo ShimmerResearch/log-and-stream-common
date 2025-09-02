@@ -12,7 +12,7 @@
 
 #include <EEPROM/shimmer_eeprom.h>
 
-#include "CAT24C16/cat24c16.h"
+#include "CAT24C16/CAT24C16.h"
 
 enum SR_HW_IDS
 {

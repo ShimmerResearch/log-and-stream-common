@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 
-#include "CAT24C16/cat24c16.h"
+#include "CAT24C16/CAT24C16.h"
 
 //Bluetooth information is stored in the last EEPROM page
 #define EEPROM_ADDRESS_HW_DETAILS 0

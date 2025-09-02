@@ -48,7 +48,7 @@
 #include "log_and_stream_definitions.h"
 
 #if defined(SHIMMER3R)
-#include "lis2dw12_reg.h"
+#include "LIS2DW12/lis2dw12-pid/lis2dw12_reg.h"
 #include "shimmer_definitions.h"
 #include <shimmer_include.h>
 #endif
