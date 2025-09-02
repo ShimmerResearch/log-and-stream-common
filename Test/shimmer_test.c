@@ -9,6 +9,7 @@
 
 #include <inttypes.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "log_and_stream_includes.h"
 
@@ -24,7 +25,7 @@ uint32_t ShimFactoryTest_run(void)
 
   shimmerStatus.testResult = 0;
 
-  if (FACTORY_TEST_LED_STATES)
+  if (factoryTestToRun == FACTORY_TEST_LED_STATES)
   {
     ShimLeds_testOperationalStates();
   }
