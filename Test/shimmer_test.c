@@ -9,6 +9,7 @@
 
 #include <inttypes.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "log_and_stream_includes.h"
 
