@@ -80,15 +80,25 @@ uint8_t ShimDock_rxCallback(uint8_t data)
     return 0;
   }
 
+  //TODO revisit and either make common approach for Shimmer3 and Shimmer3R or ensure HAL_GetTick() works fine for Shimmer3R
+#if defined(SHIMMER3)
   uint64_t uart_time = RTC_get64();
+#else
+  uint64_t uart_time = HAL_GetTick();
+#endif
   if (uartTimeStart)
   {
     //Check for 100ms timeout between bytes
+#if defined(SHIMMER3)
     if (uart_time - uartTimeStart > TIMEOUT_100_MS)
+#else
+    if (uart_time - uartTimeStart > 100)
+#endif
     {
       uartSteps = 0;
     }
   }
+  uartTimeStart = uart_time;
 
   if (uartSteps)
   { //wait for: cmd, len, data, crc -> process
@@ -159,7 +169,6 @@ uint8_t ShimDock_rxCallback(uint8_t data)
       uartArgSize = UART_RXBUF_START;
       dockRxBuf[UART_RXBUF_START] = '$';
       uartSteps = UART_STEP_WAIT4_CMD;
-      uartTimeStart = uart_time;
       return 0;
     }
   }
