@@ -50,7 +50,7 @@ boot_stage_t LogAndStream_getBootStage(void)
   return bootStage;
 }
 
-void LogAndStream_syncConfigAndCalibOnSd(void)
+void LogAndStream_syncConfigAndCalibOnSd(uint8_t src)
 {
   LogAndStream_setSdInfoSyncDelayed(0);
   if (ShimConfig_getFlagWriteCfgToSd())
@@ -83,7 +83,7 @@ void LogAndStream_syncConfigAndCalibOnSd(void)
   }
 
   ShimSens_configureChannels();
-  ShimSens_startLoggingIfUndockStartEnabled();
+  ShimSens_startLoggingIfUndockStartEnabled(src);
 }
 
 uint8_t LogAndStream_isSdInfoSyncDelayed(void)
@@ -108,8 +108,8 @@ void LogAndStream_blinkTimerCommon(void)
   {
     if (ShimLeds_isBlinkTimerCnt1s() && ShimSens_checkAutostopLoggingCondition())
     {
-      ShimTask_setStopLogging();
-      ShimTask_setStopSensing();
+      ShimTask_setStopLogging(SD_BT_LOG_STREAM_CMD_SRC_OTH);
+      ShimTask_setStopSensing(SD_BT_LOG_STREAM_CMD_SRC_OTH);
     }
 
     if (shimmerStatus.timerBlinkEnabled)

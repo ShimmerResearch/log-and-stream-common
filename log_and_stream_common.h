@@ -19,7 +19,7 @@
 void LogAndStream_init(void);
 void LogAndStream_setBootStage(boot_stage_t bootStageNew);
 boot_stage_t LogAndStream_getBootStage(void);
-void LogAndStream_syncConfigAndCalibOnSd(void);
+void LogAndStream_syncConfigAndCalibOnSd(uint8_t src);
 uint8_t LogAndStream_isSdInfoSyncDelayed(void);
 void LogAndStream_setSdInfoSyncDelayed(uint8_t state);
 void LogAndStream_blinkTimerCommon(void);

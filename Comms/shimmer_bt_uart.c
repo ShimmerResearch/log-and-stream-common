@@ -818,17 +818,17 @@ void ShimBt_processCmd(void)
       }
       case START_STREAMING_COMMAND:
       {
-        ShimTask_setStartStreamingIfReady();
+        ShimTask_setStartStreamingIfReady(SD_BT_LOG_STREAM_CMD_SRC_BT);
         break;
       }
       case START_SDBT_COMMAND:
       {
-        ShimTask_setStartStreamingAndLoggingIfReady();
+        ShimTask_setStartStreamingAndLoggingIfReady(SD_BT_LOG_STREAM_CMD_SRC_BT);
         break;
       }
       case START_LOGGING_COMMAND:
       {
-        ShimTask_setStartLoggingIfReady();
+        ShimTask_setStartLoggingIfReady(SD_BT_LOG_STREAM_CMD_SRC_BT);
         break;
       }
       case SET_CRC_COMMAND:
@@ -843,17 +843,17 @@ void ShimBt_processCmd(void)
       }
       case STOP_STREAMING_COMMAND:
       {
-        ShimTask_setStopStreaming();
+        ShimTask_setStopStreaming(SD_BT_LOG_STREAM_CMD_SRC_BT);
         break;
       }
       case STOP_SDBT_COMMAND:
       {
-        ShimTask_setStopSensing();
+        ShimTask_setStopSensing(SD_BT_LOG_STREAM_CMD_SRC_BT);
         break;
       }
       case STOP_LOGGING_COMMAND:
       {
-        ShimTask_setStopLogging();
+        ShimTask_setStopLogging(SD_BT_LOG_STREAM_CMD_SRC_BT);
         break;
       }
       case SET_SENSORS_COMMAND:
@@ -2273,7 +2273,7 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   else
   { //BT is disconnected
     shimmerStatus.btstreamReady = 0;
-    ShimTask_setStopStreaming();
+    ShimTask_setStopStreaming(SD_BT_LOG_STREAM_CMD_SRC_HW);
 
     ShimBt_setDataRateTestState(0);
 

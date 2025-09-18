@@ -118,12 +118,12 @@ uint8_t ShimTask_NORM_set(uint32_t task_id);
 //return the whole tasklist
 uint32_t ShimTask_NORM_getList(void);
 
-void ShimTask_setStartLoggingIfReady(void);
-void ShimTask_setStartStreamingIfReady(void);
-void ShimTask_setStartStreamingAndLoggingIfReady(void);
-void ShimTask_setStopSensing(void);
-void ShimTask_setStopLogging(void);
-void ShimTask_setStopStreaming(void);
+void ShimTask_setStartLoggingIfReady(uint8_t src);
+void ShimTask_setStartStreamingIfReady(uint8_t src);
+void ShimTask_setStartStreamingAndLoggingIfReady(uint8_t src);
+void ShimTask_setStopSensing(uint8_t src);
+void ShimTask_setStopLogging(uint8_t src);
+void ShimTask_setStopStreaming(uint8_t src);
 void ShimTask_setInitialiseBluetooth(void);
 
 #endif //S4_TASKLIST_H

@@ -138,7 +138,10 @@ uint8_t ShimSens_checkStartStreamingConditions(void)
  */
 uint8_t ShimSens_shouldStopLogging(void)
 {
-  return (!shimmerStatus.sdlogReady || shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP);
+  return (!shimmerStatus.sdlogReady ||
+           shimmerStatus.sdlogCmd   == (SD_LOG_CMD_STATE_STOP_BT
+                                    || SD_LOG_CMD_STATE_STOP_HW
+                                    || SD_LOG_CMD_STATE_STOP_OTH));
 }
 
 /* Check if the conditions are met to stop streaming to BT.
@@ -147,16 +150,18 @@ uint8_t ShimSens_shouldStopLogging(void)
 uint8_t ShimSens_shouldStopStreaming(void)
 {
   return (!shimmerStatus.btstreamReady
-      || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP));
+      || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_BT
+                                    || BT_STREAM_CMD_STATE_STOP_HW
+                                    || BT_STREAM_CMD_STATE_STOP_OTH));
 }
 
 void ShimSens_startSensing(void)
 {
   shimmerStatus.configuring = 1;
 
-  uint8_t sdLogPendingStart = (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START)
+  uint8_t sdLogPendingStart = (shimmerStatus.sdlogCmd == (SD_LOG_CMD_STATE_START_BT||SD_LOG_CMD_STATE_START_HW || SD_LOG_CMD_STATE_START_OTH ))
       && ShimSens_checkStartLoggingConditions();
-  uint8_t streamPendingStart = (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START)
+  uint8_t streamPendingStart = (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_BT || BT_STREAM_CMD_STATE_START_HW || BT_STREAM_CMD_STATE_START_OTH )
       && ShimSens_checkStartStreamingConditions();
 
   if (sdLogPendingStart || streamPendingStart)
@@ -266,6 +271,7 @@ void ShimSens_startSensing(void)
 
 void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
 {
+  uint8_t src = shimmerStatus.sdBtCmdSrc;
   /* If not sensing, do nothing */
   if (!shimmerStatus.sensing)
   {
@@ -332,7 +338,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
 
     if (LogAndStream_isSdInfoSyncDelayed())
     {
-      LogAndStream_syncConfigAndCalibOnSd();
+      LogAndStream_syncConfigAndCalibOnSd(src);
     }
 
     shimmerStatus.configuring = 0;
@@ -621,7 +627,7 @@ uint8_t ShimSens_getNumEnabledChannels(void)
       ;
 }
 
-void ShimSens_startLoggingIfUndockStartEnabled(void)
+void ShimSens_startLoggingIfUndockStartEnabled(uint8_t src)
 {
   gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
 #if IS_SUPPORTED_SINGLE_TOUCH
@@ -630,7 +636,7 @@ void ShimSens_startLoggingIfUndockStartEnabled(void)
   if (!storedConfigPtr->userButtonEnable)
 #endif
   {
-    ShimTask_setStartLoggingIfReady();
+    ShimTask_setStartLoggingIfReady(src);
   }
 }
 

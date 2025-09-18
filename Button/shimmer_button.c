@@ -85,11 +85,11 @@ uint8_t ShimBtn_pressReleaseAction(void)
         //toggles sensing and refresh BT timers (for the centre)
         if (shimmerStatus.sdLogging == 0)
         {
-          ShimTask_setStartLoggingIfReady();
+          ShimTask_setStartLoggingIfReady(SD_BT_LOG_STREAM_CMD_SRC_HW);
         }
         else
         {
-          ShimTask_setStopLogging();
+          ShimTask_setStopLogging(SD_BT_LOG_STREAM_CMD_SRC_HW);
         }
         wake = 1;
       }
