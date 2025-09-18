@@ -43,7 +43,7 @@ uint8_t ShimBtn_pressReleaseAction(void)
     { //long button press: 5s
     }
     else if ((buttonReleaseTd > TICKS_0_5_SECONDS) && !shimmerStatus.configuring
-        && !shimmerStatus.btConnected)
+        && !(shimmerStatus.btConnected && shimmerStatus.sdSyncCommTimerRunning))
     {
       buttonReleasePrevTs = buttonReleaseCurrentTs;
 #if TEST_PRESS2UNDOCK
@@ -66,11 +66,11 @@ uint8_t ShimBtn_pressReleaseAction(void)
         //toggles sensing and refresh BT timers (for the centre)
         if (shimmerStatus.sdLogging == 0)
         {
-          ShimTask_setStartLoggingIfReady();
+          ShimTask_setStartLoggingIfReady(SD_BT_LOG_STREAM_CMD_SRC_HW);
         }
         else
         {
-          ShimTask_setStopLogging();
+          ShimTask_setStopLogging(SD_BT_LOG_STREAM_CMD_SRC_HW);
         }
         return 1;
       }

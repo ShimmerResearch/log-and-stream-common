@@ -59,7 +59,7 @@ void ShimBatt_updateStatus(uint16_t adc_battVal, uint16_t battValMV, uint8_t lm3
     ShimBatt_incrementBatteryCriticalCount();
     if (ShimBatt_checkIfBatteryCritical() && shimmerStatus.sensing)
     {
-      ShimTask_setStopSensing();
+      ShimTask_setStopSensing(SD_BT_LOG_STREAM_CMD_SRC_OTH);
     }
   }
 }

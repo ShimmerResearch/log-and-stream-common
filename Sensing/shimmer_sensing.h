@@ -251,7 +251,7 @@ void ShimSens_stepDone(void);
 void ShimSens_saveData(void);
 
 uint8_t ShimSens_getNumEnabledChannels(void);
-void ShimSens_startLoggingIfUndockStartEnabled(void);
+void ShimSens_startLoggingIfUndockStartEnabled(uint8_t src);
 
 uint8_t ShimSens_checkAutostopLoggingCondition(void);
 void ShimSens_currentExperimentLengthReset(void);
