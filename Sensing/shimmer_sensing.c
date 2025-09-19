@@ -145,7 +145,7 @@ uint8_t ShimSens_shouldStopLogging(void)
   {
     sdLogResult = 1;
   }
-  return (!shimmerStatus.sdlogReady || sdLogResult) ;
+  return (!shimmerStatus.sdlogReady || sdLogResult);
 }
 
 /* Check if the conditions are met to stop streaming to BT.
@@ -153,6 +153,7 @@ uint8_t ShimSens_shouldStopLogging(void)
  */
 uint8_t ShimSens_shouldStopStreaming(void)
 {
+
   uint8_t sdStreamResult = 0;
   if ((shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_BT) ||
       (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_HW) ||
@@ -161,7 +162,6 @@ uint8_t ShimSens_shouldStopStreaming(void)
     sdStreamResult = 1;
   }
   return (!shimmerStatus.btstreamReady || sdStreamResult);
-
 }
 
 void ShimSens_startSensing(void)
@@ -169,18 +169,17 @@ void ShimSens_startSensing(void)
   shimmerStatus.configuring = 1;
   uint8_t sdLogCmdStatus = 0;
   uint8_t BtStreamCmdStatus = 0;
-      if ((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_BT) ||
-          (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_HW) ||
-          (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_OTH))
-      {
-        sdLogCmdStatus = 1;
-      }
+  if ((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_BT) ||
+      (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_HW) ||
+      (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_OTH))
+  {
+    sdLogCmdStatus = 1;
+  }
   uint8_t sdLogPendingStart = (sdLogCmdStatus  && ShimSens_checkStartLoggingConditions());
 
-
   if ((shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_BT) ||
-            (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_HW) ||
-            (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_OTH))
+      (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_HW) ||
+      (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_OTH))
   {
     BtStreamCmdStatus = 1;
   }
