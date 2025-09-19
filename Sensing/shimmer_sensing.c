@@ -139,9 +139,9 @@ uint8_t ShimSens_checkStartStreamingConditions(void)
 uint8_t ShimSens_shouldStopLogging(void)
 {
   uint8_t sdLogResult = 0;
-  if ((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_BT) ||
-      (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_HW) ||
-      (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_OTH))
+  if ((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_BT)
+      || (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_HW)
+      || (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_OTH))
   {
     sdLogResult = 1;
   }
@@ -154,9 +154,9 @@ uint8_t ShimSens_shouldStopLogging(void)
 uint8_t ShimSens_shouldStopStreaming(void)
 {
   uint8_t sdStreamResult = 0;
-  if ((shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_BT) ||
-      (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_HW) ||
-      (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_OTH))
+  if ((shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_BT)
+      || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_HW)
+      || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_OTH))
   {
     sdStreamResult = 1;
   }
@@ -169,6 +169,7 @@ void ShimSens_startSensing(void)
   shimmerStatus.configuring = 1;
   uint8_t sdLogCmdStatus = 0;
   uint8_t BtStreamCmdStatus = 0;
+<<<<<<< Upstream, based on origin/main
       if ((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_BT) ||
           (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_HW) ||
           (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_OTH))
@@ -176,15 +177,31 @@ void ShimSens_startSensing(void)
         sdLogCmdStatus = 1;
       }
   uint8_t sdLogPendingStart = (sdLogCmdStatus  && ShimSens_checkStartLoggingConditions());
+=======
+  if ((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_BT)
+      || (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_HW)
+      || (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_OTH))
+  {
+    sdLogCmdStatus = 1;
+  }
+  uint8_t sdLogPendingStart = (sdLogCmdStatus && ShimSens_checkStartLoggingConditions());
+>>>>>>> 9db3308 Committing clang-format changes
 
+<<<<<<< Upstream, based on origin/main
 
   if ((shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_BT) ||
             (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_HW) ||
             (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_OTH))
+=======
+  if ((shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_BT)
+      || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_HW)
+      || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_OTH))
+>>>>>>> 9db3308 Committing clang-format changes
   {
     BtStreamCmdStatus = 1;
   }
-  uint8_t streamPendingStart =  (BtStreamCmdStatus && ShimSens_checkStartStreamingConditions());
+  uint8_t streamPendingStart
+      = (BtStreamCmdStatus && ShimSens_checkStartStreamingConditions());
 
   if (sdLogPendingStart || streamPendingStart)
   {

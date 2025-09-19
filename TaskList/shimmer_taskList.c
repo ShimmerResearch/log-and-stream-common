@@ -388,7 +388,7 @@ void ShimTask_setStopStreaming(uint8_t src)
   else if (src == SD_BT_LOG_STREAM_CMD_SRC_BT)
   {
     shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_BT;
-    shimmerStatus.btstreamCmd= BT_STREAM_CMD_STATE_STOP_BT;
+    shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP_BT;
   }
   else
   {
