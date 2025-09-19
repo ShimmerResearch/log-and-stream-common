@@ -231,7 +231,7 @@ enum
   SD_LOG_CMD_STATE_STOP_BT = 4,
   SD_LOG_CMD_STATE_STOP_HW = 5,
   SD_LOG_CMD_STATE_STOP_OTH = 6,
- };
+};
 
 enum
 {
