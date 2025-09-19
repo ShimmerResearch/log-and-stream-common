@@ -274,17 +274,17 @@ void ShimTask_setStartStreamingIfReady(uint8_t src)
     if (src == SD_BT_LOG_STREAM_CMD_SRC_HW)
     {
       shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_HW;
-      shimmerStatus.sdlogCmd = BT_STREAM_CMD_STATE_START_HW;
+      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START_HW;
     }
     else if (src == SD_BT_LOG_STREAM_CMD_SRC_BT)
     {
       shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_BT;
-      shimmerStatus.sdlogCmd = BT_STREAM_CMD_STATE_START_BT;
+      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START_BT;
     }
     else
     {
       shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_OTH;
-      shimmerStatus.sdlogCmd = BT_STREAM_CMD_STATE_START_OTH;
+      shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_START_OTH;
     }
 
     ShimTask_set(TASK_STARTSENSING);
@@ -383,17 +383,17 @@ void ShimTask_setStopStreaming(uint8_t src)
   if (src == SD_BT_LOG_STREAM_CMD_SRC_HW)
   {
     shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_HW;
-    shimmerStatus.sdlogCmd = BT_STREAM_CMD_STATE_STOP_HW;
+    shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP_HW;
   }
   else if (src == SD_BT_LOG_STREAM_CMD_SRC_BT)
   {
     shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_BT;
-    shimmerStatus.sdlogCmd = BT_STREAM_CMD_STATE_STOP_BT;
+    shimmerStatus.btstreamCmd= BT_STREAM_CMD_STATE_STOP_BT;
   }
   else
   {
     shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_OTH;
-    shimmerStatus.sdlogCmd = BT_STREAM_CMD_STATE_STOP_OTH;
+    shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_STOP_OTH;
   }
   ShimTask_set(TASK_STOPSENSING);
 }

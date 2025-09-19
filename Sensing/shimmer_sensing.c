@@ -138,10 +138,14 @@ uint8_t ShimSens_checkStartStreamingConditions(void)
  */
 uint8_t ShimSens_shouldStopLogging(void)
 {
-  return (!shimmerStatus.sdlogReady ||
-           shimmerStatus.sdlogCmd   == (SD_LOG_CMD_STATE_STOP_BT
-                                    || SD_LOG_CMD_STATE_STOP_HW
-                                    || SD_LOG_CMD_STATE_STOP_OTH));
+  uint8_t sdLogResult = 0;
+  if ((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_BT) ||
+      (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_HW) ||
+      (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_OTH))
+  {
+    sdLogResult = 1;
+  }
+  return (!shimmerStatus.sdlogReady || sdLogResult) ;
 }
 
 /* Check if the conditions are met to stop streaming to BT.
@@ -149,20 +153,38 @@ uint8_t ShimSens_shouldStopLogging(void)
  */
 uint8_t ShimSens_shouldStopStreaming(void)
 {
-  return (!shimmerStatus.btstreamReady
-      || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_BT
-                                    || BT_STREAM_CMD_STATE_STOP_HW
-                                    || BT_STREAM_CMD_STATE_STOP_OTH));
+  uint8_t sdStreamResult = 0;
+  if ((shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_BT) ||
+      (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_HW) ||
+      (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_OTH))
+  {
+    sdStreamResult = 1;
+  }
+  return (!shimmerStatus.btstreamReady || sdStreamResult);
+
 }
 
 void ShimSens_startSensing(void)
 {
   shimmerStatus.configuring = 1;
+  uint8_t sdLogCmdStatus = 0;
+  uint8_t BtStreamCmdStatus = 0;
+      if ((shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_BT) ||
+          (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_HW) ||
+          (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_OTH))
+      {
+        sdLogCmdStatus = 1;
+      }
+  uint8_t sdLogPendingStart = (sdLogCmdStatus  && ShimSens_checkStartLoggingConditions());
 
-  uint8_t sdLogPendingStart = (shimmerStatus.sdlogCmd == (SD_LOG_CMD_STATE_START_BT||SD_LOG_CMD_STATE_START_HW || SD_LOG_CMD_STATE_START_OTH ))
-      && ShimSens_checkStartLoggingConditions();
-  uint8_t streamPendingStart = (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_BT || BT_STREAM_CMD_STATE_START_HW || BT_STREAM_CMD_STATE_START_OTH )
-      && ShimSens_checkStartStreamingConditions();
+
+  if ((shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_BT) ||
+            (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_HW) ||
+            (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_OTH))
+  {
+    BtStreamCmdStatus = 1;
+  }
+  uint8_t streamPendingStart =  (BtStreamCmdStatus && ShimSens_checkStartStreamingConditions());
 
   if (sdLogPendingStart || streamPendingStart)
   {
