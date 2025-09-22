@@ -38,7 +38,7 @@ uint8_t ShimBtn_pressReleaseAction(void)
     shimmerStatus.buttonPressed = 0;
     buttonReleaseCurrentTs = RTC_get64();
 
-    // Guard against bogus long-press when no prior press was recorded
+    //Guard against bogus long-press when no prior press was recorded
     if (buttonPressTs != 0 && buttonReleaseCurrentTs >= buttonPressTs)
     {
       buttonPressReleaseTd = buttonReleaseCurrentTs - buttonPressTs;
@@ -52,8 +52,8 @@ uint8_t ShimBtn_pressReleaseAction(void)
 
     if (buttonPressReleaseTd >= TICKS_5_SECONDS)
     { //long button press: 5s
-      // Consume the event; update the last-release timestamp to prevent repeats
-      // (No long-press action defined yet)
+      //Consume the event; update the last-release timestamp to prevent repeats
+      //(No long-press action defined yet)
       buttonReleasePrevTs = buttonReleaseCurrentTs;
       buttonPressTs = 0;
     }
@@ -95,7 +95,7 @@ uint8_t ShimBtn_pressReleaseAction(void)
     }
     else
     {
-      // Always update last release to avoid stale deltas causing spurious triggers later
+      //Always update last release to avoid stale deltas causing spurious triggers later
       buttonReleasePrevTs = buttonReleaseCurrentTs;
       buttonPressTs = 0;
       __NOP();
