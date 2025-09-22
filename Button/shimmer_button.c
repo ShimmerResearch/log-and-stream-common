@@ -37,13 +37,28 @@ uint8_t ShimBtn_pressReleaseAction(void)
   { //button released
     shimmerStatus.buttonPressed = 0;
     buttonReleaseCurrentTs = RTC_get64();
-    buttonPressReleaseTd = buttonReleaseCurrentTs - buttonPressTs;
+
+    // Guard against bogus long-press when no prior press was recorded
+    if (buttonPressTs != 0 && buttonReleaseCurrentTs >= buttonPressTs)
+    {
+      buttonPressReleaseTd = buttonReleaseCurrentTs - buttonPressTs;
+    }
+    else
+    {
+      buttonPressReleaseTd = 0;
+    }
+
     buttonReleaseTd = buttonReleaseCurrentTs - buttonReleasePrevTs;
+
     if (buttonPressReleaseTd >= TICKS_5_SECONDS)
     { //long button press: 5s
+      // Consume the event; update the last-release timestamp to prevent repeats
+      // (No long-press action defined yet)
+      buttonReleasePrevTs = buttonReleaseCurrentTs;
+      buttonPressTs = 0;
     }
     else if ((buttonReleaseTd > TICKS_0_5_SECONDS) && !shimmerStatus.configuring
-        && !shimmerStatus.btConnected)
+        && !(shimmerStatus.btConnected && shimmerStatus.sdSyncCommTimerRunning))
     {
       buttonReleasePrevTs = buttonReleaseCurrentTs;
 #if TEST_PRESS2UNDOCK
@@ -56,6 +71,7 @@ uint8_t ShimBtn_pressReleaseAction(void)
         shimmerStatus.docked = 1;
       }
       LogAndStream_dockedStateChange();
+      buttonPressTs = 0;
       if (!shimmerStatus.sensing)
       {
         return 1;
@@ -72,12 +88,16 @@ uint8_t ShimBtn_pressReleaseAction(void)
         {
           ShimTask_setStopLogging();
         }
+        buttonPressTs = 0;
         return 1;
       }
 #endif
     }
     else
     {
+      // Always update last release to avoid stale deltas causing spurious triggers later
+      buttonReleasePrevTs = buttonReleaseCurrentTs;
+      buttonPressTs = 0;
       __NOP();
     }
   }
