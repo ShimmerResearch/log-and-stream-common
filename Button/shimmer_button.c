@@ -28,6 +28,7 @@ void ShimBtn_init(void)
 /* Returns 1 to indicate MCU should be woken to carry out a task. */
 uint8_t ShimBtn_pressReleaseAction(void)
 {
+  uint8_t wake = 0;
   if (Board_isBtnPressed())
   { //button pressed
     shimmerStatus.buttonPressed = 1;
@@ -50,13 +51,16 @@ uint8_t ShimBtn_pressReleaseAction(void)
 
     buttonReleaseTd = buttonReleaseCurrentTs - buttonReleasePrevTs;
 
+    /* long button press: >=5s */
     if (buttonPressReleaseTd >= TICKS_5_SECONDS)
-    { //long button press: 5s
+    {
       //Consume the event; update the last-release timestamp to prevent repeats
       //(No long-press action defined yet)
       buttonReleasePrevTs = buttonReleaseCurrentTs;
-      buttonPressTs = 0;
     }
+    /* 0.5s < Press > 5s: take action as long as the device isn't currently in
+     * the middle of configuring and SD SYNC isn't in the middle of an
+     * operation. */
     else if ((buttonReleaseTd > TICKS_0_5_SECONDS) && !shimmerStatus.configuring
         && !(shimmerStatus.btConnected && shimmerStatus.sdSyncCommTimerRunning))
     {
@@ -71,10 +75,9 @@ uint8_t ShimBtn_pressReleaseAction(void)
         shimmerStatus.docked = 1;
       }
       LogAndStream_dockedStateChange();
-      buttonPressTs = 0;
       if (!shimmerStatus.sensing)
       {
-        return 1;
+        wake = 1;
       }
 #else
       if (ShimConfig_getStoredConfig()->userButtonEnable)
@@ -88,18 +91,20 @@ uint8_t ShimBtn_pressReleaseAction(void)
         {
           ShimTask_setStopLogging();
         }
-        buttonPressTs = 0;
-        return 1;
+        wake = 1;
       }
 #endif
     }
+    /* Short press, take no action */
     else
     {
       //Always update last release to avoid stale deltas causing spurious triggers later
       buttonReleasePrevTs = buttonReleaseCurrentTs;
-      buttonPressTs = 0;
       __NOP();
     }
+
+    // Single place to clear the press timestamp after handling a release
+    buttonPressTs = 0;
   }
-  return 0;
+  return wake;
 }
