@@ -28,6 +28,7 @@ void ShimBtn_init(void)
 /* Returns 1 to indicate MCU should be woken to carry out a task. */
 uint8_t ShimBtn_pressReleaseAction(void)
 {
+  uint8_t wake = 0;
   if (Board_isBtnPressed())
   { //button pressed
     shimmerStatus.buttonPressed = 1;
@@ -37,13 +38,31 @@ uint8_t ShimBtn_pressReleaseAction(void)
   { //button released
     shimmerStatus.buttonPressed = 0;
     buttonReleaseCurrentTs = RTC_get64();
-    buttonPressReleaseTd = buttonReleaseCurrentTs - buttonPressTs;
-    buttonReleaseTd = buttonReleaseCurrentTs - buttonReleasePrevTs;
-    if (buttonPressReleaseTd >= TICKS_5_SECONDS)
-    { //long button press: 5s
+
+    //Guard against bogus long-press when no prior press was recorded
+    if (buttonPressTs != 0 && buttonReleaseCurrentTs >= buttonPressTs)
+    {
+      buttonPressReleaseTd = buttonReleaseCurrentTs - buttonPressTs;
     }
+    else
+    {
+      buttonPressReleaseTd = 0;
+    }
+
+    buttonReleaseTd = buttonReleaseCurrentTs - buttonReleasePrevTs;
+
+    /* long button press: >=5s */
+    if (buttonPressReleaseTd >= TICKS_5_SECONDS)
+    {
+      //Consume the event; update the last-release timestamp to prevent repeats
+      //(No long-press action defined yet)
+      buttonReleasePrevTs = buttonReleaseCurrentTs;
+    }
+    /* 0.5s < Press > 5s: take action as long as the device isn't currently in
+     * the middle of configuring and SD SYNC isn't in the middle of an
+     * operation. */
     else if ((buttonReleaseTd > TICKS_0_5_SECONDS) && !shimmerStatus.configuring
-        && !shimmerStatus.btConnected)
+        && !(shimmerStatus.btConnected && shimmerStatus.sdSyncCommTimerRunning))
     {
       buttonReleasePrevTs = buttonReleaseCurrentTs;
 #if TEST_PRESS2UNDOCK
@@ -58,7 +77,7 @@ uint8_t ShimBtn_pressReleaseAction(void)
       LogAndStream_dockedStateChange();
       if (!shimmerStatus.sensing)
       {
-        return 1;
+        wake = 1;
       }
 #else
       if (ShimConfig_getStoredConfig()->userButtonEnable)
@@ -72,14 +91,20 @@ uint8_t ShimBtn_pressReleaseAction(void)
         {
           ShimTask_setStopLogging();
         }
-        return 1;
+        wake = 1;
       }
 #endif
     }
+    /* Short press, take no action */
     else
     {
+      //Always update last release to avoid stale deltas causing spurious triggers later
+      buttonReleasePrevTs = buttonReleaseCurrentTs;
       __NOP();
     }
+
+    //Single place to clear the press timestamp after handling a release
+    buttonPressTs = 0;
   }
-  return 0;
+  return wake;
 }
