@@ -103,7 +103,7 @@ uint8_t ShimBtn_pressReleaseAction(void)
       __NOP();
     }
 
-    // Single place to clear the press timestamp after handling a release
+    //Single place to clear the press timestamp after handling a release
     buttonPressTs = 0;
   }
   return wake;
