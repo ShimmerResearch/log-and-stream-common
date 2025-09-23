@@ -42,7 +42,9 @@ void ShimLeds_blinkSetLwrErrorSensorBus(void);
 void ShimLeds_blinkSetLwrErrorBluetooth(void);
 void ShimLeds_blinkSetLwrErrorSdCard(void);
 void ShimLeds_blinkSetLwrBattStatus(void);
+#if defined(SHIMMER3R)
 void ShimLeds_blinkSetLwrEnteringBslMode(void);
+#endif
 
 void ShimLeds_varsInit(void)
 {
@@ -539,6 +541,7 @@ void ShimLeds_blinkSetLwrBattStatus(void)
 #endif
 }
 
+#if defined(SHIMMER3R)
 void ShimLeds_blinkSetLwrEnteringBslMode(void)
 {
   if (ShimLeds_isBlinkTimerCnt200ms())
@@ -556,6 +559,7 @@ void ShimLeds_blinkSetLwrEnteringBslMode(void)
     lastLedToggleLwr ^= 1;
   }
 }
+#endif
 
 uint8_t ShimLeds_isBlinkTimerCnt200ms(void)
 {
