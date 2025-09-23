@@ -120,8 +120,8 @@ void ShimTask_NORM_manage(void)
         break;
       case TASK_STARTSENSING:
         uint8_t sendStatus = 0;
-        if ((shimmerStatus.btstreamCmd ==  BT_STREAM_CMD_STATE_START_HW) ||
-            (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_HW))
+        if ((shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START_HW)
+            || (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_HW))
         {
           sendStatus = 1;
         }
@@ -133,8 +133,8 @@ void ShimTask_NORM_manage(void)
         break;
       case TASK_STOPSENSING:
         sendStatus = 0;
-        if ((shimmerStatus.btstreamCmd ==  BT_STREAM_CMD_STATE_STOP_HW) ||
-            (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_HW))
+        if ((shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP_HW)
+            || (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_HW))
         {
           sendStatus = 1;
         }
@@ -248,17 +248,17 @@ void ShimTask_setStartLoggingIfReady(uint8_t src)
     {
       shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_HW;
       shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START_HW;
-      }
-      else if (src == SD_BT_LOG_STREAM_CMD_SRC_BT)
-      {
-        shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_BT;
-        shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START_BT;
-      }
-      else
-      {
-        shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_OTH;
-        shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START_OTH;
-      }
+    }
+    else if (src == SD_BT_LOG_STREAM_CMD_SRC_BT)
+    {
+      shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_BT;
+      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START_BT;
+    }
+    else
+    {
+      shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_OTH;
+      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START_OTH;
+    }
     ShimTask_set(TASK_STARTSENSING);
   }
   else
