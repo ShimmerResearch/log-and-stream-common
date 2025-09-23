@@ -120,12 +120,12 @@ void ShimTask_NORM_manage(void)
         break;
       case TASK_STARTSENSING:
         uint8_t sendStatus = 0;
-        ShimSens_startSensing();
         if ((shimmerStatus.btstreamCmd ==  BT_STREAM_CMD_STATE_START_HW) ||
             (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_START_HW))
         {
           sendStatus = 1;
         }
+        ShimSens_startSensing();
         if(sendStatus)
         {
           ShimBt_instreamStatusRespSend();
@@ -133,12 +133,12 @@ void ShimTask_NORM_manage(void)
         break;
       case TASK_STOPSENSING:
         sendStatus = 0;
-        ShimSens_stopSensing(1);
         if ((shimmerStatus.btstreamCmd ==  BT_STREAM_CMD_STATE_STOP_HW) ||
             (shimmerStatus.sdlogCmd == SD_LOG_CMD_STATE_STOP_HW))
         {
           sendStatus = 1;
         }
+        ShimSens_stopSensing(1);
         if (sendStatus)
         {
           ShimBt_instreamStatusRespSend();
@@ -241,7 +241,6 @@ uint32_t ShimTask_NORM_getList()
 
 void ShimTask_setStartLoggingIfReady(uint8_t src)
 {
-
   if (ShimSens_checkStartLoggingConditions())
   {
     if (src == SD_BT_LOG_STREAM_CMD_SRC_HW)
@@ -315,6 +314,7 @@ void ShimTask_setStartStreamingAndLoggingIfReady(uint8_t src)
       shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_OTH;
       shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START_OTH;
     }
+    ShimTask_set(TASK_STARTSENSING);
   }
   if (ShimSens_checkStartStreamingConditions())
   {
@@ -333,16 +333,7 @@ void ShimTask_setStartStreamingAndLoggingIfReady(uint8_t src)
       shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_OTH;
       shimmerStatus.sdlogCmd = BT_STREAM_CMD_STATE_START_OTH;
     }
-  }
-
-  if ((shimmerStatus.sdlogCmd == (SD_LOG_CMD_STATE_START_HW || SD_LOG_CMD_STATE_START_BT || SD_LOG_CMD_STATE_START_OTH))
-      || (shimmerStatus.btstreamCmd == (BT_STREAM_CMD_STATE_START_BT || BT_STREAM_CMD_STATE_START_HW ||BT_STREAM_CMD_STATE_START_OTH)))
-  {
     ShimTask_set(TASK_STARTSENSING);
-  }
-  else
-  {
-    shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREM_CMD_SRC_NONE;
   }
 }
 
