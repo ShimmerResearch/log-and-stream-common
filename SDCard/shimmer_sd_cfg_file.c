@@ -10,12 +10,139 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "log_and_stream_includes.h"
 
 FRESULT cfg_file_status;
 
 static uint8_t all0xff[7U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+
+//Centralized config file constants to avoid duplicated string literals
+#define CFG_FILENAME "sdlog.cfg"
+
+//Common formatting strings
+#define CFG_FMT_INT  "%s=%d\r\n"
+#define CFG_FMT_STR  "%s=%s\r\n"
+
+//Helper for key matching at the start of a line (e.g., "key=")
+static int cfg_key_is(const char *line, const char *key)
+{
+  size_t klen = strlen(key);
+  return (strncmp(line, key, klen) == 0) && (line[klen] == '=');
+}
+
+//Keys (without the trailing '=')
+#define CFG_KEY_ACCEL              "accel"
+#define CFG_KEY_GYRO               "gyro"
+#define CFG_KEY_MAG                "mag"
+#define CFG_KEY_EXG1_24BIT         "exg1_24bit"
+#define CFG_KEY_EXG2_24BIT         "exg2_24bit"
+#define CFG_KEY_GSR                "gsr"
+#define CFG_KEY_EXTCH7             "extch7"
+#define CFG_KEY_EXTCH6             "extch6"
+#define CFG_KEY_EXTCH0             "extch0"
+#define CFG_KEY_EXTCH1             "extch1"
+#define CFG_KEY_BR_AMP             "br_amp"
+#define CFG_KEY_STR                "str"
+#define CFG_KEY_VBAT               "vbat"
+#define CFG_KEY_ACCEL_D            "accel_d"
+#define CFG_KEY_EXTCH15            "extch15"
+#define CFG_KEY_INTCH1             "intch1"
+#define CFG_KEY_INTCH12            "intch12"
+#define CFG_KEY_INTCH13            "intch13"
+#define CFG_KEY_INTCH14            "intch14"
+#define CFG_KEY_EXTCH2             "extch2"
+#define CFG_KEY_INTCH3             "intch3"
+#define CFG_KEY_INTCH0             "intch0"
+#define CFG_KEY_INTCH2             "intch2"
+#define CFG_KEY_ACCEL_ALT          "accel_alt"
+#define CFG_KEY_MAG_ALT            "mag_alt"
+//Legacy names used under SHIMMER3 parsing
+#define CFG_KEY_ACCEL_MPU          "accel_mpu"
+#define CFG_KEY_MAG_MPU            "mag_mpu"
+
+#define CFG_KEY_EXG1_16BIT         "exg1_16bit"
+#define CFG_KEY_EXG2_16BIT         "exg2_16bit"
+#define CFG_KEY_PRES               "pres"
+#define CFG_KEY_SAMPLE_RATE        "sample_rate"
+#define CFG_KEY_MG_INTERNAL_RATE   "mg_internal_rate"
+#define CFG_KEY_MG_RANGE           "mg_range"
+#define CFG_KEY_MAG_ALT_RANGE      "mag_alt_range"
+#define CFG_KEY_ACC_INTERNAL_RATE  "acc_internal_rate"
+#define CFG_KEY_ACCEL_ALT_RANGE    "accel_alt_range"
+#define CFG_KEY_ACCEL_LN_RANGE     "accel_ln_range"
+#define CFG_KEY_PRES_BMP180_PREC   "pres_bmp180_prec"
+#define CFG_KEY_PRES_BMP280_PREC   "pres_bmp280_prec"
+#define CFG_KEY_PRES_BMP390_PREC   "pres_bmp390_prec"
+#define CFG_KEY_GSR_RANGE          "gsr_range"
+#define CFG_KEY_EXP_POWER          "exp_power"
+#define CFG_KEY_GYRO_RANGE         "gyro_range"
+#define CFG_KEY_GYRO_SAMPLINGRATE  "gyro_samplingrate"
+#define CFG_KEY_ACC_RANGE          "acc_range"
+#define CFG_KEY_ACC_LPM            "acc_lpm"
+#define CFG_KEY_ACC_HRM            "acc_hrm"
+#define CFG_KEY_MAG_ALT_RATE       "mag_alt_rate"
+#define CFG_KEY_ACCEL_ALT_RATE     "accel_alt_rate"
+
+#define CFG_KEY_USER_BUTTON_ENABLE "user_button_enable"
+#define CFG_KEY_RTC_ERROR_ENABLE   "rtc_error_enable"
+#define CFG_KEY_SD_ERROR_ENABLE    "sd_error_enable"
+#define CFG_KEY_IAMMASTER          "iammaster"
+#define CFG_KEY_SYNC               "sync"
+#define CFG_KEY_LOW_BATT_AUTOSTOP  "low_battery_autostop"
+#define CFG_KEY_INTERVAL           "interval"
+#define CFG_KEY_BT_DISABLED        "bluetoothDisabled"
+
+#define CFG_KEY_MAX_EXP_LEN        "max_exp_len"
+#define CFG_KEY_EST_EXP_LEN        "est_exp_len"
+#define CFG_KEY_NODE               "node"
+#define CFG_KEY_CENTER             "center"
+#define CFG_KEY_SINGLETOUCH        "singletouch"
+#define CFG_KEY_MYID               "myid"
+#define CFG_KEY_NSHIMMER           "Nshimmer"
+#define CFG_KEY_SHIMMERNAME        "shimmername"
+#define CFG_KEY_EXPERIMENTID       "experimentid"
+#define CFG_KEY_CONFIGTIME         "configtime"
+
+#define CFG_KEY_DERIVED_CHANNELS   "derived_channels"
+
+//EXG register keys
+#define CFG_KEY_EXG_1_CONFIG1      "EXG_ADS1292R_1_CONFIG1"
+#define CFG_KEY_EXG_1_CONFIG2      "EXG_ADS1292R_1_CONFIG2"
+#define CFG_KEY_EXG_1_LOFF         "EXG_ADS1292R_1_LOFF"
+#define CFG_KEY_EXG_1_CH1SET       "EXG_ADS1292R_1_CH1SET"
+#define CFG_KEY_EXG_1_CH2SET       "EXG_ADS1292R_1_CH2SET"
+#define CFG_KEY_EXG_1_RLD_SENS     "EXG_ADS1292R_1_RLD_SENS"
+#define CFG_KEY_EXG_1_LOFF_SENS    "EXG_ADS1292R_1_LOFF_SENS"
+#define CFG_KEY_EXG_1_LOFF_STAT    "EXG_ADS1292R_1_LOFF_STAT"
+#define CFG_KEY_EXG_1_RESP1        "EXG_ADS1292R_1_RESP1"
+#define CFG_KEY_EXG_1_RESP2        "EXG_ADS1292R_1_RESP2"
+#define CFG_KEY_EXG_2_CONFIG1      "EXG_ADS1292R_2_CONFIG1"
+#define CFG_KEY_EXG_2_CONFIG2      "EXG_ADS1292R_2_CONFIG2"
+#define CFG_KEY_EXG_2_LOFF         "EXG_ADS1292R_2_LOFF"
+#define CFG_KEY_EXG_2_CH1SET       "EXG_ADS1292R_2_CH1SET"
+#define CFG_KEY_EXG_2_CH2SET       "EXG_ADS1292R_2_CH2SET"
+#define CFG_KEY_EXG_2_RLD_SENS     "EXG_ADS1292R_2_RLD_SENS"
+#define CFG_KEY_EXG_2_LOFF_SENS    "EXG_ADS1292R_2_LOFF_SENS"
+#define CFG_KEY_EXG_2_LOFF_STAT    "EXG_ADS1292R_2_LOFF_STAT"
+#define CFG_KEY_EXG_2_RESP1        "EXG_ADS1292R_2_RESP1"
+#define CFG_KEY_EXG_2_RESP2        "EXG_ADS1292R_2_RESP2"
+
+//Write helpers (depend on local buffer and bw symbols in scope)
+#define CFG_WRITE_INT(file, key, value)               \
+  do                                                  \
+  {                                                   \
+    sprintf(buffer, CFG_FMT_INT, key, (int) (value)); \
+    f_write((file), buffer, strlen(buffer), &bw);     \
+  } while (0)
+
+#define CFG_WRITE_STR(file, key, strval)          \
+  do                                              \
+  {                                               \
+    sprintf(buffer, CFG_FMT_STR, key, (strval));  \
+    f_write((file), buffer, strlen(buffer), &bw); \
+  } while (0)
 
 void ShimSdCfgFile_init(void)
 {
@@ -43,7 +170,7 @@ void ShimSdCfgFile_generate(void)
 
     UINT bw;
 
-    char cfgname[] = "sdlog.cfg";
+    char cfgname[] = CFG_FILENAME;
 
     gConfigBytes *storedConfig = ShimConfig_getStoredConfig();
 
@@ -52,71 +179,43 @@ void ShimSdCfgFile_generate(void)
       cfg_file_status = f_open(&cfgFile, cfgname, FA_WRITE | FA_CREATE_ALWAYS);
 
       //sensor0
-      sprintf(buffer, "accel=%d\r\n", storedConfig->chEnLnAccel);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "gyro=%d\r\n", storedConfig->chEnGyro);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "mag=%d\r\n", storedConfig->chEnMag);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "exg1_24bit=%d\r\n", storedConfig->chEnExg1_24Bit);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "exg2_24bit=%d\r\n", storedConfig->chEnExg2_24Bit);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "gsr=%d\r\n", storedConfig->chEnGsr);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_ACCEL, storedConfig->chEnLnAccel);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_GYRO, storedConfig->chEnGyro);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_MAG, storedConfig->chEnMag);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG1_24BIT, storedConfig->chEnExg1_24Bit);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG2_24BIT, storedConfig->chEnExg2_24Bit);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_GSR, storedConfig->chEnGsr);
 #if defined(SHIMMER3)
-      sprintf(buffer, "extch7=%d\r\n", storedConfig->chEnExtADC7);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "extch6=%d\r\n", storedConfig->chEnExtADC6);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-#elif defined(SHIMMER3)
-      sprintf(buffer, "extch0=%d\r\n", storedConfig->chEnExtADC0);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "extch1=%d\r\n", storedConfig->chEnExtADC1);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXTCH7, storedConfig->chEnExtADC7);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXTCH6, storedConfig->chEnExtADC6);
+#elif defined(SHIMMER3R)
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXTCH0, storedConfig->chEnExtADC0);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXTCH1, storedConfig->chEnExtADC1);
 #endif
       //sensor1
-      sprintf(buffer, "br_amp=%d\r\n", storedConfig->chEnBridgeAmp);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "vbat=%d\r\n", storedConfig->chEnVBattery);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "accel_d=%d\r\n", storedConfig->chEnWrAccel);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_BR_AMP, storedConfig->chEnBridgeAmp);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_VBAT, storedConfig->chEnVBattery);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_ACCEL_D, storedConfig->chEnWrAccel);
 #if defined(SHIMMER3)
-      sprintf(buffer, "extch15=%d\r\n", storedConfig->chEnExtADC15);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "intch1=%d\r\n", storedConfig->chEnIntADC1);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "intch12=%d\r\n", storedConfig->chEnIntADC12);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "intch13=%d\r\n", storedConfig->chEnIntADC13);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXTCH15, storedConfig->chEnExtADC15);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_INTCH1, storedConfig->chEnIntADC1);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_INTCH12, storedConfig->chEnIntADC12);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_INTCH13, storedConfig->chEnIntADC13);
       //sensor2
-      sprintf(buffer, "intch14=%d\r\n", storedConfig->chEnIntADC14);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-#elif defined(SHIMMER3)
-      sprintf(buffer, "extch2=%d\r\n", storedConfig->chEnExtADC2);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "intch3=%d\r\n", storedConfig->chEnIntADC3);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "intch0=%d\r\n", storedConfig->chEnIntADC0);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "intch1=%d\r\n", storedConfig->chEnIntADC1);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_INTCH14, storedConfig->chEnIntADC14);
+#elif defined(SHIMMER3R)
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXTCH2, storedConfig->chEnExtADC2);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_INTCH3, storedConfig->chEnIntADC3);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_INTCH0, storedConfig->chEnIntADC0);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_INTCH1, storedConfig->chEnIntADC1);
       //sensor2
-      sprintf(buffer, "intch2=%d\r\n", storedConfig->chEnIntADC2);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_INTCH2, storedConfig->chEnIntADC2);
 #endif
-      sprintf(buffer, "accel_alt=%d\r\n", storedConfig->chEnAltAccel);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "mag_alt=%d\r\n", storedConfig->chEnAltMag);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "exg1_16bit=%d\r\n", storedConfig->chEnExg1_16Bit);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "exg2_16bit=%d\r\n", storedConfig->chEnExg2_16Bit);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "pres=%d\r\n", storedConfig->chEnPressureAndTemperature);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_ACCEL_ALT, storedConfig->chEnAltAccel);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_MAG_ALT, storedConfig->chEnAltMag);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG1_16BIT, storedConfig->chEnExg1_16Bit);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG2_16BIT, storedConfig->chEnExg2_16Bit);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_PRES, storedConfig->chEnPressureAndTemperature);
       //sample_rate
       val_num = ShimConfig_freqDiv(storedConfig->samplingRateTicks);
       val_int = (uint16_t) floor(val_num); //the compiler can't handle sprintf %f here
@@ -134,108 +233,80 @@ void ShimSdCfgFile_generate(void)
       {
         sprintf(val_char, "%d", val_int);
       }
-      sprintf(buffer, "sample_rate=%s\r\n", val_char);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_STR(&cfgFile, CFG_KEY_SAMPLE_RATE, val_char);
       //setup config
-      sprintf(buffer, "mg_internal_rate=%d\r\n", ShimConfig_configByteMagRateGet());
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_MG_INTERNAL_RATE, ShimConfig_configByteMagRateGet());
 #if defined(SHIMMER3)
-      sprintf(buffer, "mg_range=%d\r\n", storedConfig->magRange);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_MG_RANGE, storedConfig->magRange);
 #else
-      sprintf(buffer, "mag_alt_range=%d\r\n", storedConfig->altMagRange);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_MAG_ALT_RANGE, storedConfig->altMagRange);
 #endif
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "acc_internal_rate=%d\r\n", storedConfig->wrAccelRate);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_ACC_INTERNAL_RATE, storedConfig->wrAccelRate);
 #if defined(SHIMMER3)
-      sprintf(buffer, "accel_alt_range=%d\r\n", storedConfig->altAccelRange);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_ACCEL_ALT_RANGE, storedConfig->altAccelRange);
 #elif defined(SHIMMER3R)
-      sprintf(buffer, "accel_ln_range=%d\r\n", storedConfig->lnAccelRange);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_ACCEL_LN_RANGE, storedConfig->lnAccelRange);
 #endif
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
 #if defined(SHIMMER3)
-      sprintf(buffer,
-          (isBmp180InUse() ? ("pres_bmp180_prec=%d\r\n") : ("pres_bmp280_prec=%d\r\n")),
-#elif defined(SHIMMER3R)
-      sprintf(buffer, "pres_bmp390_prec=%d\r\n",
-#endif
+      CFG_WRITE_INT(&cfgFile,
+          (isBmp180InUse() ? CFG_KEY_PRES_BMP180_PREC : CFG_KEY_PRES_BMP280_PREC),
           ShimConfig_configBytePressureOversamplingRatioGet());
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "gsr_range=%d\r\n", storedConfig->gsrRange);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "exp_power=%d\r\n", storedConfig->expansionBoardPower);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "gyro_range=%d\r\n", ShimConfig_gyroRangeGet());
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "gyro_samplingrate=%d\r\n", storedConfig->gyroRate);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "acc_range=%d\r\n", storedConfig->wrAccelRange);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "acc_lpm=%d\r\n", ShimConfig_wrAccelLpModeGet());
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "acc_hrm=%d\r\n", storedConfig->wrAccelHrMode);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+#elif defined(SHIMMER3R)
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_PRES_BMP390_PREC,
+          ShimConfig_configBytePressureOversamplingRatioGet());
+#endif
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_GSR_RANGE, storedConfig->gsrRange);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXP_POWER, storedConfig->expansionBoardPower);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_GYRO_RANGE, ShimConfig_gyroRangeGet());
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_GYRO_SAMPLINGRATE, storedConfig->gyroRate);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_ACC_RANGE, storedConfig->wrAccelRange);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_ACC_LPM, ShimConfig_wrAccelLpModeGet());
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_ACC_HRM, storedConfig->wrAccelHrMode);
 #if defined(SHIMMER3R)
-      sprintf(buffer, "mag_alt_rate=%d\r\n", ShimConfig_configByteAltMagRateGet());
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "accel_alt_rate=%d\r\n", storedConfig->altAccelRate);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_MAG_ALT_RATE, ShimConfig_configByteAltMagRateGet());
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_ACCEL_ALT_RATE, storedConfig->altAccelRate);
 #endif
 
       //trial config
-      sprintf(buffer, "user_button_enable=%d\r\n", storedConfig->userButtonEnable);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "rtc_error_enable=%d\r\n", storedConfig->rtcErrorEnable);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "sd_error_enable=%d\r\n", storedConfig->sdErrorEnable);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "iammaster=%d\r\n", storedConfig->masterEnable);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "sync=%d\r\n", storedConfig->syncEnable);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "low_battery_autostop=%d\r\n", storedConfig->lowBatteryAutoStop);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "interval=%d\r\n", storedConfig->btIntervalSecs);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "bluetoothDisabled=%d\r\n", storedConfig->bluetoothDisable);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_USER_BUTTON_ENABLE, storedConfig->userButtonEnable);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_RTC_ERROR_ENABLE, storedConfig->rtcErrorEnable);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_SD_ERROR_ENABLE, storedConfig->sdErrorEnable);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_IAMMASTER, storedConfig->masterEnable);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_SYNC, storedConfig->syncEnable);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_LOW_BATT_AUTOSTOP, storedConfig->lowBatteryAutoStop);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_INTERVAL, storedConfig->btIntervalSecs);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_BT_DISABLED, storedConfig->bluetoothDisable);
 
-      sprintf(buffer, "max_exp_len=%d\r\n", ShimConfig_experimentLengthMaxInMinutesGet());
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-
-      sprintf(buffer, "est_exp_len=%d\r\n", ShimConfig_experimentLengthEstimatedInSecGet());
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_MAX_EXP_LEN,
+          ShimConfig_experimentLengthMaxInMinutesGet());
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EST_EXP_LEN,
+          ShimConfig_experimentLengthEstimatedInSecGet());
 
       ShimSdSync_parseSyncNodeNamesFromConfig(&storedConfig->rawBytes[0]);
       for (i = 0; i < ShimSdSync_syncNodeNumGet(); i++)
       {
-        sprintf(buffer, "node=%s\r\n", (char *) ShimSdSync_syncNodeNamePtrForIndexGet(i));
-        f_write(&cfgFile, buffer, strlen(buffer), &bw);
+        CFG_WRITE_STR(&cfgFile, CFG_KEY_NODE,
+            (char *) ShimSdSync_syncNodeNamePtrForIndexGet(i));
       }
 
       if (memcmp(all0xff, storedConfig + NV_CENTER, 6))
       {
         ShimSdSync_parseSyncCenterNameFromConfig(&storedConfig->rawBytes[0]);
-        sprintf(buffer, "center=%s\r\n", (char *) ShimSdSync_syncCenterNamePtrGet());
-        f_write(&cfgFile, buffer, strlen(buffer), &bw);
+        CFG_WRITE_STR(&cfgFile, CFG_KEY_CENTER, (char *) ShimSdSync_syncCenterNamePtrGet());
       }
 
 #if IS_SUPPORTED_SINGLE_TOUCH
-      sprintf(buffer, "singletouch=%d\r\n", storedConfig->singleTouchStart);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_SINGLETOUCH, storedConfig->singleTouchStart);
 #endif //IS_SUPPORTED_SINGLE_TOUCH
 
-      sprintf(buffer, "myid=%d\r\n", storedConfig->myTrialID);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "Nshimmer=%d\r\n", storedConfig->numberOfShimmers);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_MYID, storedConfig->myTrialID);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_NSHIMMER, storedConfig->numberOfShimmers);
 
-      sprintf(buffer, "shimmername=%s\r\n", ShimConfig_shimmerNameParseToTxtAndPtrGet());
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "experimentid=%s\r\n", ShimConfig_expIdParseToTxtAndPtrGet());
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "configtime=%s\r\n", ShimConfig_configTimeParseToTxtAndPtrGet());
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_STR(&cfgFile, CFG_KEY_SHIMMERNAME,
+          ShimConfig_shimmerNameParseToTxtAndPtrGet());
+      CFG_WRITE_STR(&cfgFile, CFG_KEY_EXPERIMENTID, ShimConfig_expIdParseToTxtAndPtrGet());
+      CFG_WRITE_STR(&cfgFile, CFG_KEY_CONFIGTIME,
+          ShimConfig_configTimeParseToTxtAndPtrGet());
 
       temp64 = storedConfig->rawBytes[NV_DERIVED_CHANNELS_0]
           + (((uint64_t) storedConfig->rawBytes[NV_DERIVED_CHANNELS_1]) << 8)
@@ -246,69 +317,48 @@ void ShimSdCfgFile_generate(void)
           + (((uint64_t) storedConfig->rawBytes[NV_DERIVED_CHANNELS_6]) << 48)
           + (((uint64_t) storedConfig->rawBytes[NV_DERIVED_CHANNELS_7]) << 56);
       ShimUtil_ItoaNo0(temp64, val_char, 21);
-      sprintf(buffer, "derived_channels=%s\r\n", val_char); //todo: got value 0?
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
+      CFG_WRITE_STR(&cfgFile, CFG_KEY_DERIVED_CHANNELS, val_char); //todo: got value 0?
 
-      sprintf(buffer, "EXG_ADS1292R_1_CONFIG1=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_1_CONFIG1,
           storedConfig->rawBytes[NV_EXG_ADS1292R_1_CONFIG1]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_1_CONFIG2=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_1_CONFIG2,
           storedConfig->rawBytes[NV_EXG_ADS1292R_1_CONFIG2]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_1_LOFF=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_1_LOFF,
           storedConfig->rawBytes[NV_EXG_ADS1292R_1_LOFF]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_1_CH1SET=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_1_CH1SET,
           storedConfig->rawBytes[NV_EXG_ADS1292R_1_CH1SET]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_1_CH2SET=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_1_CH2SET,
           storedConfig->rawBytes[NV_EXG_ADS1292R_1_CH2SET]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_1_RLD_SENS=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_1_RLD_SENS,
           storedConfig->rawBytes[NV_EXG_ADS1292R_1_RLD_SENS]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_1_LOFF_SENS=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_1_LOFF_SENS,
           storedConfig->rawBytes[NV_EXG_ADS1292R_1_LOFF_SENS]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_1_LOFF_STAT=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_1_LOFF_STAT,
           storedConfig->rawBytes[NV_EXG_ADS1292R_1_LOFF_STAT]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_1_RESP1=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_1_RESP1,
           storedConfig->rawBytes[NV_EXG_ADS1292R_1_RESP1]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_1_RESP2=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_1_RESP2,
           storedConfig->rawBytes[NV_EXG_ADS1292R_1_RESP2]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_2_CONFIG1=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_2_CONFIG1,
           storedConfig->rawBytes[NV_EXG_ADS1292R_2_CONFIG1]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_2_CONFIG2=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_2_CONFIG2,
           storedConfig->rawBytes[NV_EXG_ADS1292R_2_CONFIG2]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_2_LOFF=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_2_LOFF,
           storedConfig->rawBytes[NV_EXG_ADS1292R_2_LOFF]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_2_CH1SET=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_2_CH1SET,
           storedConfig->rawBytes[NV_EXG_ADS1292R_2_CH1SET]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_2_CH2SET=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_2_CH2SET,
           storedConfig->rawBytes[NV_EXG_ADS1292R_2_CH2SET]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_2_RLD_SENS=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_2_RLD_SENS,
           storedConfig->rawBytes[NV_EXG_ADS1292R_2_RLD_SENS]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_2_LOFF_SENS=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_2_LOFF_SENS,
           storedConfig->rawBytes[NV_EXG_ADS1292R_2_LOFF_SENS]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_2_LOFF_STAT=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_2_LOFF_STAT,
           storedConfig->rawBytes[NV_EXG_ADS1292R_2_LOFF_STAT]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_2_RESP1=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_2_RESP1,
           storedConfig->rawBytes[NV_EXG_ADS1292R_2_RESP1]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
-      sprintf(buffer, "EXG_ADS1292R_2_RESP2=%d\r\n",
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_2_RESP2,
           storedConfig->rawBytes[NV_EXG_ADS1292R_2_RESP2]);
-      f_write(&cfgFile, buffer, strlen(buffer), &bw);
 
       cfg_file_status = f_close(&cfgFile);
       ShimSd_setFileTimestamp(cfgname);
@@ -349,7 +399,7 @@ void ShimSdCfgFile_parse(void)
 
   CheckSdInslot();
   gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
-  char cfgname[] = "sdlog.cfg";
+  char cfgname[] = CFG_FILENAME;
   cfg_file_status = f_open(&cfgFile, cfgname, FA_READ | FA_OPEN_EXISTING);
   if (cfg_file_status == FR_NO_FILE)
   {
@@ -391,179 +441,179 @@ void ShimSdCfgFile_parse(void)
         continue;
       }
       equals++; //this is the value
-      if (strstr(buffer, "accel="))
+      if (cfg_key_is(buffer, CFG_KEY_ACCEL))
       {
         storedConfigPtr->chEnLnAccel = atoi(equals);
       }
-      else if (strstr(buffer, "gyro="))
+      else if (cfg_key_is(buffer, CFG_KEY_GYRO))
       {
         storedConfigPtr->chEnGyro = atoi(equals);
       }
-      else if (strstr(buffer, "mag="))
+      else if (cfg_key_is(buffer, CFG_KEY_MAG))
       {
         storedConfigPtr->chEnMag = atoi(equals);
       }
-      else if (strstr(buffer, "exg1_24bit="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG1_24BIT))
       {
         storedConfigPtr->chEnExg1_24Bit = atoi(equals);
       }
-      else if (strstr(buffer, "exg2_24bit="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG2_24BIT))
       {
         storedConfigPtr->chEnExg2_24Bit = atoi(equals);
       }
-      else if (strstr(buffer, "gsr="))
+      else if (cfg_key_is(buffer, CFG_KEY_GSR))
       {
         storedConfigPtr->chEnGsr = atoi(equals);
       }
 #if defined(SHIMMER3)
-      else if (strstr(buffer, "extch7="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXTCH7))
       {
         storedConfigPtr->chEnExtADC7 = atoi(equals);
       }
-      else if (strstr(buffer, "extch6="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXTCH6))
       {
         storedConfigPtr->chEnExtADC6 = atoi(equals);
       }
 #elif defined(SHIMMER3R)
-      else if (strstr(buffer, "extch0="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXTCH0))
       {
         storedConfigPtr->chEnExtADC0 = atoi(equals);
       }
-      else if (strstr(buffer, "extch1="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXTCH1))
       {
         storedConfigPtr->chEnExtADC1 = atoi(equals);
       }
 #endif
-      else if (strstr(buffer, "str=") || strstr(buffer, "br_amp="))
+      else if (cfg_key_is(buffer, CFG_KEY_STR) || cfg_key_is(buffer, CFG_KEY_BR_AMP))
       {
         storedConfigPtr->chEnBridgeAmp = atoi(equals);
       }
-      else if (strstr(buffer, "vbat="))
+      else if (cfg_key_is(buffer, CFG_KEY_VBAT))
       {
         storedConfigPtr->chEnVBattery = atoi(equals);
       }
-      else if (strstr(buffer, "accel_d="))
+      else if (cfg_key_is(buffer, CFG_KEY_ACCEL_D))
       {
         storedConfigPtr->chEnWrAccel = atoi(equals);
       }
 #if defined(SHIMMER3)
-      else if (strstr(buffer, "extch15="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXTCH15))
       {
         storedConfigPtr->chEnExtADC15 = atoi(equals);
       }
-      else if (strstr(buffer, "intch1="))
+      else if (cfg_key_is(buffer, CFG_KEY_INTCH1))
       {
         storedConfigPtr->chEnIntADC1 = atoi(equals);
       }
-      else if (strstr(buffer, "intch12="))
+      else if (cfg_key_is(buffer, CFG_KEY_INTCH12))
       {
         storedConfigPtr->chEnIntADC12 = atoi(equals);
       }
-      else if (strstr(buffer, "intch13="))
+      else if (cfg_key_is(buffer, CFG_KEY_INTCH13))
       {
         storedConfigPtr->chEnIntADC13 = atoi(equals);
       }
-      else if (strstr(buffer, "intch14="))
+      else if (cfg_key_is(buffer, CFG_KEY_INTCH14))
       {
         storedConfigPtr->chEnIntADC14 = atoi(equals);
       }
-      else if (strstr(buffer, "accel_mpu="))
+      else if (cfg_key_is(buffer, CFG_KEY_ACCEL_MPU))
       {
         storedConfigPtr->chEnAltAccel = atoi(equals);
       }
-      else if (strstr(buffer, "mag_mpu="))
+      else if (cfg_key_is(buffer, CFG_KEY_MAG_MPU))
       {
         storedConfigPtr->chEnAltMag = atoi(equals);
       }
 #elif defined(SHIMMER3R)
-      else if (strstr(buffer, "extch2="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXTCH2))
       {
         storedConfigPtr->chEnExtADC2 = atoi(equals);
       }
-      else if (strstr(buffer, "intch3="))
+      else if (cfg_key_is(buffer, CFG_KEY_INTCH3))
       {
         storedConfigPtr->chEnIntADC3 = atoi(equals);
       }
-      else if (strstr(buffer, "intch0="))
+      else if (cfg_key_is(buffer, CFG_KEY_INTCH0))
       {
         storedConfigPtr->chEnIntADC0 = atoi(equals);
       }
-      else if (strstr(buffer, "intch1="))
+      else if (cfg_key_is(buffer, CFG_KEY_INTCH1))
       {
         storedConfigPtr->chEnIntADC1 = atoi(equals);
       }
-      else if (strstr(buffer, "intch2="))
+      else if (cfg_key_is(buffer, CFG_KEY_INTCH2))
       {
         storedConfigPtr->chEnIntADC2 = atoi(equals);
       }
-      else if (strstr(buffer, "accel_alt="))
+      else if (cfg_key_is(buffer, CFG_KEY_ACCEL_ALT))
       {
         storedConfigPtr->chEnAltAccel = atoi(equals);
       }
-      else if (strstr(buffer, "mag_alt="))
+      else if (cfg_key_is(buffer, CFG_KEY_MAG_ALT))
       {
         storedConfigPtr->chEnAltMag = atoi(equals);
       }
 #endif
-      else if (strstr(buffer, "exg1_16bit="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG1_16BIT))
       {
         storedConfigPtr->chEnExg1_16Bit = atoi(equals);
       }
-      else if (strstr(buffer, "exg2_16bit="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG2_16BIT))
       {
         storedConfigPtr->chEnExg2_16Bit = atoi(equals);
       }
-      else if (strstr(buffer, "pres="))
+      else if (cfg_key_is(buffer, CFG_KEY_PRES))
       {
         storedConfigPtr->chEnPressureAndTemperature = atoi(equals);
       }
-      else if (strstr(buffer, "sample_rate="))
+      else if (cfg_key_is(buffer, CFG_KEY_SAMPLE_RATE))
       {
         sample_rate = atof(equals);
       }
-      else if (strstr(buffer, "mg_internal_rate="))
+      else if (cfg_key_is(buffer, CFG_KEY_MG_INTERNAL_RATE))
       {
         ShimConfig_configByteMagRateSet(atoi(equals));
       }
 #if defined(SHIMMER3)
-      else if (strstr(buffer, "mg_range="))
+      else if (cfg_key_is(buffer, CFG_KEY_MG_RANGE))
       {
         storedConfigPtr->magRange = atoi(equals);
       }
 #else
-      else if (strstr(buffer, "mag_alt_range="))
+      else if (cfg_key_is(buffer, CFG_KEY_MAG_ALT_RANGE))
       {
         storedConfigPtr->altMagRange = atoi(equals);
       }
 #endif
-      else if (strstr(buffer, "acc_internal_rate="))
+      else if (cfg_key_is(buffer, CFG_KEY_ACC_INTERNAL_RATE))
       {
         storedConfigPtr->wrAccelRate = atoi(equals);
       }
 #if defined(SHIMMER3)
-      else if (strstr(buffer, "accel_alt_range="))
+      else if (cfg_key_is(buffer, CFG_KEY_ACCEL_ALT_RANGE))
       {
         storedConfigPtr->altAccelRange = atoi(equals);
       }
 #elif defined(SHIMMER3R)
-      else if (strstr(buffer, "accel_ln_range="))
+      else if (cfg_key_is(buffer, CFG_KEY_ACCEL_LN_RANGE))
       {
         storedConfigPtr->lnAccelRange = atoi(equals);
       }
 #endif
-      else if (strstr(buffer, "acc_range="))
+      else if (cfg_key_is(buffer, CFG_KEY_ACC_RANGE))
       {
         storedConfigPtr->wrAccelRange = atoi(equals);
       }
-      else if (strstr(buffer, "acc_lpm="))
+      else if (cfg_key_is(buffer, CFG_KEY_ACC_LPM))
       {
         ShimConfig_wrAccelLpModeSet(atoi(equals));
       }
-      else if (strstr(buffer, "acc_hrm="))
+      else if (cfg_key_is(buffer, CFG_KEY_ACC_HRM))
       {
         storedConfigPtr->wrAccelHrMode = atoi(equals);
       }
-      else if (strstr(buffer, "gsr_range="))
+      else if (cfg_key_is(buffer, CFG_KEY_GSR_RANGE))
       { //or "gsr_range="?
         gsr_range = atoi(equals);
         if (gsr_range > 4)
@@ -573,107 +623,108 @@ void ShimSdCfgFile_parse(void)
 
         storedConfigPtr->gsrRange = gsr_range;
       }
-      else if (strstr(buffer, "gyro_samplingrate="))
+      else if (cfg_key_is(buffer, CFG_KEY_GYRO_SAMPLINGRATE))
       {
         ShimConfig_gyroRateSet(atoi(equals));
       }
-      else if (strstr(buffer, "gyro_range="))
+      else if (cfg_key_is(buffer, CFG_KEY_GYRO_RANGE))
       {
         ShimConfig_gyroRangeSet(atoi(equals));
       }
 #if defined(SHIMMER3)
-      else if (strstr(buffer, "pres_bmp180_prec=") || strstr(buffer, "pres_bmp280_prec="))
+      else if (cfg_key_is(buffer, CFG_KEY_PRES_BMP180_PREC)
+          || cfg_key_is(buffer, CFG_KEY_PRES_BMP280_PREC))
       {
         ShimConfig_configBytePressureOversamplingRatioSet(atoi(equals));
       }
 #elif defined(SHIMMER3R)
-      else if (strstr(buffer, "pres_bmp390_prec="))
+      else if (cfg_key_is(buffer, CFG_KEY_PRES_BMP390_PREC))
       {
         ShimConfig_configBytePressureOversamplingRatioSet(atoi(equals));
       }
 #endif
 
 #if defined(SHIMMER3R)
-      else if (strstr(buffer, "mag_alt_rate="))
+      else if (cfg_key_is(buffer, CFG_KEY_MAG_ALT_RATE))
       {
         ShimConfig_configByteAltMagRateSet(atoi(equals));
       }
-      else if (strstr(buffer, "accel_alt_rate="))
+      else if (cfg_key_is(buffer, CFG_KEY_ACCEL_ALT_RATE))
       {
         storedConfigPtr->altAccelRate = atoi(equals);
       }
 #endif
-      else if (strstr(buffer, "rtc_error_enable="))
+      else if (cfg_key_is(buffer, CFG_KEY_RTC_ERROR_ENABLE))
       {
         storedConfigPtr->rtcErrorEnable = (atoi(equals) == 0) ? 0 : 1;
       }
-      else if (strstr(buffer, "sd_error_enable="))
+      else if (cfg_key_is(buffer, CFG_KEY_SD_ERROR_ENABLE))
       {
         storedConfigPtr->sdErrorEnable = (atoi(equals) == 0) ? 0 : 1;
       }
-      else if (strstr(buffer, "user_button_enable="))
+      else if (cfg_key_is(buffer, CFG_KEY_USER_BUTTON_ENABLE))
       {
         storedConfigPtr->userButtonEnable = (atoi(equals) == 0) ? 0 : 1;
       }
-      else if (strstr(buffer, "iammaster="))
+      else if (cfg_key_is(buffer, CFG_KEY_IAMMASTER))
       { //0=slave=node
         storedConfigPtr->masterEnable = (atoi(equals) == 0) ? 0 : 1;
       }
-      else if (strstr(buffer, "sync="))
+      else if (cfg_key_is(buffer, CFG_KEY_SYNC))
       {
         storedConfigPtr->syncEnable = (atoi(equals) == 0) ? 0 : 1;
       }
-      else if (strstr(buffer, "bluetoothDisabled="))
+      else if (cfg_key_is(buffer, CFG_KEY_BT_DISABLED))
       {
         storedConfigPtr->bluetoothDisable = (atoi(equals) == 0) ? 0 : 1;
       }
-      else if (strstr(buffer, "low_battery_autostop="))
+      else if (cfg_key_is(buffer, CFG_KEY_LOW_BATT_AUTOSTOP))
       {
         storedConfigPtr->lowBatteryAutoStop = (atoi(equals) == 0) ? 0 : 1;
       }
-      else if (strstr(buffer, "interval="))
+      else if (cfg_key_is(buffer, CFG_KEY_INTERVAL))
       {
         storedConfigPtr->btIntervalSecs = atoi(equals) > 255 ? 255 : atoi(equals);
       }
-      else if (strstr(buffer, "exp_power="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXP_POWER))
       {
         storedConfigPtr->expansionBoardPower = (atoi(equals) == 0) ? 0 : 1;
       }
-      else if (strstr(buffer, "center="))
+      else if (cfg_key_is(buffer, CFG_KEY_CENTER))
       {
         ShimSdSync_parseSyncCenterNameFromCfgFile(&storedConfigPtr->rawBytes[0], equals);
       }
-      else if (strstr(buffer, "node"))
+      else if (strstr(buffer, CFG_KEY_NODE))
       {
         ShimSdSync_parseSyncNodeNameFromCfgFile(&storedConfigPtr->rawBytes[0], equals);
       }
-      else if (strstr(buffer, "est_exp_len="))
+      else if (cfg_key_is(buffer, CFG_KEY_EST_EXP_LEN))
       {
         est_exp_len = atoi(equals);
         storedConfigPtr->experimentLengthEstimatedInSecMsb = (est_exp_len & 0xff00) >> 8;
         storedConfigPtr->experimentLengthEstimatedInSecLsb = est_exp_len & 0xff;
       }
-      else if (strstr(buffer, "max_exp_len="))
+      else if (cfg_key_is(buffer, CFG_KEY_MAX_EXP_LEN))
       {
         max_exp_len = atoi(equals);
         storedConfigPtr->experimentLengthMaxInMinutesMsb = (max_exp_len & 0xff00) >> 8;
         storedConfigPtr->experimentLengthMaxInMinutesLsb = max_exp_len & 0xff;
       }
 #if IS_SUPPORTED_SINGLE_TOUCH
-      else if (strstr(buffer, "singletouch="))
+      else if (cfg_key_is(buffer, CFG_KEY_SINGLETOUCH))
       {
         storedConfigPtr->singleTouchStart = (atoi(equals) == 0) ? 0 : 1;
       }
 #endif //IS_SUPPORTED_SINGLE_TOUCH
-      else if (strstr(buffer, "myid="))
+      else if (cfg_key_is(buffer, CFG_KEY_MYID))
       {
         storedConfigPtr->myTrialID = atoi(equals);
       }
-      else if (strstr(buffer, "Nshimmer="))
+      else if (cfg_key_is(buffer, CFG_KEY_NSHIMMER))
       {
         storedConfigPtr->numberOfShimmers = atoi(equals);
       }
-      else if (strstr(buffer, "shimmername="))
+      else if (cfg_key_is(buffer, CFG_KEY_SHIMMERNAME))
       {
         string_length = strlen(equals);
         if (string_length > MAX_CHARS)
@@ -690,7 +741,7 @@ void ShimSdCfgFile_parse(void)
         }
         memcpy(&storedConfigPtr->shimmerName[0], equals, string_length);
       }
-      else if (strstr(buffer, "experimentid="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXPERIMENTID))
       {
         string_length = strlen(equals);
         if (string_length > MAX_CHARS)
@@ -707,95 +758,95 @@ void ShimSdCfgFile_parse(void)
         }
         memcpy(&storedConfigPtr->expIdName[0], equals, string_length);
       }
-      else if (strstr(buffer, "configtime="))
+      else if (cfg_key_is(buffer, CFG_KEY_CONFIGTIME))
       {
         config_time = atol(equals);
         ShimConfig_configTimeSet(config_time);
       }
 
-      else if (strstr(buffer, "EXG_ADS1292R_1_CONFIG1="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_1_CONFIG1))
       {
         storedConfigPtr->exgADS1292rRegsCh1.config1 = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_1_CONFIG2="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_1_CONFIG2))
       {
         storedConfigPtr->exgADS1292rRegsCh1.config2 = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_1_LOFF="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_1_LOFF))
       {
         storedConfigPtr->exgADS1292rRegsCh1.loff = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_1_CH1SET="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_1_CH1SET))
       {
         storedConfigPtr->exgADS1292rRegsCh1.ch1set = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_1_CH2SET="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_1_CH2SET))
       {
         storedConfigPtr->exgADS1292rRegsCh1.ch2set = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_1_RLD_SENS="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_1_RLD_SENS))
       {
         storedConfigPtr->exgADS1292rRegsCh1.rldSens = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_1_LOFF_SENS="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_1_LOFF_SENS))
       {
         storedConfigPtr->exgADS1292rRegsCh1.loffSens = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_1_LOFF_STAT="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_1_LOFF_STAT))
       {
         storedConfigPtr->exgADS1292rRegsCh1.loffStat = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_1_RESP1="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_1_RESP1))
       {
         storedConfigPtr->exgADS1292rRegsCh1.resp1 = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_1_RESP2="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_1_RESP2))
       {
         storedConfigPtr->exgADS1292rRegsCh1.resp2 = atoi(equals);
       }
 
-      else if (strstr(buffer, "EXG_ADS1292R_2_CONFIG1="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_2_CONFIG1))
       {
         storedConfigPtr->exgADS1292rRegsCh2.config1 = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_2_CONFIG2="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_2_CONFIG2))
       {
         storedConfigPtr->exgADS1292rRegsCh2.config2 = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_2_LOFF="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_2_LOFF))
       {
         storedConfigPtr->exgADS1292rRegsCh2.loff = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_2_CH1SET="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_2_CH1SET))
       {
         storedConfigPtr->exgADS1292rRegsCh2.ch1set = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_2_CH2SET="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_2_CH2SET))
       {
         storedConfigPtr->exgADS1292rRegsCh2.ch2set = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_2_RLD_SENS="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_2_RLD_SENS))
       {
         storedConfigPtr->exgADS1292rRegsCh2.rldSens = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_2_LOFF_SENS="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_2_LOFF_SENS))
       {
         storedConfigPtr->exgADS1292rRegsCh2.loffSens = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_2_LOFF_STAT="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_2_LOFF_STAT))
       {
         storedConfigPtr->exgADS1292rRegsCh2.loffStat = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_2_RESP1="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_2_RESP1))
       {
         storedConfigPtr->exgADS1292rRegsCh2.resp1 = atoi(equals);
       }
-      else if (strstr(buffer, "EXG_ADS1292R_2_RESP2="))
+      else if (cfg_key_is(buffer, CFG_KEY_EXG_2_RESP2))
       {
         storedConfigPtr->exgADS1292rRegsCh2.resp2 = atoi(equals);
       }
 
-      else if (strstr(buffer, "derived_channels="))
+      else if (cfg_key_is(buffer, CFG_KEY_DERIVED_CHANNELS))
       {
         derived_channels_val = atoll(equals);
         storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_0] = derived_channels_val & 0xFF;
