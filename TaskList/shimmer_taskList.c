@@ -126,7 +126,7 @@ void ShimTask_NORM_manage(void)
           sendStatus = 1;
         }
         ShimSens_startSensing();
-        if(sendStatus)
+        if (sendStatus)
         {
           ShimBt_instreamStatusRespSend();
         }
@@ -241,12 +241,13 @@ uint32_t ShimTask_NORM_getList()
 
 void ShimTask_setStartLoggingIfReady(uint8_t src)
 {
+
   if (ShimSens_checkStartLoggingConditions())
   {
     if (src == SD_BT_LOG_STREAM_CMD_SRC_HW)
-      {
-        shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_HW;
-        shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START_HW;
+    {
+      shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREAM_CMD_SRC_HW;
+      shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_START_HW;
       }
       else if (src == SD_BT_LOG_STREAM_CMD_SRC_BT)
       {
@@ -293,7 +294,6 @@ void ShimTask_setStartStreamingIfReady(uint8_t src)
     shimmerStatus.sdBtCmdSrc = SD_BT_LOG_STREM_CMD_SRC_NONE;
   }
 }
-
 
 void ShimTask_setStartStreamingAndLoggingIfReady(uint8_t src)
 {

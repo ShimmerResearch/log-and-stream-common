@@ -161,7 +161,6 @@ uint8_t ShimSens_shouldStopStreaming(void)
     sdStreamResult = 1;
   }
   return (!shimmerStatus.btstreamReady || sdStreamResult);
-
 }
 
 void ShimSens_startSensing(void)
