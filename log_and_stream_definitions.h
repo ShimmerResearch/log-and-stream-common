@@ -95,6 +95,8 @@ typedef volatile struct STATTypeDef_t
   uint8_t usbPluggedIn           : 1;
 
   uint8_t toggleLedRedCmd        : 1;
+  uint8_t sensingStateChangeFromBtCmd : 1;
+
   uint8_t timerBlinkEnabled      : 1;
   uint8_t timerSamplingEnabled   : 1;
   uint32_t testResult;
@@ -111,7 +113,6 @@ typedef volatile struct STATTypeDef_t
   uint8_t pinPvMic : 1;
 #endif
   uint8_t periStat;
-  uint8_t stateChangeFromBtCmd;
 } STATTypeDef;
 
 typedef enum
