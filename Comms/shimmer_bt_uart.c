@@ -818,16 +818,19 @@ void ShimBt_processCmd(void)
       }
       case START_STREAMING_COMMAND:
       {
+        shimmerStatus.stateChangeFromBtCmd = 1;
         ShimTask_setStartStreamingIfReady();
         break;
       }
       case START_SDBT_COMMAND:
       {
+        shimmerStatus.stateChangeFromBtCmd = 1;
         ShimTask_setStartStreamingAndLoggingIfReady();
         break;
       }
       case START_LOGGING_COMMAND:
       {
+        shimmerStatus.stateChangeFromBtCmd = 1;
         ShimTask_setStartLoggingIfReady();
         break;
       }
@@ -843,16 +846,19 @@ void ShimBt_processCmd(void)
       }
       case STOP_STREAMING_COMMAND:
       {
+        shimmerStatus.stateChangeFromBtCmd = 1;
         ShimTask_setStopStreaming();
         break;
       }
       case STOP_SDBT_COMMAND:
       {
+        shimmerStatus.stateChangeFromBtCmd = 1;
         ShimTask_setStopSensing();
         break;
       }
       case STOP_LOGGING_COMMAND:
       {
+        shimmerStatus.stateChangeFromBtCmd = 1;
         ShimTask_setStopLogging();
         break;
       }
