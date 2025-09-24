@@ -89,10 +89,10 @@ typedef volatile struct STATTypeDef_t
   uint8_t sdlogCmd   : 2;
   uint8_t sdBadFile  : 1;
   /* Indicates whether SD Sync has been enabled by config */
-  uint8_t sdSyncEnabled               : 1;
-  uint8_t sdSyncCommTimerRunning      : 1;
+  uint8_t sdSyncEnabled          : 1;
+  uint8_t sdSyncCommTimerRunning : 1;
 
-  uint8_t usbPluggedIn                : 1;
+  uint8_t usbPluggedIn           : 1;
 
   uint8_t toggleLedRedCmd        : 1;
   uint8_t timerBlinkEnabled      : 1;
