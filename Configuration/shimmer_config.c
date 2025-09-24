@@ -649,8 +649,10 @@ void ShimConfig_checkBtModeFromConfig(void)
         || (shimmerStatus.sdSyncEnabled != shimmerStatus.btInSyncMode)
     //TODO #ifdef to be removed when DEV-427 is done
 #if defined(SHIMMER3)
-        || (ShimEeprom_isBleEnabled() != ShimBt_isBleCurrentlyEnabled())
-        || (ShimEeprom_isBtClassicEnabled() != ShimBt_isBtClassicCurrentlyEnabled())
+        || (ShimEeprom_isPresent()
+            && ((ShimBrd_doesDeviceSupportBle() && ShimEeprom_isBleEnabled() != ShimBt_isBleCurrentlyEnabled())
+                || (ShimBrd_doesDeviceSupportBtClassic()
+                    && ShimEeprom_isBtClassicEnabled() != ShimBt_isBtClassicCurrentlyEnabled())))
 #endif
     )
     {

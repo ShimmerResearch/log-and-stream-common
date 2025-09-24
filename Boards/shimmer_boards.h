@@ -14,6 +14,10 @@
 
 #include "CAT24C16/CAT24C16.h"
 
+#ifndef __weak
+#define __weak __attribute__((weak))
+#endif /* __weak */
+
 enum SR_HW_IDS
 {
   HW_ID_SHIMMER3 = 3,
@@ -100,5 +104,8 @@ uint8_t ShimBrd_isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8
 uint8_t ShimBrd_isHwId(uint8_t hwIdToCheck);
 uint8_t ShimBrd_isExpBrdId(uint8_t expIdToCheck);
 uint8_t ShimBrd_checkCorrectStateForBoot0(void);
+
+__weak uint8_t ShimBrd_doesDeviceSupportBle(void);
+__weak uint8_t ShimBrd_doesDeviceSupportBtClassic(void);
 
 #endif /* LOG_AND_STREAM_COMMON_BOARDS_SHIMMER_BOARDS_H_ */
