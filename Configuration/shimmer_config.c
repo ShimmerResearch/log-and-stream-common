@@ -651,7 +651,8 @@ void ShimConfig_checkBtModeFromConfig(void)
 #if defined(SHIMMER3)
         || (ShimEeprom_isPresent()
             && ((ShimBrd_doesDeviceSupportBle() && ShimEeprom_isBleEnabled() != ShimBt_isBleCurrentlyEnabled())
-                || (ShimBrd_doesDeviceSupportBtClassic() && ShimEeprom_isBtClassicEnabled() != ShimBt_isBtClassicCurrentlyEnabled())))
+                || (ShimBrd_doesDeviceSupportBtClassic()
+                    && ShimEeprom_isBtClassicEnabled() != ShimBt_isBtClassicCurrentlyEnabled())))
 #endif
     )
     {
