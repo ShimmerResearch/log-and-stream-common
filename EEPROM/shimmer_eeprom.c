@@ -81,7 +81,7 @@ uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
       || (isBtDeviceRn41orRN42() && eepromBtSettings.baudRate != BAUD_115200)
       || (isBtDeviceRn4678() && eepromBtSettings.baudRate != ShimBt_getBtBaudRateToUse())
-      || (isBtDeviceRn41orRN42() && eepromBtSettings.bleEnabled != 0)
+      || (!ShimBrd_doesDeviceSupportBle() && eepromBtSettings.bleEnabled != 0)
 #else
       || eepromBtSettings.baudRate != ShimBt_getBtBaudRateToUse()
 #endif

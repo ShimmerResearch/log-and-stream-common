@@ -344,3 +344,14 @@ uint8_t ShimBrd_checkCorrectStateForBoot0(void)
     return 0;
   }
 }
+
+__weak uint8_t ShimBrd_doesDeviceSupportBle(void)
+{
+  return 0;
+}
+
+
+__weak uint8_t ShimBrd_doesDeviceSupportBtClassic(void)
+{
+  return 0;
+}
