@@ -2215,6 +2215,8 @@ void ShimBt_instreamStatusRespSendIfNotBtCmd(void)
   {
     ShimBt_instreamStatusRespSend();
   }
+  /* Assumption: Sensing operations are processed sequentially.
+   * If this changes, ensure the flag is only reset after all pending operations complete. */
   sensingStateChangeFromBtCmd = 0;
 }
 
