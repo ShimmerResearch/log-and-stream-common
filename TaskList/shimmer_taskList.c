@@ -120,19 +120,11 @@ void ShimTask_NORM_manage(void)
         break;
       case TASK_STARTSENSING:
         ShimSens_startSensing();
-        if (!shimmerStatus.sensingStateChangeFromBtCmd)
-        {
-          ShimBt_instreamStatusRespSend();
-        }
-        shimmerStatus.sensingStateChangeFromBtCmd = 0;
+        ShimBt_instreamStatusRespSendIfNotBtCmd();
         break;
       case TASK_STOPSENSING:
         ShimSens_stopSensing(1);
-        if (!shimmerStatus.sensingStateChangeFromBtCmd)
-        {
-          ShimBt_instreamStatusRespSend();
-        }
-        shimmerStatus.sensingStateChangeFromBtCmd = 0;
+        ShimBt_instreamStatusRespSendIfNotBtCmd();
         break;
       case TASK_SDWRITE:
         ShimSdDataFile_writeToCard();

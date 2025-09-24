@@ -99,6 +99,8 @@ volatile RingFifoTx_t gBtTxFifo;
 
 uint8_t bleCurrentlyEnabled = 1, btClassicCurrentlyEnabled = 1;
 
+uint8_t sensingStateChangeFromBtCmd = 0;
+
 void ShimBt_btCommsProtocolInit(void)
 {
   ShimBt_setCrcMode(CRC_OFF);
@@ -106,6 +108,7 @@ void ShimBt_btCommsProtocolInit(void)
   indexOfFirstEol = 0;
   firstProcessFailTicks = 0;
   memset(unwrappedResponse, 0, sizeof(unwrappedResponse));
+  sensingStateChangeFromBtCmd = 0;
 
 #if defined(SHIMMER3)
   btRxExp = BT_getExpResp();
@@ -818,19 +821,19 @@ void ShimBt_processCmd(void)
       }
       case START_STREAMING_COMMAND:
       {
-        shimmerStatus.sensingStateChangeFromBtCmd = 1;
+        sensingStateChangeFromBtCmd = 1;
         ShimTask_setStartStreamingIfReady();
         break;
       }
       case START_SDBT_COMMAND:
       {
-        shimmerStatus.sensingStateChangeFromBtCmd = 1;
+        sensingStateChangeFromBtCmd = 1;
         ShimTask_setStartStreamingAndLoggingIfReady();
         break;
       }
       case START_LOGGING_COMMAND:
       {
-        shimmerStatus.sensingStateChangeFromBtCmd = 1;
+        sensingStateChangeFromBtCmd = 1;
         ShimTask_setStartLoggingIfReady();
         break;
       }
@@ -846,19 +849,19 @@ void ShimBt_processCmd(void)
       }
       case STOP_STREAMING_COMMAND:
       {
-        shimmerStatus.sensingStateChangeFromBtCmd = 1;
+        sensingStateChangeFromBtCmd = 1;
         ShimTask_setStopStreaming();
         break;
       }
       case STOP_SDBT_COMMAND:
       {
-        shimmerStatus.sensingStateChangeFromBtCmd = 1;
+        sensingStateChangeFromBtCmd = 1;
         ShimTask_setStopSensing();
         break;
       }
       case STOP_LOGGING_COMMAND:
       {
-        shimmerStatus.sensingStateChangeFromBtCmd = 1;
+        sensingStateChangeFromBtCmd = 1;
         ShimTask_setStopLogging();
         break;
       }
@@ -2200,6 +2203,19 @@ void ShimBt_macIdVarsReset(void)
 {
   memset(macIdStr, 0x00, sizeof(macIdStr) / sizeof(macIdStr[0]));
   memset(macIdBytes, 0x00, sizeof(macIdBytes) / sizeof(macIdBytes[0]));
+}
+
+void ShimBt_instreamStatusRespSendIfNotBtCmd(void)
+{
+  /* If sensing state changed due to BT command (e.g., start/stop sensing),
+   * don't send instream status response. Only send it if it was triggered by a
+   * hardware action like dock/undock, button press, trial duration or low
+   * battery. */
+  if (!sensingStateChangeFromBtCmd)
+  {
+    ShimBt_instreamStatusRespSend();
+  }
+  sensingStateChangeFromBtCmd = 0;
 }
 
 void ShimBt_instreamStatusRespSend(void)
