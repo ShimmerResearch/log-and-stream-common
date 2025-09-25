@@ -254,7 +254,6 @@ void ShimLeds_blinkSetUprStreamingOnly(void)
 
 void ShimLeds_blinkSetUprConnectedAndLogging(void)
 {
-  Board_ledOn(LED_UPR_BLUE);
   if (ShimLeds_isBlinkTimerCnt1s())
   {
     lastLedToggleCnt++;
@@ -266,10 +265,12 @@ void ShimLeds_blinkSetUprConnectedAndLogging(void)
     if (lastLedToggleCnt == 2)
     {
       Board_ledOn(LED_UPR_GREEN);
+      Board_ledOff(LED_UPR_BLUE);
     }
     else
     {
       Board_ledOff(LED_UPR_GREEN);
+      Board_ledOn(LED_UPR_BLUE);
     }
   }
 }
@@ -308,22 +309,14 @@ void ShimLeds_blinkSetUprLoggingAndStreaming(void)
 
 void ShimLeds_blinkSetUprAdvertisingLoggingIdle(void)
 {
+  Board_ledOff(LED_UPR_GREEN);
   if (shimmerStatus.btPowerOn && ShimLeds_isBlinkTimerCnt2s())
   {
-    if (lastLedToggleUpr)
-    {
-      Board_ledOn(LED_UPR_BLUE);
-    }
-    else
-    {
-      Board_ledOn(LED_UPR_GREEN);
-    }
-    lastLedToggleUpr ^= 1;
+    Board_ledOn(LED_UPR_BLUE);
   }
   else
   {
     Board_ledOff(LED_UPR_BLUE);
-    Board_ledOff(LED_UPR_GREEN);
   }
 }
 
