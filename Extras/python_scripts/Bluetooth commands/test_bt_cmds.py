@@ -1161,7 +1161,7 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
             response = self.bt_cmd_test_get_common(
                 shimmer_comms_bluetooth.BtCmds.GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND,
                 shimmer_comms_bluetooth.BtCmds.PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE, 1)
-            self.assertTrue(all(val == 0 for val in response[1:]) == 0, "FAIL")  # Skip chip ID
+            self.assertTrue(all((val == 0 or val == 255) for val in response[1:]) == 0, "FAIL")  # Skip chip ID
         else:
             print("Skipping test, command not supported in firmware")
 
