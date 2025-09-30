@@ -201,7 +201,7 @@ void LogAndStream_setupDock(void)
 #if defined(SHIMMER3)
 
 #else
-        Board_sd2Arm();
+      Board_sd2Arm();
 #endif
 
       //Set sdlogReady flag if SD card is present and no bad file
