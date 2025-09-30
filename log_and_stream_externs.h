@@ -99,7 +99,9 @@ extern uint8_t isBtDeviceRn4678(void);
 
 #if defined(SHIMMER3)
 extern void DockSdPowerCycle();
-extern void SdPowerOn(void) extern void SdPowerOff(void)
+extern void SdPowerOn(void);
+extern void SdPowerOff(void);
+extern void Board_detectN(uint8_t state);
 #else
 extern void Board_sd2Arm(void);
 extern void Board_sd2Pc(void);

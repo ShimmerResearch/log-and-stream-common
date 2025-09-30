@@ -189,8 +189,7 @@ void LogAndStream_setupDock(void)
     DockUart_deinit();
 
 #if defined(SHIMMER3)
-    //Set DETECT_N high
-    Board_detectN(1);
+    Board_detectN(1); //Set DETECT_N high
 #endif
     ShimBt_instreamStatusRespSend();
 #if defined(SHIMMER3)
