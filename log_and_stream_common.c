@@ -197,9 +197,7 @@ void LogAndStream_setupDock(void)
 #endif
     if (CheckSdInslot())
     {
-#if defined(SHIMMER3)
-
-#else
+#if defined(SHIMMER3R)
       Board_sd2Arm();
 #endif
 
