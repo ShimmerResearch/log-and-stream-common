@@ -50,8 +50,6 @@
 volatile uint32_t taskList = 0;
 uint32_t taskCurrent;
 
-extern void SetupDock(void);
-
 void ShimTask_NORM_init(void)
 {
   taskList = 0;
@@ -81,7 +79,7 @@ void ShimTask_NORM_manage(void)
 #if defined(SHIMMER3)
         checkSetupDock();
 #else
-        SetupDock();
+        LogAndStream_setupDock();
 #endif
         break;
       case TASK_DOCK_PROCESS_CMD:
@@ -161,7 +159,7 @@ void ShimTask_NORM_manage(void)
 #if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
       case TASK_USB_SETUP:
         vbusPinStateCheck();
-        SetupDock();
+        LogAndStream_setupDock();
         break;
 #endif
       case TASK_BT_TX_BUF_CLEAR:

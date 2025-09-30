@@ -142,6 +142,94 @@ void LogAndStream_infomemUpdate(void)
 #endif
 }
 
+void LogAndStream_setupDock(void)
+{
+  shimmerStatus.configuring = 1;
+
+  /* Reset battery charging status on dock/undock so that we don't display an
+   * invalid state. */
+  ShimBatt_resetBatteryChargingStatus();
+
+  if (LogAndStream_isDockedOrUsbIn())
+  {
+    shimmerStatus.sdlogReady = 0;
+    ShimSens_stopSensing(0);
+
+    /* Prioritise dock over USB for SD card access */
+    if (shimmerStatus.docked)
+    {
+      if (CheckSdInslot())
+      {
+#if defined(SHIMMER3)
+        DockSdPowerCycle();
+#else
+        Board_sd2Pc();
+#endif
+      }
+      if (!shimmerStatus.sensing)
+      {
+        DockUart_init();
+      }
+    }
+    else
+    {
+      DockUart_deinit();
+    }
+
+    ShimBatt_setBatteryInterval(BATT_INTERVAL_DOCKED);
+    /* Reset battery critical count on dock to allow logging to begin again if
+     * auto-stop on low-power is enabled. */
+    ShimBatt_resetBatteryCriticalCount();
+
+    ShimBt_instreamStatusRespSend();
+  }
+  else
+  {
+    ShimBatt_setBatteryInterval(BATT_INTERVAL_UNDOCKED);
+    DockUart_deinit();
+
+#if defined(SHIMMER3)
+    //Set DETECT_N high
+    Board_detectN(1);
+#endif
+    ShimBt_instreamStatusRespSend();
+#if defined(SHIMMER3)
+    SdPowerOff();
+#endif
+    if (CheckSdInslot())
+    {
+#if defined(SHIMMER3)
+
+#else
+        Board_sd2Arm();
+#endif
+
+      //Set sdlogReady flag if SD card is present and no bad file
+      shimmerStatus.sdlogReady = !shimmerStatus.sdBadFile;
+
+      if (!shimmerStatus.sensing)
+      {
+        delay_ms(120); //120ms
+#if defined(SHIMMER3)
+        SdPowerOn();
+#endif
+        LogAndStream_syncConfigAndCalibOnSd();
+      }
+      else
+      {
+        LogAndStream_setSdInfoSyncDelayed(1);
+      }
+    }
+  }
+
+#if defined(SHIMMER3R)
+  //Setup RTC alarm for battery read after dock/undock
+  RTC_setAlarmBattReadAfterDockUnDock();
+#endif
+
+  shimmerStatus.configuring = 0;
+}
+
 __weak void delay_ms(const uint32_t delay_time_ms)
 {
   //This function can be overridden by the main application to provide a custom

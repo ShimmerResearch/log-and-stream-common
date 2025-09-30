@@ -199,7 +199,7 @@ void ShimSens_startSensing(void)
 
     if (shimmerStatus.docked)
     {
-      DockUart_disable();
+      DockUart_deinit();
     }
     ShimSens_stepInit();
 
@@ -313,7 +313,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
 
     if (enableDockUartIfDocked && shimmerStatus.docked && !shimmerStatus.sdLogging)
     {
-      DockUart_enable();
+      DockUart_init();
     }
   }
 
