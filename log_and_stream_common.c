@@ -100,7 +100,7 @@ void LogAndStream_blinkTimerCommon(void)
 {
   ShimLeds_incrementCounters();
 
-  if (shimmerStatus.initialising)
+  if (shimmerStatus.booting)
   {
     ShimLeds_controlDuringBoot(bootStage);
   }
@@ -223,14 +223,18 @@ void LogAndStream_setupUndock(void)
     //Set sdlogReady flag if SD card is present and no bad file
     shimmerStatus.sdlogReady = !shimmerStatus.sdBadFile;
 
-    if (!shimmerStatus.sensing)
+    //If in the middle of booting,
+    if (!shimmerStatus.booting)
     {
-      delay_ms(120); //120ms
-      LogAndStream_syncConfigAndCalibOnSd();
-    }
-    else
-    {
-      LogAndStream_setSdInfoSyncDelayed(1);
+      if (!shimmerStatus.sensing)
+      {
+        delay_ms(120); //120ms
+        LogAndStream_syncConfigAndCalibOnSd();
+      }
+      else
+      {
+        LogAndStream_setSdInfoSyncDelayed(1);
+      }
     }
   }
 }

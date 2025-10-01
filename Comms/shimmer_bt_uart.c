@@ -147,10 +147,6 @@ void ShimBt_btCommsProtocolInit(void)
 
 void ShimBt_startCommon(void)
 {
-  if (!shimmerStatus.sensing)
-  {
-    shimmerStatus.configuring = 1;
-  }
   shimmerStatus.btInSyncMode = shimmerStatus.sdSyncEnabled;
 }
 

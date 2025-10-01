@@ -60,7 +60,7 @@
 
 typedef volatile struct STATTypeDef_t
 { //STATUS
-  uint8_t initialising     : 1;
+  uint8_t booting     : 1;
   uint8_t docked           : 1;
   uint8_t sensing          : 1;
   uint8_t configuring      : 1;
