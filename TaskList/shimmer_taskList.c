@@ -128,8 +128,8 @@ void ShimTask_NORM_manage(void)
         ShimSdDataFile_writeToCard();
         break;
       case TASK_SDLOG_CFG_UPDATE:
-        if (!shimmerStatus.docked && !shimmerStatus.sensing && LogAndStream_checkSdInSlot()
-            && ShimConfig_getFlagWriteCfgToSd())
+        if (!shimmerStatus.docked && !shimmerStatus.sensing
+            && LogAndStream_checkSdInSlot() && ShimConfig_getFlagWriteCfgToSd())
         {
           shimmerStatus.configuring = 1;
           ShimConfig_readRam();
