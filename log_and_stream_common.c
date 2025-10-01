@@ -152,6 +152,8 @@ void LogAndStream_setupDock(void)
 
   if (LogAndStream_isDockedOrUsbIn())
   {
+    // Only one of these conditions needs to be true to stop loggin
+    shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
     shimmerStatus.sdlogReady = 0;
     ShimSens_stopSensing(0);
 
