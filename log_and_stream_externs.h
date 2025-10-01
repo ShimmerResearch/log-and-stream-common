@@ -40,6 +40,10 @@ extern void SampleTimerStop(void);
 
 extern void Board_setExpansionBrdPower(uint8_t state);
 extern uint8_t Board_isBtnPressed(void);
+extern void Board_sd2Pc(void);
+extern void Board_sd2Mcu(void);
+extern void Board_dockDetectN(uint8_t state);
+extern uint8_t Board_isSdInserted(void);
 
 extern void DockUart_init(void);
 extern void DockUart_deinit(void);
@@ -48,7 +52,6 @@ extern void InitialiseBtAfterBoot(void);
 extern void BtStop(uint8_t isCalledFromMain);
 
 extern void sleepWhenNoTask(void);
-extern uint8_t CheckSdInslot(void);
 
 extern uint64_t RTC_get64(void);
 extern void RTC_setTimeFromTicksPtr(uint8_t *ticksPtr);
@@ -96,15 +99,5 @@ extern uint8_t isBtDeviceRn41(void);
 extern uint8_t isBtDeviceRn42(void);
 extern uint8_t isBtDeviceRn4678(void);
 #endif //SHIMMER3
-
-#if defined(SHIMMER3)
-extern void DockSdPowerCycle(void);
-extern void SdPowerOn(void);
-extern void SdPowerOff(void);
-extern void Board_detectN(uint8_t state);
-#else
-extern void Board_sd2Arm(void);
-extern void Board_sd2Pc(void);
-#endif
 
 #endif /* SHIMMER_EXTERNS_H_ */

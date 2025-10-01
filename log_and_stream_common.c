@@ -142,7 +142,7 @@ void LogAndStream_infomemUpdate(void)
 #endif
 }
 
-void LogAndStream_setupDock(void)
+void LogAndStream_setupDockUndock(void)
 {
   shimmerStatus.configuring = 1;
 
@@ -150,75 +150,17 @@ void LogAndStream_setupDock(void)
    * invalid state. */
   ShimBatt_resetBatteryChargingStatus();
 
-  if (LogAndStream_isDockedOrUsbIn())
-  {
-    //Only one of these conditions needs to be true to stop loggin
-    shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
-    shimmerStatus.sdlogReady = 0;
-    ShimSens_stopSensing(0);
-
-    /* Prioritise dock over USB for SD card access */
-    if (shimmerStatus.docked)
-    {
-      if (CheckSdInslot())
-      {
-#if defined(SHIMMER3)
-        DockSdPowerCycle();
+#if TEST_UNDOCKED
+  if (0)
 #else
-        Board_sd2Pc();
+  if (LogAndStream_isDockedOrUsbIn())
 #endif
-      }
-      if (!shimmerStatus.sensing)
-      {
-        DockUart_init();
-      }
-    }
-    else
-    {
-      DockUart_deinit();
-    }
-
-    ShimBatt_setBatteryInterval(BATT_INTERVAL_DOCKED);
-    /* Reset battery critical count on dock to allow logging to begin again if
-     * auto-stop on low-power is enabled. */
-    ShimBatt_resetBatteryCriticalCount();
-
-    ShimBt_instreamStatusRespSend();
+  {
+    LogAndStream_setupDock();
   }
   else
   {
-    ShimBatt_setBatteryInterval(BATT_INTERVAL_UNDOCKED);
-    DockUart_deinit();
-
-#if defined(SHIMMER3)
-    Board_detectN(1); //Set DETECT_N high
-#endif
-    ShimBt_instreamStatusRespSend();
-#if defined(SHIMMER3)
-    SdPowerOff();
-#endif
-    if (CheckSdInslot())
-    {
-#if defined(SHIMMER3R)
-      Board_sd2Arm();
-#endif
-
-      //Set sdlogReady flag if SD card is present and no bad file
-      shimmerStatus.sdlogReady = !shimmerStatus.sdBadFile;
-
-      if (!shimmerStatus.sensing)
-      {
-        delay_ms(120); //120ms
-#if defined(SHIMMER3)
-        SdPowerOn();
-#endif
-        LogAndStream_syncConfigAndCalibOnSd();
-      }
-      else
-      {
-        LogAndStream_setSdInfoSyncDelayed(1);
-      }
-    }
+    LogAndStream_setupUndock();
   }
 
 #if defined(SHIMMER3R)
@@ -227,6 +169,77 @@ void LogAndStream_setupDock(void)
 #endif
 
   shimmerStatus.configuring = 0;
+}
+
+void LogAndStream_setupDock(void)
+{
+  //Only one of these conditions needs to be true to stop loggin
+  shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
+  shimmerStatus.sdlogReady = 0;
+  ShimSens_stopSensing(0);
+
+  /* Prioritise dock over USB for SD card access */
+  if (shimmerStatus.docked)
+  {
+    if (LogAndStream_checkSdInSlot())
+    {
+      Board_sd2Pc();
+    }
+    if (!shimmerStatus.sensing)
+    {
+      DockUart_init();
+    }
+  }
+  else
+  {
+    DockUart_deinit();
+  }
+
+  ShimBatt_setBatteryInterval(BATT_INTERVAL_DOCKED);
+  /* Reset battery critical count on dock to allow logging to begin again if
+   * auto-stop on low-power is enabled. */
+  ShimBatt_resetBatteryCriticalCount();
+
+  ShimBt_instreamStatusRespSend();
+}
+
+void LogAndStream_setupUndock(void)
+{
+  ShimBatt_setBatteryInterval(BATT_INTERVAL_UNDOCKED);
+  DockUart_deinit();
+
+  /* Set dock detect high to let dock know SD card is not available and kill
+   * power to SD card. It will get turned back on as part of power cycle if
+   * SD is still inserted */
+  Board_dockDetectN(1);
+  Board_setSdPower(0);
+
+  ShimBt_instreamStatusRespSend();
+
+  if (LogAndStream_checkSdInSlot())
+  {
+    Board_sd2Mcu();
+
+    //Set sdlogReady flag if SD card is present and no bad file
+    shimmerStatus.sdlogReady = !shimmerStatus.sdBadFile;
+
+    if (!shimmerStatus.sensing)
+    {
+      delay_ms(120); //120ms
+      LogAndStream_syncConfigAndCalibOnSd();
+    }
+    else
+    {
+      LogAndStream_setSdInfoSyncDelayed(1);
+    }
+  }
+}
+
+uint8_t LogAndStream_checkSdInSlot(void)
+{
+  //Check if card is inserted and enable interrupt for SD_DETECT_N
+  shimmerStatus.sdInserted = Board_isSdInserted();
+  return shimmerStatus.sdInserted;
 }
 
 __weak void delay_ms(const uint32_t delay_time_ms)

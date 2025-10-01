@@ -694,7 +694,7 @@ void ShimConfig_loadSensorConfigAndCalib(void)
   ShimCalib_initFromConfigBytesAll();
 
   //Read storedConfig from SD cfg file or update it from RAM if RAM is newer
-  if (!shimmerStatus.docked && CheckSdInslot())
+  if (!shimmerStatus.docked && LogAndStream_checkSdInSlot())
   { //sd card ready to access
     if (!shimmerStatus.sdPowerOn)
     {

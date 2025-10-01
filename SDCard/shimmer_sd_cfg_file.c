@@ -152,7 +152,7 @@ void ShimSdCfgFile_generate(void)
 {
   FIL cfgFile;
 
-  if (!shimmerStatus.docked && CheckSdInslot() && !shimmerStatus.sdBadFile)
+  if (!shimmerStatus.docked && LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile)
   {
     uint8_t sd_power_state = shimmerStatus.sdPowerOn;
     if (!shimmerStatus.sdPowerOn)
@@ -397,7 +397,7 @@ void ShimSdCfgFile_parse(void)
 
   uint8_t triggerSdCardUpdate = 0;
 
-  CheckSdInslot();
+  LogAndStream_checkSdInSlot();
   gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
   char cfgname[] = CFG_FILENAME;
   cfg_file_status = f_open(&cfgFile, cfgname, FA_READ | FA_OPEN_EXISTING);

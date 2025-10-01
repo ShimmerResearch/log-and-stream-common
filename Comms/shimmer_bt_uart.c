@@ -1478,7 +1478,7 @@ void ShimBt_calibrationChangeCommon(uint16_t configByteIdx,
 
 void ShimBt_updateCalibDumpFile(void)
 {
-  if (CheckSdInslot() && !shimmerStatus.sdBadFile)
+  if (LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile)
   {
     if (!shimmerStatus.docked)
     {
