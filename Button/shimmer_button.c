@@ -29,14 +29,13 @@ void ShimBtn_init(void)
 uint8_t ShimBtn_pressReleaseAction(void)
 {
   uint8_t wake = 0;
-  if (Board_isBtnPressed())
+  shimmerStatus.buttonPressed = Board_isBtnPressed();
+  if (shimmerStatus.buttonPressed)
   { //button pressed
-    shimmerStatus.buttonPressed = 1;
     buttonPressTs = RTC_get64();
   }
   else
   { //button released
-    shimmerStatus.buttonPressed = 0;
     buttonReleaseCurrentTs = RTC_get64();
 
     //Guard against bogus long-press when no prior press was recorded
