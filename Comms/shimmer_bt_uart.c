@@ -2681,7 +2681,7 @@ void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn)
 
 __weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn)
 {
-  //Implement in board file if needed
+  /* Implement in board file if needed */
   (void) btClassicEn;
   (void) bleEn;
 }
