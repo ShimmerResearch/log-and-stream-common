@@ -648,11 +648,9 @@ void ShimConfig_checkBtModeFromConfig(void)
     if ((!shimmerStatus.btSupportEnabled && shimmerStatus.btPowerOn)
         || (shimmerStatus.sdSyncEnabled != shimmerStatus.btInSyncMode)
         || (ShimEeprom_isPresent()
-            && ((ShimBrd_doesDeviceSupportBle()
-                && ShimEeprom_isBleEnabled() != ShimBt_isBleCurrentlyEnabled())
+            && ((ShimBrd_doesDeviceSupportBle() && ShimEeprom_isBleEnabled() != ShimBt_isBleCurrentlyEnabled())
                 || (ShimBrd_doesDeviceSupportBtClassic()
-                    && ShimEeprom_isBtClassicEnabled()
-                        != ShimBt_isBtClassicCurrentlyEnabled()))))
+                    && ShimEeprom_isBtClassicEnabled() != ShimBt_isBtClassicCurrentlyEnabled()))))
     {
       BtStop(0);
     }
