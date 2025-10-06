@@ -98,10 +98,10 @@ void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
   {
     ShimLeds_blinkSetLwrErrorSdCard();
   }
-  else
-  {
-    //If the boot stage is not yet complete, toggle the LEDs to indicate booting
-   // shimmerStatus.bootTimePerStageMs += SHIMMER_BLINK_TIMER_PERIOD_MS;
+    else
+    {
+      //If the boot stage is not yet complete, toggle the LEDs to indicate booting
+      shimmerStatus.bootTimePerStageMs += SHIMMER_BLINK_TIMER_PERIOD_MS;
 
     //Note: This is a placeholder for legacy behavior, can be removed if not needed
     //// Turn on LEDs as per legacy behavior in Shimmer3
@@ -486,7 +486,16 @@ void ShimLeds_blinkSetLwrErrorBluetooth(void)
     Board_ledOn(LED_LWR_YELLOW);
     Board_ledOff(LED_LWR_RED + LED_LWR_GREEN);
 #else
-    Board_ledLwrSetColourRgb(LED_PWM_OFF, LED_PWM_ON, LED_PWM_OFF); //Yellow
+    Board_ledLwrSetColourRgb(LED_PWM_ON, LED_PWM_ON, LED_PWM_OFF); //Yellow
+#endif
+  }
+  else
+  {
+#if defined(SHIMMER3) || defined(SHIMMER4_SDK)
+    Board_ledOff(LED_LWR_YELLOW);
+    Board_ledOff(LED_LWR_RED + LED_LWR_GREEN);
+#else
+    Board_ledLwrSetColourRgb(LED_PWM_ON, LED_PWM_ON, LED_PWM_OFF); //Yellow
 #endif
   }
 }
@@ -499,7 +508,16 @@ void ShimLeds_blinkSetLwrErrorSdCard(void)
     Board_ledOn(LED_LWR_GREEN);
     Board_ledOff(LED_LWR_RED + LED_LWR_YELLOW);
 #else
-    Board_ledLwrSetColourRgb(LED_PWM_ON, LED_PWM_ON, LED_PWM_OFF); //Yellow
+    Board_ledLwrSetColourRgb(LED_PWM_OFF, LED_PWM_ON, LED_PWM_OFF); //Green
+#endif
+  }
+  else
+  {
+#if defined(SHIMMER3) || defined(SHIMMER4_SDK)
+    Board_ledOff(LED_LWR_RED);
+    Board_ledOff(LED_LWR_RED + LED_LWR_YELLOW);
+#else
+    Board_ledLwrSetColourRgb(LED_PWM_ON, LED_PWM_OFF, LED_PWM_OFF); //Green
 #endif
   }
 }
