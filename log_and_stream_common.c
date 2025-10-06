@@ -179,7 +179,7 @@ void LogAndStream_checkSetupDockUnDock(void)
 
     /* If Shimmer is docking status has changed while dock was being setup, set
      * task again. */
-    if (dockedStateSaved != BOARD_IS_DOCKED)
+    if (dockedStateSaved != Board_isDocked())
     {
       ShimTask_set(TASK_SETUP_DOCK);
     }
