@@ -647,14 +647,12 @@ void ShimConfig_checkBtModeFromConfig(void)
      * Leave the SD sync code to turn on/off BT later when required. */
     if ((!shimmerStatus.btSupportEnabled && shimmerStatus.btPowerOn)
         || (shimmerStatus.sdSyncEnabled != shimmerStatus.btInSyncMode)
-    //TODO #ifdef to be removed when DEV-427 is done
-#if defined(SHIMMER3)
         || (ShimEeprom_isPresent()
-            && ((ShimBrd_doesDeviceSupportBle() && ShimEeprom_isBleEnabled() != ShimBt_isBleCurrentlyEnabled())
+            && ((ShimBrd_doesDeviceSupportBle()
+                && ShimEeprom_isBleEnabled() != ShimBt_isBleCurrentlyEnabled())
                 || (ShimBrd_doesDeviceSupportBtClassic()
-                    && ShimEeprom_isBtClassicEnabled() != ShimBt_isBtClassicCurrentlyEnabled())))
-#endif
-    )
+                    && ShimEeprom_isBtClassicEnabled()
+                        != ShimBt_isBtClassicCurrentlyEnabled()))))
     {
       BtStop(0);
     }

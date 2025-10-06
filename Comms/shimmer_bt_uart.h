@@ -19,6 +19,10 @@
 #include <shimmer_include.h>
 #endif
 
+#ifndef __weak
+#define __weak __attribute__((weak))
+#endif /* __weak */
+
 #define BT_TX_BUF_SIZE                              256U /* serial buffer in bytes (power 2)  */
 #define BT_TX_BUF_MASK                              (BT_TX_BUF_SIZE - 1UL)
 
@@ -342,6 +346,7 @@ void ShimBt_setBtBaudRateToUse(uint32_t baudRate);
 uint32_t ShimBt_getBtBaudRateToUse(void);
 
 void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
+__weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 uint8_t ShimBt_isBleCurrentlyEnabled(void);
 uint8_t ShimBt_isBtClassicCurrentlyEnabled(void);
 
