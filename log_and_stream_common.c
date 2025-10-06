@@ -156,8 +156,7 @@ void LogAndStream_dockedStateChange(void)
   }
   else
   {
-    shimmerStatus.sdlogReady = LogAndStream_checkSdInSlot()
-        && !shimmerStatus.sdBadFile;
+    shimmerStatus.sdlogReady = LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile;
   }
 }
 
