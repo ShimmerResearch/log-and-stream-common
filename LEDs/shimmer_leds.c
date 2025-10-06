@@ -101,7 +101,7 @@ void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
   else
   {
     //If the boot stage is not yet complete, toggle the LEDs to indicate booting
-    shimmerStatus.bootTimePerStageMs += SHIMMER_BLINK_TIMER_PERIOD_MS;
+   // shimmerStatus.bootTimePerStageMs += SHIMMER_BLINK_TIMER_PERIOD_MS;
 
     //Note: This is a placeholder for legacy behavior, can be removed if not needed
     //// Turn on LEDs as per legacy behavior in Shimmer3
@@ -482,7 +482,12 @@ void ShimLeds_blinkSetLwrErrorBluetooth(void)
 {
   if (ShimLeds_isBlinkTimerCnt200ms())
   {
-    Board_ledToggle(LED_LWR_YELLOW);
+#if defined(SHIMMER3) || defined(SHIMMER4_SDK)
+    Board_ledOn(LED_LWR_YELLOW);
+    Board_ledOff(LED_LWR_RED + LED_LWR_GREEN);
+#else
+    Board_ledLwrSetColourRgb(LED_PWM_OFF, LED_PWM_ON, LED_PWM_OFF); //Yellow
+#endif
   }
 }
 
@@ -490,7 +495,12 @@ void ShimLeds_blinkSetLwrErrorSdCard(void)
 {
   if (ShimLeds_isBlinkTimerCnt200ms())
   {
-    Board_ledToggle(LED_LWR_GREEN);
+#if defined(SHIMMER3) || defined(SHIMMER4_SDK)
+    Board_ledOn(LED_LWR_GREEN);
+    Board_ledOff(LED_LWR_RED + LED_LWR_YELLOW);
+#else
+    Board_ledLwrSetColourRgb(LED_PWM_ON, LED_PWM_ON, LED_PWM_OFF); //Yellow
+#endif
   }
 }
 
