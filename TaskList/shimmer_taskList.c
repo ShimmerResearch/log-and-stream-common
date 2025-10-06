@@ -76,11 +76,7 @@ void ShimTask_NORM_manage(void)
     switch (taskCurrent)
     {
       case TASK_SETUP_DOCK:
-#if defined(SHIMMER3)
-        checkSetupDock();
-#else
-        LogAndStream_setupDockUndock();
-#endif
+        LogAndStream_checkSetupDockUnDock();
         break;
       case TASK_DOCK_PROCESS_CMD:
         ShimDock_processCmd();

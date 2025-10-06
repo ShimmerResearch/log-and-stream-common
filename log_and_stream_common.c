@@ -14,6 +14,10 @@ boot_stage_t bootStage;
 
 uint8_t sdInfoSyncDelayed = 0;
 
+/* variables used for delayed undock-start */
+uint8_t undockEvent;
+uint64_t time_newUnDockEvent;
+
 void LogAndStream_init(void)
 {
   ShimTask_init();
@@ -33,6 +37,10 @@ void LogAndStream_init(void)
   LogAndStream_setSdInfoSyncDelayed(0);
 
   memset((uint8_t *) &shimmerStatus, 0, sizeof(STATTypeDef));
+
+  /* variables used for delayed undock-start */
+  undockEvent = 0;
+  time_newUnDockEvent = 0;
 
   ShimTask_set(TASK_BATT_READ);
 }
@@ -131,6 +139,26 @@ void LogAndStream_dockedStateChange(void)
    * for TASK_SETUP_DOCK to trigger. */
   ShimBatt_resetBatteryChargingStatus();
   ShimTask_set(TASK_SETUP_DOCK);
+
+  if (!undockEvent)
+  {
+    if (!shimmerStatus.docked) //undocked
+    {
+      undockEvent = 1;
+      ShimBatt_setBattCritical(0);
+      time_newUnDockEvent = RTC_get64();
+    }
+  }
+
+  if (shimmerStatus.docked)
+  {
+    shimmerStatus.sdlogReady = 0;
+  }
+  else
+  {
+    shimmerStatus.sdlogReady = LogAndStream_checkSdInSlot()
+        && !shimmerStatus.sdBadFile;
+  }
 }
 
 void LogAndStream_infomemUpdate(void)
@@ -142,13 +170,34 @@ void LogAndStream_infomemUpdate(void)
 #endif
 }
 
+void LogAndStream_checkSetupDockUnDock(void)
+{
+  uint8_t dockedStateSaved = shimmerStatus.docked;
+  if (!shimmerStatus.configuring && !sensing.inSdWr
+      && (dockedStateSaved || ((RTC_get64() - time_newUnDockEvent) > TIMEOUT_100_MS)))
+  {
+    LogAndStream_setupDockUndock();
+
+    /* If Shimmer is docking status has changed while dock was being setup, set
+     * task again. */
+    if (dockedStateSaved != BOARD_IS_DOCKED)
+    {
+      ShimTask_set(TASK_SETUP_DOCK);
+    }
+
+    undockEvent = 0;
+  }
+  else
+  {
+    ShimTask_set(TASK_SETUP_DOCK);
+  }
+
+  ShimRtc_rwcErrorCheck();
+}
+
 void LogAndStream_setupDockUndock(void)
 {
   shimmerStatus.configuring = 1;
-
-  /* Reset battery charging status on dock/undock so that we don't display an
-   * invalid state. */
-  ShimBatt_resetBatteryChargingStatus();
 
 #if TEST_UNDOCKED
   if (0)
@@ -162,6 +211,8 @@ void LogAndStream_setupDockUndock(void)
   {
     LogAndStream_setupUndock();
   }
+
+  ShimTask_set(TASK_BATT_READ);
 
 #if defined(SHIMMER3R)
   //Setup RTC alarm for battery read after dock/undock
@@ -195,7 +246,7 @@ void LogAndStream_setupDock(void)
     DockUart_deinit();
   }
 
-  ShimBatt_setBatteryInterval(BATT_INTERVAL_DOCKED);
+  ShimBatt_setBatteryInterval(BATT_INTERVAL_SECS_DOCKED);
   /* Reset battery critical count on dock to allow logging to begin again if
    * auto-stop on low-power is enabled. */
   ShimBatt_resetBatteryCriticalCount();
@@ -205,7 +256,7 @@ void LogAndStream_setupDock(void)
 
 void LogAndStream_setupUndock(void)
 {
-  ShimBatt_setBatteryInterval(BATT_INTERVAL_UNDOCKED);
+  ShimBatt_setBatteryInterval(BATT_INTERVAL_SECS_UNDOCKED);
   DockUart_deinit();
 
   /* Set dock detect high to let dock know SD card is not available and kill

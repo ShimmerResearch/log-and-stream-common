@@ -30,7 +30,6 @@ extern uint64_t *RTC_getRwcTimeDiffPtr(void);
 extern uint8_t isBtModuleOverflowPinHigh(void);
 
 /* Task list */
-extern void checkSetupDock(void);
 extern void MPU9150_startMagMeasurement(void);
 extern void BMPX80_startMeasurement(void);
 

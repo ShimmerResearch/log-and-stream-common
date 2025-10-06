@@ -270,7 +270,9 @@ battAlarmInterval_t ShimBatt_getBatteryInterval(void)
 #if defined(SHIMMER3)
 uint32_t ShimBatt_getBatteryIntervalTicks(void)
 {
-  return battAlarmInterval == BATT_INTERVAL_DOCKED ? BATT_INTERVAL_D : BATT_INTERVAL;
+  return
+      battAlarmInterval == BATT_INTERVAL_SECS_DOCKED ?
+          BATT_INTERVAL_TICKS_DOCKED : BATT_INTERVAL_TICKS_UNDOCKED;
 }
 #endif
 
