@@ -101,7 +101,7 @@ void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
   else
   {
     //If the boot stage is not yet complete, toggle the LEDs to indicate booting
-    //shimmerStatus.bootTimePerStageMs += SHIMMER_BLINK_TIMER_PERIOD_MS;
+    shimmerStatus.bootTimePerStageMs += SHIMMER_BLINK_TIMER_PERIOD_MS;
 
     //Note: This is a placeholder for legacy behavior, can be removed if not needed
     //// Turn on LEDs as per legacy behavior in Shimmer3
