@@ -148,6 +148,17 @@ void ShimBt_btCommsProtocolInit(void)
 void ShimBt_startCommon(void)
 {
   shimmerStatus.btInSyncMode = shimmerStatus.sdSyncEnabled;
+
+  if (shimmerStatus.sdSyncEnabled || !ShimEeprom_isPresent())
+  {
+    /* Enable classic BT only for sync mode or older devices without EEPROM
+     * (which use RN42 modules without BLE support) */
+    ShimBt_setBtMode(1, 0);
+  }
+  else
+  {
+    ShimBt_setBtMode(ShimEeprom_isBtClassicEnabled(), ShimEeprom_isBleEnabled());
+  }
 }
 
 void ShimBt_stopCommon(uint8_t isCalledFromMain)
@@ -2661,6 +2672,14 @@ void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn)
 {
   btClassicCurrentlyEnabled = btClassicEn;
   bleCurrentlyEnabled = bleEn;
+  BT_setBtMode(btClassicEn, bleEn);
+}
+
+__weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn)
+{
+  /* Implement in board file if needed */
+  (void) btClassicEn;
+  (void) bleEn;
 }
 
 uint8_t ShimBt_isBleCurrentlyEnabled(void)
