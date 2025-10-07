@@ -492,10 +492,9 @@ void ShimLeds_blinkSetLwrErrorBluetooth(void)
   else
   {
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
-    Board_ledOff(LED_LWR_YELLOW);
-    Board_ledOff(LED_LWR_RED + LED_LWR_GREEN);
+    Board_ledOff(LED_LWR_YELLOW + LED_LWR_RED + LED_LWR_GREEN);
 #else
-    Board_ledLwrSetColourRgb(LED_PWM_ON, LED_PWM_ON, LED_PWM_OFF); //Yellow
+    Board_ledLwrSetColourRgb(LED_PWM_OFF, LED_PWM_OFF, LED_PWM_OFF); //Off
 #endif
   }
 }
@@ -514,10 +513,9 @@ void ShimLeds_blinkSetLwrErrorSdCard(void)
   else
   {
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
-    Board_ledOff(LED_LWR_RED);
-    Board_ledOff(LED_LWR_RED + LED_LWR_YELLOW);
+    Board_ledOff(LED_LWR_GREEN + LED_LWR_RED + LED_LWR_YELLOW);
 #else
-    Board_ledLwrSetColourRgb(LED_PWM_ON, LED_PWM_OFF, LED_PWM_OFF); //Green
+    Board_ledLwrSetColourRgb(LED_PWM_OFF, LED_PWM_OFF, LED_PWM_OFF); //Off
 #endif
   }
 }
