@@ -17,7 +17,7 @@
 #include "5xx_HAL/hal_CRC.h"
 #include "5xx_HAL/hal_DMA.h"
 #include "5xx_HAL/hal_RTC.h"
-#include "5xx_HAL/hal_board.h"
+#include "5xx_HAL/hal_Board.h"
 #include "RN4X/RN4678.h"
 #include "RN4X/RN4X.h"
 
