@@ -33,7 +33,7 @@
 typedef enum
 {
   BATT_INTERVAL_SECS_UNDOCKED = 60, //1min interval
-  BATT_INTERVAL_SECS_DOCKED = 2   //2sec interval
+  BATT_INTERVAL_SECS_DOCKED = 2     //2sec interval
 } battAlarmInterval_t;
 
 enum
