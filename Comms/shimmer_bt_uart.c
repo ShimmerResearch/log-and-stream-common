@@ -2085,14 +2085,7 @@ void ShimBt_sendRsp(void)
       {
         *(resPacket + packet_length++) = DAUGHTER_CARD_MEM_RESPONSE;
         *(resPacket + packet_length++) = dcMemLength;
-        if (!shimmerStatus.sensing)
-        {
-          eepromRead(dcMemOffset + 16U, dcMemLength, resPacket + packet_length);
-        }
-        else
-        {
-          memset(resPacket + packet_length, 0xff, dcMemLength);
-        }
+        eepromRead(dcMemOffset + 16U, dcMemLength, resPacket + packet_length);
         packet_length += dcMemLength;
         break;
       }
