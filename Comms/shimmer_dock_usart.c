@@ -619,7 +619,8 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_PROP_CARD_MEM;
     if ((uartDcMemLength + uart_resp_len) < UART_RSP_PACKET_SIZE)
     {
-      eepromRead(uartDcMemOffset + 16U, (uint16_t) uartDcMemLength,(uartRespBuf + uart_resp_len));
+      eepromRead(uartDcMemOffset + 16U, (uint16_t) uartDcMemLength,
+          (uartRespBuf + uart_resp_len));
       uart_resp_len += uartDcMemLength;
     }
   }
