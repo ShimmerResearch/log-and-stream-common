@@ -31,7 +31,8 @@ def serial_ports_shimmer_dock():
     for item in serial_port_list:
         if "USB Serial Port" in item.description \
                 and (("PID=0403:6010" in item.hwid and item.hwid.endswith("B"))
-                     or ("PID=0403:6011" in item.hwid and item.hwid.endswith("D"))):
+                     or ("PID=0403:6011" in item.hwid and item.hwid.endswith("D")))\
+                        or ("USB Serial Device" in item.description and "PID=0483:52A4" in item.hwid):
             serial_port_list_filtered += [item]
     return serial_port_list_filtered
 
