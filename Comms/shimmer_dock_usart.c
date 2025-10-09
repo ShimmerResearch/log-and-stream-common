@@ -619,15 +619,7 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_PROP_CARD_MEM;
     if ((uartDcMemLength + uart_resp_len) < UART_RSP_PACKET_SIZE)
     {
-      if (!shimmerStatus.sensing)
-      {
-        eepromRead(uartDcMemOffset + 16U, (uint16_t) uartDcMemLength,
-            (uartRespBuf + uart_resp_len));
-      }
-      else
-      {
-        memset(uartRespBuf + uart_resp_len, 0xff, uartDcMemLength);
-      }
+      eepromRead(uartDcMemOffset + 16U, (uint16_t) uartDcMemLength,(uartRespBuf + uart_resp_len));
       uart_resp_len += uartDcMemLength;
     }
   }
