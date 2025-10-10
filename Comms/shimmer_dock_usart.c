@@ -27,6 +27,7 @@
 #else
 #include "stm32u5xx_hal_uart.h"
 #endif
+#include "usbd_cdc_acm_if.h"
 
 #define EN_CALIB_DUMP_RSP 0
 
@@ -678,8 +679,16 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = 0x0d;
     *(uartRespBuf + uart_resp_len++) = 0x0a;
   }
-
-  DockUart_writeBlocking(uartRespBuf, uart_resp_len);
+  if(shimmerStatus.usbPluggedIn)
+  {
+    /* respond to commands via usb */
+    CDC_Transmit(0, uartRespBuf, uart_resp_len);
+  }
+  else if(shimmerStatus.docked)
+  {
+    /* respond to commands via dock usart */
+    DockUart_writeBlocking(uartRespBuf, uart_resp_len);
+  }
 }
 
 uint8_t ShimDock_uartCheckCrc(uint8_t len)
