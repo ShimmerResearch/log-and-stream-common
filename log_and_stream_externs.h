@@ -30,7 +30,6 @@ extern uint64_t *RTC_getRwcTimeDiffPtr(void);
 extern uint8_t isBtModuleOverflowPinHigh(void);
 
 /* Task list */
-extern void checkSetupDock(void);
 extern void MPU9150_startMagMeasurement(void);
 extern void BMPX80_startMeasurement(void);
 
@@ -40,15 +39,19 @@ extern void SampleTimerStop(void);
 
 extern void Board_setExpansionBrdPower(uint8_t state);
 extern uint8_t Board_isBtnPressed(void);
+extern void Board_sd2Pc(void);
+extern void Board_sd2Mcu(void);
+extern void Board_dockDetectN(uint8_t state);
+extern uint8_t Board_isSdInserted(void);
+extern uint8_t Board_isDocked(void);
 
-extern void DockUart_enable(void);
-extern void DockUart_disable(void);
+extern void DockUart_init(void);
+extern void DockUart_deinit(void);
 
 extern void InitialiseBtAfterBoot(void);
 extern void BtStop(uint8_t isCalledFromMain);
 
 extern void sleepWhenNoTask(void);
-extern uint8_t CheckSdInslot(void);
 
 extern uint64_t RTC_get64(void);
 extern void RTC_setTimeFromTicksPtr(uint8_t *ticksPtr);

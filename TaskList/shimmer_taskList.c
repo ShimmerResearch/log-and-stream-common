@@ -50,8 +50,6 @@
 volatile uint32_t taskList = 0;
 uint32_t taskCurrent;
 
-extern void SetupDock(void);
-
 void ShimTask_NORM_init(void)
 {
   taskList = 0;
@@ -78,11 +76,7 @@ void ShimTask_NORM_manage(void)
     switch (taskCurrent)
     {
       case TASK_SETUP_DOCK:
-#if defined(SHIMMER3)
-        checkSetupDock();
-#else
-        SetupDock();
-#endif
+        LogAndStream_checkSetupDockUnDock();
         break;
       case TASK_DOCK_PROCESS_CMD:
         ShimDock_processCmd();
@@ -130,8 +124,8 @@ void ShimTask_NORM_manage(void)
         ShimSdDataFile_writeToCard();
         break;
       case TASK_SDLOG_CFG_UPDATE:
-        if (!shimmerStatus.docked && !shimmerStatus.sensing && CheckSdInslot()
-            && ShimConfig_getFlagWriteCfgToSd())
+        if (!shimmerStatus.docked && !shimmerStatus.sensing
+            && LogAndStream_checkSdInSlot() && ShimConfig_getFlagWriteCfgToSd())
         {
           shimmerStatus.configuring = 1;
           ShimConfig_readRam();
@@ -161,7 +155,7 @@ void ShimTask_NORM_manage(void)
 #if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
       case TASK_USB_SETUP:
         vbusPinStateCheck();
-        SetupDock();
+        LogAndStream_setupDockUndock();
         break;
 #endif
       case TASK_BT_TX_BUF_CLEAR:

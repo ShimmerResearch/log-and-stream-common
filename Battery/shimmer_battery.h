@@ -10,13 +10,9 @@
 
 #include <stdint.h>
 
-#define BATT_LOW  0x01
-#define BATT_MID  0x02
-#define BATT_HIGH 0x04
-#if defined(SHIMMER4_SDK)
-#define BATT_INTERVAL   600 //600 seconds = 10min interval
-#define BATT_INTERVAL_D 30  //30 seconds
-#endif
+#define BATT_LOW                  0x01
+#define BATT_MID                  0x02
+#define BATT_HIGH                 0x04
 
 #define BATT_LOW_MAX              2618
 #define BATT_MID_MIN              2568
@@ -26,18 +22,18 @@
 #define BATTERY_ERROR_VOLTAGE_MAX 4500 //mV
 #define BATTERY_ERROR_VOLTAGE_MIN 3200 //mV
 
-#if defined(SHIMMER3)
-#define BATT_INTERVAL   1966080 //10min interval
-#define BATT_INTERVAL_D 65535   //30sec interval
-#endif
-
 /* approx. 10% cutoff voltage - 3.65 Volts */
-#define BATT_CUTOFF_3_65VOLTS (2500)
+#define BATT_CUTOFF_3_65VOLTS     (2500)
+
+#if defined(SHIMMER3)
+#define BATT_INTERVAL_TICKS_UNDOCKED (BATT_INTERVAL_SECS_UNDOCKED * 32768)
+#define BATT_INTERVAL_TICKS_DOCKED   (BATT_INTERVAL_SECS_DOCKED * 32768)
+#endif
 
 typedef enum
 {
-  BATT_INTERVAL_UNDOCKED, //10 Minutes
-  BATT_INTERVAL_DOCKED    //30 Seconds
+  BATT_INTERVAL_SECS_UNDOCKED = 60, //1min interval
+  BATT_INTERVAL_SECS_DOCKED = 2     //2sec interval
 } battAlarmInterval_t;
 
 enum
