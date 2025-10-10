@@ -679,12 +679,12 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = 0x0d;
     *(uartRespBuf + uart_resp_len++) = 0x0a;
   }
-  if(shimmerStatus.usbPluggedIn)
+  if (shimmerStatus.usbPluggedIn)
   {
     /* respond to commands via usb */
     CDC_Transmit(0, uartRespBuf, uart_resp_len);
   }
-  else if(shimmerStatus.docked)
+  else if (shimmerStatus.docked)
   {
     /* respond to commands via dock usart */
     DockUart_writeBlocking(uartRespBuf, uart_resp_len);
