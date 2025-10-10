@@ -14,10 +14,10 @@
 #if defined(SHIMMER3)
 #include "msp430.h"
 
+#include "5xx_HAL/hal_Board.h"
 #include "5xx_HAL/hal_CRC.h"
 #include "5xx_HAL/hal_DMA.h"
 #include "5xx_HAL/hal_RTC.h"
-#include "5xx_HAL/hal_board.h"
 #include "RN4X/RN4678.h"
 #include "RN4X/RN4X.h"
 
@@ -2081,14 +2081,7 @@ void ShimBt_sendRsp(void)
       {
         *(resPacket + packet_length++) = DAUGHTER_CARD_MEM_RESPONSE;
         *(resPacket + packet_length++) = dcMemLength;
-        if (!shimmerStatus.sensing)
-        {
-          eepromRead(dcMemOffset + 16U, dcMemLength, resPacket + packet_length);
-        }
-        else
-        {
-          memset(resPacket + packet_length, 0xff, dcMemLength);
-        }
+        eepromRead(dcMemOffset + 16U, dcMemLength, resPacket + packet_length);
         packet_length += dcMemLength;
         break;
       }
