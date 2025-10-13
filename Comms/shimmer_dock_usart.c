@@ -688,7 +688,7 @@ void ShimDock_sendRsp(void)
   }
   else
 #endif
-  if (shimmerStatus.docked)
+      if (shimmerStatus.docked)
   {
     /* respond to commands via dock usart */
     DockUart_writeBlocking(uartRespBuf, uart_resp_len);
