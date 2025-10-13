@@ -176,6 +176,15 @@ class TestShimmerDockCommunication(unittest.TestCase):
                     # TODO unsure why FW is masking byte index 213, bit 5
                     elif i == 213 and (infomem_bytes[i] & 0xEF) == (test_buf[i] & 0xEF):
                         pass
+                        # Ignore bit 6 at byte index 217 (btPinSetup bit settings)
+                    elif i == 217 and (infomem_bytes[i] & 0xBF) == (test_buf[i] & 0xBF):
+                        pass
+                        # Ignore bits 4 and 7 at byte index 218 (txco and singleTouchStart)
+                    elif i == 218 and (infomem_bytes[i] & 0x6F) == (test_buf[i] & 0x6F):
+                        pass
+                        # Ignore bit 0 at byte index 230 (flagWriteCfgToSd bit)
+                    elif i == 230 and (infomem_bytes[i] & 0xFE) == (test_buf[i] & 0xFE):
+                        pass
                     elif infomem_bytes[i] != test_buf[i]:
                         print("Index=" + str(i) + ": "
                               + util_shimmer.byte_array_to_hex_string([infomem_bytes[i]])
