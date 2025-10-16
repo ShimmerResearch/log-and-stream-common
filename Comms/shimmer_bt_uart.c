@@ -147,10 +147,6 @@ void ShimBt_btCommsProtocolInit(void)
 
 void ShimBt_startCommon(void)
 {
-  if (!shimmerStatus.sensing)
-  {
-    shimmerStatus.configuring = 1;
-  }
   shimmerStatus.btInSyncMode = shimmerStatus.sdSyncEnabled;
 
   if (shimmerStatus.sdSyncEnabled || !ShimEeprom_isPresent())
@@ -1490,7 +1486,7 @@ void ShimBt_calibrationChangeCommon(uint16_t configByteIdx,
 
 void ShimBt_updateCalibDumpFile(void)
 {
-  if (CheckSdInslot() && !shimmerStatus.sdBadFile)
+  if (LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile)
   {
     if (!shimmerStatus.docked)
     {

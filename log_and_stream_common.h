@@ -22,6 +22,11 @@ void LogAndStream_blinkTimerCommon(void);
 uint8_t LogAndStream_isDockedOrUsbIn(void);
 void LogAndStream_dockedStateChange(void);
 void LogAndStream_infomemUpdate(void);
+void LogAndStream_checkSetupDockUnDock(void);
+void LogAndStream_setupDockUndock(void);
+void LogAndStream_setupDock(void);
+void LogAndStream_setupUndock(void);
+uint8_t LogAndStream_checkSdInSlot(void);
 void LogAndStream_processDaughterCardId(void);
 
 #endif /* LOG_AND_STREAM_COMMON_LOG_AND_STREAM_COMMON_H_ */
