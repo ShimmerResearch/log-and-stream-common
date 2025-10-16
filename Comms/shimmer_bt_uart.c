@@ -1233,7 +1233,8 @@ void ShimBt_processCmd(void)
         if ((dcMemLength <= 16) && (dcMemOffset <= 15) && (dcMemLength + dcMemOffset <= 16))
         {
           eepromWrite(dcMemOffset, dcMemLength, &args[2]);
-          LogAndStream_processDaughterCardId();
+          /* Copy new bytes to active daughter card byte array so it can be read back immediately and verified */
+          ShimBrd_setDaugherCardIdMemory((uint8_t) dcMemOffset, &args[2], dcMemLength);
         }
         break;
       }

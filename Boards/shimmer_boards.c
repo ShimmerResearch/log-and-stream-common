@@ -47,7 +47,12 @@ void ShimBrd_setHwId(uint8_t hwIdToSet)
 
 void ShimBrd_setDaugherCardIdPage(uint8_t *pagePtr)
 {
-  memcpy(daughterCardIdPage.raw, pagePtr, sizeof(daughterCardIdPage.raw));
+  ShimBrd_setDaugherCardIdMemory(0, pagePtr, sizeof(daughterCardIdPage.raw));
+}
+
+void ShimBrd_setDaugherCardIdMemory(uint8_t index, uint8_t *pagePtr, uint8_t len)
+{
+  memcpy(&daughterCardIdPage.raw[index], pagePtr, len);
 }
 
 uint8_t ShimBrd_isAds1292Present(void)
