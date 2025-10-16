@@ -26,7 +26,6 @@ __weak void ProcessHwRevision(void)
   __NOP();
 }
 
-
 __weak void Board_initGpioForRevision(void)
 {
   __NOP();

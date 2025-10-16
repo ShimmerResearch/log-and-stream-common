@@ -2078,7 +2078,7 @@ void ShimBt_sendRsp(void)
       {
         *(resPacket + packet_length++) = DAUGHTER_CARD_ID_RESPONSE;
         *(resPacket + packet_length++) = dcMemLength;
-        // Read from the cached and processed daughterCardIdPage
+        //Read from the cached and processed daughterCardIdPage
         memcpy(resPacket + packet_length,
             ShimBrd_getDaughtCardIdPtr() + dcMemOffset, dcMemLength);
         packet_length += dcMemLength;

@@ -603,7 +603,7 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_PROP_CARD_ID;
     if ((uartDcMemLength + uart_resp_len) < UART_RSP_PACKET_SIZE)
     {
-      // Read from the cached and processed daughterCardIdPage
+      //Read from the cached and processed daughterCardIdPage
       memcpy(uartRespBuf + uart_resp_len,
           ShimBrd_getDaughtCardIdPtr() + uartDcMemOffset, uartDcMemLength);
       uart_resp_len += uartDcMemLength;
