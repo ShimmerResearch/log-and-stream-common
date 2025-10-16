@@ -18,6 +18,7 @@
 #include "EEPROM/shimmer_eeprom.h"
 #include "GSR/gsr.h"
 #include "LEDs/shimmer_leds.h"
+#include "Platform/platform_api.h"
 #include "RTC/shimmer_rtc.h"
 #include "SDCard/shimmer_sd_cfg_file.h"
 #include "SDCard/shimmer_sd_data_file.h"
@@ -30,6 +31,5 @@
 #include "Util/shimmer_util.h"
 #include "log_and_stream_common.h"
 #include "log_and_stream_definitions.h"
-#include "Platform/platform_api.h"
 
 #endif /* LOG_AND_STREAM_COMMON_LOG_AND_STREAM_INCLUDES_H_ */

@@ -18,10 +18,10 @@ PLATFORM_WEAK void platform_delayMs(const uint32_t delay_time_ms)
 
 PLATFORM_WEAK void platform_processHwRevision(void)
 {
-  // default no-op
+  //default no-op
 }
 
 PLATFORM_WEAK void platform_initGpioForRevision(void)
 {
-  // default no-op
+  //default no-op
 }
