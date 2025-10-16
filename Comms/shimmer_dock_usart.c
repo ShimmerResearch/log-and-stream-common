@@ -77,7 +77,7 @@ void ShimDock_resetVariables(void)
 
 uint8_t ShimDock_rxCallback(uint8_t data)
 {
-  if (shimmerStatus.initialising)
+  if (shimmerStatus.booting)
   {
     return 0;
   }
