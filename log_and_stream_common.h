@@ -12,10 +12,6 @@
 
 #include "log_and_stream_definitions.h"
 
-#ifndef __weak
-#define __weak __attribute__((weak))
-#endif /* __weak */
-
 void LogAndStream_init(void);
 void LogAndStream_setBootStage(boot_stage_t bootStageNew);
 boot_stage_t LogAndStream_getBootStage(void);
@@ -26,7 +22,6 @@ void LogAndStream_blinkTimerCommon(void);
 uint8_t LogAndStream_isDockedOrUsbIn(void);
 void LogAndStream_dockedStateChange(void);
 void LogAndStream_infomemUpdate(void);
-
-__weak void delay_ms(const uint32_t delay_time_ms);
+void LogAndStream_processDaughterCardId(void);
 
 #endif /* LOG_AND_STREAM_COMMON_LOG_AND_STREAM_COMMON_H_ */

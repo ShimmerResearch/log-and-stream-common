@@ -7,14 +7,14 @@
 
 #include "shimmer_dock_usart.h"
 
-#include <SDCard/shimmer_sd_header.h>
 #include <stdint.h>
 #include <string.h>
 
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
-#include <shimmer_definitions.h>
-#include <version.h>
+
+#include "shimmer_definitions.h"
+#include "version.h"
 
 #if defined(SHIMMER3)
 #include "../5xx_HAL/hal_CRC.h"
@@ -439,9 +439,7 @@ void ShimDock_processCmd(void)
                 //Write (up to) 16 bytes to eeprom
                 eepromWrite(uartDcMemOffset, (uint16_t) uartDcMemLength,
                     dockRxBuf + UART_RXBUF_DATA + 2U);
-                //Copy new bytes to active daughter card byte array
-                memcpy(ShimBrd_getDaughtCardId() + ((uint8_t) uartDcMemOffset),
-                    dockRxBuf + UART_RXBUF_DATA + 2, uartDcMemLength);
+                LogAndStream_processDaughterCardId();
                 uartSendRspAck = 1;
               }
               else
@@ -605,7 +603,9 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_PROP_CARD_ID;
     if ((uartDcMemLength + uart_resp_len) < UART_RSP_PACKET_SIZE)
     {
-      eepromRead(uartDcMemOffset, (uint16_t) uartDcMemLength, uartRespBuf + uart_resp_len);
+      // Read from the cached and processed daughterCardIdPage
+      memcpy(uartRespBuf + uart_resp_len,
+          ShimBrd_getDaughtCardIdPtr() + uartDcMemOffset, uartDcMemLength);
       uart_resp_len += uartDcMemLength;
     }
   }

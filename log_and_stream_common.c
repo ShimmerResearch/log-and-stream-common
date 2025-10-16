@@ -142,9 +142,17 @@ void LogAndStream_infomemUpdate(void)
 #endif
 }
 
-__weak void delay_ms(const uint32_t delay_time_ms)
+void LogAndStream_processDaughterCardId(void)
 {
-  //This function can be overridden by the main application to provide a custom
-  //delay implementation. The default implementation does nothing.
-  (void) delay_time_ms; //Suppress unused parameter warning
+  /* Read all from EERPOM if present */
+  if (ShimEeprom_isPresent())
+  {
+    ShimEeprom_readAll();
+  }
+  /* Process the hardware revision in case any FW overrides are needed. */
+  ProcessHwRevision();
+  /* Parse the daughter card ID to a String. */
+  ShimBrd_parseDaughterCardId();
+  /* Initialise any GPIOs that depend on the hardware revision. */
+  Board_initGpioForRevision();
 }

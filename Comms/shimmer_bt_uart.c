@@ -1237,6 +1237,7 @@ void ShimBt_processCmd(void)
         if ((dcMemLength <= 16) && (dcMemOffset <= 15) && (dcMemLength + dcMemOffset <= 16))
         {
           eepromWrite(dcMemOffset, dcMemLength, &args[2]);
+          LogAndStream_processDaughterCardId();
         }
         break;
       }
@@ -2077,7 +2078,9 @@ void ShimBt_sendRsp(void)
       {
         *(resPacket + packet_length++) = DAUGHTER_CARD_ID_RESPONSE;
         *(resPacket + packet_length++) = dcMemLength;
-        eepromRead(dcMemOffset, dcMemLength, resPacket + packet_length);
+        // Read from the cached and processed daughterCardIdPage
+        memcpy(resPacket + packet_length,
+            ShimBrd_getDaughtCardIdPtr() + dcMemOffset, dcMemLength);
         packet_length += dcMemLength;
         break;
       }
