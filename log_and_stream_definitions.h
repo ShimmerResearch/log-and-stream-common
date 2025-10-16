@@ -111,7 +111,6 @@ typedef volatile struct STATTypeDef_t
   uint8_t pinPvMic : 1;
 #endif
   uint8_t periStat;
-  uint8_t usbCrcInitFlag;
 } STATTypeDef;
 
 typedef enum
