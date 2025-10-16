@@ -278,7 +278,7 @@ void LogAndStream_setupUndock(void)
     {
       if (!shimmerStatus.sensing)
       {
-        delay_ms(120); //120ms
+        platform_delayMs(120); //120ms
         LogAndStream_syncConfigAndCalibOnSd();
       }
       else
@@ -296,9 +296,17 @@ uint8_t LogAndStream_checkSdInSlot(void)
   return shimmerStatus.sdInserted;
 }
 
-__weak void delay_ms(const uint32_t delay_time_ms)
+void LogAndStream_processDaughterCardId(void)
 {
-  //This function can be overridden by the main application to provide a custom
-  //delay implementation. The default implementation does nothing.
-  (void) delay_time_ms; //Suppress unused parameter warning
+  /* Read all from EEPROM if present */
+  if (ShimEeprom_isPresent())
+  {
+    ShimEeprom_readAll();
+  }
+  /* Process the hardware revision in case any FW overrides are needed. */
+  platform_processHwRevision();
+  /* Parse the daughter card ID to a String. */
+  ShimBrd_parseDaughterCardId();
+  /* Initialise any GPIOs that depend on the hardware revision. */
+  platform_initGpioForRevision();
 }

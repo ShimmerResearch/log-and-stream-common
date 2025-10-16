@@ -62,6 +62,7 @@ void ShimBrd_init(void);
 void ShimBrd_resetDaughterCardId(void);
 void ShimBrd_setHwId(uint8_t hwIdToSet);
 void ShimBrd_setDaugherCardIdPage(uint8_t *pagePtr);
+void ShimBrd_setDaugherCardIdMemory(uint8_t index, uint8_t *pagePtr, uint8_t len);
 uint8_t ShimBrd_isAds1292Present(void);
 #if defined(SHIMMER3)
 uint8_t ShimBrd_isRn4678PresentAndCmdModeSupport(void);
