@@ -298,7 +298,7 @@ uint8_t LogAndStream_checkSdInSlot(void)
 
 void LogAndStream_processDaughterCardId(void)
 {
-  /* Read all from EERPOM if present */
+  /* Read all from EEPROM if present */
   if (ShimEeprom_isPresent())
   {
     ShimEeprom_readAll();
