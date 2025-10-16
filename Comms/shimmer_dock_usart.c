@@ -442,7 +442,8 @@ void ShimDock_processCmd(void)
                 eepromWrite(uartDcMemOffset, (uint16_t) uartDcMemLength,
                     dockRxBuf + UART_RXBUF_DATA + 2U);
                 /* Copy new bytes to active daughter card byte array so it can be read back immediately and verified */
-                ShimBrd_setDaugherCardIdMemory((uint8_t) uartDcMemOffset, dockRxBuf + UART_RXBUF_DATA + 2, uartDcMemLength);
+                ShimBrd_setDaugherCardIdMemory((uint8_t) uartDcMemOffset,
+                    dockRxBuf + UART_RXBUF_DATA + 2, uartDcMemLength);
                 uartSendRspAck = 1;
               }
               else
