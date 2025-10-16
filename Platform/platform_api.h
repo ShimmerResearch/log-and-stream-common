@@ -16,6 +16,10 @@ extern "C"
 #endif
 
 //Compiler-agnostic weak attribute
+#if defined(SHIMMER3)
+/*TODO Special case for SHIMMER3 shouldn't be needed but for some reason Code composer thinks is already defined so just overwriting it here*/
+#define PLATFORM_WEAK __attribute__((weak))
+#else
 #if !defined(PLATFORM_WEAK)
 #if defined(__GNUC__) || defined(__clang__)
 #define PLATFORM_WEAK __attribute__((weak))
@@ -25,6 +29,7 @@ extern "C"
 #define PLATFORM_WEAK __weak
 #else
 #define PLATFORM_WEAK
+#endif
 #endif
 #endif
 
