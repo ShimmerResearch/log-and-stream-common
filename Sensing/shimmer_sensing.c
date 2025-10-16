@@ -330,7 +330,8 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
 
     ShimSens_stopSensingWrapup();
 
-    if (LogAndStream_isSdInfoSyncDelayed())
+    if (LogAndStream_isSdInfoSyncDelayed() && !shimmerStatus.docked
+        && LogAndStream_checkSdInSlot())
     {
       LogAndStream_syncConfigAndCalibOnSd();
     }
