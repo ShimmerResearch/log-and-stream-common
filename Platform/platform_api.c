@@ -9,24 +9,19 @@
 
 #include <stdint.h>
 
-#include "log_and_stream_definitions.h"
-#if defined(SHIMMER3R)
-#include "stm32u5xx_hal.h"
-#endif
-
-__weak void delay_ms(const uint32_t delay_time_ms)
+PLATFORM_WEAK void platform_delayMs(const uint32_t delay_time_ms)
 {
   //This function can be overridden by the main application to provide a custom
   //delay implementation. The default implementation does nothing.
   (void) delay_time_ms; //Suppress unused parameter warning
 }
 
-__weak void ProcessHwRevision(void)
+PLATFORM_WEAK void platform_processHwRevision(void)
 {
-  __NOP();
+  // default no-op
 }
 
-__weak void Board_initGpioForRevision(void)
+PLATFORM_WEAK void platform_initGpioForRevision(void)
 {
-  __NOP();
+  // default no-op
 }

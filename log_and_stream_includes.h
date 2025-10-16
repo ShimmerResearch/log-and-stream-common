@@ -30,6 +30,6 @@
 #include "Util/shimmer_util.h"
 #include "log_and_stream_common.h"
 #include "log_and_stream_definitions.h"
-#include "platform_api.h"
+#include "Platform/platform_api.h"
 
 #endif /* LOG_AND_STREAM_COMMON_LOG_AND_STREAM_INCLUDES_H_ */

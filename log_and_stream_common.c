@@ -278,7 +278,7 @@ void LogAndStream_setupUndock(void)
     {
       if (!shimmerStatus.sensing)
       {
-        delay_ms(120); //120ms
+        platform_delayMs(120); //120ms
         LogAndStream_syncConfigAndCalibOnSd();
       }
       else
@@ -304,9 +304,9 @@ void LogAndStream_processDaughterCardId(void)
     ShimEeprom_readAll();
   }
   /* Process the hardware revision in case any FW overrides are needed. */
-  ProcessHwRevision();
+  platform_processHwRevision();
   /* Parse the daughter card ID to a String. */
   ShimBrd_parseDaughterCardId();
   /* Initialise any GPIOs that depend on the hardware revision. */
-  Board_initGpioForRevision();
+  platform_initGpioForRevision();
 }
