@@ -95,8 +95,8 @@ cat <<EOF > "$HEADER_FILE" || { echo "Failed to write $HEADER_FILE"; exit 1; }
 #ifndef VERSION_H
 #define VERSION_H
 
-#define FW_VERSION_MAJOR  $MAJOR //16-bit
-#define FW_VERSION_MINOR  $MINOR //8-bit
+#define FW_VERSION_MAJOR  $MAJOR  //16-bit
+#define FW_VERSION_MINOR  $MINOR  //8-bit
 #define FW_VERSION_PATCH  $PATCH //8-bit
 #define FW_VERSION_STRING "v$NEW_VERSION"
 
