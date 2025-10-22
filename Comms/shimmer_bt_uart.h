@@ -169,7 +169,7 @@
 #define STOP_LOGGING_COMMAND                        0x93
 #define VBATT_RESPONSE                              0x94
 #define GET_VBATT_COMMAND                           0x95
-#define DUMMY_COMMAND                               0x96
+#define TEST_CONNECTION_COMMAND                     0x96
 #define STOP_SDBT_COMMAND                           0x97
 #define SET_CALIB_DUMP_COMMAND                      0x98
 #define RSP_CALIB_DUMP_COMMAND                      0x99
@@ -207,6 +207,7 @@
 #define GET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB4
 #define SET_SD_SYNC_COMMAND                           0xE0
 #define SD_SYNC_RESPONSE                              0xE1
+#define DUMMY_COMMAND                                 0xE2
 #define NACK_COMMAND_PROCESSED                        0xFE
 #define ACK_COMMAND_PROCESSED                         0xFF
 
