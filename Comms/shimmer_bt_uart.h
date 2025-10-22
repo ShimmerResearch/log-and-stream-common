@@ -205,9 +205,11 @@
 #define SET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB2
 #define ALT_MAG_SAMPLING_RATE_RESPONSE                0xB3
 #define GET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB4
+#define DUMMY_COMMAND                                 0xB5
+
 #define SET_SD_SYNC_COMMAND                           0xE0
 #define SD_SYNC_RESPONSE                              0xE1
-#define DUMMY_COMMAND                                 0xE2
+
 #define NACK_COMMAND_PROCESSED                        0xFE
 #define ACK_COMMAND_PROCESSED                         0xFF
 

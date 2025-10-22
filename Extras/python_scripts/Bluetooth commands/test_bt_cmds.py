@@ -1133,9 +1133,9 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
             self.shimmer.bluetooth_port.send_bluetooth([shimmer_comms_bluetooth.BtCmds.TOGGLE_LED_COMMAND])
             self.bt_cmd_test_wait_for_ack()
 
-    def test_094_dummy_command(self):
-        print("Test 094 - DummyCommand")
-        self.shimmer.bluetooth_port.send_bluetooth([shimmer_comms_bluetooth.BtCmds.DUMMY_COMMAND])
+    def test_094_test_connection_command(self):
+        print("Test 094 - Test Connection Command")
+        self.shimmer.bluetooth_port.send_bluetooth([shimmer_comms_bluetooth.BtCmds.TEST_CONNECTION_COMMAND])
         self.bt_cmd_test_wait_for_ack()
 
     # TODO decide what to do about this command
@@ -1258,8 +1258,15 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
                                         shimmer_comms_bluetooth.BtCmds.GET_ALT_MAG_CALIBRATION_COMMAND,
                                         shimmer_comms_bluetooth.BtCmds.ALT_MAG_CALIBRATION_RESPONSE)
 
-    def test_104_factory_test_bluetooth(self):
+    def test_104_dummy_command(self):
+        print("Test 104 - Dummy Command")
+        self.shimmer.bluetooth_port.send_bluetooth([shimmer_comms_bluetooth.BtCmds.DUMMY_COMMAND])
+        response = self.shimmer.bluetooth_port.wait_for_response(1)
+        self.assertTrue(len(response) == 0, "Byte received for dummy command")
+
+    def test_105_factory_test_bluetooth(self):
         tx_bytes = 0
+        print("Test 105")
         print(Fore.LIGHTMAGENTA_EX + "Factory Test Start")
         self.shimmer.bluetooth_port.send_bluetooth([shimmer_comms_bluetooth.BtCmds.SET_FACTORY_TEST, tx_bytes])
         self.shimmer.bluetooth_port.wait_for_ack(2000)
@@ -1271,7 +1278,7 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
                 print(Fore.LIGHTMAGENTA_EX + "Factory Test End")
                 break
 
-    def test_105_reset_config_and_calib_after_testing(self):
+    def test_106_reset_config_and_calib_after_testing(self):
         print("\r\nResetting Shimmer's config and calibration\r\n")
         self.test_002_reset_default_config(True)
         self.test_003_reset_default_calib(True)
