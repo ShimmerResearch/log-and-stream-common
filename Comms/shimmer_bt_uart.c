@@ -538,8 +538,11 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 
         switch (data)
         {
-          case INQUIRY_COMMAND:
           case DUMMY_COMMAND:
+            /* No action needed, line up the DMA to wait for the next cmd */
+            setDmaWaitingForResponse(1U);
+            break;
+          case INQUIRY_COMMAND:
           case GET_SAMPLING_RATE_COMMAND:
           case TOGGLE_LED_COMMAND:
           case START_STREAMING_COMMAND:
@@ -815,10 +818,6 @@ void ShimBt_processCmd(void)
       case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
       {
         getCmdWaitingResponse = gAction;
-        break;
-      }
-      case DUMMY_COMMAND:
-      {
         break;
       }
       case TOGGLE_LED_COMMAND:
