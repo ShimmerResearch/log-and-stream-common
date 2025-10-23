@@ -127,7 +127,7 @@ uint8_t ShimSd_test2(void)
 
 FRESULT ShimSd_mount(sd_mount_state_t val)
 {
-  FRESULT result;
+  FRESULT result = FR_OK;
   if (val == SD_MOUNT)
   {
 #if _FATFS == FATFS_V_0_08B
