@@ -32,7 +32,7 @@
 #endif
 #endif
 
-#define TEST_TEXT_LEN             40
+#define TEST_TEXT_LEN 40
 
 FATFS fatfs; //File object
 
