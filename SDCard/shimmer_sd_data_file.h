@@ -12,9 +12,6 @@
 
 #include "ff.h"
 
-#define FATFS_V_0_08B     8237
-#define FATFS_V_0_12C     68300
-
 //sd card write buffer size
 #define SD_WRITE_BUF_SIZE 512
 
@@ -26,14 +23,6 @@
 
 #define BIN_FILE_SPLIT_TIME_TICKS (32768 * 3600) //1 hr
 #define BIN_FILE_SYNC_TIME_TICKS  (32768 * 60)   //1 minute
-
-#define TEST_TEXT_LEN             40
-
-typedef enum
-{
-  SD_UNMOUNT,
-  SD_MOUNT
-} sd_mount_state_t;
 
 void ShimSdDataFile_init(void);
 void ShimSdDataFile_resetVars(void);
@@ -54,12 +43,5 @@ uint8_t ShimSdDataFile_isFileStatusOk(void);
 
 uint8_t *ShimSdDataFile_fileNamePtrGet(void);
 void ShimSdDataFile_prepareSDBuffHead(void);
-
-//TODO move to general ShimSd source file?
-uint8_t ShimSd_test1(void);
-uint8_t ShimSd_test2(void);
-FRESULT ShimSd_mount(sd_mount_state_t val);
-FRESULT ShimSd_setFileTimestamp(char *path);
-void ShimSd_findError(uint8_t err, uint8_t *name);
 
 #endif /* SHIMMER_SD_H_ */
