@@ -590,7 +590,7 @@ uint8_t ShimSd_test2(void)
 #endif
   FIL SDFile;
 
-  if (ShimSd_mount(1) != FR_OK)
+  if (ShimSd_mount(SD_MOUNT) != FR_OK)
   {
     shimmerStatus.sdBadFile = 1;
   }
@@ -627,15 +627,15 @@ uint8_t ShimSd_test2(void)
     }
 #endif
   }
-  ShimSd_mount(0);
+  ShimSd_mount(SD_UNMOUNT);
 #endif
   return res;
 }
 
-FRESULT ShimSd_mount(uint8_t val)
+FRESULT ShimSd_mount(sd_mount_state_t val)
 {
   FRESULT result;
-  if (1 == val)
+  if (val == SD_MOUNT)
   {
 #if _FATFS == FATFS_V_0_08B
     result = f_mount(0, &fatfs);
