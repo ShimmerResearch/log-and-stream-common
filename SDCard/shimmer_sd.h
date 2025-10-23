@@ -10,6 +10,8 @@
 
 #include <stdint.h>
 
+#include "log_and_stream_definitions.h"
+
 #if defined(SHIMMER3)
 #include "ff.h"
 #elif defined(SHIMMER3R)
