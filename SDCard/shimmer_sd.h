@@ -20,12 +20,12 @@
 #endif
 #endif
 
-#define FATFS_V_0_08B     8237
-#define FATFS_V_0_12C     68300
+#define FATFS_V_0_08B       8237
+#define FATFS_V_0_12C       68300
 
 /* Tuneable delay for the USB-SD bridge to settle before CD assert */
-#define SD_PC_STABILIZE_MS 300 /* 300–500ms has proven robust on macOS */
-#define SD_MCU_STABILIZE_MS 50 /* 50ms has proven robust */
+#define SD_PC_STABILIZE_MS  300 /* 300–500ms has proven robust on macOS */
+#define SD_MCU_STABILIZE_MS 50  /* 50ms has proven robust */
 
 typedef enum
 {
@@ -45,6 +45,5 @@ uint8_t ShimSd_test2(void);
 FRESULT ShimSd_mount(sd_mount_state_t val);
 FRESULT ShimSd_setFileTimestamp(char *path);
 void ShimSd_findError(uint8_t err, uint8_t *name);
-
 
 #endif /* LOG_AND_STREAM_COMMON_SDCARD_SHIMMER_SD_H_ */
