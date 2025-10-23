@@ -29,6 +29,12 @@
 
 #define TEST_TEXT_LEN             40
 
+typedef enum
+{
+  SD_UNMOUNT,
+  SD_MOUNT
+} sd_mount_state_t;
+
 void ShimSdDataFile_init(void);
 void ShimSdDataFile_resetVars(void);
 void ShimSdDataFile_setFileNameIfEmpty(void);
@@ -52,7 +58,7 @@ void ShimSdDataFile_prepareSDBuffHead(void);
 //TODO move to general ShimSd source file?
 uint8_t ShimSd_test1(void);
 uint8_t ShimSd_test2(void);
-FRESULT ShimSd_mount(uint8_t val);
+FRESULT ShimSd_mount(sd_mount_state_t val);
 FRESULT ShimSd_setFileTimestamp(char *path);
 void ShimSd_findError(uint8_t err, uint8_t *name);
 
