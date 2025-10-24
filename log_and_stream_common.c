@@ -23,6 +23,7 @@ void LogAndStream_init(void)
   ShimTask_init();
   ShimBatt_init();
   ShimConfig_reset();
+  ShimSd_init();
   ShimSdDataFile_init();
   ShimSdCfgFile_init();
   ShimSdHead_reset();
