@@ -310,11 +310,6 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     shimmerStatus.btStreaming = 0;
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
     ShimTask_clear(TASK_STREAMDATA);
-
-    if (enableDockUartIfDocked && shimmerStatus.docked && !shimmerStatus.sdLogging)
-    {
-      DockUart_init();
-    }
   }
 
   /* Both logging and streaming have been stopped, so we can stop sensing. */
@@ -327,6 +322,11 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     sensing.startTs = 0;
     sensing.isSampling = SAMPLE_NOT_READY;
     ShimSens_stopPeripherals();
+
+    if (enableDockUartIfDocked && shimmerStatus.docked) /* Moved this here because it was causing WDT trigger for S3 when in line 313 */
+    {
+      DockUart_init();
+    }
 
     ShimSens_stopSensingWrapup();
 
