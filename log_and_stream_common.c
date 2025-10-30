@@ -91,7 +91,6 @@ void LogAndStream_syncConfigAndCalibOnSd(void)
   }
 
   ShimSens_configureChannels();
-  ShimSens_startLoggingIfUndockStartEnabled();
 }
 
 uint8_t LogAndStream_isSdInfoSyncDelayed(void)
@@ -264,7 +263,7 @@ void LogAndStream_setupUndock(void)
   Board_dockDetectN(1);
   Board_setSdPower(0);
 
-  ShimBt_instreamStatusRespSend();
+  //ShimBt_instreamStatusRespSend();
 
   if (LogAndStream_checkSdInSlot())
   {
@@ -286,6 +285,7 @@ void LogAndStream_setupUndock(void)
         LogAndStream_setSdInfoSyncDelayed(1);
       }
     }
+    ShimSens_startLoggingIfUndockStartEnabled();
   }
 }
 
