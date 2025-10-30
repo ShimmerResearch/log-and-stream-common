@@ -372,7 +372,7 @@ void ShimSens_stopPeripherals(void)
   }
 #endif
 
-  if (ShimConfig_getStoredConfig()->expansionBoardPower)
+  if (ShimConfig_isExpansionBoardPwrEnabled())
   { //EXT_RESET_N
     Board_setExpansionBrdPower(0);
   }
@@ -632,6 +632,10 @@ void ShimSens_startLoggingIfUndockStartEnabled(void)
 #endif
   {
     ShimTask_setStartLoggingIfReady();
+  }
+  else//if start sd logging  not triggered on undock.
+  {
+      ShimBt_instreamStatusRespSend();
   }
 }
 
