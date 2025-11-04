@@ -28,5 +28,11 @@ void LogAndStream_setupDock(void);
 void LogAndStream_setupUndock(void);
 uint8_t LogAndStream_checkSdInSlot(void);
 void LogAndStream_processDaughterCardId(void);
+#if defined(SHIMMER3R)
+void LogAndStream_generateUsbDiskDriveId(char *usbDeviceIdStr);
+void LogAndStream_generateUsbMscId(char *usbDeviceIdStr);
+void LogAndStream_generateUsbCdcId(char *usbDeviceIdStr);
+void LogAndStream_generateUsbCompositeDeviceId(char *usbDeviceIdStr);
+#endif /* defined(SHIMMER3R) */
 
 #endif /* LOG_AND_STREAM_COMMON_LOG_AND_STREAM_COMMON_H_ */
