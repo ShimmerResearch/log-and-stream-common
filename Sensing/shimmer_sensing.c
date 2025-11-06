@@ -480,11 +480,13 @@ uint8_t ShimSens_sampleTimerTriggered(void)
 #endif /* SAVE_DATA_FROM_RTC_INT */
       sensing.isSampling = SAMPLING_IN_PROGRESS;
       ShimSens_saveTimestampToPacket();
-      platform_gatherData();
+      return platform_gatherData();
 #if SAVE_DATA_FROM_RTC_INT
     }
 #endif /* SAVE_DATA_FROM_RTC_INT */
   }
+
+  return 0;
 }
 
 void ShimSens_stepInit(void)
