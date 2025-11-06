@@ -229,10 +229,10 @@ void ShimSens_startSensing(void);
 void ShimSens_stopSensing(uint8_t enableDockUartIfDocked);
 void ShimSens_stopPeripherals(void);
 void ShimSens_stopSensingWrapup(void);
-void ShimSens_streamData(void);
+void ShimSens_gatherData(void);
 void ShimSens_bufPoll(void);
 void ShimSens_saveTimestampToPacket(void);
-void ShimSens_gatherData(void);
+uint8_t ShimSens_sampleTimerTriggered(void);
 
 void ShimSens_stepInit(void);
 void ShimSens_adcCompleteCb(void);

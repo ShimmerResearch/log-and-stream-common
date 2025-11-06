@@ -98,8 +98,8 @@ void ShimTask_NORM_manage(void)
         /* SD Sync - Node */
         ShimSdSync_nodeR10();
         break;
-      case TASK_STREAMDATA:
-        ShimSens_streamData();
+      case TASK_GATHER_DATA:
+        ShimSens_gatherData();
         break;
 #if defined(SHIMMER3)
       case TASK_SAMPLE_MPU9150_MAG:
