@@ -167,37 +167,37 @@ void ShimTask_NORM_manage(void)
         break;
 
       case TASK_BT_ERROR_RTS_LOCK:
-          BlinkTimerStop();
-          Board_ledOff(LED_ALL);
-          while (1)
-          {
-            __delay_cycles(200 * 24000L); //200ms
-            Board_ledToggle(LED_LWR_RED);
-            Board_ledToggle(LED_LWR_GREEN);
-            Board_ledToggle(LED_LWR_YELLOW);
-          }
+        BlinkTimerStop();
+        Board_ledOff(LED_ALL);
+        while (1)
+        {
+          __delay_cycles(200 * 24000L); //200ms
+          Board_ledToggle(LED_LWR_RED);
+          Board_ledToggle(LED_LWR_GREEN);
+          Board_ledToggle(LED_LWR_YELLOW);
+        }
         break;
       case TASK_BT_ERROR_REBOOT:
-          BlinkTimerStop();
-          Board_ledOff(LED_ALL);
-          while (1)
-          {
-            __delay_cycles(200 * 24000L); //200ms
-            Board_ledToggle(LED_UPR_BLUE);
-            Board_ledToggle(LED_UPR_GREEN);
-          }
+        BlinkTimerStop();
+        Board_ledOff(LED_ALL);
+        while (1)
+        {
+          __delay_cycles(200 * 24000L); //200ms
+          Board_ledToggle(LED_UPR_BLUE);
+          Board_ledToggle(LED_UPR_GREEN);
+        }
         break;
 
       case TASK_BT_BLOCKAGE:
-          BlinkTimerStop();
-          Board_ledOff(LED_ALL);
+        BlinkTimerStop();
+        Board_ledOff(LED_ALL);
+        Board_ledToggle(LED_LWR_GREEN);
+        while (1)
+        {
+          __delay_cycles(200 * 24000L); //200ms
           Board_ledToggle(LED_LWR_GREEN);
-          while (1)
-          {
-            __delay_cycles(200 * 24000L); //200ms
-            Board_ledToggle(LED_LWR_GREEN);
-            Board_ledToggle(LED_UPR_GREEN);
-          }
+          Board_ledToggle(LED_UPR_GREEN);
+        }
         break;
 
       default:

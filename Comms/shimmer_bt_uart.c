@@ -2701,25 +2701,25 @@ uint8_t ShimBt_isBtClassicCurrentlyEnabled(void)
 
 uint8_t ShimBt_checkForBtDataRateTestBlockage(void)
 {
-    if (btDataRateTestState && shimmerStatus.btConnected)
+  if (btDataRateTestState && shimmerStatus.btConnected)
+  {
+    if (btDataRateTestCounter == btDataRateTestCounterSaved)
     {
-        if (btDataRateTestCounter == btDataRateTestCounterSaved)
-        {
-            dataRateTestBlockageCounter++;
-        }
-        else
-        {
-            dataRateTestBlockageCounter = 0;
-        }
-
-        /* Each count is 100ms. Checking for a blockage longer than 2s */
-        if (dataRateTestBlockageCounter > 20)
-        {
-            ShimTask_NORM_set(TASK_BT_BLOCKAGE);
-            return 1;
-        }
-
-        btDataRateTestCounterSaved = btDataRateTestCounter;
+      dataRateTestBlockageCounter++;
     }
-    return 0;
+    else
+    {
+      dataRateTestBlockageCounter = 0;
+    }
+
+    /* Each count is 100ms. Checking for a blockage longer than 2s */
+    if (dataRateTestBlockageCounter > 20)
+    {
+      ShimTask_NORM_set(TASK_BT_BLOCKAGE);
+      return 1;
+    }
+
+    btDataRateTestCounterSaved = btDataRateTestCounter;
+  }
+  return 0;
 }
