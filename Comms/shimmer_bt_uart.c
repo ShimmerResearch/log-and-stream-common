@@ -61,8 +61,10 @@ uint16_t infomemOffset, dcMemOffset, calibRamOffset;
 uint8_t exgLength, exgChip, exgStartAddr;
 
 uint8_t btDataRateTestState;
+volatile uint8_t dataRateTestBlockageCounter;
 #if defined(SHIMMER3)
 uint32_t btDataRateTestCounter;
+volatile uint32_t btDataRateTestCounterSaved;
 #else
 uint8_t dataRateTestTxPacket[] = { DATA_RATE_TEST_RESPONSE, 0, 0, 0, 0 };
 #endif
@@ -2315,6 +2317,8 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
     /* Revert to default state if changed */
     ShimBt_resetBtResponseVars();
 
+    setRn4678ConnectionState(RN4678_DISCONNECTED);
+
     /* Check BT module configuration after disconnection in case
      * sensor configuration (i.e., BT on vs. BT off vs. SD Sync) was changed
      *  during the last connection. */
@@ -2523,6 +2527,8 @@ void ShimBt_setDataRateTestState(uint8_t state)
 #else
   *((uint32_t *) &dataRateTestTxPacket[1]) = 0;
 #endif
+  btDataRateTestCounterSaved = 0;
+  dataRateTestBlockageCounter = 0;
 }
 
 uint8_t ShimBt_getDataRateTestState(void)
@@ -2691,4 +2697,29 @@ uint8_t ShimBt_isBleCurrentlyEnabled(void)
 uint8_t ShimBt_isBtClassicCurrentlyEnabled(void)
 {
   return btClassicCurrentlyEnabled;
+}
+
+uint8_t ShimBt_checkForBtDataRateTestBlockage(void)
+{
+    if (btDataRateTestState && shimmerStatus.btConnected)
+    {
+        if (btDataRateTestCounter == btDataRateTestCounterSaved)
+        {
+            dataRateTestBlockageCounter++;
+        }
+        else
+        {
+            dataRateTestBlockageCounter = 0;
+        }
+
+        /* Each count is 100ms. Checking for a blockage longer than 2s */
+        if (dataRateTestBlockageCounter > 20)
+        {
+            ShimTask_NORM_set(TASK_BT_BLOCKAGE);
+            return 1;
+        }
+
+        btDataRateTestCounterSaved = btDataRateTestCounter;
+    }
+    return 0;
 }
