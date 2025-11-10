@@ -91,9 +91,10 @@ uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
 #if defined(SHIMMER3)
 uint8_t ShimEeprom_checkBtErrorCounts(void)
 {
-  if (eepromBtSettings.btCntDisconnectWhileStreaming == 0xFF
-      || eepromBtSettings.btCntUnsolicitedReboot == 0xFF || eepromBtSettings.btCntRtsLockup == 0xFF
-      || eepromBtSettings.btCntDataRateTestBlockage == 0xFF)
+  if (eepromBtSettings.btCntDisconnectWhileStreaming == 0xFFFF
+      || eepromBtSettings.btCntUnsolicitedReboot == 0xFFFF
+      || eepromBtSettings.btCntRtsLockup == 0xFFFF
+      || eepromBtSettings.btCntDataRateTestBlockage == 0xFFFF)
   {
     ShimEeprom_resetBtErrorCounts();
     return 1;
