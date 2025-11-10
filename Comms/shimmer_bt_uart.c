@@ -2309,7 +2309,7 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   else
   { //BT is disconnected
     //TODO fix cross-reference to ShimmerDriver
-    if(shimmerStatus.btStreaming || ShimBt_getDataRateTestState())
+    if (shimmerStatus.btStreaming || ShimBt_getDataRateTestState())
     {
       saveBtError(BT_ERROR_DISCONNECT_WHILE_STREAMING);
     }

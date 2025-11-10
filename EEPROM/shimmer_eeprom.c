@@ -91,7 +91,7 @@ uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
 #if defined(SHIMMER3)
 uint8_t ShimEeprom_checkBtErrorCounts(void)
 {
-  if(eepromBtSettings.btCntRev != BT_ERROR_COUNT_REV)
+  if (eepromBtSettings.btCntRev != BT_ERROR_COUNT_REV)
   {
     eepromBtSettings.btCntDisconnectWhileStreaming == 0;
     eepromBtSettings.btCntUnsolicitedReboot == 0;
