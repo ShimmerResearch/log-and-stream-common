@@ -1431,7 +1431,7 @@ void ShimBt_processCmd(void)
         {
           sendNack = 1;
         }
-break;
+        break;
       }
       case ACK_COMMAND_PROCESSED:
       {
