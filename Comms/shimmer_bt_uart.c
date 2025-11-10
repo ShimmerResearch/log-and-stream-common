@@ -60,10 +60,10 @@ uint16_t infomemOffset, dcMemOffset, calibRamOffset;
 //ExG
 uint8_t exgLength, exgChip, exgStartAddr;
 
-uint8_t btDataRateTestState;
+volatile uint8_t btDataRateTestState;
 volatile uint8_t dataRateTestBlockageCounter;
 #if defined(SHIMMER3)
-uint32_t btDataRateTestCounter;
+volatile uint32_t btDataRateTestCounter;
 volatile uint32_t btDataRateTestCounterSaved;
 #else
 uint8_t dataRateTestTxPacket[] = { DATA_RATE_TEST_RESPONSE, 0, 0, 0, 0 };
