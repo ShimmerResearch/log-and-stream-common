@@ -21,10 +21,6 @@
 
 #define EEPROM_AVAILABLE_SIZE (CAT24C16_TOTAL_SIZE - CAT24C16_PAGE_SIZE)
 
-#if defined(SHIMMER3)
-#define BT_ERROR_COUNT_REV 0
-#endif
-
 //Indices of important daughter card information
 enum EEPROM_HARDWARE_REVISON
 {
@@ -86,12 +82,11 @@ typedef union
     uint8_t unusedIdx3Bit7   : 1;
 
 #if defined(SHIMMER3)
-    uint8_t btCntRev;
     uint16_t btCntDisconnectWhileStreaming;
     uint16_t btCntUnsolicitedReboot;
     uint16_t btCntRtsLockup;
-    uint16_t btCntBlockage;
-    uint8_t padding[4];
+    uint16_t btCntDataRateTestBlockage;
+    uint8_t padding[5];
 #else
     uint8_t padding[13];
 #endif
