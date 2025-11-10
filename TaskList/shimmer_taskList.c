@@ -166,37 +166,10 @@ void ShimTask_NORM_manage(void)
         InitialiseBtAfterBoot();
         break;
 
-      case TASK_BT_ERROR_RTS_LOCK:
-        BlinkTimerStop();
-        Board_ledOff(LED_ALL);
-        while (1)
+      case TASK_UPDATE_DEBUG_COUNT:
+        if (ShimEeprom_isPresent())
         {
-          __delay_cycles(200 * 24000L); //200ms
-          Board_ledToggle(LED_LWR_RED);
-          Board_ledToggle(LED_LWR_GREEN);
-          Board_ledToggle(LED_LWR_YELLOW);
-        }
-        break;
-      case TASK_BT_ERROR_REBOOT:
-        BlinkTimerStop();
-        Board_ledOff(LED_ALL);
-        while (1)
-        {
-          __delay_cycles(200 * 24000L); //200ms
-          Board_ledToggle(LED_UPR_BLUE);
-          Board_ledToggle(LED_UPR_GREEN);
-        }
-        break;
-
-      case TASK_BT_BLOCKAGE:
-        BlinkTimerStop();
-        Board_ledOff(LED_ALL);
-        Board_ledToggle(LED_LWR_GREEN);
-        while (1)
-        {
-          __delay_cycles(200 * 24000L); //200ms
-          Board_ledToggle(LED_LWR_GREEN);
-          Board_ledToggle(LED_UPR_GREEN);
+          ShimEeprom_writeRadioDetails();
         }
         break;
 

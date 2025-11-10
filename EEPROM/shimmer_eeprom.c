@@ -88,6 +88,21 @@ uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
   );
 }
 
+#if defined(SHIMMER3)
+uint8_t ShimEeprom_checkBtErrorCounts(void)
+{
+  if(eepromBtSettings.btCntRev != BT_ERROR_COUNT_REV)
+  {
+    eepromBtSettings.btCntDisconnectWhileStreaming == 0;
+    eepromBtSettings.btCntUnsolicitedReboot == 0;
+    eepromBtSettings.btCntRtsLockup == 0;
+    eepromBtSettings.btCntBlockage == 0;
+    return 1;
+  }
+  return 0;
+}
+#endif
+
 gEepromBtSettings *ShimEeprom_getRadioDetails(void)
 {
   return &eepromBtSettings;

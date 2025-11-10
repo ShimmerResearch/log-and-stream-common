@@ -2268,6 +2268,8 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   if (isConnected)
   { //BT is connected
     ShimBt_resetBtRxVariablesOnConnect();
+    //TODO fix cross-reference to ShimmerDriver
+    resetLatestBtError();
 
     if (shimmerStatus.sdSyncEnabled)
     {
@@ -2306,6 +2308,12 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   }
   else
   { //BT is disconnected
+    //TODO fix cross-reference to ShimmerDriver
+    if(shimmerStatus.btStreaming || ShimBt_getDataRateTestState())
+    {
+      saveBtError(BT_ERROR_DISCONNECT_WHILE_STREAMING);
+    }
+
     shimmerStatus.btstreamReady = 0;
     ShimTask_setStopStreaming();
 
@@ -2715,7 +2723,6 @@ uint8_t ShimBt_checkForBtDataRateTestBlockage(void)
     /* Each count is 100ms. Checking for a blockage longer than 2s */
     if (dataRateTestBlockageCounter > 20)
     {
-      ShimTask_NORM_set(TASK_BT_BLOCKAGE);
       return 1;
     }
 
