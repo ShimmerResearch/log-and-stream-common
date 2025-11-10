@@ -605,6 +605,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
           case GET_ALT_MAG_CALIBRATION_COMMAND:
           case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
+          case RESET_BT_ERROR_COUNTS:
             gAction = data;
             ShimTask_set(TASK_BT_PROCESS_CMD);
             setDmaWaitingForResponse(1U);
@@ -1418,6 +1419,19 @@ void ShimBt_processCmd(void)
           sendNack = 1;
         }
         break;
+      }
+      case RESET_BT_ERROR_COUNTS:
+      {
+        if (ShimEeprom_isPresent())
+        {
+          ShimEeprom_resetBtErrorCounts();
+          ShimEeprom_writeRadioDetails();
+        }
+        else
+        {
+          sendNack = 1;
+        }
+break;
       }
       case ACK_COMMAND_PROCESSED:
       {

@@ -95,13 +95,18 @@ uint8_t ShimEeprom_checkBtErrorCounts(void)
       || eepromBtSettings.btCntUnsolicitedReboot == 0xFF || eepromBtSettings.btCntRtsLockup == 0xFF
       || eepromBtSettings.btCntDataRateTestBlockage == 0xFF)
   {
-    eepromBtSettings.btCntDisconnectWhileStreaming = 0;
-    eepromBtSettings.btCntUnsolicitedReboot = 0;
-    eepromBtSettings.btCntRtsLockup = 0;
-    eepromBtSettings.btCntDataRateTestBlockage = 0;
+    ShimEeprom_resetBtErrorCounts();
     return 1;
   }
   return 0;
+}
+
+void ShimEeprom_resetBtErrorCounts(void)
+{
+  eepromBtSettings.btCntDisconnectWhileStreaming = 0;
+  eepromBtSettings.btCntUnsolicitedReboot = 0;
+  eepromBtSettings.btCntRtsLockup = 0;
+  eepromBtSettings.btCntDataRateTestBlockage = 0;
 }
 #endif
 

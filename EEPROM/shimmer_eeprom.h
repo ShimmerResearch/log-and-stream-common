@@ -104,6 +104,7 @@ void ShimEeprom_updateRadioDetails(void);
 uint8_t ShimEeprom_areRadioDetailsIncorrect(void);
 #if defined(SHIMMER3)
 uint8_t ShimEeprom_checkBtErrorCounts(void);
+void ShimEeprom_resetBtErrorCounts(void);
 #endif
 gEepromBtSettings *ShimEeprom_getRadioDetails(void);
 uint8_t ShimEeprom_isBleEnabled(void);
