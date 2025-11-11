@@ -162,7 +162,7 @@ void ShimSens_startSensing(void)
   if (sdLogPendingStart || streamPendingStart)
   {
     shimmerStatus.sensing = 1;
-    sensing.isSampling = SAMPLE_NOT_READY;
+    sensing.samplingStatus = SAMPLING_PACKET_IDLE;
     ShimSens_configureChannels();
     if (ShimSens_getNumEnabledChannels() == 0)
     {
@@ -325,7 +325,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
 
     shimmerStatus.sensing = 0;
     sensing.startTs = 0;
-    sensing.isSampling = SAMPLE_NOT_READY;
+    sensing.samplingStatus = SAMPLING_PACKET_IDLE;
     ShimSens_stopPeripherals();
 
     ShimSens_stopSensingWrapup();
@@ -393,7 +393,7 @@ void ShimSens_gatherData(void)
   else if ((sensing.startTs == 0) || (sensing.latestTs - sensing.startTs < 1638))
   {
     sensing.startTs = 0xffffffffffffffff;
-    sensing.isSampling = SAMPLING_COMPLETE;
+    sensing.samplingStatus = SAMPLING_COMPLETE;
     return;
   }
   else
@@ -468,17 +468,17 @@ uint8_t ShimSens_sampleTimerTriggered(void)
   if (shimmerStatus.sensing && !shimmerStatus.configuring)
   {
     /* If previous packet is complete, write to BT/SD */
-    if (sensing.isSampling == SAMPLING_COMPLETE)
+    if (sensing.samplingStatus == SAMPLING_COMPLETE)
     {
       ShimSens_saveData();
     }
 
     /* If packet isn't currently underway, start a new one */
 #if SAVE_DATA_FROM_RTC_INT
-    if (sensing.isSampling != SAMPLING_IN_PROGRESS)
+    if (sensing.samplingStatus != SAMPLING_IN_PROGRESS)
     {
 #endif /* SAVE_DATA_FROM_RTC_INT */
-      sensing.isSampling = SAMPLING_IN_PROGRESS;
+      sensing.samplingStatus = SAMPLING_IN_PROGRESS;
       ShimSens_saveTimestampToPacket();
       return platform_gatherData();
 #if SAVE_DATA_FROM_RTC_INT
@@ -530,7 +530,7 @@ void ShimSens_stageCompleteCb(uint8_t stage)
   if (currentCbFlags == expectedCbFlags)
   {
 #if SAVE_DATA_FROM_RTC_INT
-    sensing.isSampling = SAMPLING_COMPLETE;
+    sensing.samplingStatus = SAMPLING_COMPLETE;
 #else  /* SAVE_DATA_FROM_RTC_INT */
     ShimTask_set(TASK_SAVEDATA);
 #endif /* SAVE_DATA_FROM_RTC_INT */
@@ -621,7 +621,7 @@ void ShimSens_saveData(void)
 #endif
 
   /* Data packet has moved off dataBuf, device is free to start new packet */
-  sensing.isSampling = SAMPLE_NOT_READY;
+  sensing.samplingStatus = SAMPLING_PACKET_IDLE;
 }
 
 uint8_t ShimSens_getNumEnabledChannels(void)

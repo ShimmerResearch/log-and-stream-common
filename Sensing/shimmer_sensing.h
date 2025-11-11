@@ -184,15 +184,12 @@ typedef enum
 {
   SAMPLING_COMPLETE = 0x00,
   SAMPLING_IN_PROGRESS = 0x01,
-  SAMPLE_NOT_READY = 0x02
-} SAMPLING_STATUS;
+  SAMPLING_PACKET_IDLE = 0x02
+} samplingStatus_t;
 
 typedef struct
 { //sensor data
-  //uint8_t     en;
-  //uint8_t     configuring;
-  //uint8_t     i2cSensor;
-  volatile uint8_t isSampling;
+  volatile samplingStatus_t samplingStatus;
   uint8_t isSdOperating;
   uint8_t isFileCreated;
   uint8_t inSdWr;
@@ -207,12 +204,9 @@ typedef struct
   uint8_t nbrI2cChans;
   uint8_t nbrSpiChans;
   uint8_t dataLen;
-  //uint8_t     sdlogEnabled;
-  //uint8_t     btStreamEnabled;
   uint64_t startTs;
   uint64_t latestTs;
   uint8_t dataBuf[100];
-  //STATTypeDef stat;
   DATAPTRTypeDef ptr;
 } SENSINGTypeDef;
 
