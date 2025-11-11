@@ -475,14 +475,15 @@ uint8_t ShimSens_sampleTimerTriggered(void)
 
     /* If packet isn't currently underway, start a new one */
 #if SAVE_DATA_FROM_RTC_INT
-//if (sensing.samplingStatus == SAMPLING_PACKET_IDLE)
-//{
+//TODO get working again. Have had to remove temporarily due to sampling lock up
+//    if (sensing.samplingStatus == SAMPLING_PACKET_IDLE)
+//    {
 #endif /* SAVE_DATA_FROM_RTC_INT */
-    sensing.samplingStatus = SAMPLING_IN_PROGRESS;
-    ShimSens_saveTimestampToPacket();
-    return platform_gatherData();
+      sensing.samplingStatus = SAMPLING_IN_PROGRESS;
+      ShimSens_saveTimestampToPacket();
+      return platform_gatherData();
 #if SAVE_DATA_FROM_RTC_INT
-//}
+//    }
 #endif /* SAVE_DATA_FROM_RTC_INT */
   }
 
