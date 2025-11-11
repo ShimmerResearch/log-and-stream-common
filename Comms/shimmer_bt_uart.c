@@ -61,8 +61,8 @@ uint16_t infomemOffset, dcMemOffset, calibRamOffset;
 uint8_t exgLength, exgChip, exgStartAddr;
 
 volatile uint8_t btDataRateTestState;
-volatile uint8_t dataRateTestBlockageCounter;
 #if defined(SHIMMER3)
+volatile uint8_t dataRateTestBlockageCounter;
 volatile uint32_t btDataRateTestCounter;
 volatile uint32_t btDataRateTestCounterSaved;
 #else
@@ -1422,6 +1422,7 @@ void ShimBt_processCmd(void)
       }
       case RESET_BT_ERROR_COUNTS:
       {
+#if defined(SHIMMER3)
         if (ShimEeprom_isPresent())
         {
           ShimEeprom_resetBtErrorCounts();
@@ -1431,6 +1432,9 @@ void ShimBt_processCmd(void)
         {
           sendNack = 1;
         }
+#else
+        sendNack = 1;
+#endif
         break;
       }
       case ACK_COMMAND_PROCESSED:
@@ -2282,8 +2286,10 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   if (isConnected)
   { //BT is connected
     ShimBt_resetBtRxVariablesOnConnect();
+#if defined(SHIMMER3)
     //TODO fix cross-reference to ShimmerDriver
     resetLatestBtError();
+#endif
 
     if (shimmerStatus.sdSyncEnabled)
     {
@@ -2323,10 +2329,12 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   else
   { //BT is disconnected
     //TODO fix cross-reference to ShimmerDriver
+#if defined(SHIMMER3)
     if (shimmerStatus.btStreaming || ShimBt_getDataRateTestState())
     {
       saveBtError(BT_ERROR_DISCONNECT_WHILE_STREAMING);
     }
+#endif
 
     shimmerStatus.btstreamReady = 0;
     ShimTask_setStopStreaming();
@@ -2339,7 +2347,9 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
     /* Revert to default state if changed */
     ShimBt_resetBtResponseVars();
 
+#if defined(SHIMMER3)
     setRn4678ConnectionState(RN4678_DISCONNECTED);
+#endif
 
     /* Check BT module configuration after disconnection in case
      * sensor configuration (i.e., BT on vs. BT off vs. SD Sync) was changed
@@ -2546,11 +2556,11 @@ void ShimBt_setDataRateTestState(uint8_t state)
   btDataRateTestState = state;
 #if defined(SHIMMER3)
   btDataRateTestCounter = 0;
+  btDataRateTestCounterSaved = 0;
+  dataRateTestBlockageCounter = 0;
 #else
   *((uint32_t *) &dataRateTestTxPacket[1]) = 0;
 #endif
-  btDataRateTestCounterSaved = 0;
-  dataRateTestBlockageCounter = 0;
 }
 
 uint8_t ShimBt_getDataRateTestState(void)
@@ -2721,6 +2731,7 @@ uint8_t ShimBt_isBtClassicCurrentlyEnabled(void)
   return btClassicCurrentlyEnabled;
 }
 
+#if defined(SHIMMER3)
 uint8_t ShimBt_checkForBtDataRateTestBlockage(void)
 {
   if (btDataRateTestState && shimmerStatus.btConnected)
@@ -2744,3 +2755,4 @@ uint8_t ShimBt_checkForBtDataRateTestBlockage(void)
   }
   return 0;
 }
+#endif

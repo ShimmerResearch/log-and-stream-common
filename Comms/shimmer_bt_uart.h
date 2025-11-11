@@ -353,6 +353,8 @@ void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 __weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 uint8_t ShimBt_isBleCurrentlyEnabled(void);
 uint8_t ShimBt_isBtClassicCurrentlyEnabled(void);
+#if defined(SHIMMER3)
 uint8_t ShimBt_checkForBtDataRateTestBlockage(void);
+#endif
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */

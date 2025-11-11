@@ -166,12 +166,14 @@ void ShimTask_NORM_manage(void)
         InitialiseBtAfterBoot();
         break;
 
+#if defined(SHIMMER3)
       case TASK_UPDATE_DEBUG_COUNT:
         if (ShimEeprom_isPresent())
         {
           ShimEeprom_writeRadioDetails();
         }
         break;
+#endif
 
       default:
         break;
