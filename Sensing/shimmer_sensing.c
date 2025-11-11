@@ -475,14 +475,14 @@ uint8_t ShimSens_sampleTimerTriggered(void)
 
     /* If packet isn't currently underway, start a new one */
 #if SAVE_DATA_FROM_RTC_INT
-    if (sensing.samplingStatus != SAMPLING_IN_PROGRESS)
-    {
+//    if (sensing.samplingStatus == SAMPLING_PACKET_IDLE)
+//    {
 #endif /* SAVE_DATA_FROM_RTC_INT */
       sensing.samplingStatus = SAMPLING_IN_PROGRESS;
       ShimSens_saveTimestampToPacket();
       return platform_gatherData();
 #if SAVE_DATA_FROM_RTC_INT
-    }
+//    }
 #endif /* SAVE_DATA_FROM_RTC_INT */
   }
 
@@ -603,6 +603,7 @@ void ShimSens_saveData(void)
   if (shimmerStatus.sdLogging && !ShimSens_shouldStopLogging())
   {
     PeriStat_Set(STAT_PERI_SDMMC);
+    /* +1/-1 to skip the BT packet header that is stored within the buffer */
     ShimSdDataFile_writeToBuff(sensing.dataBuf + 1, sensing.dataLen - 1);
     PeriStat_Clr(STAT_PERI_SDMMC);
   }
