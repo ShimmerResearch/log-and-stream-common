@@ -479,11 +479,11 @@ uint8_t ShimSens_sampleTimerTriggered(void)
 //    if (sensing.samplingStatus == SAMPLING_PACKET_IDLE)
 //    {
 #endif /* SAVE_DATA_FROM_RTC_INT */
-      sensing.samplingStatus = SAMPLING_IN_PROGRESS;
-      ShimSens_saveTimestampToPacket();
-      return platform_gatherData();
+    sensing.samplingStatus = SAMPLING_IN_PROGRESS;
+    ShimSens_saveTimestampToPacket();
+    return platform_gatherData();
 #if SAVE_DATA_FROM_RTC_INT
-//    }
+//}
 #endif /* SAVE_DATA_FROM_RTC_INT */
   }
 
