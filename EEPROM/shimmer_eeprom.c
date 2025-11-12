@@ -5,7 +5,7 @@
  *      Author: MarkNolan
  */
 
-#include <EEPROM/shimmer_eeprom.h>
+#include "shimmer_eeprom.h"
 #include <stdint.h>
 
 #include "log_and_stream_externs.h"
@@ -62,7 +62,7 @@ void ShimEeprom_updateRadioDetails(void)
   if (isBtDeviceRn41orRN42())
   {
     eepromBtSettings.baudRate = BAUD_115200;
-    eepromBtSettings.bleEnabled = 0; //BLE not supprted in RN42
+    eepromBtSettings.bleEnabled = 0; //BLE not supported in RN42
   }
   else
   {

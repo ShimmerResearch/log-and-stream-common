@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <EEPROM/shimmer_eeprom.h>
+#include "EEPROM/shimmer_eeprom.h"
 
 #if defined(SHIMMER3)
 #include "../BMPX80/bmpX80.h"
