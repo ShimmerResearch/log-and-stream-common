@@ -147,7 +147,7 @@
 #define PPG_1           0x36
 #define PPG_2           0x37
 #endif
-#define DATA_BUF_SIZE                              256U /* serial buffer in bytes (power 2)  */
+#define DATA_BUF_SIZE 256U /* serial buffer in bytes (power 2)  */
 
 typedef struct
 { //data ptr (offset)
