@@ -52,7 +52,7 @@
 #include "shimmer_include.h"
 #endif
 
-#define SAVE_DATA_FROM_RTC_INT 0x1
+#define SAVE_DATA_FROM_RTC_INT 0x0
 
 #define FIRST_CH_BYTE_IDX      (1 + 3) //0x00 + timestamp
 
@@ -147,6 +147,7 @@
 #define PPG_1           0x36
 #define PPG_2           0x37
 #endif
+#define DATA_BUF_SIZE                              256U /* serial buffer in bytes (power 2)  */
 
 typedef struct
 { //data ptr (offset)
@@ -189,6 +190,15 @@ typedef enum
 
 typedef struct
 { //sensor data
+  volatile uint8_t isSampling;
+  uint64_t latestTs;
+  uint8_t dataBuf[DATA_BUF_SIZE];
+  uint8_t rdIdx;
+  uint8_t wrIdx;
+} PACKETBufferTypeDef;
+
+typedef struct
+{ //sensor data
   //uint8_t     en;
   //uint8_t     configuring;
   //uint8_t     i2cSensor;
@@ -211,7 +221,8 @@ typedef struct
   //uint8_t     btStreamEnabled;
   uint64_t startTs;
   uint64_t latestTs;
-  uint8_t dataBuf[100];
+  volatile uint8_t packetBufferIdx;
+  PACKETBufferTypeDef packetBuffers[2];
   //STATTypeDef stat;
   DATAPTRTypeDef ptr;
 } SENSINGTypeDef;

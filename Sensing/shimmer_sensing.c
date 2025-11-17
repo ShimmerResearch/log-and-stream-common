@@ -171,10 +171,14 @@ void ShimSens_startSensing(void)
       return;
     }
 
-    memset(sensing.dataBuf, 0, sizeof(sensing.dataBuf));
+    memset(&sensing.packetBuffers[0], 0, sizeof(sensing.packetBuffers[0]));
+    memset(&sensing.packetBuffers[1], 0, sizeof(sensing.packetBuffers[1]));
+
     /* Not needed due to memset above but explicitly setting DATA_PACKET for
      * clarity. */
-    sensing.dataBuf[0] = DATA_PACKET;
+    sensing.packetBuffers[0].dataBuf[0] = DATA_PACKET;
+    sensing.packetBuffers[1].dataBuf[0] = DATA_PACKET;
+
 
 #if defined(SHIMMER3R)
     Board_enableSensingPower(SENSE_PWR_SENSING, 1);
@@ -457,9 +461,9 @@ void ShimSens_saveTimestampToPacket(void)
     //}
 
     sensing.latestTs = RTC_get64();
-    sensing.dataBuf[sensing.ptr.ts] = sensing.latestTs & 0xff;
-    sensing.dataBuf[sensing.ptr.ts + 1] = (sensing.latestTs >> 8) & 0xff;
-    sensing.dataBuf[sensing.ptr.ts + 2] = (sensing.latestTs >> 16) & 0xff;
+    sensing.packetBuffers[sensing.packetBufferIdx].dataBuf[sensing.ptr.ts + 1] = (sensing.latestTs >> 8) & 0xff;
+    sensing.packetBuffers[sensing.packetBufferIdx].dataBuf[sensing.ptr.ts + 1] = (sensing.latestTs >> 8) & 0xff;
+    sensing.packetBuffers[sensing.packetBufferIdx].dataBuf[sensing.ptr.ts + 2] = (sensing.latestTs >> 16) & 0xff;
   }
 }
 
@@ -592,7 +596,7 @@ void ShimSens_saveData(void)
   if (shimmerStatus.sdLogging && !ShimSens_shouldStopLogging())
   {
     PeriStat_Set(STAT_PERI_SDMMC);
-    ShimSdDataFile_writeToBuff(sensing.dataBuf + 1, sensing.dataLen - 1);
+    ShimSdDataFile_writeToBuff(sensing.packetBuffers[sensing.packetBufferIdx].dataBuf + 1, sensing.dataLen - 1);
     PeriStat_Clr(STAT_PERI_SDMMC);
   }
 #endif
@@ -602,13 +606,14 @@ void ShimSens_saveData(void)
     uint8_t crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
     {
-      calculateCrcAndInsert(crcMode, sensing.dataBuf, sensing.dataLen);
+      calculateCrcAndInsert(crcMode, sensing.packetBuffers[sensing.packetBufferIdx].dataBuf, sensing.dataLen);
     }
-
-    ShimBt_writeToTxBufAndSend(sensing.dataBuf, sensing.dataLen + crcMode, SENSOR_DATA);
+    ShimBt_writeToTxBufAndSend(sensing.packetBuffers[sensing.packetBufferIdx].dataBuf, sensing.dataLen + crcMode, SENSOR_DATA);
   }
 #endif
-
+ __disable_irq();
+  sensing.packetBufferIdx ^= 1;
+  __enable_irq();
   /* Data packet has moved off dataBuf, device is free to start new packet */
   sensing.isSampling = SAMPLING_COMPLETE;
 }
