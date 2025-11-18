@@ -461,9 +461,12 @@ void ShimSens_saveTimestampToPacket(void)
     //}
 
     sensing.latestTs = RTC_get64();
-    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts] = (sensing.latestTs) & 0xff;
-    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts + 1] = (sensing.latestTs >> 8) & 0xff;
-    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts + 2] = (sensing.latestTs >> 16) & 0xff;
+    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts]
+        = (sensing.latestTs) & 0xff;
+    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts + 1]
+        = (sensing.latestTs >> 8) & 0xff;
+    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts + 2]
+        = (sensing.latestTs >> 16) & 0xff;
   }
 }
 
@@ -603,7 +606,8 @@ void ShimSens_saveData(void)
   if (shimmerStatus.sdLogging && !ShimSens_shouldStopLogging())
   {
     PeriStat_Set(STAT_PERI_SDMMC);
-    ShimSdDataFile_writeToBuff(sensing.packetBuffers[sensing.dataTxBufIdx].dataBuf + 1, sensing.dataLen - 1);
+    ShimSdDataFile_writeToBuff(
+        sensing.packetBuffers[sensing.dataTxBufIdx].dataBuf + 1, sensing.dataLen - 1);
     PeriStat_Clr(STAT_PERI_SDMMC);
   }
 #endif
@@ -622,7 +626,7 @@ void ShimSens_saveData(void)
 #endif
 
   /* Data packet has moved off dataBuf, device is free to start new packet */
- // sensing.isSampling = SAMPLING_COMPLETE;
+  //sensing.isSampling = SAMPLING_COMPLETE;
 }
 
 uint8_t ShimSens_getNumEnabledChannels(void)
