@@ -193,8 +193,9 @@ typedef struct
   volatile uint8_t isSampling;
   uint64_t latestTs;
   uint8_t dataBuf[DATA_BUF_SIZE];
-  uint8_t rdIdx;
-  uint8_t wrIdx;
+//  uint8_t rdIdx;
+//  uint8_t wrIdx;
+  uint64_t startTs;
 } PACKETBufferTypeDef;
 
 typedef struct
@@ -221,7 +222,8 @@ typedef struct
   //uint8_t     btStreamEnabled;
   uint64_t startTs;
   uint64_t latestTs;
-  volatile uint8_t packetBufferIdx;
+  volatile uint8_t dataWrBufIdx;
+  volatile uint8_t dataTxBufIdx;
   PACKETBufferTypeDef packetBuffers[2];
   //STATTypeDef stat;
   DATAPTRTypeDef ptr;
