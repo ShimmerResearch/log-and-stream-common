@@ -54,7 +54,11 @@
 
 #define SAVE_DATA_FROM_RTC_INT 0x0
 
-#define FIRST_CH_BYTE_IDX      (1 + 3) //0x00 + timestamp
+#define PACKET_HEADER_IDX 0 // 0x00
+#define PACKET_HEADER_LEN 1
+#define PACKET_TIMESTAMP_IDX 1
+#define PACKET_TIMESTAMP_LEN 3
+#define FIRST_CH_BYTE_IDX      (PACKET_HEADER_LEN + PACKET_TIMESTAMP_LEN)
 
 #if defined(SHIMMER3)
 /* 3xanalogAccel + 3xdigiGyro + 3xdigiMag +
@@ -147,7 +151,10 @@
 #define PPG_1           0x36
 #define PPG_2           0x37
 #endif
-#define DATA_BUF_SIZE 256U /* serial buffer in bytes (power 2)  */
+
+#define DATA_BUF_SIZE 100U
+#define DATA_BUF_QTY 4U /* packet buffer (power 2)  */
+#define DATA_BUF_MASK                              (DATA_BUF_QTY - 1UL)
 
 typedef struct
 { //data ptr (offset)
@@ -185,17 +192,14 @@ typedef enum
 {
   SAMPLING_COMPLETE = 0x00,
   SAMPLING_IN_PROGRESS = 0x01,
-  SAMPLE_NOT_READY = 0x02
-} SAMPLING_STATUS;
+  SAMPLING_PACKET_IDLE = 0x02
+} samplingStatus_t;
 
 typedef struct
 { //sensor data
-  volatile uint8_t isSampling;
-  uint64_t latestTs;
+  volatile samplingStatus_t samplingStatus;
+  volatile uint64_t timestampTicks;
   uint8_t dataBuf[DATA_BUF_SIZE];
-  //uint8_t rdIdx;
-  //uint8_t wrIdx;
-  uint64_t startTs;
 } PACKETBufferTypeDef;
 
 typedef struct
@@ -203,7 +207,6 @@ typedef struct
   //uint8_t     en;
   //uint8_t     configuring;
   //uint8_t     i2cSensor;
-  volatile uint8_t isSampling;
   uint8_t isSdOperating;
   uint8_t isFileCreated;
   uint8_t inSdWr;
@@ -221,10 +224,10 @@ typedef struct
   //uint8_t     sdlogEnabled;
   //uint8_t     btStreamEnabled;
   uint64_t startTs;
-  uint64_t latestTs;
-  volatile uint8_t dataWrBufIdx;
-  volatile uint8_t dataTxBufIdx;
-  PACKETBufferTypeDef packetBuffers[2];
+  volatile uint64_t latestTs;
+  volatile uint16_t packetBuffWrIdx;
+  volatile uint16_t packetBuffRdIdx;
+  PACKETBufferTypeDef packetBuffers[DATA_BUF_QTY];
   //STATTypeDef stat;
   DATAPTRTypeDef ptr;
 } SENSINGTypeDef;
@@ -269,5 +272,18 @@ void ShimSens_startLoggingIfUndockStartEnabled(void);
 uint8_t ShimSens_checkAutostopLoggingCondition(void);
 void ShimSens_currentExperimentLengthReset(void);
 void ShimSens_maxExperimentLengthSecsSet(uint16_t expLengthMins);
+uint8_t * ShimSens_getDataBuffAtWrIdx(void);
+PACKETBufferTypeDef * ShimSens_getPacketBuffAtWrIdx(void);
+PACKETBufferTypeDef * ShimSens_getPacketBuffAtRdIdx(void);
+void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll);
+void ShimSens_resetPacketBuffAll(void);
+void ShimSens_incrementPacketBuffWrIdx(void);
+void ShimSens_incrementPacketBuffReadIndex(void);
+uint8_t ShimSens_arePacketBuffsEmpty(void);
+uint8_t ShimSens_arePacketBuffsFull(void);
+uint8_t ShimSens_getPacketBuffFullCount(void);
+
+uint8_t ShimSens_getPacketBufRdIdx(void);
+uint8_t ShimSens_getPacketBufWrIdx(void);
 
 #endif //SHIMMER_SENSING_H
