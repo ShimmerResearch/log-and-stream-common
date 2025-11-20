@@ -54,10 +54,10 @@
 
 #define SAVE_DATA_FROM_RTC_INT 0x0
 
-#define PACKET_HEADER_IDX 0 // 0x00
-#define PACKET_HEADER_LEN 1
-#define PACKET_TIMESTAMP_IDX 1
-#define PACKET_TIMESTAMP_LEN 3
+#define PACKET_HEADER_IDX      0 //0x00
+#define PACKET_HEADER_LEN      1
+#define PACKET_TIMESTAMP_IDX   1
+#define PACKET_TIMESTAMP_LEN   3
 #define FIRST_CH_BYTE_IDX      (PACKET_HEADER_LEN + PACKET_TIMESTAMP_LEN)
 
 #if defined(SHIMMER3)
@@ -153,8 +153,8 @@
 #endif
 
 #define DATA_BUF_SIZE 100U
-#define DATA_BUF_QTY 4U /* packet buffer (power 2)  */
-#define DATA_BUF_MASK                              (DATA_BUF_QTY - 1UL)
+#define DATA_BUF_QTY  4U /* packet buffer (power 2)  */
+#define DATA_BUF_MASK (DATA_BUF_QTY - 1UL)
 
 typedef struct
 { //data ptr (offset)
@@ -272,9 +272,9 @@ void ShimSens_startLoggingIfUndockStartEnabled(void);
 uint8_t ShimSens_checkAutostopLoggingCondition(void);
 void ShimSens_currentExperimentLengthReset(void);
 void ShimSens_maxExperimentLengthSecsSet(uint16_t expLengthMins);
-uint8_t * ShimSens_getDataBuffAtWrIdx(void);
-PACKETBufferTypeDef * ShimSens_getPacketBuffAtWrIdx(void);
-PACKETBufferTypeDef * ShimSens_getPacketBuffAtRdIdx(void);
+uint8_t *ShimSens_getDataBuffAtWrIdx(void);
+PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void);
+PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void);
 void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll);
 void ShimSens_resetPacketBuffAll(void);
 void ShimSens_incrementPacketBuffWrIdx(void);
