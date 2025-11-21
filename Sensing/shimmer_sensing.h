@@ -190,15 +190,23 @@ typedef struct
 
 typedef enum
 {
-  SAMPLING_COMPLETE = 0x00,
+  SAMPLING_PACKET_IDLE = 0x00,
   SAMPLING_IN_PROGRESS = 0x01,
-  SAMPLING_PACKET_IDLE = 0x02
+  SAMPLING_COMPLETE = 0x02
 } samplingStatus_t;
+
+typedef enum
+{
+  FIRST_TIMESTAMP_IDLE,
+  FIRST_TIMESTAMP_PENDING_UPDATE,
+  FIRST_TIMESTAMP_UPDATED,
+  FIRST_TIMESTAMP_SAVED
+} firstTimeStampStatus_t;
 
 typedef struct
 { //sensor data
-  volatile samplingStatus_t samplingStatus;
-  volatile uint64_t timestampTicks;
+  samplingStatus_t samplingStatus;
+  uint64_t timestampTicks;
   uint8_t dataBuf[DATA_BUF_SIZE];
 } PACKETBufferTypeDef;
 
@@ -223,11 +231,12 @@ typedef struct
   uint8_t dataLen;
   //uint8_t     sdlogEnabled;
   //uint8_t     btStreamEnabled;
-  uint64_t startTs;
-  volatile uint64_t latestTs;
+  volatile firstTimeStampStatus_t firstTsFlag;
+  volatile uint64_t startTs;
+  volatile uint32_t latestTs;
   volatile uint16_t packetBuffWrIdx;
   volatile uint16_t packetBuffRdIdx;
-  PACKETBufferTypeDef packetBuffers[DATA_BUF_QTY];
+  volatile PACKETBufferTypeDef packetBuffers[DATA_BUF_QTY];
   //STATTypeDef stat;
   DATAPTRTypeDef ptr;
 } SENSINGTypeDef;
@@ -245,16 +254,19 @@ void ShimSens_startSensing(void);
 void ShimSens_stopSensing(uint8_t enableDockUartIfDocked);
 void ShimSens_stopPeripherals(void);
 void ShimSens_stopSensingWrapup(void);
-void ShimSens_streamData(void);
+void ShimSens_gatherData(void);
 void ShimSens_bufPoll(void);
 void ShimSens_saveTimestampToPacket(void);
-void ShimSens_gatherData(void);
+uint8_t ShimSens_sampleTimerTriggered(void);
 
 void ShimSens_stepInit(void);
 void ShimSens_adcCompleteCb(void);
 void ShimSens_i2cCompleteCb(void);
 void ShimSens_spiCompleteCb(void);
 void ShimSens_stageCompleteCb(uint8_t stage);
+#if SKIP65MS
+uint8_t Skip65ms(void);
+#endif
 #if defined(SHIMMER4_SDK)
 void ShimSens_step1Start(void);
 void ShimSens_step2Start(void);
