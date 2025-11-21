@@ -461,17 +461,17 @@ void ShimSens_saveTimestampToPacket(void)
   packetBuf->timestampTicks = rtc32;
 
   /* store lowest 3 bytes (little-endian) */
-  packetBuf->dataBuf[sensing.ptr.ts + 0] = (uint8_t)(rtc32 >> 0);
-  packetBuf->dataBuf[sensing.ptr.ts + 1] = (uint8_t)(rtc32 >> 8);
-  packetBuf->dataBuf[sensing.ptr.ts + 2] = (uint8_t)(rtc32 >> 16);
+  packetBuf->dataBuf[sensing.ptr.ts + 0] = (uint8_t) (rtc32 >> 0);
+  packetBuf->dataBuf[sensing.ptr.ts + 1] = (uint8_t) (rtc32 >> 8);
+  packetBuf->dataBuf[sensing.ptr.ts + 2] = (uint8_t) (rtc32 >> 16);
 }
 
 uint8_t ShimSens_sampleTimerTriggered(void)
 {
   PACKETBufferTypeDef *packetBufPtr = ShimSens_getPacketBuffAtWrIdx();
-  if (shimmerStatus.sensing
-      && !ShimSens_arePacketBuffsFull()
-      && (packetBufPtr->samplingStatus == SAMPLING_PACKET_IDLE || packetBufPtr->samplingStatus == SAMPLING_IN_PROGRESS))
+  if (shimmerStatus.sensing && !ShimSens_arePacketBuffsFull()
+      && (packetBufPtr->samplingStatus == SAMPLING_PACKET_IDLE
+          || packetBufPtr->samplingStatus == SAMPLING_IN_PROGRESS))
   {
     /* If packet isn't currently underway, start a new one */
     packetBufPtr->samplingStatus = SAMPLING_IN_PROGRESS;
@@ -526,7 +526,7 @@ void ShimSens_stageCompleteCb(uint8_t stage)
 #if SKIP65MS
     if (Skip65ms())
     {
-      // has to re collect the init_ts
+      //has to re collect the init_ts
       sensing.firstTsFlag = FIRST_TIMESTAMP_PENDING_UPDATE;
       ShimSens_resetPacketBufferAtIdx(ShimSens_getPacketBufWrIdx(), 0);
       return;
@@ -536,14 +536,14 @@ void ShimSens_stageCompleteCb(uint8_t stage)
     ShimSens_getPacketBuffAtWrIdx()->samplingStatus = SAMPLING_COMPLETE;
 
     //TODO
-//    if (shimmerStatus.sdLogging && shimmerStatus.sdlogReady)
-//    {
-//      if (sensing.firstTsFlag == FIRST_TIMESTAMP_UPDATED)
-//      {
-//        sensing.firstTsFlag = FIRST_TIMESTAMP_SAVED;
-//        Timestamp0ToFirstFile();
-//      }
-//    }
+    //if (shimmerStatus.sdLogging && shimmerStatus.sdlogReady)
+    //{
+    //  if (sensing.firstTsFlag == FIRST_TIMESTAMP_UPDATED)
+    //  {
+    //    sensing.firstTsFlag = FIRST_TIMESTAMP_SAVED;
+    //    Timestamp0ToFirstFile();
+    //  }
+    //}
 
 #if !SAVE_DATA_FROM_RTC_INT
     ShimTask_set(TASK_SAVEDATA);
@@ -572,7 +572,7 @@ uint8_t Skip65ms(void)
   {
     uint64_t ts_64 = RTC_get64();
     if ((ts_64 - startSensingTs64) > 2130)
-    { // 2130 - 65 ms, 1638 - 50 ms
+    { //2130 - 65 ms, 1638 - 50 ms
       skip65ms = 0;
       return 0;
     }
@@ -649,32 +649,31 @@ void ShimSens_saveData(void)
   {
     PACKETBufferTypeDef *packetBuffer = ShimSens_getPacketBuffAtRdIdx();
 
-    if(packetBuffer->timestampTicks != 0)
+    if (packetBuffer->timestampTicks != 0)
     {
 
 #if USE_SD
-    if (shimmerStatus.sdLogging && !ShimSens_shouldStopLogging())
-    {
-      PeriStat_Set(STAT_PERI_SDMMC);
-      ShimSdDataFile_writeToBuff(
-          &packetBuffer->dataBuf[PACKET_TIMESTAMP_IDX], sensing.dataLen - 1);
-      PeriStat_Clr(STAT_PERI_SDMMC);
-    }
+      if (shimmerStatus.sdLogging && !ShimSens_shouldStopLogging())
+      {
+        PeriStat_Set(STAT_PERI_SDMMC);
+        ShimSdDataFile_writeToBuff(
+            &packetBuffer->dataBuf[PACKET_TIMESTAMP_IDX], sensing.dataLen - 1);
+        PeriStat_Clr(STAT_PERI_SDMMC);
+      }
 #endif
 #if USE_BT
-    if (shimmerStatus.btStreaming && !ShimSens_shouldStopStreaming())
-    {
-      uint8_t crcMode = ShimBt_getCrcMode();
-      if (crcMode != CRC_OFF)
+      if (shimmerStatus.btStreaming && !ShimSens_shouldStopStreaming())
       {
-        calculateCrcAndInsert(
-            crcMode, &packetBuffer->dataBuf[PACKET_HEADER_IDX], sensing.dataLen);
+        uint8_t crcMode = ShimBt_getCrcMode();
+        if (crcMode != CRC_OFF)
+        {
+          calculateCrcAndInsert(crcMode,
+              &packetBuffer->dataBuf[PACKET_HEADER_IDX], sensing.dataLen);
+        }
+        ShimBt_writeToTxBufAndSend(&packetBuffer->dataBuf[PACKET_HEADER_IDX],
+            sensing.dataLen + crcMode, SENSOR_DATA);
       }
-      ShimBt_writeToTxBufAndSend(&packetBuffer->dataBuf[PACKET_HEADER_IDX],
-          sensing.dataLen + crcMode, SENSOR_DATA);
-    }
 #endif
-
     }
 
     /* Data packet has moved off dataBuf, device is free to start new packet */
