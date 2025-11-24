@@ -2374,7 +2374,7 @@ void ShimBt_pushByteToBtTxBuf(uint8_t c)
   }
 }
 
-void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
+void ShimBt_pushBytesToBtTxBuf(volatile uint8_t *buf, uint8_t len)
 {
   uint8_t i;
   for (i = 0; i < len; i++)

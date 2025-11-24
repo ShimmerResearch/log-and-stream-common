@@ -313,7 +313,7 @@ void ShimSdDataFile_close(void)
   ShimSdDataFile_resetVars();
 }
 
-void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len)
+void ShimSdDataFile_writeToBuff(volatile uint8_t *buf, uint16_t len)
 {
   //uint8_t *sensing_buf;
   //uint16_t *sensing_buf_len;
@@ -330,7 +330,13 @@ void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len)
     ShimSdDataFile_prepareSDBuffHead();
   }
 
-  memcpy(sdWrBuf[sdBufSens] + sdWrLen[sdBufSens], buf, len);
+//  memcpy(sdWrBuf[sdBufSens] + sdWrLen[sdBufSens], buf, len);
+  uint8_t i;
+  for (i = 0; i < len; i++)
+  {
+    sdWrBuf[sdBufSens][sdWrLen[sdBufSens] + i] = buf[i];
+  }
+
   sdWrLen[sdBufSens] += len;
   if (sdWrLen[sdBufSens] + len > SD_WRITE_BUF_SIZE)
   {

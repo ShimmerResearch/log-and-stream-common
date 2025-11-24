@@ -52,7 +52,9 @@
 #include "shimmer_include.h"
 #endif
 
-#define SAVE_DATA_FROM_RTC_INT 0x0
+#define SAVE_DATA_FROM_RTC_INT 0
+#define HACK_LOCK_UP_PREVENTION 1
+#define HACK_TIMESTAMP_JUMP 1
 
 #define PACKET_HEADER_IDX      0 //0x00
 #define PACKET_HEADER_LEN      1
@@ -234,6 +236,9 @@ typedef struct
   volatile firstTimeStampStatus_t firstTsFlag;
   volatile uint64_t startTs;
   volatile uint32_t latestTs;
+#if HACK_LOCK_UP_PREVENTION
+  volatile uint8_t blockageCount;
+#endif
   volatile uint16_t packetBuffWrIdx;
   volatile uint16_t packetBuffRdIdx;
   volatile PACKETBufferTypeDef packetBuffers[DATA_BUF_QTY];
@@ -284,9 +289,9 @@ void ShimSens_startLoggingIfUndockStartEnabled(void);
 uint8_t ShimSens_checkAutostopLoggingCondition(void);
 void ShimSens_currentExperimentLengthReset(void);
 void ShimSens_maxExperimentLengthSecsSet(uint16_t expLengthMins);
-uint8_t *ShimSens_getDataBuffAtWrIdx(void);
-PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void);
-PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void);
+volatile uint8_t *ShimSens_getDataBuffAtWrIdx(void);
+volatile PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void);
+volatile PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void);
 void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll);
 void ShimSens_resetPacketBuffAll(void);
 void ShimSens_incrementPacketBuffWrIdx(void);

@@ -319,10 +319,10 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     shimmerStatus.configuring = 1;
 
     shimmerStatus.sensing = 0;
-    sensing.firstTsFlag = 0;
+    ShimSens_stopPeripherals();
+    sensing.firstTsFlag = FIRST_TIMESTAMP_IDLE;
     sensing.startTs = 0;
     ShimSens_resetPacketBuffAll();
-    ShimSens_stopPeripherals();
 
     ShimSens_stopSensingWrapup();
 
@@ -454,7 +454,7 @@ void ShimSens_saveTimestampToPacket(void)
     rtc32 = RTC_get32();
   }
 
-  PACKETBufferTypeDef *packetBuf = ShimSens_getPacketBuffAtWrIdx();
+  volatile PACKETBufferTypeDef *packetBuf = ShimSens_getPacketBuffAtWrIdx();
 
   /* store 32-bit timestamp (assumes 32-bit aligned, single-core 32-bit MCU) */
   sensing.latestTs = rtc32;
@@ -468,16 +468,43 @@ void ShimSens_saveTimestampToPacket(void)
 
 uint8_t ShimSens_sampleTimerTriggered(void)
 {
-  PACKETBufferTypeDef *packetBufPtr = ShimSens_getPacketBuffAtWrIdx();
-  if (shimmerStatus.sensing && !ShimSens_arePacketBuffsFull()
-      && (packetBufPtr->samplingStatus == SAMPLING_PACKET_IDLE
-          || packetBufPtr->samplingStatus == SAMPLING_IN_PROGRESS))
-  {
-    /* If packet isn't currently underway, start a new one */
-    packetBufPtr->samplingStatus = SAMPLING_IN_PROGRESS;
-    ShimSens_saveTimestampToPacket();
-    return platform_gatherData();
-  }
+  volatile PACKETBufferTypeDef *packetBufPtr = ShimSens_getPacketBuffAtWrIdx();
+//  if (shimmerStatus.sensing)
+//  {
+    if(ShimSens_arePacketBuffsFull())
+    {
+      //Fail-safe - if any packets are complete and haven't been saved.
+      if (ShimTask_NORM_getList() & TASK_SAVEDATA == 0)
+      {
+        ShimTask_set(TASK_SAVEDATA);
+      }
+    }
+    else if (packetBufPtr->samplingStatus == SAMPLING_PACKET_IDLE)
+    {
+#if HACK_LOCK_UP_PREVENTION
+      sensing.blockageCount = 0;
+#endif
+      /* If packet isn't currently underway, start a new one */
+      packetBufPtr->samplingStatus = SAMPLING_IN_PROGRESS;
+      ShimSens_saveTimestampToPacket();
+      return platform_gatherData();
+    }
+#if HACK_LOCK_UP_PREVENTION
+    else if(packetBufPtr->samplingStatus == SAMPLING_IN_PROGRESS)
+    {
+      //Fail-safe - if current packet has been stuck for a while
+      sensing.blockageCount++;
+      if (sensing.blockageCount > 9)
+      {
+        packetBufPtr->samplingStatus = SAMPLING_PACKET_IDLE;
+      }
+    }
+#endif
+    else
+    {
+      _NOP();
+    }
+//  }
 
   return 0;
 }
@@ -645,12 +672,17 @@ void ShimSens_saveData(void)
 {
   uint8_t bufferCount = ShimSens_getPacketBuffFullCount();
   uint8_t bufferCounter = 0;
+
   for (bufferCounter = 0; bufferCounter < bufferCount; bufferCounter++)
   {
-    PACKETBufferTypeDef *packetBuffer = ShimSens_getPacketBuffAtRdIdx();
+    volatile PACKETBufferTypeDef *packetBuffer = ShimSens_getPacketBuffAtRdIdx();
 
-    if (packetBuffer->timestampTicks != 0)
+#if HACK_TIMESTAMP_JUMP
+    if (packetBuffer->dataBuf[1] != 0
+        && packetBuffer->dataBuf[2] != 0
+        && packetBuffer->dataBuf[3] != 0)
     {
+#endif
 
 #if USE_SD
       if (shimmerStatus.sdLogging && !ShimSens_shouldStopLogging())
@@ -674,7 +706,9 @@ void ShimSens_saveData(void)
             sensing.dataLen + crcMode, SENSOR_DATA);
       }
 #endif
+#if HACK_TIMESTAMP_JUMP
     }
+#endif
 
     /* Data packet has moved off dataBuf, device is free to start new packet */
     //sensing.isSampling = SAMPLING_COMPLETE;
@@ -733,41 +767,41 @@ void ShimSens_maxExperimentLengthSecsSet(uint16_t maxExpLenMins)
   maxExpLenSecs = maxExpLenMins * 60;
 }
 
-uint8_t *ShimSens_getDataBuffAtWrIdx(void)
+volatile uint8_t *ShimSens_getDataBuffAtWrIdx(void)
 {
   return &ShimSens_getPacketBuffAtWrIdx()->dataBuf[0];
 }
 
-PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void)
+volatile PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void)
 {
   return &sensing.packetBuffers[ShimSens_getPacketBufWrIdx()];
 }
 
-PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void)
+volatile PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void)
 {
   return &sensing.packetBuffers[ShimSens_getPacketBufRdIdx()];
 }
 
 void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll)
 {
+  volatile PACKETBufferTypeDef * packetBufferPtr = &sensing.packetBuffers[index];
+
+  packetBufferPtr->samplingStatus = SAMPLING_PACKET_IDLE;
+  packetBufferPtr->timestampTicks = 0;
   if (resetAll)
   {
-    memset(&sensing.packetBuffers[index], 0, sizeof(sensing.packetBuffers[0]));
+    memset(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
   }
-  else
-  {
-    sensing.packetBuffers[index].timestampTicks = 0;
-  }
-
-  sensing.packetBuffers[index].samplingStatus = SAMPLING_PACKET_IDLE;
 
   /* Not needed due to memset above but explicitly setting DATA_PACKET for
    * clarity. */
-  sensing.packetBuffers[index].dataBuf[PACKET_HEADER_IDX] = DATA_PACKET;
+  packetBufferPtr->dataBuf[PACKET_HEADER_IDX] = DATA_PACKET;
 
-  sensing.packetBuffers[index].dataBuf[PACKET_TIMESTAMP_IDX] = 0;
-  sensing.packetBuffers[index].dataBuf[PACKET_TIMESTAMP_IDX + 1] = 0;
-  sensing.packetBuffers[index].dataBuf[PACKET_TIMESTAMP_IDX + 2] = 0;
+#if !HACK_TIMESTAMP_JUMP
+  packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX] = 0;
+  packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX + 1] = 0;
+  packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX + 2] = 0;
+#endif
 }
 
 void ShimSens_resetPacketBuffAll(void)

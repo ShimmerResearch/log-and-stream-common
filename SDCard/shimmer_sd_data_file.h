@@ -37,7 +37,7 @@ uint8_t ShimSdDataFile_makeBasedir(void);
 void ShimSdDataFile_makeFileName(char *name_buf);
 void ShimSdDataFile_fileInit(void);
 void ShimSdDataFile_close(void);
-void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len);
+void ShimSdDataFile_writeToBuff(volatile uint8_t *buf, uint16_t len);
 void ShimSdDataFile_writeToCard(void);
 void ShimSdDataFile_writeAllBufsToSd(void);
 void ShimSdDataFile_advanceSensingBuf(void);
