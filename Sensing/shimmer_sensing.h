@@ -52,15 +52,15 @@
 #include "shimmer_include.h"
 #endif
 
-#define SAVE_DATA_FROM_RTC_INT 0
+#define SAVE_DATA_FROM_RTC_INT  0
 #define HACK_LOCK_UP_PREVENTION 1
-#define HACK_TIMESTAMP_JUMP 1
+#define HACK_TIMESTAMP_JUMP     1
 
-#define PACKET_HEADER_IDX      0 //0x00
-#define PACKET_HEADER_LEN      1
-#define PACKET_TIMESTAMP_IDX   1
-#define PACKET_TIMESTAMP_LEN   3
-#define FIRST_CH_BYTE_IDX      (PACKET_HEADER_LEN + PACKET_TIMESTAMP_LEN)
+#define PACKET_HEADER_IDX       0 //0x00
+#define PACKET_HEADER_LEN       1
+#define PACKET_TIMESTAMP_IDX    1
+#define PACKET_TIMESTAMP_LEN    3
+#define FIRST_CH_BYTE_IDX       (PACKET_HEADER_LEN + PACKET_TIMESTAMP_LEN)
 
 #if defined(SHIMMER3)
 /* 3xanalogAccel + 3xdigiGyro + 3xdigiMag +

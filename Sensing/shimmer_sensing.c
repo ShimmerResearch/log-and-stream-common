@@ -469,42 +469,42 @@ void ShimSens_saveTimestampToPacket(void)
 uint8_t ShimSens_sampleTimerTriggered(void)
 {
   volatile PACKETBufferTypeDef *packetBufPtr = ShimSens_getPacketBuffAtWrIdx();
-//  if (shimmerStatus.sensing)
-//  {
-    if(ShimSens_arePacketBuffsFull())
+  //if (shimmerStatus.sensing)
+  //{
+  if (ShimSens_arePacketBuffsFull())
+  {
+    //Fail-safe - if any packets are complete and haven't been saved.
+    if (ShimTask_NORM_getList() & TASK_SAVEDATA == 0)
     {
-      //Fail-safe - if any packets are complete and haven't been saved.
-      if (ShimTask_NORM_getList() & TASK_SAVEDATA == 0)
-      {
-        ShimTask_set(TASK_SAVEDATA);
-      }
+      ShimTask_set(TASK_SAVEDATA);
     }
-    else if (packetBufPtr->samplingStatus == SAMPLING_PACKET_IDLE)
-    {
+  }
+  else if (packetBufPtr->samplingStatus == SAMPLING_PACKET_IDLE)
+  {
 #if HACK_LOCK_UP_PREVENTION
-      sensing.blockageCount = 0;
+    sensing.blockageCount = 0;
 #endif
-      /* If packet isn't currently underway, start a new one */
-      packetBufPtr->samplingStatus = SAMPLING_IN_PROGRESS;
-      ShimSens_saveTimestampToPacket();
-      return platform_gatherData();
-    }
+    /* If packet isn't currently underway, start a new one */
+    packetBufPtr->samplingStatus = SAMPLING_IN_PROGRESS;
+    ShimSens_saveTimestampToPacket();
+    return platform_gatherData();
+  }
 #if HACK_LOCK_UP_PREVENTION
-    else if(packetBufPtr->samplingStatus == SAMPLING_IN_PROGRESS)
+  else if (packetBufPtr->samplingStatus == SAMPLING_IN_PROGRESS)
+  {
+    //Fail-safe - if current packet has been stuck for a while
+    sensing.blockageCount++;
+    if (sensing.blockageCount > 9)
     {
-      //Fail-safe - if current packet has been stuck for a while
-      sensing.blockageCount++;
-      if (sensing.blockageCount > 9)
-      {
-        packetBufPtr->samplingStatus = SAMPLING_PACKET_IDLE;
-      }
+      packetBufPtr->samplingStatus = SAMPLING_PACKET_IDLE;
     }
+  }
 #endif
-    else
-    {
-      _NOP();
-    }
-//  }
+  else
+  {
+    _NOP();
+  }
+  //}
 
   return 0;
 }
@@ -678,8 +678,7 @@ void ShimSens_saveData(void)
     volatile PACKETBufferTypeDef *packetBuffer = ShimSens_getPacketBuffAtRdIdx();
 
 #if HACK_TIMESTAMP_JUMP
-    if (packetBuffer->dataBuf[1] != 0
-        && packetBuffer->dataBuf[2] != 0
+    if (packetBuffer->dataBuf[1] != 0 && packetBuffer->dataBuf[2] != 0
         && packetBuffer->dataBuf[3] != 0)
     {
 #endif
@@ -784,7 +783,7 @@ volatile PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void)
 
 void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll)
 {
-  volatile PACKETBufferTypeDef * packetBufferPtr = &sensing.packetBuffers[index];
+  volatile PACKETBufferTypeDef *packetBufferPtr = &sensing.packetBuffers[index];
 
   packetBufferPtr->samplingStatus = SAMPLING_PACKET_IDLE;
   packetBufferPtr->timestampTicks = 0;

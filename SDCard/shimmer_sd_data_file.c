@@ -330,7 +330,7 @@ void ShimSdDataFile_writeToBuff(volatile uint8_t *buf, uint16_t len)
     ShimSdDataFile_prepareSDBuffHead();
   }
 
-//  memcpy(sdWrBuf[sdBufSens] + sdWrLen[sdBufSens], buf, len);
+  //memcpy(sdWrBuf[sdBufSens] + sdWrLen[sdBufSens], buf, len);
   uint8_t i;
   for (i = 0; i < len; i++)
   {
