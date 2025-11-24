@@ -474,7 +474,7 @@ uint8_t ShimSens_sampleTimerTriggered(void)
   if (ShimSens_arePacketBuffsFull())
   {
     //Fail-safe - if any packets are complete and haven't been saved.
-    if (ShimTask_NORM_getList() & TASK_SAVEDATA == 0)
+    if ((ShimTask_NORM_getList() & TASK_SAVEDATA) == 0)
     {
       ShimTask_set(TASK_SAVEDATA);
       return 1; //Wake MCU
