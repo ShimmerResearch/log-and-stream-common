@@ -58,7 +58,7 @@ static uint32_t GSR_FEEDBACK_RESISTORS_OHMS[] = { 40200, 287000, 1000000, 330000
 
 void GSR_init(uint8_t gsrRangeToSet, uint16_t gsrSamplingRateToSet);
 
-void GSR_range(uint8_t *buf);
+void GSR_range(volatile uint8_t *buf);
 
 void GSR_resetGsrRange(void);
 
