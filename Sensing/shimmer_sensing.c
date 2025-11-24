@@ -461,12 +461,9 @@ void ShimSens_saveTimestampToPacket(void)
     //}
 
     sensing.latestTs = RTC_get64();
-    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts]
-        = (sensing.latestTs) & 0xff;
-    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts + 1]
-        = (sensing.latestTs >> 8) & 0xff;
-    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts + 2]
-        = (sensing.latestTs >> 16) & 0xff;
+    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts] = (sensing.latestTs) & 0xff;
+    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts + 1] = (sensing.latestTs >> 8) & 0xff;
+    sensing.packetBuffers[sensing.dataWrBufIdx].dataBuf[sensing.ptr.ts + 2] = (sensing.latestTs >> 16) & 0xff;
   }
 }
 
@@ -528,8 +525,15 @@ void ShimSens_stageCompleteCb(uint8_t stage)
 #if SAVE_DATA_FROM_RTC_INT
     sensing.isSampling = SAMPLING_COMPLETE;
 #else  /* SAVE_DATA_FROM_RTC_INT */
-    ShimTask_set(TASK_SAVEDATA);
-    sensing.isSampling = SAMPLING_COMPLETE;
+    uint8_t temp = 0;
+     __disable_irq();
+     temp = sensing.dataWrBufIdx;
+     sensing.dataWrBufIdx = sensing.dataTxBufIdx;
+     sensing.dataTxBufIdx = temp;
+     sensing.bufferReadflag = 1;
+     ShimTask_set(TASK_SAVEDATA);
+     sensing.isSampling = SAMPLING_COMPLETE;
+     __enable_irq();
 #endif /* SAVE_DATA_FROM_RTC_INT */
   }
 }
@@ -596,12 +600,7 @@ void ShimSens_stepDone(void)
 
 void ShimSens_saveData(void)
 {
-  uint8_t temp = 0;
-  __disable_irq();
-  temp = sensing.dataWrBufIdx;
-  sensing.dataWrBufIdx = sensing.dataTxBufIdx;
-  sensing.dataTxBufIdx = temp;
-  __enable_irq();
+
 #if USE_SD
   if (shimmerStatus.sdLogging && !ShimSens_shouldStopLogging())
   {

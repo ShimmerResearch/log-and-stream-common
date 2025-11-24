@@ -110,7 +110,11 @@ void ShimTask_NORM_manage(void)
         break;
 #endif
       case TASK_SAVEDATA:
-        ShimSens_saveData();
+        if(sensing.bufferReadflag)
+        {
+          sensing.bufferReadflag = 0;
+          ShimSens_saveData();
+        }
         break;
       case TASK_STARTSENSING:
         ShimSens_startSensing();

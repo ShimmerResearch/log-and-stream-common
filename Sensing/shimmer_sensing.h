@@ -147,7 +147,7 @@
 #define PPG_1           0x36
 #define PPG_2           0x37
 #endif
-#define DATA_BUF_SIZE 256U /* serial buffer in bytes (power 2)  */
+#define DATA_BUF_SIZE 256U
 
 typedef struct
 { //data ptr (offset)
@@ -193,8 +193,6 @@ typedef struct
   volatile uint8_t isSampling;
   uint64_t latestTs;
   uint8_t dataBuf[DATA_BUF_SIZE];
-  //uint8_t rdIdx;
-  //uint8_t wrIdx;
   uint64_t startTs;
 } PACKETBufferTypeDef;
 
@@ -227,6 +225,7 @@ typedef struct
   PACKETBufferTypeDef packetBuffers[2];
   //STATTypeDef stat;
   DATAPTRTypeDef ptr;
+  uint8_t bufferReadflag;
 } SENSINGTypeDef;
 
 extern SENSINGTypeDef sensing;
