@@ -477,7 +477,7 @@ uint8_t ShimSens_sampleTimerTriggered(void)
     if (ShimTask_NORM_getList() & TASK_SAVEDATA == 0)
     {
       ShimTask_set(TASK_SAVEDATA);
-      return 1; // Wake MCU
+      return 1; //Wake MCU
     }
   }
   else if (packetBufPtr->samplingStatus == SAMPLING_PACKET_IDLE)
@@ -491,7 +491,8 @@ uint8_t ShimSens_sampleTimerTriggered(void)
     return platform_gatherData();
   }
 #if HACK_LOCK_UP_PREVENTION
-  else if (packetBufPtr->samplingStatus == SAMPLING_COMPLETE && packetBufPtr->timestampTicks == 0)
+  else if (packetBufPtr->samplingStatus == SAMPLING_COMPLETE
+      && packetBufPtr->timestampTicks == 0)
   {
     /* Hack -status sometimes goes to SAMPLING_COMPLETE with timestamp = 0. */
     /* Reset packet status to allow new sample to be taken on next event */
@@ -569,7 +570,7 @@ void ShimSens_stageCompleteCb(uint8_t stage)
 #endif
 
 #if HACK_TIMESTAMP_JUMP
-    if(ShimSens_getPacketBuffAtWrIdx()->timestampTicks==0)
+    if (ShimSens_getPacketBuffAtWrIdx()->timestampTicks == 0)
     {
       ShimSens_getPacketBuffAtWrIdx()->samplingStatus = SAMPLING_PACKET_IDLE;
       return;
@@ -696,7 +697,7 @@ void ShimSens_saveData(void)
 #if HACK_TIMESTAMP_JUMP
     if (dataBufferPtr[1] == 0 && dataBufferPtr[2] == 0 && dataBufferPtr[3] == 0)
     {
-      // Filter out packets with 0 as timestamp bytes
+      //Filter out packets with 0 as timestamp bytes
       _NOP();
     }
     else
@@ -718,8 +719,8 @@ void ShimSens_saveData(void)
         uint8_t crcMode = ShimBt_getCrcMode();
         if (crcMode != CRC_OFF)
         {
-          calculateCrcAndInsert(crcMode,
-              &dataBufferPtr[PACKET_HEADER_IDX], sensing.dataLen);
+          calculateCrcAndInsert(
+              crcMode, &dataBufferPtr[PACKET_HEADER_IDX], sensing.dataLen);
         }
         ShimBt_writeToTxBufAndSend(&dataBufferPtr[PACKET_HEADER_IDX],
             sensing.dataLen + crcMode, SENSOR_DATA);
@@ -809,7 +810,7 @@ void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll)
   packetBufferPtr->timestampTicks = 0;
   if (resetAll)
   {
-//    memset(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
+    //memset(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
     ShimUtil_memset_v(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
   }
 
