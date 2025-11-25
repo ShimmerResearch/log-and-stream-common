@@ -200,11 +200,11 @@ typedef enum
 
 typedef enum
 {
-  FIRST_TIMESTAMP_IDLE,
-  FIRST_TIMESTAMP_PENDING_UPDATE,
-  FIRST_TIMESTAMP_UPDATED,
-  FIRST_TIMESTAMP_SAVED
-} firstTimeStampStatus_t;
+  NEW_SD_FILE_TS_IDLE,
+  NEW_SD_FILE_TS_PENDING_UPDATE,
+  NEW_SD_FILE_TS_UPDATED,
+  NEW_SD_FILE_TS_SAVED
+} newSdFileTsStatus_t;
 
 typedef struct
 { //sensor data
@@ -234,7 +234,8 @@ typedef struct
   uint8_t dataLen;
   //uint8_t     sdlogEnabled;
   //uint8_t     btStreamEnabled;
-  volatile firstTimeStampStatus_t firstTsFlag;
+  volatile newSdFileTsStatus_t newSdFileTsFlag;
+  volatile uint64_t startTsForSdFile;
   volatile uint64_t startTs;
   volatile uint32_t latestTs;
 #if HACK_LOCK_UP_PREVENTION
@@ -243,6 +244,7 @@ typedef struct
   volatile uint16_t packetBuffWrIdx;
   volatile uint16_t packetBuffRdIdx;
   volatile PACKETBufferTypeDef packetBuffers[DATA_BUF_QTY];
+  uint8_t skippingPacketsFlag;
   //STATTypeDef stat;
   DATAPTRTypeDef ptr;
 } SENSINGTypeDef;
@@ -261,7 +263,6 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked);
 void ShimSens_stopPeripherals(void);
 void ShimSens_stopSensingWrapup(void);
 void ShimSens_gatherData(void);
-void ShimSens_bufPoll(void);
 void ShimSens_saveTimestampToPacket(void);
 uint8_t ShimSens_sampleTimerTriggered(void);
 
@@ -270,9 +271,6 @@ void ShimSens_adcCompleteCb(void);
 void ShimSens_i2cCompleteCb(void);
 void ShimSens_spiCompleteCb(void);
 void ShimSens_stageCompleteCb(uint8_t stage);
-#if SKIP65MS
-uint8_t Skip65ms(void);
-#endif
 #if defined(SHIMMER4_SDK)
 void ShimSens_step1Start(void);
 void ShimSens_step2Start(void);

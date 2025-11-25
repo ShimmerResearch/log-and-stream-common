@@ -386,7 +386,7 @@ void ShimSdDataFile_writeToCard(void)
     ShimSdDataFile_openNewDataFile();
     ShimSdDataFile_writeSdHeaderToFile();
 
-    sensing.firstTsFlag = FIRST_TIMESTAMP_PENDING_UPDATE;
+    sensing.newSdFileTsFlag = NEW_SD_FILE_TS_PENDING_UPDATE;
   }
 
   /* Sync file every minute */

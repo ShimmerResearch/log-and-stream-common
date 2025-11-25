@@ -40,7 +40,9 @@
  * @date May, 2016
  */
 
-#include <Sensing/shimmer_sensing.h>
+#include "shimmer_sensing.h"
+
+#include <stdlib.h>
 
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
@@ -231,7 +233,7 @@ void ShimSens_startSensing(void)
   {
     shimmerStatus.sdLogging = 1;
     sensing.isFileCreated = 0;
-    sensing.firstTsFlag = FIRST_TIMESTAMP_PENDING_UPDATE;
+    sensing.newSdFileTsFlag = NEW_SD_FILE_TS_PENDING_UPDATE;
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
 
     gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
@@ -320,8 +322,11 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
 
     shimmerStatus.sensing = 0;
     ShimSens_stopPeripherals();
-    sensing.firstTsFlag = FIRST_TIMESTAMP_IDLE;
+    sensing.newSdFileTsFlag = NEW_SD_FILE_TS_IDLE;
+    sensing.startTsForSdFile = 0;
     sensing.startTs = 0;
+    sensing.latestTs = 0;
+    sensing.skippingPacketsFlag = 0;
     ShimSens_resetPacketBuffAll();
 
     ShimSens_stopSensingWrapup();
@@ -382,34 +387,6 @@ __attribute__((weak)) void ShimSens_stopSensingWrapup(void)
 
 void ShimSens_gatherData(void)
 {
-#if SKIP_50MS
-  if (sensing.startTs == 0xffffffffffffffff)
-  {
-  }
-  else if ((sensing.startTs == 0) || (sensing.latestTs - sensing.startTs < 1638))
-  {
-    sensing.startTs = 0xffffffffffffffff;
-    //sensing.isSampling = SAMPLING_COMPLETE;
-    return;
-  }
-  else
-  {
-    sensing.startTs = 0xffffffffffffffff;
-  }
-#endif
-
-  ShimSens_bufPoll();
-
-  //ExpUart_TxIT(sensing.dataBuf, sensing.dataLen);
-
-#if defined(SHIMMER4_SDK)
-  //HAL_Delay(500);
-  saveData();
-#endif
-}
-
-void ShimSens_bufPoll()
-{
   currentCbFlags = 0;
 
   if (sensing.nbrMcuAdcChans)
@@ -432,21 +409,23 @@ void ShimSens_bufPoll()
   //  micStartSensing();
   //}
 #endif
+
+#if defined(SHIMMER4_SDK)
+  //HAL_Delay(500);
+  saveData();
+#endif
 }
 
 void ShimSens_saveTimestampToPacket(void)
 {
-  /* TODO Shimmer3 only saved 64-bit for first sample and 32-bit after
-   * that. Need to considering efficiency impact here versus affect on
-   * other things that rely on sensing.latestTs */
   uint64_t rtc64;
   uint32_t rtc32;
 
-  if (sensing.firstTsFlag == FIRST_TIMESTAMP_PENDING_UPDATE)
+  if (sensing.newSdFileTsFlag == NEW_SD_FILE_TS_PENDING_UPDATE)
   {
     rtc64 = RTC_get64();
-    sensing.startTs = rtc64;
-    sensing.firstTsFlag = FIRST_TIMESTAMP_UPDATED;
+    sensing.startTsForSdFile = rtc64;
+    sensing.newSdFileTsFlag = NEW_SD_FILE_TS_UPDATED;
     rtc32 = (uint32_t) rtc64;
   }
   else
@@ -455,6 +434,11 @@ void ShimSens_saveTimestampToPacket(void)
   }
 
   volatile PACKETBufferTypeDef *packetBuf = ShimSens_getPacketBuffAtWrIdx();
+
+  if(sensing.startTs == 0)
+  {
+    sensing.startTs = rtc32;
+  }
 
   /* store 32-bit timestamp (assumes 32-bit aligned, single-core 32-bit MCU) */
   sensing.latestTs = rtc32;
@@ -555,16 +539,6 @@ void ShimSens_stageCompleteCb(uint8_t stage)
   currentCbFlags |= stage;
   if (currentCbFlags == expectedCbFlags)
   {
-    //TODO
-#if SKIP65MS
-    if (Skip65ms())
-    {
-      //has to re collect the init_ts
-      sensing.firstTsFlag = FIRST_TIMESTAMP_PENDING_UPDATE;
-      ShimSens_resetPacketBufferAtIdx(ShimSens_getPacketBufWrIdx(), 0);
-      return;
-    }
-#endif
 
 #if HACK_TIMESTAMP_JUMP
     if (ShimSens_getPacketBuffAtWrIdx()->timestampTicks == 0)
@@ -596,31 +570,6 @@ void ShimSens_stageCompleteCb(uint8_t stage)
     }
   }
 }
-
-#if SKIP65MS
-uint8_t Skip65ms(void)
-{
-  if (!skip65ms)
-  {
-    return 0;
-  }
-  if (skip65ms == 1)
-  {
-    startSensingTs64 = RTC_get64();
-    skip65ms = 2;
-  }
-  else
-  {
-    uint64_t ts_64 = RTC_get64();
-    if ((ts_64 - startSensingTs64) > 2130)
-    { //2130 - 65 ms, 1638 - 50 ms
-      skip65ms = 0;
-      return 0;
-    }
-  }
-  return 1;
-}
-#endif
 
 #if defined(SHIMMER4_SDK)
 void ShimSens_step1Start(void)
@@ -698,9 +647,15 @@ void ShimSens_saveData(void)
       _NOP();
     }
     else
-    {
 #endif
-
+    if(TICKS_TO_SKIP > 0 && !sensing.skippingPacketsFlag
+        && (abs(ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
+    {
+      _NOP();
+    }
+    else
+    {
+      sensing.skippingPacketsFlag = 1;
 #if USE_SD
       if (shimmerStatus.sdLogging && !ShimSens_shouldStopLogging())
       {
@@ -723,9 +678,7 @@ void ShimSens_saveData(void)
             sensing.dataLen + crcMode, SENSOR_DATA);
       }
 #endif
-#if HACK_TIMESTAMP_JUMP
     }
-#endif
 
     /* Data packet has moved off dataBuf, device is free to start new packet */
     //sensing.isSampling = SAMPLING_COMPLETE;
