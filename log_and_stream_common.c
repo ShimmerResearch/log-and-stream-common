@@ -315,38 +315,80 @@ void LogAndStream_processDaughterCardId(void)
 void LogAndStream_generateUsbDiskDriveId(char *usbDeviceIdStr)
 {
   char *macIdStrPtr = ShimBt_macIdStrPtrGet();
-
   char sdCardSize[10];
   printSdCardSize(sdCardSize);
 
-  shimmer_expansion_brd *exp_brd = ShimBrd_getDaughtCardId();
-
-  /* Manufacturer string is max 8 bytes */
-  sprintf(&usbDeviceIdStr[0], "Shimmer ");
-
-  /* Product ID string is max 16 bytes */
-  sprintf(&usbDeviceIdStr[8], "%c%c%c%c SD %s", macIdStrPtr[8], macIdStrPtr[9],
-      macIdStrPtr[10], macIdStrPtr[11], sdCardSize);
+  /* Validate macIdStrPtr and its length */
+  char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
+  if (macIdStrPtr != NULL)
+  {
+    size_t macLen = strlen(macIdStrPtr);
+    if (macLen >= 12)
+    {
+      c8 = macIdStrPtr[8];
+      c9 = macIdStrPtr[9];
+      c10 = macIdStrPtr[10];
+      c11 = macIdStrPtr[11];
+    }
+  }
+  /* Use snprintf to avoid buffer overflow */
+  snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "Shimmer %c%c%c%c SD %s", c8,
+      c9, c10, c11, sdCardSize);
 }
 
 void LogAndStream_generateUsbMscId(char *usbDeviceIdStr)
 {
   char *macIdStrPtr = ShimBt_macIdStrPtrGet();
-  sprintf(&usbDeviceIdStr[0], "Shimmer %c%c%c%c MSC", macIdStrPtr[8],
-      macIdStrPtr[9], macIdStrPtr[10], macIdStrPtr[11]);
+  char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
+  if (macIdStrPtr != NULL)
+  {
+    size_t macLen = strlen(macIdStrPtr);
+    if (macLen >= 12)
+    {
+      c8 = macIdStrPtr[8];
+      c9 = macIdStrPtr[9];
+      c10 = macIdStrPtr[10];
+      c11 = macIdStrPtr[11];
+    }
+  }
+  snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "Shimmer %c%c%c%c MSC", c8, c9, c10, c11);
 }
 
 void LogAndStream_generateUsbCdcId(char *usbDeviceIdStr)
 {
   char *macIdStrPtr = ShimBt_macIdStrPtrGet();
-  sprintf(&usbDeviceIdStr[0], "Shimmer %c%c%c%c CDC ACM", macIdStrPtr[8],
-      macIdStrPtr[9], macIdStrPtr[10], macIdStrPtr[11]);
+  char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
+  if (macIdStrPtr != NULL)
+  {
+    size_t macLen = strlen(macIdStrPtr);
+    if (macLen >= 12)
+    {
+      c8 = macIdStrPtr[8];
+      c9 = macIdStrPtr[9];
+      c10 = macIdStrPtr[10];
+      c11 = macIdStrPtr[11];
+    }
+  }
+  snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "Shimmer %c%c%c%c CDC ACM",
+      c8, c9, c10, c11);
 }
 
 void LogAndStream_generateUsbCompositeDeviceId(char *usbDeviceIdStr)
 {
   char *macIdStrPtr = ShimBt_macIdStrPtrGet();
-  sprintf(&usbDeviceIdStr[0], "Shimmer %c%c%c%c Composite Device",
-      macIdStrPtr[8], macIdStrPtr[9], macIdStrPtr[10], macIdStrPtr[11]);
+  char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
+  if (macIdStrPtr != NULL)
+  {
+    size_t macLen = strlen(macIdStrPtr);
+    if (macLen >= 12)
+    {
+      c8 = macIdStrPtr[8];
+      c9 = macIdStrPtr[9];
+      c10 = macIdStrPtr[10];
+      c11 = macIdStrPtr[11];
+    }
+  }
+  snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN,
+      "Shimmer %c%c%c%c Composite Device", c8, c9, c10, c11);
 }
 #endif
