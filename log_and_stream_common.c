@@ -320,10 +320,9 @@ void LogAndStream_generateUsbDiskDriveId(char *usbDeviceIdStr)
   char *macIdStrPtr = ShimBt_macIdStrPtrGet();
   char sdCardSize[10];
   printSdCardSize(sdCardSize);
-  shimmer_expansion_brd *exp_brd = ShimBrd_getDaughtCardId();
 
   /* Validate macIdStrPtr and its length */
-  char c8 = '-', c9 = '-', c10 = '-', c11 = '-';
+  char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
   if (macIdStrPtr != NULL)
   {
     size_t macLen = strlen(macIdStrPtr);
@@ -343,7 +342,7 @@ void LogAndStream_generateUsbDiskDriveId(char *usbDeviceIdStr)
 void LogAndStream_generateUsbMscId(char *usbDeviceIdStr)
 {
   char *macIdStrPtr = ShimBt_macIdStrPtrGet();
-  char c8 = '-', c9 = '-', c10 = '-', c11 = '-';
+  char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
   if (macIdStrPtr != NULL)
   {
     size_t macLen = strlen(macIdStrPtr);
@@ -361,7 +360,7 @@ void LogAndStream_generateUsbMscId(char *usbDeviceIdStr)
 void LogAndStream_generateUsbCdcId(char *usbDeviceIdStr)
 {
   char *macIdStrPtr = ShimBt_macIdStrPtrGet();
-  char c8 = '-', c9 = '-', c10 = '-', c11 = '-';
+  char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
   if (macIdStrPtr != NULL)
   {
     size_t macLen = strlen(macIdStrPtr);
@@ -380,7 +379,7 @@ void LogAndStream_generateUsbCdcId(char *usbDeviceIdStr)
 void LogAndStream_generateUsbCompositeDeviceId(char *usbDeviceIdStr)
 {
   char *macIdStrPtr = ShimBt_macIdStrPtrGet();
-  char c8 = '-', c9 = '-', c10 = '-', c11 = '-';
+  char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
   if (macIdStrPtr != NULL)
   {
     size_t macLen = strlen(macIdStrPtr);
