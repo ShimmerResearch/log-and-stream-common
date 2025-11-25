@@ -435,7 +435,7 @@ void ShimSens_saveTimestampToPacket(void)
 
   volatile PACKETBufferTypeDef *packetBuf = ShimSens_getPacketBuffAtWrIdx();
 
-  if(sensing.startTs == 0)
+  if (sensing.startTs == 0)
   {
     sensing.startTs = rtc32;
   }
@@ -648,8 +648,8 @@ void ShimSens_saveData(void)
     }
     else
 #endif
-    if(TICKS_TO_SKIP > 0 && !sensing.skippingPacketsFlag
-        && (abs(ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
+        if (TICKS_TO_SKIP > 0 && !sensing.skippingPacketsFlag
+            && (abs(ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
     {
       _NOP();
     }
