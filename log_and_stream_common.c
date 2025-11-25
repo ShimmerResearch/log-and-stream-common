@@ -313,8 +313,6 @@ void LogAndStream_processDaughterCardId(void)
 }
 
 #if defined(SHIMMER3R)
-#define USB_DEVICE_ID_STR_LEN 32
-
 void LogAndStream_generateUsbDiskDriveId(char *usbDeviceIdStr)
 {
   char *macIdStrPtr = ShimBt_macIdStrPtrGet();
