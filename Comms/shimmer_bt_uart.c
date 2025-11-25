@@ -2376,11 +2376,11 @@ void ShimBt_pushByteToBtTxBuf(uint8_t c)
 
 void ShimBt_pushBytesToBtTxBuf(volatile uint8_t *buf, uint8_t len)
 {
-//  uint8_t i;
-//  for (i = 0; i < len; i++)
-//  {
-//    ShimBt_pushByteToBtTxBuf(*(buf + i));
-//  }
+  //uint8_t i;
+  //for (i = 0; i < len; i++)
+  //{
+  //  ShimBt_pushByteToBtTxBuf(*(buf + i));
+  //}
 
   const volatile uint8_t *p = buf;
   while (len--)
@@ -2388,27 +2388,27 @@ void ShimBt_pushBytesToBtTxBuf(volatile uint8_t *buf, uint8_t len)
     ShimBt_pushByteToBtTxBuf(*p++);
   }
 
-//  /* if enough space at after head, copy it in */
-//  uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx &
-//  BT_TX_BUF_MASK); if (spaceAfterHead > len)
-//  {
-//    ShimUtil_memcpy_vv(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-//    buf, len); gBtTxFifo.wrIdx += len;
-//  }
-//  else
-//  {
-//    /* Fill from head to end of buf */
-//    ShimUtil_memcpy_vv(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-//    buf, spaceAfterHead); gBtTxFifo.wrIdx += spaceAfterHead;
-//
-//    /* Fill from start of buf. We already checked above whether there is
-//     * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
-//     * worry about the tail position. */
-//    uint16_t remaining = len - spaceAfterHead;
-//    ShimUtil_memcpy_vv(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-//        buf + spaceAfterHead, remaining);
-//    gBtTxFifo.wrIdx += remaining;
-//  }
+  ///* if enough space at after head, copy it in */
+  //uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx &
+  //BT_TX_BUF_MASK); if (spaceAfterHead > len)
+  //{
+  //  ShimUtil_memcpy_vv(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //  buf, len); gBtTxFifo.wrIdx += len;
+  //}
+  //else
+  //{
+  //  /* Fill from head to end of buf */
+  //  ShimUtil_memcpy_vv(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //  buf, spaceAfterHead); gBtTxFifo.wrIdx += spaceAfterHead;
+  //
+  //  /* Fill from start of buf. We already checked above whether there is
+  //   * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
+  //   * worry about the tail position. */
+  //  uint16_t remaining = len - spaceAfterHead;
+  //  ShimUtil_memcpy_vv(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //      buf + spaceAfterHead, remaining);
+  //  gBtTxFifo.wrIdx += remaining;
+  //}
 }
 
 uint8_t ShimBt_popBytefromBtTxBuf(void)
