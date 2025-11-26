@@ -2431,6 +2431,13 @@ void ShimBt_TxCpltCallback(void)
   gBtTxFifo.numBytesBeingRead = 0;
 #endif
 
+#if defined(SHIMMER3)
+  ShimBt_triggerNextTransfer();
+#endif
+}
+
+void ShimBt_triggerNextTransfer(void)
+{
   if (shimmerStatus.btConnected
 #if defined(SHIMMER3)
       || areBtSetupCommandsRunning())
@@ -2455,7 +2462,11 @@ void ShimBt_TxCpltCallback(void)
 
 void ShimBt_sendNextCharIfNotInProgress(void)
 {
+#if defined(SHIMMER3)
   if (!ShimBt_btTxInProgressGet())
+#else
+  if (!ShimBt_btTxInProgressGet() && !isPendingResponseFromBtModule())
+#endif
   {
     ShimBt_sendNextChar();
   }
@@ -2482,10 +2493,10 @@ void ShimBt_sendNextChar(void)
     BtTransmit(&buf, 1);
 #else
     HAL_StatusTypeDefShimmer ret_val;
-    uint8_t numBytes;
+    uint16_t numBytes;
 
-    uint8_t rdIdx = (gBtTxFifo.rdIdx & BT_TX_BUF_MASK);
-    uint8_t wrIdx = (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
+    uint16_t rdIdx = (gBtTxFifo.rdIdx & BT_TX_BUF_MASK);
+    uint16_t wrIdx = (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
 
     if (rdIdx < wrIdx)
     {
