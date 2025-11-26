@@ -402,6 +402,12 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           btVerRemainingChars = RN4678_VERSION_LEN_V1_23_0;
           btFwVerNew = RN4678_V1_23_0;
         }
+        /* RN4678_VERSION_RESPONSE_V1_24_0 */
+        else if (btRxBuffFullResponse[10U] == '2' && btRxBuffFullResponse[11U] == '4')
+        {
+          btVerRemainingChars = RN4678_VERSION_LEN_V1_24_0;
+          btFwVerNew = RN4678_V1_24_0;
+        }
       }
       else
       {
