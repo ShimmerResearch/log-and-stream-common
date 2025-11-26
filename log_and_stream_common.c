@@ -335,61 +335,81 @@ static void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
 
 void LogAndStream_generateUsbDiskDriveId(char *usbDeviceIdStr)
 {
-    char prefix[SHIMMER_PREFIX_LEN];
-    char sdCardSize[10];
+  char prefix[SHIMMER_PREFIX_LEN];
+  char sdCardSize[10];
 
-    LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
-    printSdCardSize(sdCardSize);
+  LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
+  printSdCardSize(sdCardSize);
 
-    /* start with prefix in destination */
-    int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
-    if (written < 0) { usbDeviceIdStr[0] = '\0'; return; }
+  /* start with prefix in destination */
+  int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
+  if (written < 0)
+  {
+    usbDeviceIdStr[0] = '\0';
+    return;
+  }
 
-    /* compute remaining space (leave room for NUL) */
-    size_t curLen = (size_t)written < USB_DEVICE_ID_STR_LEN ? (size_t)written : USB_DEVICE_ID_STR_LEN - 1;
-    size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
+  /* compute remaining space (leave room for NUL) */
+  size_t curLen = (size_t) written < USB_DEVICE_ID_STR_LEN ? (size_t) written :
+                                                             USB_DEVICE_ID_STR_LEN - 1;
+  size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
 
-    /* append " SD " and card size safely */
-    /* use snprintf into the tail to ensure null termination */
-    snprintf(usbDeviceIdStr + curLen, rem, " SD %s", sdCardSize);
+  /* append " SD " and card size safely */
+  /* use snprintf into the tail to ensure null termination */
+  snprintf(usbDeviceIdStr + curLen, rem, " SD %s", sdCardSize);
 }
 
 void LogAndStream_generateUsbMscId(char *usbDeviceIdStr)
 {
-    char prefix[SHIMMER_PREFIX_LEN];
-    LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
+  char prefix[SHIMMER_PREFIX_LEN];
+  LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
 
-    int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
-    if (written < 0) { usbDeviceIdStr[0] = '\0'; return; }
-    size_t curLen = (size_t)written < USB_DEVICE_ID_STR_LEN ? (size_t)written : USB_DEVICE_ID_STR_LEN - 1;
-    size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
+  int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
+  if (written < 0)
+  {
+    usbDeviceIdStr[0] = '\0';
+    return;
+  }
+  size_t curLen = (size_t) written < USB_DEVICE_ID_STR_LEN ? (size_t) written :
+                                                             USB_DEVICE_ID_STR_LEN - 1;
+  size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
 
-    snprintf(usbDeviceIdStr + curLen, rem, " MSC");
+  snprintf(usbDeviceIdStr + curLen, rem, " MSC");
 }
 
 void LogAndStream_generateUsbCdcId(char *usbDeviceIdStr)
 {
-    char prefix[SHIMMER_PREFIX_LEN];
-    LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
+  char prefix[SHIMMER_PREFIX_LEN];
+  LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
 
-    int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
-    if (written < 0) { usbDeviceIdStr[0] = '\0'; return; }
-    size_t curLen = (size_t)written < USB_DEVICE_ID_STR_LEN ? (size_t)written : USB_DEVICE_ID_STR_LEN - 1;
-    size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
+  int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
+  if (written < 0)
+  {
+    usbDeviceIdStr[0] = '\0';
+    return;
+  }
+  size_t curLen = (size_t) written < USB_DEVICE_ID_STR_LEN ? (size_t) written :
+                                                             USB_DEVICE_ID_STR_LEN - 1;
+  size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
 
-    snprintf(usbDeviceIdStr + curLen, rem, " CDC ACM");
+  snprintf(usbDeviceIdStr + curLen, rem, " CDC ACM");
 }
 
 void LogAndStream_generateUsbCompositeDeviceId(char *usbDeviceIdStr)
 {
-    char prefix[SHIMMER_PREFIX_LEN];
-    LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
+  char prefix[SHIMMER_PREFIX_LEN];
+  LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
 
-    int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
-    if (written < 0) { usbDeviceIdStr[0] = '\0'; return; }
-    size_t curLen = (size_t)written < USB_DEVICE_ID_STR_LEN ? (size_t)written : USB_DEVICE_ID_STR_LEN - 1;
-    size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
+  int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
+  if (written < 0)
+  {
+    usbDeviceIdStr[0] = '\0';
+    return;
+  }
+  size_t curLen = (size_t) written < USB_DEVICE_ID_STR_LEN ? (size_t) written :
+                                                             USB_DEVICE_ID_STR_LEN - 1;
+  size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
 
-    snprintf(usbDeviceIdStr + curLen, rem, " Composite Device");
+  snprintf(usbDeviceIdStr + curLen, rem, " Composite Device");
 }
 #endif
