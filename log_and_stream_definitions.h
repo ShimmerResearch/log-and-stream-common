@@ -32,6 +32,11 @@
 
 #define TIMEOUT_100_MS (3277)
 
+#if defined(SHIMMER3R)
+#define USB_DEVICE_ID_STR_LEN 32
+#define SHIMMER_PREFIX_LEN    16 /* "Shimmer " + 4 chars + nul = 13; 16 is safe */
+#endif
+
 #if defined(SHIMMER3)
 #define __NOP() __no_operation()
 #endif
