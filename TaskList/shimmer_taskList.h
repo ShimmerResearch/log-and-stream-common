@@ -128,6 +128,5 @@ void ShimTask_setStopSensing(void);
 void ShimTask_setStopLogging(void);
 void ShimTask_setStopStreaming(void);
 void ShimTask_setInitialiseBluetooth(void);
-void ShimTask_setJumpToBootLoader(void);
 
 #endif //S4_TASKLIST_H
