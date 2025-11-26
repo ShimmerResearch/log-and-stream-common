@@ -313,83 +313,84 @@ void LogAndStream_processDaughterCardId(void)
 }
 
 #if defined(SHIMMER3R)
-void LogAndStream_generateUsbDiskDriveId(char *usbDeviceIdStr)
+static void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
 {
-  char *macIdStrPtr = ShimBt_macIdStrPtrGet();
-  char sdCardSize[10];
-  printSdCardSize(sdCardSize);
-
-  /* Validate macIdStrPtr and its length */
+  char *mac = ShimBt_macIdStrPtrGet();
   char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
-  if (macIdStrPtr != NULL)
+
+  if (mac != NULL)
   {
-    size_t macLen = strlen(macIdStrPtr);
+    size_t macLen = strlen(mac);
     if (macLen >= 12)
     {
-      c8 = macIdStrPtr[8];
-      c9 = macIdStrPtr[9];
-      c10 = macIdStrPtr[10];
-      c11 = macIdStrPtr[11];
+      c8 = mac[8];
+      c9 = mac[9];
+      c10 = mac[10];
+      c11 = mac[11];
     }
   }
-  /* Use snprintf to avoid buffer overflow */
-  snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "Shimmer %c%c%c%c SD %s", c8,
-      c9, c10, c11, sdCardSize);
+
+  /* prefix fits within SHIMMER_PREFIX_LEN (e.g. "Shimmer AAAA") */
+  snprintf(outBuf, outBufLen, "Shimmer %c%c%c%c", c8, c9, c10, c11);
+}
+
+void LogAndStream_generateUsbDiskDriveId(char *usbDeviceIdStr)
+{
+    char prefix[SHIMMER_PREFIX_LEN];
+    char sdCardSize[10];
+
+    LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
+    printSdCardSize(sdCardSize);
+
+    /* start with prefix in destination */
+    int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
+    if (written < 0) { usbDeviceIdStr[0] = '\0'; return; }
+
+    /* compute remaining space (leave room for NUL) */
+    size_t curLen = (size_t)written < USB_DEVICE_ID_STR_LEN ? (size_t)written : USB_DEVICE_ID_STR_LEN - 1;
+    size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
+
+    /* append " SD " and card size safely */
+    /* use snprintf into the tail to ensure null termination */
+    snprintf(usbDeviceIdStr + curLen, rem, " SD %s", sdCardSize);
 }
 
 void LogAndStream_generateUsbMscId(char *usbDeviceIdStr)
 {
-  char *macIdStrPtr = ShimBt_macIdStrPtrGet();
-  char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
-  if (macIdStrPtr != NULL)
-  {
-    size_t macLen = strlen(macIdStrPtr);
-    if (macLen >= 12)
-    {
-      c8 = macIdStrPtr[8];
-      c9 = macIdStrPtr[9];
-      c10 = macIdStrPtr[10];
-      c11 = macIdStrPtr[11];
-    }
-  }
-  snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "Shimmer %c%c%c%c MSC", c8, c9, c10, c11);
+    char prefix[SHIMMER_PREFIX_LEN];
+    LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
+
+    int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
+    if (written < 0) { usbDeviceIdStr[0] = '\0'; return; }
+    size_t curLen = (size_t)written < USB_DEVICE_ID_STR_LEN ? (size_t)written : USB_DEVICE_ID_STR_LEN - 1;
+    size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
+
+    snprintf(usbDeviceIdStr + curLen, rem, " MSC");
 }
 
 void LogAndStream_generateUsbCdcId(char *usbDeviceIdStr)
 {
-  char *macIdStrPtr = ShimBt_macIdStrPtrGet();
-  char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
-  if (macIdStrPtr != NULL)
-  {
-    size_t macLen = strlen(macIdStrPtr);
-    if (macLen >= 12)
-    {
-      c8 = macIdStrPtr[8];
-      c9 = macIdStrPtr[9];
-      c10 = macIdStrPtr[10];
-      c11 = macIdStrPtr[11];
-    }
-  }
-  snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "Shimmer %c%c%c%c CDC ACM",
-      c8, c9, c10, c11);
+    char prefix[SHIMMER_PREFIX_LEN];
+    LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
+
+    int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
+    if (written < 0) { usbDeviceIdStr[0] = '\0'; return; }
+    size_t curLen = (size_t)written < USB_DEVICE_ID_STR_LEN ? (size_t)written : USB_DEVICE_ID_STR_LEN - 1;
+    size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
+
+    snprintf(usbDeviceIdStr + curLen, rem, " CDC ACM");
 }
 
 void LogAndStream_generateUsbCompositeDeviceId(char *usbDeviceIdStr)
 {
-  char *macIdStrPtr = ShimBt_macIdStrPtrGet();
-  char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
-  if (macIdStrPtr != NULL)
-  {
-    size_t macLen = strlen(macIdStrPtr);
-    if (macLen >= 12)
-    {
-      c8 = macIdStrPtr[8];
-      c9 = macIdStrPtr[9];
-      c10 = macIdStrPtr[10];
-      c11 = macIdStrPtr[11];
-    }
-  }
-  snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN,
-      "Shimmer %c%c%c%c Composite Device", c8, c9, c10, c11);
+    char prefix[SHIMMER_PREFIX_LEN];
+    LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
+
+    int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
+    if (written < 0) { usbDeviceIdStr[0] = '\0'; return; }
+    size_t curLen = (size_t)written < USB_DEVICE_ID_STR_LEN ? (size_t)written : USB_DEVICE_ID_STR_LEN - 1;
+    size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
+
+    snprintf(usbDeviceIdStr + curLen, rem, " Composite Device");
 }
 #endif
