@@ -285,8 +285,3 @@ void ShimTask_setInitialiseBluetooth(void)
 {
   ShimTask_set(TASK_BT_TURN_ON_AFTER_BOOT);
 }
-
-void ShimTask_setJumpToBootLoader(void)
-{
-  ShimTask_set(TASK_JUMP_TO_BOOT_LOADER);
-}
