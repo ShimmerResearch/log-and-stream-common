@@ -109,7 +109,7 @@ void GSR_init(uint8_t gsrRangeToSet, uint16_t gsrSamplingRateTicksToSet)
   GSR_initSmoothing(gsrActiveResistor);
 }
 
-void GSR_range(uint8_t *buf)
+void GSR_range(volatile uint8_t *buf)
 {
   //Fill the current active resistor into the upper two bits of the GSR value
   //if autorange is enabled, switch active resistor if required

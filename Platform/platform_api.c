@@ -9,6 +9,8 @@
 
 #include <stdint.h>
 
+#include "Sensing/shimmer_sensing.h"
+
 PLATFORM_WEAK void platform_delayMs(const uint32_t delay_time_ms)
 {
   //This function can be overridden by the main application to provide a custom
@@ -24,4 +26,10 @@ PLATFORM_WEAK void platform_processHwRevision(void)
 PLATFORM_WEAK void platform_initGpioForRevision(void)
 {
   //default no-op
+}
+
+PLATFORM_WEAK uint8_t platform_gatherData(void)
+{
+  ShimSens_gatherData();
+  return 0;
 }

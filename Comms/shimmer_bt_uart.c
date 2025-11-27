@@ -2380,32 +2380,38 @@ void ShimBt_pushByteToBtTxBuf(uint8_t c)
   }
 }
 
-void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
+void ShimBt_pushBytesToBtTxBuf(volatile uint8_t *buf, uint8_t len)
 {
-  uint8_t i;
-  for (i = 0; i < len; i++)
+  //uint8_t i;
+  //for (i = 0; i < len; i++)
+  //{
+  //  ShimBt_pushByteToBtTxBuf(*(buf + i));
+  //}
+
+  const volatile uint8_t *p = buf;
+  while (len--)
   {
-    ShimBt_pushByteToBtTxBuf(*(buf + i));
+    ShimBt_pushByteToBtTxBuf(*p++);
   }
 
   ///* if enough space at after head, copy it in */
   //uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx &
   //BT_TX_BUF_MASK); if (spaceAfterHead > len)
   //{
-  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //  ShimUtil_memcpy_vv(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
   //  buf, len); gBtTxFifo.wrIdx += len;
   //}
   //else
   //{
   //  /* Fill from head to end of buf */
-  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //  ShimUtil_memcpy_vv(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
   //  buf, spaceAfterHead); gBtTxFifo.wrIdx += spaceAfterHead;
   //
   //  /* Fill from start of buf. We already checked above whether there is
   //   * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
   //   * worry about the tail position. */
   //  uint16_t remaining = len - spaceAfterHead;
-  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
+  //  ShimUtil_memcpy_vv(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
   //      buf + spaceAfterHead, remaining);
   //  gBtTxFifo.wrIdx += remaining;
   //}
@@ -2488,10 +2494,10 @@ void ShimBt_sendNextChar(void)
     BtTransmit(&buf, 1);
 #else
     HAL_StatusTypeDefShimmer ret_val;
-    uint8_t numBytes;
+    uint16_t numBytes;
 
-    uint8_t rdIdx = (gBtTxFifo.rdIdx & BT_TX_BUF_MASK);
-    uint8_t wrIdx = (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
+    uint16_t rdIdx = (gBtTxFifo.rdIdx & BT_TX_BUF_MASK);
+    uint16_t wrIdx = (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
 
     if (rdIdx < wrIdx)
     {
