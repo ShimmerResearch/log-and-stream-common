@@ -32,6 +32,11 @@
 
 #define TIMEOUT_100_MS (3277)
 
+#if defined(SHIMMER3R)
+#define USB_DEVICE_ID_STR_LEN 32
+#define SHIMMER_PREFIX_LEN    16 /* "Shimmer " + 4 chars + nul = 13; 16 is safe */
+#endif
+
 #if defined(SHIMMER3)
 #define __NOP() __no_operation()
 #endif
@@ -99,8 +104,7 @@ typedef volatile struct STATTypeDef_t
   uint8_t timerSamplingEnabled   : 1;
   uint32_t testResult;
 #if defined(SHIMMER3R)
-  uint8_t pendingRebootForDfu : 1;
-  uint8_t micSensing          : 1;
+  uint8_t micSensing : 1;
   uint16_t bslCheckTimeMs;
 #endif
   uint16_t bootTimePerStageMs;

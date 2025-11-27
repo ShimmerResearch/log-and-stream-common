@@ -66,7 +66,7 @@ void ShimTask_NORM_manage(void)
 #if defined(SHIMMER3)
   if (!taskCurrent)
 #elif defined(SHIMMER3R)
-  if (!taskCurrent || shimmerStatus.pendingRebootForDfu)
+  if (!taskCurrent)
 #endif
   {
     sleepWhenNoTask();
@@ -165,6 +165,12 @@ void ShimTask_NORM_manage(void)
       case TASK_BT_TURN_ON_AFTER_BOOT:
         InitialiseBtAfterBoot();
         break;
+
+#if defined(SHIMMER3R)
+      case TASK_JUMP_TO_BOOT_LOADER:
+        JumpToBootloader();
+        break;
+#endif
 
       default:
         break;
