@@ -103,6 +103,9 @@ uint8_t ShimEeprom_checkBtErrorCounts(void)
   return 0;
 }
 
+/**
+ * Resets all Bluetooth error counters in eepromBtSettings to zero.
+ */
 void ShimEeprom_resetBtErrorCounts(void)
 {
   eepromBtSettings.btCntDisconnectWhileStreaming = 0;
