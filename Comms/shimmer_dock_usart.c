@@ -416,7 +416,6 @@ void ShimDock_processCmd(void)
 #endif
 #if defined(SHIMMER3R)
             case UART_PROP_ENTER_BOOTLOADER:
-              shimmerStatus.pendingRebootForDfu = 1;
               RTC_setAlarmRebootToBootloader(dockRxBuf[UART_RXBUF_DATA]);
 
               uartSendRspAck = 1;
