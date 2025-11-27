@@ -323,7 +323,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     sensing.isSampling = SAMPLE_NOT_READY;
     ShimSens_stopPeripherals();
 
-    if (enableDockUartIfDocked && shimmerStatus.docked) /* Moved this here because it was causing WDT trigger for S3 when in line 313 */
+    if (enableDockUartIfDocked && shimmerStatus.docked)
     {
       DockUart_init();
     }

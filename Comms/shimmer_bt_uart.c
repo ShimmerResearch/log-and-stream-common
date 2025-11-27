@@ -99,7 +99,7 @@ volatile RingFifoTx_t gBtTxFifo;
 
 uint8_t bleCurrentlyEnabled = 1, btClassicCurrentlyEnabled = 1;
 
-volatile uint8_t sensingStateChangeFromBtCmd = 0;
+uint8_t sensingStateChangeFromBtCmd = 0;
 
 void ShimBt_btCommsProtocolInit(void)
 {
