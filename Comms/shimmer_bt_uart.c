@@ -60,9 +60,11 @@ uint16_t infomemOffset, dcMemOffset, calibRamOffset;
 //ExG
 uint8_t exgLength, exgChip, exgStartAddr;
 
-uint8_t btDataRateTestState;
+volatile uint8_t btDataRateTestState;
 #if defined(SHIMMER3)
-uint32_t btDataRateTestCounter;
+volatile uint32_t btDataRateTestCounter;
+volatile uint32_t btDataRateTestCounterSaved;
+volatile uint8_t dataRateTestBlockageCounter;
 #else
 uint8_t dataRateTestTxPacket[] = { DATA_RATE_TEST_RESPONSE, 0, 0, 0, 0 };
 #endif
@@ -609,6 +611,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
           case GET_ALT_MAG_CALIBRATION_COMMAND:
           case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
+          case RESET_BT_ERROR_COUNTS:
             gAction = data;
             ShimTask_set(TASK_BT_PROCESS_CMD);
             setDmaWaitingForResponse(1U);
@@ -1421,6 +1424,23 @@ void ShimBt_processCmd(void)
         {
           sendNack = 1;
         }
+        break;
+      }
+      case RESET_BT_ERROR_COUNTS:
+      {
+#if defined(SHIMMER3)
+        if (ShimEeprom_isPresent())
+        {
+          ShimEeprom_resetBtErrorCounts();
+          ShimEeprom_writeRadioDetails();
+        }
+        else
+        {
+          sendNack = 1;
+        }
+#else
+        sendNack = 1;
+#endif
         break;
       }
       case ACK_COMMAND_PROCESSED:
@@ -2272,6 +2292,9 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   if (isConnected)
   { //BT is connected
     ShimBt_resetBtRxVariablesOnConnect();
+#if defined(SHIMMER3)
+    resetLatestBtError();
+#endif
 
     if (shimmerStatus.sdSyncEnabled)
     {
@@ -2310,6 +2333,12 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   }
   else
   { //BT is disconnected
+#if defined(SHIMMER3)
+    if (shimmerStatus.btStreaming || ShimBt_getDataRateTestState())
+    {
+      saveBtError(BT_ERROR_DISCONNECT_WHILE_STREAMING);
+    }
+#endif
     shimmerStatus.btstreamReady = 0;
     ShimTask_setStopStreaming();
 
@@ -2320,6 +2349,10 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
     ShimBt_setCrcMode(CRC_OFF);
     /* Revert to default state if changed */
     ShimBt_resetBtResponseVars();
+
+#if defined(SHIMMER3)
+    setRn4678ConnectionState(RN4678_DISCONNECTED);
+#endif
 
     /* Check BT module configuration after disconnection in case
      * sensor configuration (i.e., BT on vs. BT off vs. SD Sync) was changed
@@ -2526,6 +2559,8 @@ void ShimBt_setDataRateTestState(uint8_t state)
   btDataRateTestState = state;
 #if defined(SHIMMER3)
   btDataRateTestCounter = 0;
+  btDataRateTestCounterSaved = 0;
+  dataRateTestBlockageCounter = 0;
 #else
   *((uint32_t *) &dataRateTestTxPacket[1]) = 0;
 #endif
@@ -2698,3 +2733,46 @@ uint8_t ShimBt_isBtClassicCurrentlyEnabled(void)
 {
   return btClassicCurrentlyEnabled;
 }
+
+#if defined(SHIMMER3)
+/**
+ * @brief Checks for blockage during Bluetooth data rate testing.
+ *
+ * This function monitors the progress of the Bluetooth data rate test by
+ * comparing the current value of btDataRateTestCounter to its value in the
+ * previous call. If the counter does not increment over consecutive calls,
+ * it increments dataRateTestBlockageCounter. Each call is assumed to occur
+ * at 100ms intervals. If the counter has not changed for more than 2 seconds
+ * (i.e., 20 consecutive calls), the function returns 1 to indicate a blockage.
+ * Otherwise, it returns 0.
+ *
+ * The function relies on volatile variables for state tracking and should be
+ * called regularly (every 100ms) during the data rate test.
+ *
+ * @return 1 if a blockage is detected (counter unchanged for >2s), 0 otherwise.
+ */
+uint8_t ShimBt_checkForBtDataRateTestBlockage(void)
+{
+  uint32_t btDataRateTestCounterLcl = btDataRateTestCounter;
+  if (btDataRateTestState && shimmerStatus.btConnected)
+  {
+    if (btDataRateTestCounterLcl == btDataRateTestCounterSaved)
+    {
+      dataRateTestBlockageCounter++;
+    }
+    else
+    {
+      dataRateTestBlockageCounter = 0;
+    }
+
+    /* Each count is 100ms. Checking for a blockage longer than 2s */
+    if (dataRateTestBlockageCounter > 20)
+    {
+      return 1;
+    }
+
+    btDataRateTestCounterSaved = btDataRateTestCounterLcl;
+  }
+  return 0;
+}
+#endif

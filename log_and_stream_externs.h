@@ -35,6 +35,9 @@ extern void BMPX80_startMeasurement(void);
 
 extern void SampleTimerStart(void);
 extern void SampleTimerStop(void);
+
+extern void saveBtError(uint8_t btError);
+extern void resetLatestBtError(void);
 #endif //SHIMMER3
 
 extern void Board_setExpansionBrdPower(uint8_t state);

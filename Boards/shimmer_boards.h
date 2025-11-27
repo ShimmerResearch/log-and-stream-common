@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 
-#include <EEPROM/shimmer_eeprom.h>
+#include "EEPROM/shimmer_eeprom.h"
 
 #include "CAT24C16/CAT24C16.h"
 
