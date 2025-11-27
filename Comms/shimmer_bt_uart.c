@@ -2488,10 +2488,10 @@ void ShimBt_sendNextChar(void)
     BtTransmit(&buf, 1);
 #else
     HAL_StatusTypeDefShimmer ret_val;
-    uint8_t numBytes;
+    uint16_t numBytes;
 
-    uint8_t rdIdx = (gBtTxFifo.rdIdx & BT_TX_BUF_MASK);
-    uint8_t wrIdx = (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
+    uint16_t rdIdx = (gBtTxFifo.rdIdx & BT_TX_BUF_MASK);
+    uint16_t wrIdx = (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
 
     if (rdIdx < wrIdx)
     {
