@@ -2759,9 +2759,10 @@ uint8_t ShimBt_isBtClassicCurrentlyEnabled(void)
  */
 uint8_t ShimBt_checkForBtDataRateTestBlockage(void)
 {
+  uint32_t btDataRateTestCounterLcl = btDataRateTestCounter;
   if (btDataRateTestState && shimmerStatus.btConnected)
   {
-    if (btDataRateTestCounter == btDataRateTestCounterSaved)
+    if (btDataRateTestCounterLcl == btDataRateTestCounterSaved)
     {
       dataRateTestBlockageCounter++;
     }
@@ -2776,7 +2777,7 @@ uint8_t ShimBt_checkForBtDataRateTestBlockage(void)
       return 1;
     }
 
-    btDataRateTestCounterSaved = btDataRateTestCounter;
+    btDataRateTestCounterSaved = btDataRateTestCounterLcl;
   }
   return 0;
 }
