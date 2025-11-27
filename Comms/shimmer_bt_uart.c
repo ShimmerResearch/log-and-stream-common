@@ -2735,6 +2735,22 @@ uint8_t ShimBt_isBtClassicCurrentlyEnabled(void)
 }
 
 #if defined(SHIMMER3)
+/**
+ * @brief Checks for blockage during Bluetooth data rate testing.
+ *
+ * This function monitors the progress of the Bluetooth data rate test by
+ * comparing the current value of btDataRateTestCounter to its value in the
+ * previous call. If the counter does not increment over consecutive calls,
+ * it increments dataRateTestBlockageCounter. Each call is assumed to occur
+ * at 100ms intervals. If the counter has not changed for more than 2 seconds
+ * (i.e., 20 consecutive calls), the function returns 1 to indicate a blockage.
+ * Otherwise, it returns 0.
+ *
+ * The function relies on volatile variables for state tracking and should be
+ * called regularly (every 100ms) during the data rate test.
+ *
+ * @return 1 if a blockage is detected (counter unchanged for >2s), 0 otherwise.
+ */
 uint8_t ShimBt_checkForBtDataRateTestBlockage(void)
 {
   if (btDataRateTestState && shimmerStatus.btConnected)
