@@ -172,6 +172,15 @@ void ShimTask_NORM_manage(void)
         break;
 #endif
 
+#if defined(SHIMMER3)
+      case TASK_UPDATE_DEBUG_COUNT:
+        if (ShimEeprom_isPresent())
+        {
+          ShimEeprom_writeRadioDetails();
+        }
+        break;
+#endif
+
       default:
         break;
     }
