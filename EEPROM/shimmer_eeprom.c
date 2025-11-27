@@ -90,6 +90,13 @@ uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
 }
 
 #if defined(SHIMMER3)
+/**
+ * Checks if any Bluetooth error count fields are set to the invalid value (0xFFFF).
+ * If so, resets all error counts to zero.
+ *
+ * @return 1 if any error count was invalid and reset, 0 otherwise.
+ * @sideeffect Calls ShimEeprom_resetBtErrorCounts() if any count is invalid.
+ */
 uint8_t ShimEeprom_checkBtErrorCounts(void)
 {
   if (eepromBtSettings.btCntDisconnectWhileStreaming == 0xFFFF
