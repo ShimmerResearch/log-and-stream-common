@@ -103,7 +103,8 @@ typedef enum
   TASK_JUMP_TO_BOOT_LOADER = (0x00000001UL << 21U)
 #endif
 #if defined(SHIMMER3)
-  TASK_UPDATE_DEBUG_COUNT = (0x00000001UL << 21U)
+      TASK_UPDATE_DEBUG_COUNT
+  = (0x00000001UL << 21U)
 #endif
 } TASK_FLAGS;
 //return the task id of the current task
