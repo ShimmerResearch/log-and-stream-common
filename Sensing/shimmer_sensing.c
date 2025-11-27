@@ -633,7 +633,7 @@ void ShimSens_startLoggingIfUndockStartEnabled(void)
   {
     ShimTask_setStartLoggingIfReady();
   }
-  else //if start sd logging  not triggered on undock.
+  else //if start SD logging is not triggered on undock.
   {
     ShimBt_instreamStatusRespSend();
   }
