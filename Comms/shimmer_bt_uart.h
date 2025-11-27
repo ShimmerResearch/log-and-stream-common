@@ -206,6 +206,7 @@
 #define ALT_MAG_SAMPLING_RATE_RESPONSE                0xB3
 #define GET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB4
 #define DUMMY_COMMAND                                 0xB5
+#define RESET_BT_ERROR_COUNTS                         0xB6
 
 #define SET_SD_SYNC_COMMAND                           0xE0
 #define SD_SYNC_RESPONSE                              0xE1
@@ -352,5 +353,8 @@ void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 __weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 uint8_t ShimBt_isBleCurrentlyEnabled(void);
 uint8_t ShimBt_isBtClassicCurrentlyEnabled(void);
+#if defined(SHIMMER3)
+uint8_t ShimBt_checkForBtDataRateTestBlockage(void);
+#endif
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */

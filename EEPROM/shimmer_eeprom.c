@@ -5,7 +5,8 @@
  *      Author: MarkNolan
  */
 
-#include <EEPROM/shimmer_eeprom.h>
+#include "EEPROM/shimmer_eeprom.h"
+
 #include <stdint.h>
 
 #include "log_and_stream_externs.h"
@@ -62,7 +63,7 @@ void ShimEeprom_updateRadioDetails(void)
   if (isBtDeviceRn41orRN42())
   {
     eepromBtSettings.baudRate = BAUD_115200;
-    eepromBtSettings.bleEnabled = 0; //BLE not supprted in RN42
+    eepromBtSettings.bleEnabled = 0; //BLE not supported in RN42
   }
   else
   {
@@ -87,6 +88,29 @@ uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
 #endif
   );
 }
+
+#if defined(SHIMMER3)
+uint8_t ShimEeprom_checkBtErrorCounts(void)
+{
+  if (eepromBtSettings.btCntDisconnectWhileStreaming == 0xFFFF
+      || eepromBtSettings.btCntUnsolicitedReboot == 0xFFFF
+      || eepromBtSettings.btCntRtsLockup == 0xFFFF
+      || eepromBtSettings.btCntDataRateTestBlockage == 0xFFFF)
+  {
+    ShimEeprom_resetBtErrorCounts();
+    return 1;
+  }
+  return 0;
+}
+
+void ShimEeprom_resetBtErrorCounts(void)
+{
+  eepromBtSettings.btCntDisconnectWhileStreaming = 0;
+  eepromBtSettings.btCntUnsolicitedReboot = 0;
+  eepromBtSettings.btCntRtsLockup = 0;
+  eepromBtSettings.btCntDataRateTestBlockage = 0;
+}
+#endif
 
 gEepromBtSettings *ShimEeprom_getRadioDetails(void)
 {
