@@ -173,7 +173,7 @@ void ShimTask_NORM_manage(void)
 #endif
 
 #if defined(SHIMMER3)
-      case TASK_UPDATE_DEBUG_COUNT:
+      case TASK_WRITE_RADIO_DETAILS:
         if (ShimEeprom_isPresent())
         {
           ShimEeprom_writeRadioDetails();
