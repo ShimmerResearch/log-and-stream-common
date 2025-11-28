@@ -310,11 +310,6 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     shimmerStatus.btStreaming = 0;
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
     ShimTask_clear(TASK_STREAMDATA);
-
-    if (enableDockUartIfDocked && shimmerStatus.docked && !shimmerStatus.sdLogging)
-    {
-      DockUart_init();
-    }
   }
 
   /* Both logging and streaming have been stopped, so we can stop sensing. */
@@ -327,6 +322,11 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     sensing.startTs = 0;
     sensing.isSampling = SAMPLE_NOT_READY;
     ShimSens_stopPeripherals();
+
+    if (enableDockUartIfDocked && shimmerStatus.docked)
+    {
+      DockUart_init();
+    }
 
     ShimSens_stopSensingWrapup();
 
@@ -372,7 +372,7 @@ void ShimSens_stopPeripherals(void)
   }
 #endif
 
-  if (ShimConfig_getStoredConfig()->expansionBoardPower)
+  if (ShimConfig_isExpansionBoardPwrEnabled())
   { //EXT_RESET_N
     Board_setExpansionBrdPower(0);
   }
@@ -632,6 +632,10 @@ void ShimSens_startLoggingIfUndockStartEnabled(void)
 #endif
   {
     ShimTask_setStartLoggingIfReady();
+  }
+  else //if start SD logging is not triggered on undock.
+  {
+    ShimBt_instreamStatusRespSend();
   }
 }
 
