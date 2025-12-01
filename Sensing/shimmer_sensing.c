@@ -492,7 +492,11 @@ uint8_t ShimSens_sampleTimerTriggered(void)
 #endif
   else
   {
+#if defined(SHIMMER3R)
+    __NOP();
+#else
     _NOP();
+#endif
   }
   //}
 
@@ -644,14 +648,22 @@ void ShimSens_saveData(void)
     if (dataBufferPtr[1] == 0 && dataBufferPtr[2] == 0 && dataBufferPtr[3] == 0)
     {
       //Filter out packets with 0 as timestamp bytes
-      _NOP();
+#if defined(SHIMMER3R)
+    __NOP();
+#else
+    _NOP();
+#endif
     }
     else
 #endif
         if (TICKS_TO_SKIP > 0 && !sensing.skippingPacketsFlag
             && (abs(ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
     {
-      _NOP();
+#if defined(SHIMMER3R)
+    __NOP();
+#else
+    _NOP();
+#endif
     }
     else
     {

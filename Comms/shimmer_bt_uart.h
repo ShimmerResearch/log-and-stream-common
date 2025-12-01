@@ -349,7 +349,7 @@ void ShimBt_setDataRateTestState(uint8_t state);
 uint8_t ShimBt_getDataRateTestState(void);
 void ShimBt_loadTxBufForDataRateTest(void);
 #if defined(SHIMMER3R)
-uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType);
+uint8_t ShimBt_writeToTxBufAndSend(volatile uint8_t *buf, uint8_t len, btResponseType responseType);
 #endif
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr);
 

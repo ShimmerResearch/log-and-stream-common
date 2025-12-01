@@ -2597,7 +2597,7 @@ void ShimBt_loadTxBufForDataRateTest(void)
 }
 
 #if defined(SHIMMER3R)
-uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType)
+uint8_t ShimBt_writeToTxBufAndSend(volatile uint8_t *buf, uint8_t len, btResponseType responseType)
 {
   if (ShimBt_getSpaceInBtTxBuf() <= len)
   {
