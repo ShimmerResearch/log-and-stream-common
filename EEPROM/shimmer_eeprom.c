@@ -5,7 +5,8 @@
  *      Author: MarkNolan
  */
 
-#include <EEPROM/shimmer_eeprom.h>
+#include "EEPROM/shimmer_eeprom.h"
+
 #include <stdint.h>
 
 #include "log_and_stream_externs.h"
@@ -62,7 +63,7 @@ void ShimEeprom_updateRadioDetails(void)
   if (isBtDeviceRn41orRN42())
   {
     eepromBtSettings.baudRate = BAUD_115200;
-    eepromBtSettings.bleEnabled = 0; //BLE not supprted in RN42
+    eepromBtSettings.bleEnabled = 0; //BLE not supported in RN42
   }
   else
   {
@@ -87,6 +88,38 @@ uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
 #endif
   );
 }
+
+#if defined(SHIMMER3)
+/**
+ * Checks if any Bluetooth error count fields are set to the invalid value
+ * (0xFFFF). If so, resets all error counts to zero.
+ *
+ * @return 1 if any error count was invalid and reset, 0 otherwise.
+ * @sideeffect Calls ShimEeprom_resetBtErrorCounts() if any count is invalid.
+ */
+uint8_t ShimEeprom_checkBtErrorCounts(void)
+{
+  if (eepromBtSettings.btCntDisconnectWhileStreaming == 0xFFFF
+      || eepromBtSettings.btCntUnsolicitedReboot == 0xFFFF
+      || eepromBtSettings.btCntRtsLockup == 0xFFFF
+      || eepromBtSettings.btCntDataRateTestBlockage == 0xFFFF)
+  {
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * Resets all Bluetooth error counters in eepromBtSettings to zero.
+ */
+void ShimEeprom_resetBtErrorCounts(void)
+{
+  eepromBtSettings.btCntDisconnectWhileStreaming = 0;
+  eepromBtSettings.btCntUnsolicitedReboot = 0;
+  eepromBtSettings.btCntRtsLockup = 0;
+  eepromBtSettings.btCntDataRateTestBlockage = 0;
+}
+#endif
 
 gEepromBtSettings *ShimEeprom_getRadioDetails(void)
 {

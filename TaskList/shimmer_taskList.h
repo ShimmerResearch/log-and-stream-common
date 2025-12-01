@@ -100,9 +100,11 @@ typedef enum
   TASK_BT_TX_BUF_CLEAR = (0x00000001UL << 19U),
   TASK_BT_TURN_ON_AFTER_BOOT = (0x00000001UL << 20U),
 #if defined(SHIMMER3R)
-  TASK_JUMP_TO_BOOT_LOADER = (0x00000001UL << 21U)
+  TASK_JUMP_TO_BOOT_LOADER = (0x00000001UL << 21U),
 #endif
-
+#if defined(SHIMMER3)
+  TASK_WRITE_RADIO_DETAILS = (0x00000001UL << 22U),
+#endif
 } TASK_FLAGS;
 //return the task id of the current task
 

@@ -81,7 +81,15 @@ typedef union
     uint8_t unusedIdx3Bit6   : 1;
     uint8_t unusedIdx3Bit7   : 1;
 
+#if defined(SHIMMER3)
+    uint16_t btCntDisconnectWhileStreaming;
+    uint16_t btCntUnsolicitedReboot;
+    uint16_t btCntRtsLockup;
+    uint16_t btCntDataRateTestBlockage;
+    uint8_t padding[5];
+#else
     uint8_t padding[13];
+#endif
   };
 } gEepromBtSettings;
 
@@ -94,6 +102,10 @@ void ShimEeprom_readRadioDetails(void);
 void ShimEeprom_writeRadioDetails(void);
 void ShimEeprom_updateRadioDetails(void);
 uint8_t ShimEeprom_areRadioDetailsIncorrect(void);
+#if defined(SHIMMER3)
+uint8_t ShimEeprom_checkBtErrorCounts(void);
+void ShimEeprom_resetBtErrorCounts(void);
+#endif
 gEepromBtSettings *ShimEeprom_getRadioDetails(void);
 uint8_t ShimEeprom_isBleEnabled(void);
 uint8_t ShimEeprom_isBtClassicEnabled(void);

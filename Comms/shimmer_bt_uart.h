@@ -206,6 +206,7 @@
 #define ALT_MAG_SAMPLING_RATE_RESPONSE                0xB3
 #define GET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB4
 #define DUMMY_COMMAND                                 0xB5
+#define RESET_BT_ERROR_COUNTS                         0xB6
 
 #define SET_SD_SYNC_COMMAND                           0xE0
 #define SD_SYNC_RESPONSE                              0xE1
@@ -264,6 +265,16 @@ enum BT_BAUD_RATE
   BAUD_1000000 = 11U, //Only supported in RN4678 v1.23 (issues with v1.13.5 & v1.22)
   BAUD_2000000 = 12U, //Only supported on CYW20820
   BAUD_NO_CHANGE_NEEDED = 0xFF,
+};
+
+enum
+{
+  BT_ERROR_NONE = (0x01UL << 0U),
+  BT_ERROR_RTS_LOCK = (0x01UL << 1U),
+  BT_ERROR_UNSOLICITED_REBOOT = (0x01UL << 2U),
+  BT_ERROR_DATA_RATE_TEST_BLOCKAGE = (0x01UL << 3U),
+  BT_ERROR_DISCONNECT_WHILE_STREAMING = (0x01UL << 4U),
+  BT_ERROR_COUNT = (0x01UL << 5U)
 };
 #endif
 
@@ -352,5 +363,8 @@ void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 __weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 uint8_t ShimBt_isBleCurrentlyEnabled(void);
 uint8_t ShimBt_isBtClassicCurrentlyEnabled(void);
+#if defined(SHIMMER3)
+uint8_t ShimBt_checkForBtDataRateTestBlockage(void);
+#endif
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */
