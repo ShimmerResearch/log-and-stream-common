@@ -649,9 +649,9 @@ void ShimSens_saveData(void)
     {
       //Filter out packets with 0 as timestamp bytes
 #if defined(SHIMMER3R)
-    __NOP();
+      __NOP();
 #else
-    _NOP();
+      _NOP();
 #endif
     }
     else
@@ -660,9 +660,9 @@ void ShimSens_saveData(void)
             && (abs(ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
     {
 #if defined(SHIMMER3R)
-    __NOP();
+      __NOP();
 #else
-    _NOP();
+      _NOP();
 #endif
     }
     else
