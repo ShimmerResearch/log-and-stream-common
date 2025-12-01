@@ -350,7 +350,7 @@ void ShimSdDataFile_writeToCard(void)
   uint8_t *writing_buf;
   uint16_t *writing_buf_len;
 
-  uint32_t file_td_h, file_td_m;                //, my_local_time_long32
+  uint32_t file_td_h, file_td_m; //, my_local_time_long32
   uint64_t local_time_40;
 
   writing_buf = &sdWrBuf[sdBufWr][0];

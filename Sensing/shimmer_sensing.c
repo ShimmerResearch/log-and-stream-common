@@ -167,7 +167,7 @@ void ShimSens_startSensing(void)
   if (sdLogPendingStart || streamPendingStart)
   {
 #if SKIP65MS
-    if(shimmerStatus.sensing!=1)
+    if (shimmerStatus.sensing != 1)
     {
       skip65ms = 1;
     }
@@ -425,25 +425,25 @@ void ShimSens_gatherData(void)
 
 uint8_t Skip65ms(void)
 {
-    if (!skip65ms)
-    {
-        return 0;
+  if (!skip65ms)
+  {
+    return 0;
+  }
+  if (skip65ms == 1)
+  {
+    startSensingTs64 = RTC_get64();
+    skip65ms = 2;
+  }
+  else
+  {
+    uint64_t ts_64 = RTC_get64();
+    if ((ts_64 - startSensingTs64) > 2130)
+    { //2130 - 65 ms, 1638 - 50 ms
+      skip65ms = 0;
+      return 0;
     }
-    if (skip65ms == 1)
-    {
-        startSensingTs64 = RTC_get64();
-        skip65ms = 2;
-    }
-    else
-    {
-        uint64_t ts_64 = RTC_get64();
-        if ((ts_64 - startSensingTs64) > 2130)
-        { // 2130 - 65 ms, 1638 - 50 ms
-            skip65ms = 0;
-            return 0;
-        }
-    }
-    return 1;
+  }
+  return 1;
 }
 
 void ShimSens_saveTimestampToPacket(void)
@@ -454,11 +454,11 @@ void ShimSens_saveTimestampToPacket(void)
   {
     sensing.startTsForSdFile = RTC_get64();
     sensing.newSdFileTsFlag = NEW_SD_FILE_TS_UPDATED;
-    *(uint32_t*) rtc_temp = (uint32_t) sensing.startTsForSdFile;
+    *(uint32_t *) rtc_temp = (uint32_t) sensing.startTsForSdFile;
   }
   else
   {
-    *(uint32_t*) rtc_temp = RTC_get32();
+    *(uint32_t *) rtc_temp = RTC_get32();
   }
 
   if (sensing.currentBuffer)
@@ -528,11 +528,11 @@ void ShimSens_stageCompleteCb(uint8_t stage)
   {
 
 #if SKIP65MS
-        if (Skip65ms())
-        {
-          sensing.newSdFileTsFlag = NEW_SD_FILE_TS_PENDING_UPDATE; // has to re collect the init_ts
-            return;
-        }
+    if (Skip65ms())
+    {
+      sensing.newSdFileTsFlag = NEW_SD_FILE_TS_PENDING_UPDATE; //has to re collect the init_ts
+      return;
+    }
 #endif
 
     //TODO
@@ -546,7 +546,7 @@ void ShimSens_stageCompleteCb(uint8_t stage)
     //}
 
 #if !SAVE_DATA_FROM_RTC_INT
-//    ShimTask_set(TASK_SAVEDATA);
+//ShimTask_set(TASK_SAVEDATA);
 #endif /* SAVE_DATA_FROM_RTC_INT */
 
     ShimSens_saveData();
@@ -619,15 +619,15 @@ void ShimSens_stepDone(void)
 
 void ShimSens_saveData(void)
 {
-  uint8_t *dataBufferPtr = sensing.currentBuffer? &sensing.txBuff1[0]: &sensing.txBuff0[0];
+  uint8_t *dataBufferPtr
+      = sensing.currentBuffer ? &sensing.txBuff1[0] : &sensing.txBuff0[0];
 
   sensing.skippingPacketsFlag = 1;
 #if USE_SD
   if (shimmerStatus.sdLogging && !ShimSens_shouldStopLogging())
   {
     PeriStat_Set(STAT_PERI_SDMMC);
-    ShimSdDataFile_writeToBuff(
-        &dataBufferPtr[PACKET_TIMESTAMP_IDX], sensing.dataLen - 1);
+    ShimSdDataFile_writeToBuff(&dataBufferPtr[PACKET_TIMESTAMP_IDX], sensing.dataLen - 1);
     PeriStat_Clr(STAT_PERI_SDMMC);
   }
 #endif
@@ -637,8 +637,7 @@ void ShimSens_saveData(void)
     uint8_t crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
     {
-      calculateCrcAndInsert(
-          crcMode, &dataBufferPtr[PACKET_HEADER_IDX], sensing.dataLen);
+      calculateCrcAndInsert(crcMode, &dataBufferPtr[PACKET_HEADER_IDX], sensing.dataLen);
     }
     ShimBt_writeToTxBufAndSend(&dataBufferPtr[PACKET_HEADER_IDX],
         sensing.dataLen + crcMode, SENSOR_DATA);

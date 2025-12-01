@@ -2415,30 +2415,30 @@ void ShimBt_pushByteToBtTxBuf(uint8_t c)
 
 void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
 {
-//  uint8_t i;
-//  for (i = 0; i < len; i++)
-//  {
-//    ShimBt_pushByteToBtTxBuf(*(buf + i));
-//  }
+  //uint8_t i;
+  //for (i = 0; i < len; i++)
+  //{
+  //  ShimBt_pushByteToBtTxBuf(*(buf + i));
+  //}
 
-//  const volatile uint8_t *p = buf;
-//  while (len--)
-//  {
-//    ShimBt_pushByteToBtTxBuf(*p++);
-//  }
+  //const volatile uint8_t *p = buf;
+  //while (len--)
+  //{
+  //  ShimBt_pushByteToBtTxBuf(*p++);
+  //}
 
   /* if enough space at after head, copy it in */
-  uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx &
-  BT_TX_BUF_MASK); if (spaceAfterHead > len)
+  uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
+  if (spaceAfterHead > len)
   {
-    memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-    buf, len); gBtTxFifo.wrIdx += len;
+    memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf, len);
+    gBtTxFifo.wrIdx += len;
   }
   else
   {
     /* Fill from head to end of buf */
-    memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-    buf, spaceAfterHead); gBtTxFifo.wrIdx += spaceAfterHead;
+    memcpy(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)], buf, spaceAfterHead);
+    gBtTxFifo.wrIdx += spaceAfterHead;
 
     /* Fill from start of buf. We already checked above whether there is
      * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
