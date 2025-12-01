@@ -766,7 +766,7 @@ void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll)
   if (resetAll)
   {
     memset(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
-//    ShimUtil_memset_v(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
+    //ShimUtil_memset_v(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
   }
 
   /* Not needed due to memset above but explicitly setting DATA_PACKET for
