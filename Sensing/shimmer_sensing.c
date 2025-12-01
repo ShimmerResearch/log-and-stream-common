@@ -433,7 +433,7 @@ void ShimSens_saveTimestampToPacket(void)
     rtc32 = RTC_get32();
   }
 
-  volatile PACKETBufferTypeDef *packetBuf = ShimSens_getPacketBuffAtWrIdx();
+  PACKETBufferTypeDef *packetBuf = ShimSens_getPacketBuffAtWrIdx();
 
   if (sensing.startTs == 0)
   {
@@ -452,7 +452,7 @@ void ShimSens_saveTimestampToPacket(void)
 
 uint8_t ShimSens_sampleTimerTriggered(void)
 {
-  volatile PACKETBufferTypeDef *packetBufPtr = ShimSens_getPacketBuffAtWrIdx();
+  PACKETBufferTypeDef *packetBufPtr = ShimSens_getPacketBuffAtWrIdx();
   //if (shimmerStatus.sensing)
   //{
   if (ShimSens_arePacketBuffsFull())
@@ -638,7 +638,7 @@ void ShimSens_saveData(void)
 
   for (bufferCounter = 0; bufferCounter < bufferCount; bufferCounter++)
   {
-    volatile uint8_t *dataBufferPtr = &ShimSens_getPacketBuffAtRdIdx()->dataBuf[0];
+    uint8_t *dataBufferPtr = &ShimSens_getPacketBuffAtRdIdx()->dataBuf[0];
 
 #if HACK_TIMESTAMP_JUMP
     if (dataBufferPtr[1] == 0 && dataBufferPtr[2] == 0 && dataBufferPtr[3] == 0)
@@ -737,31 +737,31 @@ void ShimSens_maxExperimentLengthSecsSet(uint16_t maxExpLenMins)
   maxExpLenSecs = maxExpLenMins * 60;
 }
 
-volatile uint8_t *ShimSens_getDataBuffAtWrIdx(void)
+uint8_t *ShimSens_getDataBuffAtWrIdx(void)
 {
   return &ShimSens_getPacketBuffAtWrIdx()->dataBuf[0];
 }
 
-volatile PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void)
+PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void)
 {
   return &sensing.packetBuffers[ShimSens_getPacketBufWrIdx()];
 }
 
-volatile PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void)
+PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void)
 {
   return &sensing.packetBuffers[ShimSens_getPacketBufRdIdx()];
 }
 
 void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll)
 {
-  volatile PACKETBufferTypeDef *packetBufferPtr = &sensing.packetBuffers[index];
+  PACKETBufferTypeDef *packetBufferPtr = &sensing.packetBuffers[index];
 
   packetBufferPtr->samplingStatus = SAMPLING_PACKET_IDLE;
   packetBufferPtr->timestampTicks = 0;
   if (resetAll)
   {
-    //memset(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
-    ShimUtil_memset_v(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
+    memset(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
+//    ShimUtil_memset_v(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
   }
 
   /* Not needed due to memset above but explicitly setting DATA_PACKET for

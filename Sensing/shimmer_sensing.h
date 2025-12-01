@@ -243,7 +243,7 @@ typedef struct
 #endif
   volatile uint16_t packetBuffWrIdx;
   volatile uint16_t packetBuffRdIdx;
-  volatile PACKETBufferTypeDef packetBuffers[DATA_BUF_QTY];
+  PACKETBufferTypeDef packetBuffers[DATA_BUF_QTY];
   uint8_t skippingPacketsFlag;
   //STATTypeDef stat;
   DATAPTRTypeDef ptr;
@@ -288,9 +288,9 @@ void ShimSens_startLoggingIfUndockStartEnabled(void);
 uint8_t ShimSens_checkAutostopLoggingCondition(void);
 void ShimSens_currentExperimentLengthReset(void);
 void ShimSens_maxExperimentLengthSecsSet(uint16_t expLengthMins);
-volatile uint8_t *ShimSens_getDataBuffAtWrIdx(void);
-volatile PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void);
-volatile PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void);
+uint8_t *ShimSens_getDataBuffAtWrIdx(void);
+PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void);
+PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void);
 void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll);
 void ShimSens_resetPacketBuffAll(void);
 void ShimSens_incrementPacketBuffWrIdx(void);
