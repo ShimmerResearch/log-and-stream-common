@@ -266,7 +266,7 @@ void LogAndStream_setupUndock(void)
 
   if (ShimConfig_getStoredConfig()->userButtonEnable)
   {
-  	ShimBt_instreamStatusRespSend();
+    ShimBt_instreamStatusRespSend();
   }
 
   if (LogAndStream_checkSdInSlot())
