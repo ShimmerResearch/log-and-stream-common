@@ -742,6 +742,11 @@ uint8_t *ShimSens_getDataBuffAtWrIdx(void)
   return &ShimSens_getPacketBuffAtWrIdx()->dataBuf[0];
 }
 
+uint8_t *ShimSens_getDataBuffAtNextWrIdx(void)
+{
+  return &sensing.packetBuffers[ShimSens_getPacketBufAtNextWrIdx()].dataBuf[0];
+}
+
 PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void)
 {
   return &sensing.packetBuffers[ShimSens_getPacketBufWrIdx()];
@@ -818,3 +823,9 @@ uint8_t ShimSens_getPacketBufWrIdx(void)
 {
   return (DATA_BUF_MASK & sensing.packetBuffWrIdx);
 }
+
+uint8_t ShimSens_getPacketBufAtNextWrIdx(void)
+{
+  return (DATA_BUF_MASK & (sensing.packetBuffWrIdx + 1));
+}
+
