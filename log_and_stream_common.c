@@ -264,7 +264,10 @@ void LogAndStream_setupUndock(void)
   Board_dockDetectN(1);
   Board_setSdPower(0);
 
-  //ShimBt_instreamStatusRespSend();
+  if (ShimConfig_getStoredConfig()->userButtonEnable)
+  {
+  	ShimBt_instreamStatusRespSend();
+  }
 
   if (LogAndStream_checkSdInSlot())
   {
