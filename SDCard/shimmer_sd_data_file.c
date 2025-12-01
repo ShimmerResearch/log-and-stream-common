@@ -51,7 +51,7 @@ uint16_t sdWrLen[NUM_SDWRBUF];
 
 uint8_t fileName[64], dirName[64], expDirName[32], sdBufInQ;
 uint16_t fileNum, dirCounter;
-uint64_t sdFileCrTs, sdFileSyncTs;
+uint64_t fileLastMin, fileLastHour;
 #if USE_FATFS
 FRESULT file_status;
 #if _FATFS == FATFS_V_0_08B
@@ -94,8 +94,8 @@ void ShimSdDataFile_resetVars(void)
   fileNum = 0;
   dirCounter = 0;
   memset(&sdWrLen[0], 0x00, sizeof(sdWrLen));
-  sdFileCrTs = 0;
-  sdFileSyncTs = 0;
+  fileLastMin = 0;
+  fileLastHour = 0;
   file_status = FR_OK;
   memset(&dir, 0x00, sizeof(dir));
   memset(&dataFile, 0x00, sizeof(dataFile));
@@ -291,7 +291,7 @@ void ShimSdDataFile_fileInit(void)
 
   ShimSdDataFile_openNewDataFile();
 
-  sdFileSyncTs = sdFileCrTs = RTC_get64();
+  fileLastHour = fileLastMin = RTC_get64();
 
   ShimSdDataFile_writeSdHeaderToFile();
 
@@ -350,6 +350,9 @@ void ShimSdDataFile_writeToCard(void)
   uint8_t *writing_buf;
   uint16_t *writing_buf_len;
 
+  uint32_t file_td_h, file_td_m;                //, my_local_time_long32
+  uint64_t local_time_40;
+
   writing_buf = &sdWrBuf[sdBufWr][0];
   writing_buf_len = &sdWrLen[sdBufWr];
 
@@ -359,6 +362,8 @@ void ShimSdDataFile_writeToCard(void)
   {
     return;
   }
+
+  local_time_40 = RTC_get64();
 
   sensing.inSdWr = 1;
   sensing.isSdOperating = 1;
@@ -371,13 +376,16 @@ void ShimSdDataFile_writeToCard(void)
   assert_param(file_status == FR_OK);
 #endif
 
+  file_td_h = local_time_40 - fileLastHour;
+  file_td_m = local_time_40 - fileLastMin;
+
   __NOP();
   __NOP();
 
   /* split file every hour upwards from 000 */
-  if ((sensing.latestTs - sdFileCrTs) >= BIN_FILE_SPLIT_TIME_TICKS)
+  if (file_td_h >= BIN_FILE_SPLIT_TIME_TICKS)
   {
-    sdFileSyncTs = sdFileCrTs = RTC_get64();
+    fileLastHour = fileLastMin = local_time_40;
 
     ShimSdDataFile_closeDataFile();
     ShimSdDataFile_openNewDataFile();
@@ -387,13 +395,13 @@ void ShimSdDataFile_writeToCard(void)
   }
 
   /* Sync file every minute */
-  else if (sensing.latestTs - sdFileSyncTs >= BIN_FILE_SYNC_TIME_TICKS)
+  else if (file_td_m >= BIN_FILE_SYNC_TIME_TICKS)
   {
 #if USE_FATFS
     file_status = f_sync(&dataFile);
     assert_param(file_status == FR_OK);
 #endif
-    sdFileSyncTs = RTC_get64();
+    fileLastHour = RTC_get64();
   }
 
   sensing.isSdOperating = 0;
@@ -498,17 +506,17 @@ void ShimSdDataFile_writeSdHeaderToFile(void)
 #endif
 
   /* Save initial timestamp to header (5 bytes, LSB order) */
-  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_0] = (sdFileSyncTs >> 0) & 0xff;
-  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_1] = (sdFileSyncTs >> 8) & 0xff;
-  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_2] = (sdFileSyncTs >> 16) & 0xff;
-  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_3] = (sdFileSyncTs >> 24) & 0xff;
-  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_4] = (sdFileSyncTs >> 32) & 0xff;
+  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_0] = (fileLastHour >> 0) & 0xff;
+  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_1] = (fileLastHour >> 8) & 0xff;
+  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_2] = (fileLastHour >> 16) & 0xff;
+  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_3] = (fileLastHour >> 24) & 0xff;
+  temp_sdHeadText[SDH_INITIAL_TIMESTAMP_4] = (fileLastHour >> 32) & 0xff;
 
 #if defined(SHIMMER3R)
   /* Save upper 3 bytes to RTC timestamp diff bytes (MSB order) */
-  temp_sdHeadText[SDH_RTC_DIFF_2] = (sdFileSyncTs >> 40) & 0xff;
-  temp_sdHeadText[SDH_RTC_DIFF_1] = (sdFileSyncTs >> 48) & 0xff;
-  temp_sdHeadText[SDH_RTC_DIFF_0] = (sdFileSyncTs >> 56) & 0xff;
+  temp_sdHeadText[SDH_RTC_DIFF_2] = (fileLastHour >> 40) & 0xff;
+  temp_sdHeadText[SDH_RTC_DIFF_1] = (fileLastHour >> 48) & 0xff;
+  temp_sdHeadText[SDH_RTC_DIFF_0] = (fileLastHour >> 56) & 0xff;
 #endif
 
 #if USE_FATFS //USE_FATFS

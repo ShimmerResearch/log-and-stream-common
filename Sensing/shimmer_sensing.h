@@ -53,8 +53,7 @@
 #endif
 
 #define SAVE_DATA_FROM_RTC_INT  0
-#define HACK_LOCK_UP_PREVENTION 1
-#define HACK_TIMESTAMP_JUMP     1
+#define SKIP65MS 1
 
 #define PACKET_HEADER_IDX       0 //0x00
 #define PACKET_HEADER_LEN       1
@@ -155,9 +154,7 @@
 #endif
 
 #define DATA_BUF_SIZE       100U
-#define DATA_BUF_QTY        4U /* packet buffer (power 2)  */
-#define DATA_BUF_QTY_IN_USE 2U /* must be < DATA_BUF_QTY */
-#define DATA_BUF_MASK       (DATA_BUF_QTY - 1UL)
+#define DATA_BUF_QTY        2U
 
 typedef struct
 { //data ptr (offset)
@@ -208,13 +205,6 @@ typedef enum
 
 typedef struct
 { //sensor data
-  samplingStatus_t samplingStatus;
-  uint64_t timestampTicks;
-  uint8_t dataBuf[DATA_BUF_SIZE];
-} PACKETBufferTypeDef;
-
-typedef struct
-{ //sensor data
   //uint8_t     en;
   //uint8_t     configuring;
   //uint8_t     i2cSensor;
@@ -236,14 +226,10 @@ typedef struct
   //uint8_t     btStreamEnabled;
   volatile newSdFileTsStatus_t newSdFileTsFlag;
   volatile uint64_t startTsForSdFile;
-  volatile uint64_t startTs;
-  volatile uint32_t latestTs;
-#if HACK_LOCK_UP_PREVENTION
-  volatile uint8_t blockageCount;
-#endif
-  volatile uint16_t packetBuffWrIdx;
-  volatile uint16_t packetBuffRdIdx;
-  PACKETBufferTypeDef packetBuffers[DATA_BUF_QTY];
+  volatile uint8_t streamDataInProc;
+  volatile uint8_t currentBuffer;
+  uint8_t txBuff0[DATA_BUF_SIZE];
+  uint8_t txBuff1[DATA_BUF_SIZE];
   uint8_t skippingPacketsFlag;
   //STATTypeDef stat;
   DATAPTRTypeDef ptr;
@@ -263,6 +249,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked);
 void ShimSens_stopPeripherals(void);
 void ShimSens_stopSensingWrapup(void);
 void ShimSens_gatherData(void);
+uint8_t Skip65ms(void);
 void ShimSens_saveTimestampToPacket(void);
 uint8_t ShimSens_sampleTimerTriggered(void);
 
@@ -288,18 +275,5 @@ void ShimSens_startLoggingIfUndockStartEnabled(void);
 uint8_t ShimSens_checkAutostopLoggingCondition(void);
 void ShimSens_currentExperimentLengthReset(void);
 void ShimSens_maxExperimentLengthSecsSet(uint16_t expLengthMins);
-uint8_t *ShimSens_getDataBuffAtWrIdx(void);
-PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void);
-PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void);
-void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll);
-void ShimSens_resetPacketBuffAll(void);
-void ShimSens_incrementPacketBuffWrIdx(void);
-void ShimSens_incrementPacketBuffReadIndex(void);
-uint8_t ShimSens_arePacketBuffsEmpty(void);
-uint8_t ShimSens_arePacketBuffsFull(void);
-uint8_t ShimSens_getPacketBuffFullCount(void);
-
-uint8_t ShimSens_getPacketBufRdIdx(void);
-uint8_t ShimSens_getPacketBufWrIdx(void);
 
 #endif //SHIMMER_SENSING_H
