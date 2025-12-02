@@ -463,31 +463,31 @@ uint8_t ShimSens_sampleTimerTriggered(void)
   else
 #endif //SENSING_LOCK_UP_PREVENTION
     if (packetBufPtr->samplingStatus == SAMPLING_PACKET_IDLE)
-  {
-#if SENSING_LOCK_UP_PREVENTION
-    sensing.blockageCount = 0;
-#endif //SENSING_LOCK_UP_PREVENTION
-    /* If packet isn't currently underway, start a new one */
-    packetBufPtr->samplingStatus = SAMPLING_IN_PROGRESS;
-    ShimSens_saveTimestampToPacket();
-    return platform_gatherData();
-  }
-#if SENSING_LOCK_UP_PREVENTION
-  else if (packetBufPtr->samplingStatus == SAMPLING_IN_PROGRESS)
-  {
-    //Fail-safe - if current packet has been stuck for a while
-    sensing.blockageCount++;
-    if (sensing.blockageCount > 9)
     {
-      /* Reset packet status to allow new sample to be taken on next event */
-      packetBufPtr->samplingStatus = SAMPLING_PACKET_IDLE;
-    }
-  }
+#if SENSING_LOCK_UP_PREVENTION
+      sensing.blockageCount = 0;
 #endif //SENSING_LOCK_UP_PREVENTION
-  else
-  {
-    __NOP();
-  }
+      /* If packet isn't currently underway, start a new one */
+      packetBufPtr->samplingStatus = SAMPLING_IN_PROGRESS;
+      ShimSens_saveTimestampToPacket();
+      return platform_gatherData();
+    }
+#if SENSING_LOCK_UP_PREVENTION
+    else if (packetBufPtr->samplingStatus == SAMPLING_IN_PROGRESS)
+    {
+      //Fail-safe - if current packet has been stuck for a while
+      sensing.blockageCount++;
+      if (sensing.blockageCount > 9)
+      {
+        /* Reset packet status to allow new sample to be taken on next event */
+        packetBufPtr->samplingStatus = SAMPLING_PACKET_IDLE;
+      }
+    }
+#endif //SENSING_LOCK_UP_PREVENTION
+    else
+    {
+      __NOP();
+    }
   //}
 
   return 0;
@@ -629,9 +629,7 @@ void ShimSens_saveData(void)
 
 #if TICKS_TO_SKIP
     if (!sensing.skippingPacketsFlag
-        && (abs(
-            ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs)
-            < TICKS_TO_SKIP))
+        && (abs(ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
     {
       __NOP();
     }
