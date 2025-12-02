@@ -53,8 +53,7 @@
 #endif
 
 #define SAVE_DATA_FROM_RTC_INT  0
-#define HACK_LOCK_UP_PREVENTION 1
-#define HACK_TIMESTAMP_JUMP     0
+#define SENSING_LOCK_UP_PREVENTION 1
 
 #define PACKET_HEADER_IDX       0 //0x00
 #define PACKET_HEADER_LEN       1
@@ -238,9 +237,9 @@ typedef struct
   volatile uint64_t startTsForSdFile;
   volatile uint64_t startTs;
   volatile uint32_t latestTs;
-#if HACK_LOCK_UP_PREVENTION
-  volatile uint8_t blockageCount;
-#endif
+#if SENSING_LOCK_UP_PREVENTION
+  uint8_t blockageCount;
+#endif //SENSING_LOCK_UP_PREVENTION
   volatile uint16_t packetBuffWrIdx;
   volatile uint16_t packetBuffRdIdx;
   PACKETBufferTypeDef packetBuffers[DATA_BUF_QTY];

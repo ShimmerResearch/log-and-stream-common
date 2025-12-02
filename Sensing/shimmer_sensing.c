@@ -452,32 +452,27 @@ void ShimSens_saveTimestampToPacket(void)
 uint8_t ShimSens_sampleTimerTriggered(void)
 {
   PACKETBufferTypeDef *packetBufPtr = ShimSens_getPacketBuffAtWrIdx();
-  //if (shimmerStatus.sensing)
-  //{
+
+#if SENSING_LOCK_UP_PREVENTION
   if (ShimSens_arePacketBuffsFull())
   {
     //Fail-safe - if any packets are complete and haven't been saved.
     ShimTask_set(TASK_SAVEDATA);
     return 1; //Wake MCU
   }
-  else if (packetBufPtr->samplingStatus == SAMPLING_PACKET_IDLE)
+  else
+#endif //SENSING_LOCK_UP_PREVENTION
+    if (packetBufPtr->samplingStatus == SAMPLING_PACKET_IDLE)
   {
-#if HACK_LOCK_UP_PREVENTION
+#if SENSING_LOCK_UP_PREVENTION
     sensing.blockageCount = 0;
-#endif
+#endif //SENSING_LOCK_UP_PREVENTION
     /* If packet isn't currently underway, start a new one */
     packetBufPtr->samplingStatus = SAMPLING_IN_PROGRESS;
     ShimSens_saveTimestampToPacket();
     return platform_gatherData();
   }
-#if HACK_LOCK_UP_PREVENTION
-  else if (packetBufPtr->samplingStatus == SAMPLING_COMPLETE
-      && packetBufPtr->timestampTicks == 0)
-  {
-    /* Hack -status sometimes goes to SAMPLING_COMPLETE with timestamp = 0. */
-    /* Reset packet status to allow new sample to be taken on next event */
-    packetBufPtr->samplingStatus = SAMPLING_PACKET_IDLE;
-  }
+#if SENSING_LOCK_UP_PREVENTION
   else if (packetBufPtr->samplingStatus == SAMPLING_IN_PROGRESS)
   {
     //Fail-safe - if current packet has been stuck for a while
@@ -488,7 +483,7 @@ uint8_t ShimSens_sampleTimerTriggered(void)
       packetBufPtr->samplingStatus = SAMPLING_PACKET_IDLE;
     }
   }
-#endif
+#endif //SENSING_LOCK_UP_PREVENTION
   else
   {
     __NOP();
@@ -538,15 +533,6 @@ void ShimSens_stageCompleteCb(uint8_t stage)
   currentCbFlags |= stage;
   if (currentCbFlags == expectedCbFlags)
   {
-
-#if HACK_TIMESTAMP_JUMP
-    if (ShimSens_getPacketBuffAtWrIdx()->timestampTicks == 0)
-    {
-      ShimSens_getPacketBuffAtWrIdx()->samplingStatus = SAMPLING_PACKET_IDLE;
-      return;
-    }
-#endif
-
     ShimSens_getPacketBuffAtWrIdx()->samplingStatus = SAMPLING_COMPLETE;
 
     //TODO
@@ -641,21 +627,17 @@ void ShimSens_saveData(void)
   {
     uint8_t *dataBufferPtr = &ShimSens_getPacketBuffAtRdIdx()->dataBuf[0];
 
-#if HACK_TIMESTAMP_JUMP
-    if (dataBufferPtr[1] == 0 && dataBufferPtr[2] == 0 && dataBufferPtr[3] == 0)
-    {
-      //Filter out packets with 0 as timestamp bytes
-      __NOP();
-    }
-    else
-#endif
-        if (TICKS_TO_SKIP > 0 && !sensing.skippingPacketsFlag
-            && (abs(ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
+#if TICKS_TO_SKIP
+    if (!sensing.skippingPacketsFlag
+        && (abs(
+            ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs)
+            < TICKS_TO_SKIP))
     {
       __NOP();
     }
     else
     {
+#endif //TICKS_TO_SKIP
       sensing.skippingPacketsFlag = 1;
 #if USE_SD
       if (shimmerStatus.sdLogging && !ShimSens_shouldStopLogging())
@@ -679,7 +661,9 @@ void ShimSens_saveData(void)
             sensing.dataLen + crcMode, SENSOR_DATA);
       }
 #endif
+#if TICKS_TO_SKIP
     }
+#endif //TICKS_TO_SKIP
 
     /* Data packet has moved off dataBuf, device is free to start new packet */
     //sensing.isSampling = SAMPLING_COMPLETE;
