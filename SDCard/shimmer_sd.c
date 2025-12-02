@@ -43,18 +43,14 @@ void ShimSd_init(void)
 
 uint8_t ShimSd_test1(void)
 {
-#if USE_FATFS
-  FIL test_file;
-#endif
   char file_name[] = "test1.txt";
   char test_text1[TEST_TEXT_LEN] = "This is the 1st line of the test file.\n";
   char test_text2[TEST_TEXT_LEN] = "This is the 2nd line of the test file.\n";
   char test_text3[TEST_TEXT_LEN];
 #if USE_FATFS
+  FIL test_file;
   UINT bw;
-#endif
 
-#if USE_FATFS
   shimmerStatus.sdBadFile += f_open(&test_file, file_name, FA_CREATE_ALWAYS | FA_WRITE);
   shimmerStatus.sdBadFile += f_write(&test_file, test_text1, TEST_TEXT_LEN - 1, &bw);
   shimmerStatus.sdBadFile += f_write(&test_file, test_text2, TEST_TEXT_LEN - 1, &bw);
@@ -158,19 +154,6 @@ FRESULT ShimSd_setFileTimestamp(char *path)
   FILINFO fno;
   RTC_TimeTypeDef RTC_TimeStructure;
   RTC_DateTypeDef RTC_DateStructure;
-
-  //TODO figure out best system below and delete the unused section
-  //HAL_RTC_GetTime(&hrtc, &RTC_TimeStructure, RTC_Format_BIN);
-  //HAL_RTC_GetDate(&hrtc, &RTC_DateStructure, RTC_Format_BIN);
-  //int hour = RTC_TimeStructure.RTC_Hours;
-  //int min = RTC_TimeStructure.RTC_Minutes;
-  //int sec = RTC_TimeStructure.RTC_Seconds;
-  //int month = RTC_DateStructure.RTC_Month;
-  //int mday = RTC_DateStructure.RTC_Date;
-  //int year = RTC_DateStructure.RTC_Year;
-  //year += 2000;
-  //fno.fdate = (WORD) (((year - 1980) << 9) | month << 5 | mday);
-  //fno.ftime = (WORD) (hour << 11 | min << 5 | sec / 2);
 
   SHIM_RTC_t data;
   RTC_getDateTime(&data);
