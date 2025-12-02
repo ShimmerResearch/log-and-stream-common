@@ -2415,18 +2415,6 @@ void ShimBt_pushByteToBtTxBuf(uint8_t c)
 
 void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
 {
-  //uint8_t i;
-  //for (i = 0; i < len; i++)
-  //{
-  //  ShimBt_pushByteToBtTxBuf(*(buf + i));
-  //}
-
-  //const volatile uint8_t *p = buf;
-  //while (len--)
-  //{
-  //  ShimBt_pushByteToBtTxBuf(*p++);
-  //}
-
   /* if enough space at after head, copy it in */
   uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
   if (spaceAfterHead > len)
@@ -2597,7 +2585,7 @@ void ShimBt_loadTxBufForDataRateTest(void)
 }
 
 #if defined(SHIMMER3R)
-uint8_t ShimBt_writeToTxBufAndSend(volatile uint8_t *buf, uint8_t len, btResponseType responseType)
+uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType)
 {
   if (ShimBt_getSpaceInBtTxBuf() <= len)
   {

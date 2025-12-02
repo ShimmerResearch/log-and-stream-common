@@ -161,9 +161,10 @@ void ShimSens_startSensing(void)
   uint8_t streamPendingStart = (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START)
       && ShimSens_checkStartStreamingConditions();
 
-  if (sdLogPendingStart || streamPendingStart)
+  if ((sdLogPendingStart || streamPendingStart) && !shimmerStatus.sensing)
   {
     shimmerStatus.sensing = 1;
+    ShimSens_resetPacketBuffAll();
     ShimSens_configureChannels();
     if (ShimSens_getNumEnabledChannels() == 0)
     {
@@ -171,8 +172,6 @@ void ShimSens_startSensing(void)
       shimmerStatus.sensing = 0;
       return;
     }
-
-    ShimSens_resetPacketBuffAll();
 
 #if defined(SHIMMER3R)
     Board_enableSensingPower(SENSE_PWR_SENSING, 1);
@@ -551,14 +550,16 @@ void ShimSens_stageCompleteCb(uint8_t stage)
     ShimSens_getPacketBuffAtWrIdx()->samplingStatus = SAMPLING_COMPLETE;
 
     //TODO
-    //if (shimmerStatus.sdLogging && shimmerStatus.sdlogReady)
-    //{
-    //  if (sensing.firstTsFlag == FIRST_TIMESTAMP_UPDATED)
-    //  {
-    //    sensing.firstTsFlag = FIRST_TIMESTAMP_SAVED;
-    //    Timestamp0ToFirstFile();
-    //  }
-    //}
+/*
+    if (shimmerStatus.sdLogging && shimmerStatus.sdlogReady)
+    {
+      if (sensing.firstTsFlag == FIRST_TIMESTAMP_UPDATED)
+      {
+        sensing.firstTsFlag = FIRST_TIMESTAMP_SAVED;
+        Timestamp0ToFirstFile();
+      }
+    }
+*/
 
 #if !SAVE_DATA_FROM_RTC_INT
     ShimTask_set(TASK_SAVEDATA);
@@ -766,7 +767,6 @@ void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll)
   if (resetAll)
   {
     memset(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
-    //ShimUtil_memset_v(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
   }
 
   /* Not needed due to memset above but explicitly setting DATA_PACKET for

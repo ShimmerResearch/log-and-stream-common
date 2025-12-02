@@ -54,7 +54,7 @@
 
 #define SAVE_DATA_FROM_RTC_INT  0
 #define HACK_LOCK_UP_PREVENTION 1
-#define HACK_TIMESTAMP_JUMP     1
+#define HACK_TIMESTAMP_JUMP     0
 
 #define PACKET_HEADER_IDX       0 //0x00
 #define PACKET_HEADER_LEN       1

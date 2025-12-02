@@ -310,16 +310,13 @@ void ShimSdDataFile_close(void)
   ShimSdDataFile_resetVars();
 }
 
-void ShimSdDataFile_writeToBuff(volatile uint8_t *buf, uint16_t len)
+void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len)
 {
-  //uint8_t *sensing_buf;
-  //uint16_t *sensing_buf_len;
   if ((NUM_SDWRBUF == sdBufInQ) || (sensing.isFileCreated == 0))
   {
     __NOP();
     return;
   }
-  //sdWrBuf[NUM_SDWRBUF][SD_WRITE_BUF_SIZE], sdBufSens, sdBufWr, sdBufInQ;
 
   /* If enabled, write the sync offset to the start of the buffer */
   if (sdWrLen[sdBufSens] == 0 && shimmerStatus.sdSyncEnabled)
@@ -327,13 +324,7 @@ void ShimSdDataFile_writeToBuff(volatile uint8_t *buf, uint16_t len)
     ShimSdDataFile_prepareSDBuffHead();
   }
 
-  //memcpy(sdWrBuf[sdBufSens] + sdWrLen[sdBufSens], buf, len);
-  uint8_t i;
-  for (i = 0; i < len; i++)
-  {
-    sdWrBuf[sdBufSens][sdWrLen[sdBufSens] + i] = buf[i];
-  }
-
+  memcpy(sdWrBuf[sdBufSens] + sdWrLen[sdBufSens], buf, len);
   sdWrLen[sdBufSens] += len;
   if (sdWrLen[sdBufSens] + len > SD_WRITE_BUF_SIZE)
   {
