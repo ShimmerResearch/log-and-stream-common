@@ -550,16 +550,16 @@ void ShimSens_stageCompleteCb(uint8_t stage)
     ShimSens_getPacketBuffAtWrIdx()->samplingStatus = SAMPLING_COMPLETE;
 
     //TODO
-/*
-    if (shimmerStatus.sdLogging && shimmerStatus.sdlogReady)
-    {
-      if (sensing.firstTsFlag == FIRST_TIMESTAMP_UPDATED)
-      {
-        sensing.firstTsFlag = FIRST_TIMESTAMP_SAVED;
-        Timestamp0ToFirstFile();
-      }
-    }
-*/
+    /*
+        if (shimmerStatus.sdLogging && shimmerStatus.sdlogReady)
+        {
+          if (sensing.firstTsFlag == FIRST_TIMESTAMP_UPDATED)
+          {
+            sensing.firstTsFlag = FIRST_TIMESTAMP_SAVED;
+            Timestamp0ToFirstFile();
+          }
+        }
+    */
 
 #if !SAVE_DATA_FROM_RTC_INT
     ShimTask_set(TASK_SAVEDATA);
