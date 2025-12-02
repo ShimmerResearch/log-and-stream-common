@@ -546,9 +546,7 @@ void ShimSens_stageCompleteCb(uint8_t stage)
         }
     */
 
-#if !SAVE_DATA_FROM_RTC_INT
     ShimTask_set(TASK_SAVEDATA);
-#endif /* SAVE_DATA_FROM_RTC_INT */
 
     if (!ShimSens_arePacketBuffsFull())
     {

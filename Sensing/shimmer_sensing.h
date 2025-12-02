@@ -52,7 +52,6 @@
 #include "shimmer_include.h"
 #endif
 
-#define SAVE_DATA_FROM_RTC_INT     0
 #define SENSING_LOCK_UP_PREVENTION 1
 
 #define PACKET_HEADER_IDX          0 //0x00
