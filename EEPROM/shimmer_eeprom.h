@@ -29,6 +29,7 @@ enum EEPROM_HARDWARE_REVISON
   DAUGHT_CARD_SPECIAL_REV = 2,
 };
 
+/* Order here needs to be maintained as it's saved to the EEPROM */
 enum RADIO_HARDWARE_VERSION
 {
   RN42 = 0U,
