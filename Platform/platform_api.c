@@ -30,6 +30,7 @@ PLATFORM_WEAK void platform_initGpioForRevision(void)
 
 PLATFORM_WEAK uint8_t platform_gatherData(void)
 {
+  ShimSens_resetCurrentCbFlags();
   ShimSens_gatherData();
   return 0;
 }

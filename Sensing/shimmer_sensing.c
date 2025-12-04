@@ -76,6 +76,7 @@ void ShimSens_init(void)
   ShimSens_currentExperimentLengthReset();
   ShimSens_maxExperimentLengthSecsSet(0);
   ShimSens_resetPacketBuffAll();
+  ShimSens_resetCurrentCbFlags();
 }
 
 SENSINGTypeDef *ShimSens_getSensing(void)
@@ -386,8 +387,6 @@ __attribute__((weak)) void ShimSens_stopSensingWrapup(void)
 
 void ShimSens_gatherData(void)
 {
-  currentCbFlags = 0;
-
   if (sensing.nbrMcuAdcChans)
   {
     ADC_gatherDataStart();
@@ -413,6 +412,11 @@ void ShimSens_gatherData(void)
   //HAL_Delay(500);
   saveData();
 #endif
+}
+
+void ShimSens_resetCurrentCbFlags(void)
+{
+  currentCbFlags = 0;
 }
 
 void ShimSens_saveTimestampToPacket(void)
@@ -476,7 +480,7 @@ uint8_t ShimSens_sampleTimerTriggered(void)
     {
       //Fail-safe - if current packet has been stuck for a while
       sensing.blockageCount++;
-      if (sensing.blockageCount > 9)
+      if (sensing.blockageCount > BLOCKAGE_THRESHOLD)
       {
         /* Reset packet status to allow new sample to be taken on next event */
         packetBufPtr->samplingStatus = SAMPLING_PACKET_IDLE;
@@ -532,6 +536,8 @@ void ShimSens_stageCompleteCb(uint8_t stage)
   if (currentCbFlags == expectedCbFlags)
   {
     ShimSens_getPacketBuffAtWrIdx()->samplingStatus = SAMPLING_COMPLETE;
+
+    ShimSens_resetCurrentCbFlags();
 
     //TODO
     /*
@@ -746,14 +752,13 @@ void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll)
   {
     memset(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
   }
-
-  /* Not needed due to memset above but explicitly setting DATA_PACKET for
-   * clarity. */
-  packetBufferPtr->dataBuf[PACKET_HEADER_IDX] = DATA_PACKET;
-
-  packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX] = 0;
-  packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX + 1] = 0;
-  packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX + 2] = 0;
+  else
+  {
+    packetBufferPtr->dataBuf[PACKET_HEADER_IDX] = DATA_PACKET;
+    packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX] = 0;
+    packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX + 1] = 0;
+    packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX + 2] = 0;
+  }
 }
 
 void ShimSens_resetPacketBuffAll(void)

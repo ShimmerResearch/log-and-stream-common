@@ -54,11 +54,15 @@
 
 #define SENSING_LOCK_UP_PREVENTION 1
 
-#define PACKET_HEADER_IDX          0 //0x00
+/* Packet structure: [Header(1)][Timestamp(3)][Sensor Data(N)][CRC(N)] */
+#define PACKET_HEADER_IDX          0
 #define PACKET_HEADER_LEN          1
 #define PACKET_TIMESTAMP_IDX       1
 #define PACKET_TIMESTAMP_LEN       3
 #define FIRST_CH_BYTE_IDX          (PACKET_HEADER_LEN + PACKET_TIMESTAMP_LEN)
+
+/* Max samples before considering packet stuck */
+#define BLOCKAGE_THRESHOLD 3
 
 #if defined(SHIMMER3)
 /* 3xanalogAccel + 3xdigiGyro + 3xdigiMag +
@@ -206,8 +210,8 @@ typedef enum
 
 typedef struct
 { //sensor data
-  samplingStatus_t samplingStatus;
-  uint32_t timestampTicks;
+  volatile samplingStatus_t samplingStatus;
+  volatile uint32_t timestampTicks;
   uint8_t dataBuf[DATA_BUF_SIZE];
 } PACKETBufferTypeDef;
 
@@ -261,6 +265,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked);
 void ShimSens_stopPeripherals(void);
 void ShimSens_stopSensingWrapup(void);
 void ShimSens_gatherData(void);
+void ShimSens_resetCurrentCbFlags(void);
 void ShimSens_saveTimestampToPacket(void);
 uint8_t ShimSens_sampleTimerTriggered(void);
 
