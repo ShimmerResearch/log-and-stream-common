@@ -2446,14 +2446,14 @@ uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
   gBtTxFifo.wrIdx = (gBtTxFifo.wrIdx + len);
   __set_interrupt_state(gie);
 
-#elif defined(__arm__) || defined(__ARM_ARCH)  // STM32 GCC/Clang/ARMCC
+#elif defined(__arm__) || defined(__ARM_ARCH) //STM32 GCC/Clang/ARMCC
   uint32_t primask = __get_PRIMASK();
   __disable_irq();
   gBtTxFifo.wrIdx = gBtTxFifo.wrIdx + len;
   __set_PRIMASK(primask);
 
 #else
-  #error "Need atomic section implementation for this MCU"
+#error "Need atomic section implementation for this MCU"
 #endif
   /* ------------------------------------------------------ */
 

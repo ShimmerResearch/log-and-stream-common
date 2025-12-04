@@ -366,7 +366,7 @@ void ShimSdDataFile_writeToCard(void)
   __NOP();
 
   /* split file every hour upwards from 000 */
-  if ((uint32_t)sensing.latestTs - (uint32_t)sdFileCrTs >= (uint32_t)BIN_FILE_SPLIT_TIME_TICKS)
+  if ((uint32_t) sensing.latestTs - (uint32_t) sdFileCrTs >= (uint32_t) BIN_FILE_SPLIT_TIME_TICKS)
   {
     sdFileSyncTs = sdFileCrTs = RTC_get64();
 
@@ -378,7 +378,7 @@ void ShimSdDataFile_writeToCard(void)
   }
 
   /* Sync file every minute */
-  else if ((uint32_t)sensing.latestTs - (uint32_t)sdFileSyncTs >= (uint32_t)BIN_FILE_SYNC_TIME_TICKS)
+  else if ((uint32_t) sensing.latestTs - (uint32_t) sdFileSyncTs >= (uint32_t) BIN_FILE_SYNC_TIME_TICKS)
   {
 #if USE_FATFS
     file_status = f_sync(&dataFile);

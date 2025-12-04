@@ -62,7 +62,7 @@
 #define FIRST_CH_BYTE_IDX          (PACKET_HEADER_LEN + PACKET_TIMESTAMP_LEN)
 
 /* Max samples before considering packet stuck */
-#define BLOCKAGE_THRESHOLD 3
+#define BLOCKAGE_THRESHOLD         3
 
 #if defined(SHIMMER3)
 /* 3xanalogAccel + 3xdigiGyro + 3xdigiMag +
