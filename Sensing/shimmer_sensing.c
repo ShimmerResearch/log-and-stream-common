@@ -783,8 +783,10 @@ uint8_t ShimSens_arePacketBuffsEmpty(void)
 
 uint8_t ShimSens_arePacketBuffsFull(void)
 {
-  return ((DATA_BUF_MASK & sensing.packetBuffRdIdx)
-      == (DATA_BUF_MASK & (sensing.packetBuffWrIdx + (DATA_BUF_QTY - DATA_BUF_QTY_IN_USE))));
+  uint8_t rdIdx = sensing.packetBuffRdIdx;
+  uint8_t wrIdx = sensing.packetBuffWrIdx;
+  return ((DATA_BUF_MASK & rdIdx)
+      == (DATA_BUF_MASK & (wrIdx + (DATA_BUF_QTY - DATA_BUF_QTY_IN_USE))));
 }
 
 uint8_t ShimSens_getPacketBuffFullCount(void)
