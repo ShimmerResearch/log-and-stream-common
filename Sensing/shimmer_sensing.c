@@ -322,7 +322,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     shimmerStatus.sensing = 0;
     ShimSens_stopPeripherals();
     sensing.newSdFileTsFlag = NEW_SD_FILE_TS_IDLE;
-    sensing.startTsForSdFile = 0;
+    sensing.firstTsForSdFile = 0;
     sensing.startTs = 0;
     sensing.latestTs = 0;
     sensing.skippingPacketsFlag = 0;
@@ -417,15 +417,13 @@ void ShimSens_gatherData(void)
 
 void ShimSens_saveTimestampToPacket(void)
 {
-  uint64_t rtc64;
   uint32_t rtc32;
 
   if (sensing.newSdFileTsFlag == NEW_SD_FILE_TS_PENDING_UPDATE)
   {
-    rtc64 = RTC_get64();
-    sensing.startTsForSdFile = rtc64;
+    sensing.firstTsForSdFile = RTC_get64();
     sensing.newSdFileTsFlag = NEW_SD_FILE_TS_UPDATED;
-    rtc32 = (uint32_t) rtc64;
+    rtc32 = (uint32_t) sensing.firstTsForSdFile;
   }
   else
   {
@@ -434,6 +432,7 @@ void ShimSens_saveTimestampToPacket(void)
 
   PACKETBufferTypeDef *packetBuf = ShimSens_getPacketBuffAtWrIdx();
 
+  /* Save overall start time for session to use for skipping initial samples */
   if (sensing.startTs == 0)
   {
     sensing.startTs = rtc32;

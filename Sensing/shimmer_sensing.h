@@ -207,7 +207,7 @@ typedef enum
 typedef struct
 { //sensor data
   samplingStatus_t samplingStatus;
-  uint64_t timestampTicks;
+  uint32_t timestampTicks;
   uint8_t dataBuf[DATA_BUF_SIZE];
 } PACKETBufferTypeDef;
 
@@ -233,7 +233,7 @@ typedef struct
   //uint8_t     sdlogEnabled;
   //uint8_t     btStreamEnabled;
   volatile newSdFileTsStatus_t newSdFileTsFlag;
-  volatile uint64_t startTsForSdFile;
+  volatile uint64_t firstTsForSdFile;
   volatile uint64_t startTs;
   volatile uint32_t latestTs;
 #if SENSING_LOCK_UP_PREVENTION
