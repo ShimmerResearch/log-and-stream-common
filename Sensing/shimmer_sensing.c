@@ -625,7 +625,7 @@ void ShimSens_saveData(void)
 
 #if TICKS_TO_SKIP
     if (!sensing.skippingPacketsFlag
-        && (abs(ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
+        && ((ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
     {
       __NOP();
     }
