@@ -56,6 +56,7 @@ extern void BtStop(uint8_t isCalledFromMain);
 
 extern void sleepWhenNoTask(void);
 
+extern uint32_t RTC_get32(void);
 extern uint64_t RTC_get64(void);
 extern void RTC_setTimeFromTicksPtr(uint8_t *ticksPtr);
 extern uint8_t RTC_isRwcTimeSet(void);

@@ -312,14 +312,11 @@ void ShimSdDataFile_close(void)
 
 void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len)
 {
-  //uint8_t *sensing_buf;
-  //uint16_t *sensing_buf_len;
   if ((NUM_SDWRBUF == sdBufInQ) || (sensing.isFileCreated == 0))
   {
     __NOP();
     return;
   }
-  //sdWrBuf[NUM_SDWRBUF][SD_WRITE_BUF_SIZE], sdBufSens, sdBufWr, sdBufInQ;
 
   /* If enabled, write the sync offset to the start of the buffer */
   if (sdWrLen[sdBufSens] == 0 && shimmerStatus.sdSyncEnabled)
@@ -369,17 +366,19 @@ void ShimSdDataFile_writeToCard(void)
   __NOP();
 
   /* split file every hour upwards from 000 */
-  if ((sensing.latestTs - sdFileCrTs) >= BIN_FILE_SPLIT_TIME_TICKS)
+  if ((uint32_t) sensing.latestTs - (uint32_t) sdFileCrTs >= (uint32_t) BIN_FILE_SPLIT_TIME_TICKS)
   {
     sdFileSyncTs = sdFileCrTs = RTC_get64();
 
     ShimSdDataFile_closeDataFile();
     ShimSdDataFile_openNewDataFile();
     ShimSdDataFile_writeSdHeaderToFile();
+
+    sensing.newSdFileTsFlag = NEW_SD_FILE_TS_PENDING_UPDATE;
   }
 
   /* Sync file every minute */
-  else if (sensing.latestTs - sdFileSyncTs >= BIN_FILE_SYNC_TIME_TICKS)
+  else if ((uint32_t) sensing.latestTs - (uint32_t) sdFileSyncTs >= (uint32_t) BIN_FILE_SYNC_TIME_TICKS)
   {
 #if USE_FATFS
     file_status = f_sync(&dataFile);

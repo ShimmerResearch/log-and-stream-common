@@ -98,8 +98,8 @@ void ShimTask_NORM_manage(void)
         /* SD Sync - Node */
         ShimSdSync_nodeR10();
         break;
-      case TASK_STREAMDATA:
-        ShimSens_streamData();
+      case TASK_GATHER_DATA:
+        ShimSens_gatherData();
         break;
 #if defined(SHIMMER3)
       case TASK_SAMPLE_MPU9150_MAG:
@@ -220,7 +220,17 @@ uint8_t ShimTask_NORM_set(uint32_t task_id)
   }
   taskList |= task_id;
 #if defined(SHIMMER3R)
-  HAL_PWR_DisableSleepOnExit();
+  /* if called from an ISR, force main context to run:
+     - Pend PendSV to wake the scheduler / main loop
+     - optionally disable Sleep-on-Exit so the main executes after IRQ return */
+  if (__get_IPSR() != 0)
+  {
+    /* If your code uses HAL_PWR_EnableSleepOnExit() elsewhere, disable it so main runs once */
+    HAL_PWR_DisableSleepOnExit();
+
+    /* Pend PendSV to ensure main context runs to handle the task */
+    SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
+  }
 #endif
   return is_sleeping;
 }

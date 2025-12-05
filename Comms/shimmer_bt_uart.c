@@ -97,7 +97,7 @@ uint32_t btBaudRateToUse;
 #define RINGFIFO_COUNT(ringFifo, mask) \
   (mask & (ringFifo.wrIdx - ringFifo.rdIdx))
 
-volatile RingFifoTx_t gBtTxFifo;
+RingFifoTx_t gBtTxFifo;
 
 uint8_t bleCurrentlyEnabled = 1, btClassicCurrentlyEnabled = 1;
 
@@ -2413,35 +2413,51 @@ void ShimBt_pushByteToBtTxBuf(uint8_t c)
   }
 }
 
-void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
+uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
 {
-  uint8_t i;
-  for (i = 0; i < len; i++)
+  uint16_t wr = gBtTxFifo.wrIdx & BT_TX_BUF_MASK;
+
+  /* Note: There must always be a space of >=1 byte within the ring buffer. */
+  if (ShimBt_getSpaceInBtTxBuf() <= len)
   {
-    ShimBt_pushByteToBtTxBuf(*(buf + i));
+    return 1; //FAIL
   }
 
-  ///* if enough space at after head, copy it in */
-  //uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx &
-  //BT_TX_BUF_MASK); if (spaceAfterHead > len)
-  //{
-  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-  //  buf, len); gBtTxFifo.wrIdx += len;
-  //}
-  //else
-  //{
-  //  /* Fill from head to end of buf */
-  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-  //  buf, spaceAfterHead); gBtTxFifo.wrIdx += spaceAfterHead;
-  //
-  //  /* Fill from start of buf. We already checked above whether there is
-  //   * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
-  //   * worry about the tail position. */
-  //  uint16_t remaining = len - spaceAfterHead;
-  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-  //      buf + spaceAfterHead, remaining);
-  //  gBtTxFifo.wrIdx += remaining;
-  //}
+  uint16_t spaceAfterHead = BT_TX_BUF_SIZE - wr;
+
+  if (spaceAfterHead >= len)
+  {
+    /* Linear copy is enough */
+    memcpy(&gBtTxFifo.data[wr], buf, len);
+  }
+  else
+  {
+    /* Copy to end of buffer */
+    memcpy(&gBtTxFifo.data[wr], buf, spaceAfterHead);
+
+    /* Copy remainder at start */
+    memcpy(&gBtTxFifo.data[0], buf + spaceAfterHead, len - spaceAfterHead);
+  }
+
+  /* ---- Atomic update of wrIdx (MSP430 + STM32 safe) ---- */
+#if defined(__MSP430__)
+  uint16_t gie = __get_interrupt_state();
+  __disable_interrupt();
+  gBtTxFifo.wrIdx = (gBtTxFifo.wrIdx + len);
+  __set_interrupt_state(gie);
+
+#elif defined(__arm__) || defined(__ARM_ARCH) //STM32 GCC/Clang/ARMCC
+  uint32_t primask = __get_PRIMASK();
+  __disable_irq();
+  gBtTxFifo.wrIdx = gBtTxFifo.wrIdx + len;
+  __set_PRIMASK(primask);
+
+#else
+#error "Need atomic section implementation for this MCU"
+#endif
+  /* ------------------------------------------------------ */
+
+  return 0; //SUCCESS
 }
 
 uint8_t ShimBt_popBytefromBtTxBuf(void)
@@ -2521,10 +2537,10 @@ void ShimBt_sendNextChar(void)
     BtTransmit(&buf, 1);
 #else
     HAL_StatusTypeDefShimmer ret_val;
-    uint8_t numBytes;
+    uint16_t numBytes;
 
-    uint8_t rdIdx = (gBtTxFifo.rdIdx & BT_TX_BUF_MASK);
-    uint8_t wrIdx = (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
+    uint16_t rdIdx = (gBtTxFifo.rdIdx & BT_TX_BUF_MASK);
+    uint16_t wrIdx = (gBtTxFifo.wrIdx & BT_TX_BUF_MASK);
 
     if (rdIdx < wrIdx)
     {

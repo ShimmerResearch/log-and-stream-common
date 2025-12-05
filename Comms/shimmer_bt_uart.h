@@ -282,11 +282,11 @@ typedef struct
 {
   uint8_t data[BT_TX_BUF_SIZE];
   //tail points to the buffer index for the oldest byte that was added to it
-  uint16_t rdIdx;
+  volatile uint16_t rdIdx;
   //head points to the index of the next empty byte in the buffer
-  uint16_t wrIdx;
+  volatile uint16_t wrIdx;
 #if !defined(SHIMMER3)
-  uint16_t numBytesBeingRead;
+  volatile uint16_t numBytesBeingRead;
 #endif
 } RingFifoTx_t;
 
@@ -334,7 +334,7 @@ uint8_t *ShimBt_getBtArgsPtr(void);
 void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain);
 uint8_t ShimBt_isBtTxBufEmpty(void);
 void ShimBt_pushByteToBtTxBuf(uint8_t b);
-void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len);
+uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len);
 uint8_t ShimBt_popBytefromBtTxBuf(void);
 uint16_t ShimBt_getUsedSpaceInBtTxBuf(void);
 uint16_t ShimBt_getSpaceInBtTxBuf(void);
