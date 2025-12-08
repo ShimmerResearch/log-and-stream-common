@@ -307,11 +307,6 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     shimmerStatus.btStreaming = 0;
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
     ShimTask_clear(TASK_GATHER_DATA);
-
-    if (enableDockUartIfDocked && shimmerStatus.docked && !shimmerStatus.sdLogging)
-    {
-      DockUart_init();
-    }
   }
 
   /* Both logging and streaming have been stopped, so we can stop sensing. */
@@ -328,6 +323,11 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     sensing.latestTs = 0;
     sensing.skippingPacketsFlag = 0;
     ShimSens_resetPacketBuffAll();
+
+    if (enableDockUartIfDocked && shimmerStatus.docked)
+    {
+      DockUart_init();
+    }
 
     ShimSens_stopSensingWrapup();
 
@@ -373,7 +373,7 @@ void ShimSens_stopPeripherals(void)
   }
 #endif
 
-  if (ShimConfig_getStoredConfig()->expansionBoardPower)
+  if (ShimConfig_isExpansionBoardPwrEnabled())
   { //EXT_RESET_N
     Board_setExpansionBrdPower(0);
   }
