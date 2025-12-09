@@ -912,7 +912,7 @@ void ShimSdCfgFile_parse(void)
 
 void ShimSdCfgFile_readSdConfiguration(void)
 {
-  ShimTask_clear(TASK_STREAMDATA); //this will skip one sample
+  ShimTask_clear(TASK_GATHER_DATA); //this will skip one sample
   sensing.isFileCreated = 0;
   Board_setSdPower(1);
   ShimSdCfgFile_parse();

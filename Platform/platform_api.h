@@ -36,6 +36,7 @@ extern "C"
   PLATFORM_WEAK void platform_delayMs(const uint32_t delay_time_ms);
   PLATFORM_WEAK void platform_processHwRevision(void);
   PLATFORM_WEAK void platform_initGpioForRevision(void);
+  PLATFORM_WEAK uint8_t platform_gatherData(void);
 
 #ifdef __cplusplus
 }
