@@ -50,6 +50,10 @@
 volatile uint32_t taskList = 0;
 uint32_t taskCurrent;
 
+/* new state for task watchdog */
+static volatile uint32_t executingTask = 0;
+static volatile uint32_t execStartTick = 0;
+
 void ShimTask_NORM_init(void)
 {
   taskList = 0;
@@ -73,6 +77,9 @@ void ShimTask_NORM_manage(void)
   }
   else
   {
+    /* mark start of task execution for watchdog */
+    ShimTask_executionStart(taskCurrent);
+
     switch (taskCurrent)
     {
       case TASK_SETUP_DOCK:
@@ -184,6 +191,9 @@ void ShimTask_NORM_manage(void)
       default:
         break;
     }
+
+    /* mark end of task execution */
+    ShimTask_executionEnd();
   }
 }
 
@@ -228,6 +238,28 @@ uint8_t ShimTask_NORM_set(uint32_t task_id)
 uint32_t ShimTask_NORM_getList()
 {
   return taskList;
+}
+
+void ShimTask_executionStart(uint32_t task)
+{
+  executingTask = task;
+  execStartTick = HAL_GetTick();
+}
+
+void ShimTask_executionEnd(void)
+{
+  executingTask = 0;
+  execStartTick = 0;
+}
+
+uint32_t ShimTask_getExecutingTask(void)
+{
+  return executingTask;
+}
+
+uint32_t ShimTask_getExecStartTick(void)
+{
+  return execStartTick;
 }
 
 void ShimTask_setStartLoggingIfReady(void)

@@ -66,6 +66,10 @@
 #define ShimTask_getList    ShimTask_NORM_getList
 #endif //USE_FREERTOS
 
+/* task stuck detection */
+#define TASK_STUCK_TIMEOUT_MS   5000UL  /* consider task stuck after 5s */
+#define TASK_STUCK_RESET_COUNT  3U      /* reset after this many timer callbacks */
+
 #define TASK_SIZE 32
 
 /* In order of priority */
@@ -122,6 +126,11 @@ uint8_t ShimTask_NORM_set(uint32_t task_id);
 
 //return the whole tasklist
 uint32_t ShimTask_NORM_getList(void);
+
+void ShimTask_executionStart(uint32_t task);
+void ShimTask_executionEnd(void);
+uint32_t ShimTask_getExecutingTask(void);
+uint32_t ShimTask_getExecStartTick(void);
 
 void ShimTask_setStartLoggingIfReady(void);
 void ShimTask_setStartStreamingIfReady(void);
