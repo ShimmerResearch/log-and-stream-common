@@ -52,9 +52,17 @@
 #include "shimmer_include.h"
 #endif
 
-#define SAVE_DATA_FROM_RTC_INT 0x1
+#define SENSING_LOCK_UP_PREVENTION 1
 
-#define FIRST_CH_BYTE_IDX      (1 + 3) //0x00 + timestamp
+/* Packet structure: [Header(1)][Timestamp(3)][Sensor Data(N)][CRC(N)] */
+#define PACKET_HEADER_IDX          0
+#define PACKET_HEADER_LEN          1
+#define PACKET_TIMESTAMP_IDX       1
+#define PACKET_TIMESTAMP_LEN       3
+#define FIRST_CH_BYTE_IDX          (PACKET_HEADER_LEN + PACKET_TIMESTAMP_LEN)
+
+/* Max samples before considering packet stuck */
+#define BLOCKAGE_THRESHOLD         3
 
 #if defined(SHIMMER3)
 /* 3xanalogAccel + 3xdigiGyro + 3xdigiMag +
@@ -148,6 +156,11 @@
 #define PPG_2           0x37
 #endif
 
+#define DATA_BUF_SIZE       100U
+#define DATA_BUF_QTY        4U /* packet buffer (power 2)  */
+#define DATA_BUF_QTY_IN_USE 2U /* must be < DATA_BUF_QTY */
+#define DATA_BUF_MASK       (DATA_BUF_QTY - 1UL)
+
 typedef struct
 { //data ptr (offset)
   uint8_t ts;
@@ -182,17 +195,31 @@ typedef struct
 
 typedef enum
 {
-  SAMPLING_COMPLETE = 0x00,
+  SAMPLING_PACKET_IDLE = 0x00,
   SAMPLING_IN_PROGRESS = 0x01,
-  SAMPLE_NOT_READY = 0x02
-} SAMPLING_STATUS;
+  SAMPLING_COMPLETE = 0x02
+} samplingStatus_t;
+
+typedef enum
+{
+  NEW_SD_FILE_TS_IDLE,
+  NEW_SD_FILE_TS_PENDING_UPDATE,
+  NEW_SD_FILE_TS_UPDATED,
+  NEW_SD_FILE_TS_SAVED
+} newSdFileTsStatus_t;
+
+typedef struct
+{ //sensor data
+  volatile samplingStatus_t samplingStatus;
+  volatile uint32_t timestampTicks;
+  uint8_t dataBuf[DATA_BUF_SIZE];
+} PACKETBufferTypeDef;
 
 typedef struct
 { //sensor data
   //uint8_t     en;
   //uint8_t     configuring;
   //uint8_t     i2cSensor;
-  volatile uint8_t isSampling;
   uint8_t isSdOperating;
   uint8_t isFileCreated;
   uint8_t inSdWr;
@@ -209,9 +236,17 @@ typedef struct
   uint8_t dataLen;
   //uint8_t     sdlogEnabled;
   //uint8_t     btStreamEnabled;
-  uint64_t startTs;
-  uint64_t latestTs;
-  uint8_t dataBuf[100];
+  volatile newSdFileTsStatus_t newSdFileTsFlag;
+  volatile uint64_t firstTsForSdFile;
+  volatile uint64_t startTs;
+  volatile uint32_t latestTs;
+#if SENSING_LOCK_UP_PREVENTION
+  uint8_t blockageCount;
+#endif //SENSING_LOCK_UP_PREVENTION
+  volatile uint16_t packetBuffWrIdx;
+  volatile uint16_t packetBuffRdIdx;
+  PACKETBufferTypeDef packetBuffers[DATA_BUF_QTY];
+  uint8_t skippingPacketsFlag;
   //STATTypeDef stat;
   DATAPTRTypeDef ptr;
 } SENSINGTypeDef;
@@ -229,10 +264,10 @@ void ShimSens_startSensing(void);
 void ShimSens_stopSensing(uint8_t enableDockUartIfDocked);
 void ShimSens_stopPeripherals(void);
 void ShimSens_stopSensingWrapup(void);
-void ShimSens_streamData(void);
-void ShimSens_bufPoll(void);
-void ShimSens_saveTimestampToPacket(void);
 void ShimSens_gatherData(void);
+void ShimSens_resetCurrentCbFlags(void);
+void ShimSens_saveTimestampToPacket(void);
+uint8_t ShimSens_sampleTimerTriggered(void);
 
 void ShimSens_stepInit(void);
 void ShimSens_adcCompleteCb(void);
@@ -256,5 +291,20 @@ void ShimSens_startLoggingIfUndockStartEnabled(void);
 uint8_t ShimSens_checkAutostopLoggingCondition(void);
 void ShimSens_currentExperimentLengthReset(void);
 void ShimSens_maxExperimentLengthSecsSet(uint16_t expLengthMins);
+uint8_t *ShimSens_getDataBuffAtWrIdx(void);
+uint8_t *ShimSens_getDataBuffAtNextWrIdx(void);
+PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void);
+PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void);
+void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll);
+void ShimSens_resetPacketBuffAll(void);
+void ShimSens_incrementPacketBuffWrIdx(void);
+void ShimSens_incrementPacketBuffReadIndex(void);
+uint8_t ShimSens_arePacketBuffsEmpty(void);
+uint8_t ShimSens_arePacketBuffsFull(void);
+uint8_t ShimSens_getPacketBuffFullCount(void);
+
+uint8_t ShimSens_getPacketBufRdIdx(void);
+uint8_t ShimSens_getPacketBufWrIdx(void);
+uint8_t ShimSens_getPacketBufAtNextWrIdx(void);
 
 #endif //SHIMMER_SENSING_H
