@@ -122,7 +122,7 @@ void LogAndStream_blinkTimerCommon(void)
     if (ShimTask_getExecutingTask())
     {
       uint32_t start = ShimTask_getExecStartTick();
-      uint32_t elapsed = (HAL_GetTick() - start);
+      uint32_t elapsed = (platform_getTick() - start);
 
       if (elapsed > TASK_STUCK_TIMEOUT)
       {
