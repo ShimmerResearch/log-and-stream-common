@@ -260,7 +260,7 @@ uint32_t ShimTask_NORM_getList()
 #if TEST_TASK_MONITOR
 void ShimTask_executionStart(void)
 {
-  execStartTick = HAL_GetTick();
+  execStartTick = platform_getTick();
 }
 
 void ShimTask_executionEnd(void)
