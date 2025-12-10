@@ -53,27 +53,34 @@
 #if USE_FREERTOS
 #define ShimTask_init       S4_RTOS_Task_init
 #define ShimTask_manage     S4_RTOS_Task_manage
-#define ShimTask_getCurrent S4_RTOS_Task_getCurrent
+#define ShimTask_popNext S4_RTOS_Task_getCurrent
 #define ShimTask_clear      S4_RTOS_Task_clear
 #define ShimTask_set        S4_RTOS_Task_set
 #define ShimTask_getList    S4_RTOS_Task_getList
 #else
 #define ShimTask_init       ShimTask_NORM_init
 #define ShimTask_manage     ShimTask_NORM_manage
-#define ShimTask_getCurrent ShimTask_NORM_getCurrent
+#define ShimTask_popNext ShimTask_NORM_popNext
 #define ShimTask_clear      ShimTask_NORM_clear
 #define ShimTask_set        ShimTask_NORM_set
 #define ShimTask_getList    ShimTask_NORM_getList
 #endif //USE_FREERTOS
 
 /* task stuck detection */
-#define TASK_STUCK_TIMEOUT_MS   5000UL  /* consider task stuck after 5s */
-#define TASK_STUCK_RESET_COUNT  3U      /* reset after this many timer callbacks */
+#define TASK_STUCK_TIMEOUT_S   5  /* consider task stuck after 5s */
+#define TASK_STUCK_RESET_TIMEOUT_S   10  /* reset after 10s */
+#if defined(SHIMMER3)
+#define TASK_STUCK_TIMEOUT   (TASK_STUCK_TIMEOUT_S*32768UL) /* in ticks */
+#define TASK_STUCK_RESET_TIMEOUT (TASK_STUCK_RESET_TIMEOUT_S*32768UL) /* in ticks */
+#else
+#define TASK_STUCK_TIMEOUT   (TASK_STUCK_TIMEOUT_S*1000UL) /* in ms */
+#define TASK_STUCK_RESET_TIMEOUT (TASK_STUCK_RESET_TIMEOUT_S*1000UL) /* in ticks */
+#endif
 
 #define TASK_SIZE 32
 
 /* In order of priority */
-typedef enum
+typedef enum TaskId_Tag
 {
   TASK_NONE = 0,
   TASK_SETUP_DOCK = (0x00000001UL << 0U),
@@ -109,28 +116,30 @@ typedef enum
 #if defined(SHIMMER3)
   TASK_WRITE_RADIO_DETAILS = (0x00000001UL << 22U),
 #endif
-} TASK_FLAGS;
+} TaskId_t;
 //return the task id of the current task
 
 void ShimTask_NORM_init(void);
 
 void ShimTask_NORM_manage(void);
 
-uint32_t ShimTask_NORM_getCurrent(void);
+TaskId_t ShimTask_NORM_popNext(void);
 
 //clear the task from the tasklist
-void ShimTask_NORM_clear(uint32_t task_id);
+void ShimTask_NORM_clear(TaskId_t task_id);
 
 //add the task to the tasklist
-uint8_t ShimTask_NORM_set(uint32_t task_id);
+uint8_t ShimTask_NORM_set(TaskId_t task_id);
 
 //return the whole tasklist
 uint32_t ShimTask_NORM_getList(void);
 
-void ShimTask_executionStart(uint32_t task);
+#if TEST_TASK_MONITOR
+void ShimTask_executionStart(void);
 void ShimTask_executionEnd(void);
-uint32_t ShimTask_getExecutingTask(void);
 uint32_t ShimTask_getExecStartTick(void);
+#endif //TEST_TASK_MONITOR
+uint32_t ShimTask_getExecutingTask(void);
 
 void ShimTask_setStartLoggingIfReady(void);
 void ShimTask_setStartStreamingIfReady(void);

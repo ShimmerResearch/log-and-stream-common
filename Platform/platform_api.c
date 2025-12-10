@@ -11,6 +11,12 @@
 
 #include "Sensing/shimmer_sensing.h"
 
+PLATFORM_WEAK void platform_reset(void)
+{
+  //This function can be overridden by the main application to provide a custom
+  //initialization implementation. The default implementation does nothing.
+}
+
 PLATFORM_WEAK void platform_delayMs(const uint32_t delay_time_ms)
 {
   //This function can be overridden by the main application to provide a custom

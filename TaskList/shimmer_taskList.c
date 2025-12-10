@@ -47,40 +47,43 @@
 
 #include "hal_FactoryTest.h"
 
-volatile uint32_t taskList = 0;
-uint32_t taskCurrent;
+static volatile uint32_t taskList = 0;
+static volatile TaskId_t executingTask = TASK_NONE;
 
+#if TEST_TASK_MONITOR
 /* new state for task watchdog */
-static volatile uint32_t executingTask = 0;
 static volatile uint32_t execStartTick = 0;
+#endif //TEST_TASK_MONITOR
 
 void ShimTask_NORM_init(void)
 {
   taskList = 0;
+  executingTask = TASK_NONE;
+#if TEST_TASK_MONITOR
+  execStartTick = 0;
+#endif
 }
 
 void ShimTask_NORM_manage(void)
 {
-  taskCurrent = ShimTask_getCurrent();
+  executingTask = ShimTask_popNext();
 
 #if USE_USBX
   USBX_Device_Process();
 #endif
 
-#if defined(SHIMMER3)
-  if (!taskCurrent)
-#elif defined(SHIMMER3R)
-  if (!taskCurrent)
-#endif
+  if (executingTask == TASK_NONE)
   {
     sleepWhenNoTask();
   }
   else
   {
+#if TEST_TASK_MONITOR
     /* mark start of task execution for watchdog */
-    ShimTask_executionStart(taskCurrent);
+    ShimTask_executionStart();
+#endif //TEST_TASK_MONITOR
 
-    switch (taskCurrent)
+    switch (executingTask)
     {
       case TASK_SETUP_DOCK:
         LogAndStream_checkSetupDockUnDock();
@@ -192,15 +195,19 @@ void ShimTask_NORM_manage(void)
         break;
     }
 
+#if TEST_TASK_MONITOR
     /* mark end of task execution */
     ShimTask_executionEnd();
+#endif //TEST_TASK_MONITOR
+
+    executingTask = TASK_NONE;
   }
 }
 
-uint32_t ShimTask_NORM_getCurrent()
+TaskId_t ShimTask_NORM_popNext(void)
 {
   uint8_t i;
-  uint32_t task;
+  TaskId_t task;
   if (taskList)
   {
     for (i = 0; i < TASK_SIZE; i++)
@@ -216,15 +223,15 @@ uint32_t ShimTask_NORM_getCurrent()
   return 0;
 }
 
-void ShimTask_NORM_clear(uint32_t task_id)
+void ShimTask_NORM_clear(TaskId_t task_id)
 {
   taskList &= ~task_id;
 }
 
-uint8_t ShimTask_NORM_set(uint32_t task_id)
+uint8_t ShimTask_NORM_set(TaskId_t task_id)
 {
   uint8_t is_sleeping = 0;
-  if (!taskList && !taskCurrent)
+  if (!taskList && !executingTask)
   {
     is_sleeping = 1;
   }
@@ -250,26 +257,26 @@ uint32_t ShimTask_NORM_getList()
   return taskList;
 }
 
-void ShimTask_executionStart(uint32_t task)
+#if TEST_TASK_MONITOR
+void ShimTask_executionStart(void)
 {
-  executingTask = task;
   execStartTick = HAL_GetTick();
 }
 
 void ShimTask_executionEnd(void)
 {
-  executingTask = 0;
   execStartTick = 0;
-}
-
-uint32_t ShimTask_getExecutingTask(void)
-{
-  return executingTask;
 }
 
 uint32_t ShimTask_getExecStartTick(void)
 {
   return execStartTick;
+}
+#endif //TEST_TASK_MONITOR
+
+uint32_t ShimTask_getExecutingTask(void)
+{
+  return executingTask;
 }
 
 void ShimTask_setStartLoggingIfReady(void)

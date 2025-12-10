@@ -116,6 +116,7 @@ void LogAndStream_blinkTimerCommon(void)
   }
   else
   {
+#if TEST_TASK_MONITOR
     /* If a task appears to be executing for too long, blinking stops
        and escalate to a reset after repeated timer ticks. */
     if (ShimTask_getExecutingTask())
@@ -123,23 +124,28 @@ void LogAndStream_blinkTimerCommon(void)
       uint32_t start = ShimTask_getExecStartTick();
       uint32_t elapsed = (HAL_GetTick() - start);
 
-      if (elapsed > TASK_STUCK_TIMEOUT_MS)
+      if (elapsed > TASK_STUCK_TIMEOUT)
       {
-        /* first hit: stop the LED timers so the existing blinking stops and user sees a change */
+        /* first hit: turn off LEDs except lower red */
         if (stuckCount == 0)
         {
           Board_ledOff(LED_ALL);
-          Board_ledOn(LED_UPR_GREEN);
-          Board_ledOn(LED_LWR_GREEN);
+          Board_ledOn(LED_LWR_RED);
+        }
+        else
+        {
+          /* subsequent hits: toggle lower red and green */
+          Board_ledToggle(LED_LWR_RED);
+          Board_ledToggle(LED_LWR_GREEN);
         }
 
         stuckCount++;
 
-        ///* escalate after a few timer ticks (adjust TASK_STUCK_RESET_COUNT as
-        //desired) */ if (stuckCount >= TASK_STUCK_RESET_COUNT)
-        //{
-        //  NVIC_SystemReset(); /* recover by reboot */
-        //}
+        /* escalate to system reset after further period of time */
+        if (elapsed > TASK_STUCK_RESET_TIMEOUT)
+        {
+          platform_reset(); /* recover by reboot */
+        }
 
         /* do not run normal blink processing while stuck */
         return;
@@ -150,6 +156,7 @@ void LogAndStream_blinkTimerCommon(void)
         stuckCount = 0;
       }
     }
+#endif //TEST_TASK_MONITOR
 
     if (ShimLeds_isBlinkTimerCnt1s() && ShimSens_checkAutostopLoggingCondition())
     {
