@@ -106,6 +106,8 @@ void LogAndStream_setSdInfoSyncDelayed(uint8_t state)
 
 void LogAndStream_blinkTimerCommon(void)
 {
+  static uint8_t stuckCount = 0;
+
   ShimLeds_incrementCounters();
 
   if (shimmerStatus.booting)
@@ -114,6 +116,48 @@ void LogAndStream_blinkTimerCommon(void)
   }
   else
   {
+#if TEST_TASK_MONITOR
+    /* If a task appears to be executing for too long, blinking stops
+       and escalate to a reset after repeated timer ticks. */
+    if (ShimTask_getExecutingTask())
+    {
+      uint32_t start = ShimTask_getExecStartTick();
+      uint32_t elapsed = (platform_getTick() - start);
+
+      if (elapsed > TASK_STUCK_TIMEOUT)
+      {
+        /* first hit: turn off LEDs except lower red */
+        if (stuckCount == 0)
+        {
+          Board_ledOff(LED_ALL);
+          Board_ledOn(LED_LWR_RED);
+        }
+        else
+        {
+          /* subsequent hits: toggle lower red and green */
+          Board_ledToggle(LED_LWR_RED);
+          Board_ledToggle(LED_LWR_GREEN);
+        }
+
+        stuckCount++;
+
+        /* escalate to system reset after further period of time */
+        if (elapsed > TASK_STUCK_RESET_TIMEOUT)
+        {
+          platform_reset(); /* recover by reboot */
+        }
+
+        /* do not run normal blink processing while stuck */
+        return;
+      }
+      else
+      {
+        /* task is within allowed time, clear counter */
+        stuckCount = 0;
+      }
+    }
+#endif //TEST_TASK_MONITOR
+
     if (ShimLeds_isBlinkTimerCnt1s() && ShimSens_checkAutostopLoggingCondition())
     {
       ShimTask_setStopLogging();
