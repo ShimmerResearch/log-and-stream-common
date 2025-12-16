@@ -306,7 +306,6 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
   {
     shimmerStatus.btStreaming = 0;
     shimmerStatus.btstreamCmd = BT_STREAM_CMD_STATE_IDLE;
-    ShimTask_clear(TASK_GATHER_DATA);
   }
 
   /* Both logging and streaming have been stopped, so we can stop sensing. */
@@ -336,7 +335,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     {
       LogAndStream_syncConfigAndCalibOnSd();
     }
-
+    ShimTask_clear(TASK_GATHER_DATA);
     shimmerStatus.configuring = 0;
   }
 }
