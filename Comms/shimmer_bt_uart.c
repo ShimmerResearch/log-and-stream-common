@@ -2259,6 +2259,7 @@ void ShimBt_instreamStatusRespSend(void)
   if (shimmerStatus.btConnected)
   {
     uint8_t i = 0;
+    uint8_t crcMode = 0;
     uint8_t selfcmd[6]; /* max is 6 bytes */
 
     if (useAckPrefixForInstreamResponses)
@@ -2269,11 +2270,11 @@ void ShimBt_instreamStatusRespSend(void)
     selfcmd[i++] = STATUS_RESPONSE;
     i += ShimBt_assembleStatusBytes(&selfcmd[i]);
 
-    uint8_t crcMode = ShimBt_getCrcMode();
+    crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
     {
       calculateCrcAndInsert(crcMode, &selfcmd[0], i);
-      i += getCrcLength(crcMode); //Ordinal of enum was causing hardfaults DEV-621
+      i += crcMode;
     }
 
     ShimBt_writeToTxBufAndSend(selfcmd, i, SHIMMER_CMD);
