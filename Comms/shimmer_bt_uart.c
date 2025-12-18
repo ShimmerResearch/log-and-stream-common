@@ -2273,7 +2273,7 @@ void ShimBt_instreamStatusRespSend(void)
     if (crcMode != CRC_OFF)
     {
       calculateCrcAndInsert(crcMode, &selfcmd[0], i);
-      i += crcMode; //Ordinal of enum is how many bytes are used
+      i += getCrcLength(crcMode); //Ordinal of enum was causing hardfaults DEV-621
     }
 
     ShimBt_writeToTxBufAndSend(selfcmd, i, SHIMMER_CMD);
