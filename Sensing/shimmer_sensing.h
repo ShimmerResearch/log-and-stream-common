@@ -156,9 +156,9 @@
 #define PPG_2           0x37
 #endif
 
-#define DATA_BUF_SIZE       100U
-#define DATA_BUF_QTY        4U /* packet buffer (power 2)  */
-#define DATA_BUF_QTY_IN_USE 2U /* must be < DATA_BUF_QTY */
+#define DATA_BUF_SIZE       128U
+#define DATA_BUF_QTY        8U /* packet buffer (power 2)  */
+#define DATA_BUF_QTY_IN_USE 6U /* must be < DATA_BUF_QTY */
 #define DATA_BUF_MASK       (DATA_BUF_QTY - 1UL)
 
 typedef struct
