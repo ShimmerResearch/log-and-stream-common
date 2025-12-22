@@ -2179,18 +2179,18 @@ uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd)
 
 void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew)
 {
-    switch (btCrcModeNew)
-    {
-      case CRC_OFF:
-      case CRC_1BYTES_ENABLED:
-      case CRC_2BYTES_ENABLED:
-        btCrcMode = btCrcModeNew;
-        break;
+  switch (btCrcModeNew)
+  {
+    case CRC_OFF:
+    case CRC_1BYTES_ENABLED:
+    case CRC_2BYTES_ENABLED:
+      btCrcMode = btCrcModeNew;
+      break;
 
-      default:
-        btCrcMode = CRC_OFF;  // safe fallback
-        break;
-    }
+    default:
+      btCrcMode = CRC_OFF; //safe fallback
+      break;
+  }
   btCrcMode = btCrcModeNew;
 #if defined(SHIMMER3R)
   //TODO turn on/off peripheral when needed to save power
@@ -2274,7 +2274,8 @@ void ShimBt_instreamStatusRespSend(void)
     COMMS_CRC_MODE crcMode = ShimBt_getCrcMode();
     uint8_t selfcmd[7]; /* max is 7 bytes */
     uint8_t crcLen = (crcMode == CRC_2BYTES_ENABLED) ? 2 :
-                     (crcMode == CRC_1BYTES_ENABLED) ? 1 : 0;
+        (crcMode == CRC_1BYTES_ENABLED)              ? 1 :
+                                                       0;
     if (useAckPrefixForInstreamResponses)
     {
       selfcmd[i++] = ACK_COMMAND_PROCESSED;
@@ -2283,10 +2284,10 @@ void ShimBt_instreamStatusRespSend(void)
     selfcmd[i++] = STATUS_RESPONSE;
     i += ShimBt_assembleStatusBytes(&selfcmd[i]);
 
-     if (crcMode != CRC_OFF)
+    if (crcMode != CRC_OFF)
     {
       calculateCrcAndInsert(crcMode, &selfcmd[0], i);
-       i += crcLen;
+      i += crcLen;
     }
 
     ShimBt_writeToTxBufAndSend(selfcmd, i, SHIMMER_CMD);
