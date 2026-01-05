@@ -2179,19 +2179,14 @@ uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd)
 
 void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew)
 {
-  switch (btCrcModeNew)
+  if (btCrcModeNew < CRC_MAX_SUPPORTED_BYTES)
   {
-    case CRC_OFF:
-    case CRC_1BYTES_ENABLED:
-    case CRC_2BYTES_ENABLED:
-      btCrcMode = btCrcModeNew;
-      break;
-
-    default:
-      btCrcMode = CRC_OFF; //safe fallback
-      break;
+    btCrcMode = btCrcModeNew;
   }
-  btCrcMode = btCrcModeNew;
+  else
+  {
+    btCrcMode = CRC_OFF; //safe fall-back
+  }
 #if defined(SHIMMER3R)
   //TODO turn on/off peripheral when needed to save power
   //if (btCrcMode == CRC_OFF)
@@ -2271,11 +2266,10 @@ void ShimBt_instreamStatusRespSend(void)
   if (shimmerStatus.btConnected)
   {
     uint8_t i = 0;
-    COMMS_CRC_MODE crcMode = ShimBt_getCrcMode();
-    uint8_t selfcmd[7]; /* max is 7 bytes */
-    uint8_t crcLen = (crcMode == CRC_2BYTES_ENABLED) ? 2 :
-        (crcMode == CRC_1BYTES_ENABLED)              ? 1 :
-                                                       0;
+    COMMS_CRC_MODE crcModeAndLen = ShimBt_getCrcMode();
+    /* max is 7 bytes (2-3 header bytes, 1-2 status bytes, 0-2 CRC bytes) */
+    uint8_t selfcmd[3 + STATUS_BYTE_COUNT + CRC_MAX_SUPPORTED_BYTES];
+
     if (useAckPrefixForInstreamResponses)
     {
       selfcmd[i++] = ACK_COMMAND_PROCESSED;
@@ -2284,10 +2278,10 @@ void ShimBt_instreamStatusRespSend(void)
     selfcmd[i++] = STATUS_RESPONSE;
     i += ShimBt_assembleStatusBytes(&selfcmd[i]);
 
-    if (crcMode != CRC_OFF)
+    if (crcModeAndLen != CRC_OFF)
     {
-      calculateCrcAndInsert(crcMode, &selfcmd[0], i);
-      i += crcLen;
+      calculateCrcAndInsert(crcModeAndLen, &selfcmd[0], i);
+      i += crcModeAndLen;
     }
 
     ShimBt_writeToTxBufAndSend(selfcmd, i, SHIMMER_CMD);
@@ -2638,7 +2632,6 @@ uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType res
 
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)
 {
-  uint8_t statusByteCnt = 1;
   *(bufPtr) = (shimmerStatus.toggleLedRedCmd << 7) | (shimmerStatus.sdBadFile << 6)
       | (shimmerStatus.sdInserted << 5) | (shimmerStatus.btStreaming << 4)
       | (shimmerStatus.sdLogging << 3) | (RTC_isRwcTimeSet() << 2)
@@ -2646,10 +2639,9 @@ uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)
 
 #if defined(SHIMMER3R)
   *(bufPtr + 1) = shimmerStatus.usbPluggedIn;
-  statusByteCnt++;
 #endif /* SHIMMER3R */
 
-  return statusByteCnt;
+  return STATUS_BYTE_COUNT;
 }
 
 uint8_t ShimBt_isCmdAllowedWhileSdSyncing(uint8_t command)

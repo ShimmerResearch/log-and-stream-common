@@ -219,6 +219,12 @@
 
 #define DATA_RATE_TEST_PACKET_SIZE                    5U //1 header byte + uint32_t counter value
 
+#if defined(SHIMMER3)
+#define STATUS_BYTE_COUNT                          1U
+#else
+#define STATUS_BYTE_COUNT                          2U
+#endif
+
 enum
 {
   BT_STREAM_CMD_STATE_IDLE = 0,
