@@ -13,8 +13,8 @@
 
 #include <stdint.h>
 
-#include "Sensing/shimmer_sensing.h"
 #include "CRC/shimmer_swCrc.h"
+#include "Sensing/shimmer_sensing.h"
 
 PLATFORM_WEAK void platform_reset(void)
 {
