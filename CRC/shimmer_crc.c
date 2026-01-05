@@ -75,7 +75,6 @@ uint8_t checkCrc(COMMS_CRC_MODE crcMode, uint8_t *aryPtr, uint8_t payloadLen)
   return 1;
 }
 
-
 /**
  * @brief  Self-test for the CRC driver.
  *

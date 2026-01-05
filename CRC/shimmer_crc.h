@@ -6,9 +6,9 @@
 
 #define CRC_INIT 0xB0CA
 
-// CRC modes for communication payloads.
-// Note: CRC_MAX_SUPPORTED_BYTES is a sentinel value used for validation
-// and bounds checking and MUST NOT be used as an actual CRC mode.
+//CRC modes for communication payloads.
+//Note: CRC_MAX_SUPPORTED_BYTES is a sentinel value used for validation
+//and bounds checking and MUST NOT be used as an actual CRC mode.
 typedef enum
 {
   CRC_OFF,
