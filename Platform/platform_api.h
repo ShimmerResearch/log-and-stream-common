@@ -38,6 +38,7 @@ extern "C"
   PLATFORM_WEAK void platform_processHwRevision(void);
   PLATFORM_WEAK void platform_initGpioForRevision(void);
   PLATFORM_WEAK uint8_t platform_gatherData(void);
+  PLATFORM_WEAK uint32_t platform_CrcData(uint8_t *buf, uint8_t len);
 
 #ifdef __cplusplus
 }

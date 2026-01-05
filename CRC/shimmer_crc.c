@@ -2,6 +2,8 @@
 
 #include "shimmer_crc.h"
 
+#include "Platform/platform_api.h"
+
 void calculateCrcAndInsert(uint8_t crcMode, uint8_t *aryPtr, uint8_t len)
 {
   uint32_t crc_value;
