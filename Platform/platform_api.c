@@ -51,7 +51,7 @@ PLATFORM_WEAK uint8_t platform_gatherData(void)
   return 0;
 }
 
-PLATFORM_WEAK uint32_t platform_CrcData(uint8_t *buf, uint8_t len)
+PLATFORM_WEAK uint32_t platform_crcData(uint8_t *buf, uint8_t len)
 {
   /* This function can be overridden by the main application to provide hardware
    based CRC calculation. */

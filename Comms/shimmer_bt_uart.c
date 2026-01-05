@@ -2146,7 +2146,7 @@ void ShimBt_sendRsp(void)
     }
     getCmdWaitingResponse = 0;
 
-    uint8_t crcMode = ShimBt_getCrcMode();
+    COMMS_CRC_MODE crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
     {
       calculateCrcAndInsert(crcMode, resPacket, packet_length);
@@ -2267,7 +2267,7 @@ void ShimBt_instreamStatusRespSend(void)
   {
     uint8_t i = 0;
     COMMS_CRC_MODE crcModeAndLen = ShimBt_getCrcMode();
-    /* max is 7 bytes (2-3 header bytes, 1-2 status bytes, 0-2 CRC bytes) */
+    /* max is 7 bytes [header bytes (2 or 3), STATUS_BYTE_COUNT (1 or 2), CRC bytes (0 or 1 or 2)] */
     uint8_t selfcmd[3 + STATUS_BYTE_COUNT + CRC_MAX_SUPPORTED_BYTES];
 
     if (useAckPrefixForInstreamResponses)

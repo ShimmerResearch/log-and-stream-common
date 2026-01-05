@@ -650,7 +650,7 @@ void ShimSens_saveData(void)
 #if USE_BT
       if (shimmerStatus.btStreaming && !ShimSens_shouldStopStreaming())
       {
-        uint8_t crcMode = ShimBt_getCrcMode();
+        COMMS_CRC_MODE crcMode = ShimBt_getCrcMode();
         if (crcMode != CRC_OFF)
         {
           calculateCrcAndInsert(
