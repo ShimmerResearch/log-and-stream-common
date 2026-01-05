@@ -673,7 +673,7 @@ void ShimDock_sendRsp(void)
     uart_resp_len += btVerStrLen;
   }
 
-  uartRespCrc = CRC_data(uartRespBuf, uart_resp_len);
+  uartRespCrc = platform_CrcData(uartRespBuf, uart_resp_len);
   *(uartRespBuf + uart_resp_len++) = uartRespCrc & 0xff;
   *(uartRespBuf + uart_resp_len++) = (uartRespCrc & 0xff00) >> 8;
   if (cr)
@@ -703,7 +703,7 @@ uint8_t ShimDock_uartCheckCrc(uint8_t len)
     return 0;
   }
   uint16_t uart_rx_crc, uart_calc_crc;
-  uart_calc_crc = CRC_data(dockRxBuf, len);
+  uart_calc_crc = platform_CrcData(dockRxBuf, len);
   uart_rx_crc = (uint16_t) dockRxBuf[len];
   uart_rx_crc += ((uint16_t) dockRxBuf[(uint8_t) (len + 1)]) << 8;
   return (uart_rx_crc == uart_calc_crc);

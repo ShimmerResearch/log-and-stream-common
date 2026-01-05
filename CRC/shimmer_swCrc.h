@@ -40,47 +40,13 @@
  * @date May, 2016
  */
 
-#include "shimmer_swCrc.h"
+#ifndef SHIMMER_SWCRC_H
+#define SHIMMER_SWCRC_H
 
-uint16_t ShimSwCrc_byte(uint16_t crc, uint8_t b)
-{
-  crc = (uint8_t) (crc >> 8) | (crc << 8);
-  crc ^= b;
-  crc ^= (uint8_t) (crc & 0xff) >> 4;
-  crc ^= crc << 12;
-  crc ^= (crc & 0xff) << 5;
-  return crc;
-}
+#include <stdint.h>
 
-uint16_t ShimSwCrc_calc(uint8_t *msg, uint8_t len)
-{
-  uint16_t crcCalc;
-  uint8_t i;
+uint16_t ShimSwCrc_byte(uint16_t crc, uint8_t b);
+uint16_t ShimSwCrc_calc(uint8_t *msg, uint8_t len);
+uint8_t ShimSwCrc_check(uint8_t *msg, uint8_t len);
 
-  crcCalc = ShimSwCrc_byte(CRC_INIT, *msg);
-  for (i = 1; i < len; i++)
-  {
-    crcCalc = ShimSwCrc_byte(crcCalc, *(msg + i));
-  }
-  if (len % 2)
-  {
-    crcCalc = ShimSwCrc_byte(crcCalc, 0x00);
-  }
-  return crcCalc;
-}
-
-uint8_t ShimSwCrc_check(uint8_t *msg, uint8_t len)
-{
-  uint16_t crc;
-
-  crc = ShimSwCrc_calc(msg, len - 2);
-
-  if (((crc & 0xFF) == msg[len - 2]) && (((crc & 0xFF00) >> 8) == msg[len - 1]))
-  {
-    return 1; //TRUE
-  }
-  else
-  {
-    return 0; //FALSE
-  }
-}
+#endif //SHIMMER_SWCRC_H

@@ -10,11 +10,10 @@
 
 #include <stdint.h>
 
+#include "CRC/shimmer_crc.h"
 #if defined(SHIMMER3)
-#include "../5xx_HAL/hal_CRC.h"
 #include "../RN4X/RN4678.h"
 #elif defined(SHIMMER3R)
-#include "hal_CRC.h"
 #include "shimmer_definitions.h"
 #include <shimmer_include.h>
 #endif

@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 #include "Sensing/shimmer_sensing.h"
+#include "CRC/shimmer_swCrc.h"
 
 PLATFORM_WEAK void platform_reset(void)
 {
@@ -47,4 +48,11 @@ PLATFORM_WEAK uint8_t platform_gatherData(void)
   ShimSens_resetCurrentCbFlags();
   ShimSens_gatherData();
   return 0;
+}
+
+PLATFORM_WEAK uint32_t platform_CrcData(uint8_t *buf, uint8_t len)
+{
+  /* This function can be overridden by the main application to provide hardware
+   based CRC calculation. */
+  return ShimSwCrc_calc(buf, len);
 }
