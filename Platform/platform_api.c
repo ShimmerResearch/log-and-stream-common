@@ -30,6 +30,7 @@ PLATFORM_WEAK void platform_delayMs(const uint32_t delay_time_ms)
 PLATFORM_WEAK uint32_t platform_getTick(void)
 {
   //default no-op
+  return 0;
 }
 
 PLATFORM_WEAK void platform_processHwRevision(void)
