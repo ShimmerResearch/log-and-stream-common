@@ -419,8 +419,6 @@ void ShimDock_processCmd(void)
               RTC_setAlarmRebootToBootloader(dockRxBuf[UART_RXBUF_DATA]);
 
               uartSendRspAck = 1;
-              /* Exception to the general flow to ensure the response is sent before all other operations are locked out */
-              ShimDock_sendRsp();
               break;
 #endif
             default:
