@@ -2187,17 +2187,6 @@ void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew)
   {
     btCrcMode = CRC_OFF; //safe fall-back
   }
-#if defined(SHIMMER3R)
-  //TODO turn on/off peripheral when needed to save power
-  //if (btCrcMode == CRC_OFF)
-  //{
-  //  HAL_CRC_DeInit(hcrc);
-  //}
-  //else
-  //{
-  //  MX_CRC_Init();
-  //}
-#endif
 }
 
 COMMS_CRC_MODE ShimBt_getCrcMode(void)
