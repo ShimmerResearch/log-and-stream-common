@@ -19,7 +19,7 @@
 #include "crc.h"
 #endif
 
-#define BT_SD_SYNC_CRC_MODE CRC_1BYTES_ENABLED
+#define BT_SD_SYNC_CRC_MODE CRC_1BYTE_ENABLED
 
 //BT routine communication
 //all node time must *2 in use

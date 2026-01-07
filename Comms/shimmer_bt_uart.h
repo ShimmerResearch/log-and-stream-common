@@ -10,11 +10,10 @@
 
 #include <stdint.h>
 
+#include "CRC/shimmer_crc.h"
 #if defined(SHIMMER3)
-#include "../5xx_HAL/hal_CRC.h"
 #include "../RN4X/RN4678.h"
 #elif defined(SHIMMER3R)
-#include "hal_CRC.h"
 #include "shimmer_definitions.h"
 #include <shimmer_include.h>
 #endif
@@ -218,6 +217,12 @@
 #define BT_RX_COMMS_TIMEOUT_TICKS                     328U /* 32768*0.01s = 327.68  */
 
 #define DATA_RATE_TEST_PACKET_SIZE                    5U //1 header byte + uint32_t counter value
+
+#if defined(SHIMMER3)
+#define STATUS_BYTE_COUNT 1U
+#else
+#define STATUS_BYTE_COUNT 2U
+#endif
 
 enum
 {
