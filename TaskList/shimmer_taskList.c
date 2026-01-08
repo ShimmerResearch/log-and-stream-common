@@ -154,7 +154,7 @@ void ShimTask_NORM_manage(void)
 #elif defined(SHIMMER3R)
         manageReadBatt(0);
         /* Don't overwrite the alarm set for jumping to BSL */
-        if(!shimmerStatus.bslRebootPending)
+        if (!shimmerStatus.bslRebootPending)
         {
           RTC_setAlarmBattRead();
         }
