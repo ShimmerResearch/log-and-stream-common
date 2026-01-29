@@ -1455,7 +1455,14 @@ void ShimBt_processCmd(void)
 #if defined(SHIMMER3)
         else if (args[0] == FEATURE_RN4678_ERROR_LEDS)
         {
-          RN4678_setErrorLedsEnabled(args[1]);
+          if(isBtDeviceRn4678())
+          {
+            RN4678_setErrorLedsEnabled(args[1]);
+          }
+          else
+          {
+            //ignore command if not supported
+          }
         }
 #endif
         else
