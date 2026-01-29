@@ -644,13 +644,13 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case SET_FACTORY_TEST:
           case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
           case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
-          case SET_FEATURE:
             gAction = data;
             waitingForArgs = 1U;
             break;
           case SET_SAMPLING_RATE_COMMAND:
           case GET_DAUGHTER_CARD_ID_COMMAND:
           case SET_DAUGHTER_CARD_ID_COMMAND:
+          case SET_FEATURE:
             gAction = data;
             waitingForArgs = 2U;
             break;
@@ -1448,12 +1448,16 @@ void ShimBt_processCmd(void)
       {
         if (args[0] == FEATURE_NONE)
         {
+#if defined(SHIMMER3)
           RN4678_setErrorLedsEnabled(0);
+#endif
         }
+#if defined(SHIMMER3)
         else if (args[0] == FEATURE_RN4678_ERROR_LEDS)
         {
           RN4678_setErrorLedsEnabled(args[1]);
         }
+#endif
         else
         {
           sendNack = 1;
