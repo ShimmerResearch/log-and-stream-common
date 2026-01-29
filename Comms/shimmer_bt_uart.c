@@ -2311,7 +2311,9 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   { //BT is connected
     ShimBt_resetBtRxVariablesOnConnect();
 #if defined(SHIMMER3)
+    //Reset BT errors upon new connections
     resetLatestBtError();
+    RN4678_setErrorLedsEnabled(0);
 #endif
 
     if (shimmerStatus.sdSyncEnabled)
@@ -2370,7 +2372,6 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
 
 #if defined(SHIMMER3)
     setRn4678ConnectionState(RN4678_DISCONNECTED);
-    RN4678_setErrorLedsEnabled(0);
 #endif
 
     /* Check BT module configuration after disconnection in case
