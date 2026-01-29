@@ -106,7 +106,9 @@ void LogAndStream_setSdInfoSyncDelayed(uint8_t state)
 
 void LogAndStream_blinkTimerCommon(void)
 {
+#if TEST_TASK_MONITOR
   static uint8_t stuckCount = 0;
+#endif //TEST_TASK_MONITOR
 
   ShimLeds_incrementCounters();
 

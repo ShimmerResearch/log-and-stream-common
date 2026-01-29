@@ -123,7 +123,7 @@ void ShimBt_btCommsProtocolInit(void)
   ShimBt_resetBtRxBuffs();
 
 #if defined(SHIMMER3)
-  RN4678_resetStatusString();
+  RN4678_driverInit();
 
   setBtRxFullResponsePtr(btRxBuffFullResponse);
 
@@ -650,6 +650,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case SET_SAMPLING_RATE_COMMAND:
           case GET_DAUGHTER_CARD_ID_COMMAND:
           case SET_DAUGHTER_CARD_ID_COMMAND:
+          case SET_FEATURE:
             gAction = data;
             waitingForArgs = 2U;
             break;
@@ -1441,6 +1442,26 @@ void ShimBt_processCmd(void)
 #else
         sendNack = 1;
 #endif
+        break;
+      }
+      case SET_FEATURE:
+      {
+        if (args[0] == FEATURE_NONE)
+        {
+#if defined(SHIMMER3)
+          RN4678_setErrorLedsEnabled(0);
+#endif
+        }
+#if defined(SHIMMER3)
+        else if (args[0] == FEATURE_RN4678_ERROR_LEDS)
+        {
+          RN4678_setErrorLedsEnabled(args[1]);
+        }
+#endif
+        else
+        {
+          sendNack = 1;
+        }
         break;
       }
       case ACK_COMMAND_PROCESSED:
@@ -2290,7 +2311,9 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   { //BT is connected
     ShimBt_resetBtRxVariablesOnConnect();
 #if defined(SHIMMER3)
+    //Reset BT errors upon new connections
     resetLatestBtError();
+    RN4678_setErrorLedsEnabled(0);
 #endif
 
     if (shimmerStatus.sdSyncEnabled)

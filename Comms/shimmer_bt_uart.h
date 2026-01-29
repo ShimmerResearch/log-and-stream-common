@@ -206,6 +206,7 @@
 #define GET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB4
 #define DUMMY_COMMAND                                 0xB5
 #define RESET_BT_ERROR_COUNTS                         0xB6
+#define SET_FEATURE                                   0xB7
 
 #define SET_SD_SYNC_COMMAND                           0xE0
 #define SD_SYNC_RESPONSE                              0xE1
@@ -243,6 +244,12 @@ enum
   PRESSURE_SENSOR_BMP180 = 0,
   PRESSURE_SENSOR_BMP280 = 1,
   PRESSURE_SENSOR_BMP390 = 2
+};
+
+enum
+{
+  FEATURE_NONE = 0,
+  FEATURE_RN4678_ERROR_LEDS = 1
 };
 
 typedef enum
