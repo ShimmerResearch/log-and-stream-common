@@ -123,7 +123,7 @@ void ShimBt_btCommsProtocolInit(void)
   ShimBt_resetBtRxBuffs();
 
 #if defined(SHIMMER3)
-  RN4678_resetStatusString();
+  RN4678_driverInit();
 
   setBtRxFullResponsePtr(btRxBuffFullResponse);
 
@@ -644,6 +644,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case SET_FACTORY_TEST:
           case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
           case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
+          case SET_FEATURE:
             gAction = data;
             waitingForArgs = 1U;
             break;
@@ -1441,6 +1442,22 @@ void ShimBt_processCmd(void)
 #else
         sendNack = 1;
 #endif
+        break;
+      }
+      case SET_FEATURE:
+      {
+        if (args[0] == FEATURE_NONE)
+        {
+          RN4678_setErrorLedsEnabled(0);
+        }
+        else if (args[0] == FEATURE_RN4678_ERROR_LEDS)
+        {
+          RN4678_setErrorLedsEnabled(args[1]);
+        }
+        else
+        {
+          sendNack = 1;
+        }
         break;
       }
       case ACK_COMMAND_PROCESSED:
@@ -2349,6 +2366,7 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
 
 #if defined(SHIMMER3)
     setRn4678ConnectionState(RN4678_DISCONNECTED);
+    RN4678_setErrorLedsEnabled(0);
 #endif
 
     /* Check BT module configuration after disconnection in case
