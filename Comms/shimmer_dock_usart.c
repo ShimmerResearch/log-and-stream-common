@@ -27,9 +27,7 @@
 #else
 #include "stm32u5xx_hal_uart.h"
 #endif
-#if defined(SHIMMER3R)
-#include "usbd_cdc_acm_if.h"
-#endif
+
 #define EN_CALIB_DUMP_RSP 0
 
 uint8_t uartSteps, uartArgSize, uartArg2Wait, uartCrc2Wait, uartAction;
@@ -684,7 +682,7 @@ void ShimDock_sendRsp(void)
   if (shimmerStatus.usbPluggedIn)
   {
     /* respond to commands via usb */
-    CDC_Transmit(CDC_CH_DOCK_COMMS, uartRespBuf, uart_resp_len);
+    //CDC_Transmit(CDC_CH_DOCK_COMMS, uartRespBuf, uart_resp_len);
   }
   else
 #endif
