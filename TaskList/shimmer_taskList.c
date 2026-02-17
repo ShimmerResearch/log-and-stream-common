@@ -153,7 +153,11 @@ void ShimTask_NORM_manage(void)
         }
 #elif defined(SHIMMER3R)
         manageReadBatt(0);
-        RTC_setAlarmBattRead();
+        /* Don't overwrite the alarm set for jumping to BSL */
+        if (!shimmerStatus.bslRebootPending)
+        {
+          RTC_setAlarmBattRead();
+        }
 #elif defined(SHIMMER4_SDK)
         S4_ADC_readBatt();
         I2C_readBatt();
@@ -164,7 +168,7 @@ void ShimTask_NORM_manage(void)
         break;
 #if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
       case TASK_USB_SETUP:
-        vbusPinStateCheck();
+        //vbusPinStateCheck();
         LogAndStream_setupDockUndock();
         break;
 #endif
