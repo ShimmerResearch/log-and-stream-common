@@ -417,7 +417,7 @@ void ShimDock_processCmd(void)
 #if defined(SHIMMER3R)
             case UART_PROP_ENTER_BOOTLOADER:
               /* Cancel any pending reboot-to-bootloader operation */
-              shimmerStatus.bslRebootPending = dockRxBuf[UART_RXBUF_DATA] == 0? 0:1;
+              shimmerStatus.bslRebootPending = dockRxBuf[UART_RXBUF_DATA] == 0 ? 0 : 1;
               RTC_setAlarmRebootToBootloader(dockRxBuf[UART_RXBUF_DATA]);
 
               uartSendRspAck = 1;
