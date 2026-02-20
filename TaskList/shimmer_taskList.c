@@ -168,7 +168,7 @@ void ShimTask_NORM_manage(void)
         break;
 #if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
       case TASK_USB_SETUP:
-        vbusPinStateCheck();
+     //   vbusPinStateCheck();
         LogAndStream_setupDockUndock();
         break;
 #endif
