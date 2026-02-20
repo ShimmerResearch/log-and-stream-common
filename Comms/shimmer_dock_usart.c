@@ -12,8 +12,8 @@
 
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
-#include "ux_device_cdc_acm.h"
 #include "shimmer_definitions.h"
+#include "ux_device_cdc_acm.h"
 #include "version.h"
 
 #if defined(SHIMMER3)
@@ -115,7 +115,7 @@ uint8_t ShimDock_rxCallback(uint8_t data)
         default:
           uartSteps = 0;
           uartSendRspBadCmd = 1;
-        //  ShimTask_set(TASK_DOCK_RESPOND);
+          //ShimTask_set(TASK_DOCK_RESPOND);
           ShimDock_sendRsp();
           return 1;
       }
@@ -145,7 +145,7 @@ uint8_t ShimDock_rxCallback(uint8_t data)
       {
         uartSteps = 0;
         uartArgSize = 0;
-       // ShimTask_set(TASK_DOCK_PROCESS_CMD);
+        //ShimTask_set(TASK_DOCK_PROCESS_CMD);
         ShimDock_processCmd();
         uartTimeStart = 0;
         return 1;
@@ -492,7 +492,7 @@ void ShimDock_processCmd(void)
     {
       uartSendRspBadCrc = 1;
     }
-//   ShimTask_set(TASK_DOCK_RESPOND);
+    //ShimTask_set(TASK_DOCK_RESPOND);
     ShimDock_sendRsp();
   }
 }
@@ -682,10 +682,10 @@ void ShimDock_sendRsp(void)
   }
 #if defined(SHIMMER3R)
 
-    /* respond to commands via usb */
-    USBX_CDC_ACM_Transmit(uartRespBuf, uart_resp_len);
+  /* respond to commands via usb */
+  USBX_CDC_ACM_Transmit(uartRespBuf, uart_resp_len);
 #endif
-      if (shimmerStatus.docked)
+  if (shimmerStatus.docked)
   {
     /* respond to commands via dock usart */
     DockUart_writeBlocking(uartRespBuf, uart_resp_len);
