@@ -307,4 +307,6 @@ uint8_t ShimSens_getPacketBufRdIdx(void);
 uint8_t ShimSens_getPacketBufWrIdx(void);
 uint8_t ShimSens_getPacketBufAtNextWrIdx(void);
 
+__weak void ADC_gatherDataStart(void);
+
 #endif //SHIMMER_SENSING_H

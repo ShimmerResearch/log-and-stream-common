@@ -814,3 +814,8 @@ uint8_t ShimSens_getPacketBufAtNextWrIdx(void)
 {
   return (DATA_BUF_MASK & (sensing.packetBuffWrIdx + 1));
 }
+
+__weak void ADC_gatherDataStart(void)
+{
+  __NOP();
+}
