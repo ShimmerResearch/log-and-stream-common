@@ -52,6 +52,10 @@
 #include "shimmer_include.h"
 #endif
 
+#ifndef __weak
+#define __weak __attribute__((weak))
+#endif /* __weak */
+
 #define SENSING_LOCK_UP_PREVENTION 1
 
 /* Packet structure: [Header(1)][Timestamp(3)][Sensor Data(N)][CRC(N)] */
