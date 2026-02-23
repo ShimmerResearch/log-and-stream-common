@@ -1,1 +1,9 @@
 /Extras/python_scripts/.idea/
+
+# CodeQL analysis artifacts
+.codeql/
+codeql-database/
+codeql-db/
+*.sarif
+*.sarif.json
+_codeql_detected_source_root
