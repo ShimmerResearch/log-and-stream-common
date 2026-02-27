@@ -77,8 +77,8 @@ void ShimDock_resetVariables(void)
 
 uint8_t ShimDock_rxCallback(uint8_t data)
 {
-  UsbRxRingFifo_t* crx = &usbCmdRx;
- crx->usb_pr_rx_clbck_entry_count_start++;
+  UsbRxRingFifo_t *crx = &usbCmdRx;
+  crx->usb_pr_rx_clbck_entry_count_start++;
 
   if (shimmerStatus.booting)
   {
@@ -184,7 +184,7 @@ uint8_t ShimDock_rxCallback(uint8_t data)
 
 void ShimDock_processCmd(void)
 {
-  UsbRxRingFifo_t* crx = &usbCmdRx;
+  UsbRxRingFifo_t *crx = &usbCmdRx;
   crx->usb_pr_Shimdock_processCmd_fn_entry_count++;
   if (uartAction)
   {
@@ -503,13 +503,12 @@ void ShimDock_processCmd(void)
     }
     crx->usb_pr_shimdockPrcmd_set_shimdock_resp_count++;
     ShimTask_set(TASK_DOCK_RESPOND);
-
   }
 }
 
 void ShimDock_sendRsp(void)
 {
-  UsbRxRingFifo_t* crx = &usbCmdRx;
+  UsbRxRingFifo_t *crx = &usbCmdRx;
   crx->usb_pr_shimdock_rsp_cmd_fn_etnry_count++;
   uint8_t uart_resp_len = 0, cr = 0;
   uint16_t uartRespCrc;
@@ -720,5 +719,3 @@ uint8_t ShimDock_uartCheckCrc(uint8_t len)
   uart_rx_crc += ((uint16_t) dockRxBuf[(uint8_t) (len + 1)]) << 8;
   return (uart_rx_crc == uart_calc_crc);
 }
-
-

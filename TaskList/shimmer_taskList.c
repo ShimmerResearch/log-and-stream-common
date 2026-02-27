@@ -42,10 +42,10 @@
 
 #include "shimmer_taskList.h"
 
+#include "hal_FactoryTest.h"
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
 #include "usbd_cdc_acm_if.h"
-#include "hal_FactoryTest.h"
 static volatile uint32_t taskList = 0;
 static volatile TaskId_t executingTask = TASK_NONE;
 
@@ -65,151 +65,149 @@ void ShimTask_NORM_init(void)
 
 void ShimTask_NORM_manage(void)
 {
-  UsbRxRingFifo_t* crx = &usbCmdRx;
+  UsbRxRingFifo_t *crx = &usbCmdRx;
   executingTask = ShimTask_popNext();
 
 #if USE_USBX
   USBX_Device_Process();
 #endif
 
- // if (executingTask == TASK_NONE)
- // {
- //   sleepWhenNoTask();
- // }
-// if(executingTask == TASK_NONE)
+  //if (executingTask == TASK_NONE)
+  //{
+  //  sleepWhenNoTask();
+  //}
+  //if(executingTask == TASK_NONE)
 
 #if TEST_TASK_MONITOR
-    /* mark start of task execution for watchdog */
-    ShimTask_executionStart();
+  /* mark start of task execution for watchdog */
+  ShimTask_executionStart();
 #endif //TEST_TASK_MONITOR
 
-    switch (executingTask)
-    {
-      case TASK_NONE :
-        ;
+  switch (executingTask)
+  {
+    case TASK_NONE:;
       break;
-      case TASK_SETUP_DOCK:
-        LogAndStream_checkSetupDockUnDock();
-        break;
-      case TASK_DOCK_PROCESS_CMD:
-        crx->usb_pr_shim_doc_process_cmd_tasklist_entry_count++;
-        ShimDock_processCmd();
-        break;
-      case TASK_DOCK_RESPOND:
-       crx->usb_pr_shim_doc_rsp_tasklist_entry_count++;
-        ShimDock_sendRsp();
-        break;
-      case TASK_BT_PROCESS_CMD:
-        ShimBt_processCmd();
-        break;
-      case TASK_USB_PROCESS_CMD:
-       crx->usb_pr_cmd_tasklist_entry_count++;
-        ShimUsbProcessCmd();
-      case TASK_BT_RESPOND:
-        ShimBt_sendRsp();
-        break;
-      case TASK_RCCENTERR1:
-        /* SD Sync - Center */
-        ShimSdSync_centerR1();
-        break;
-      case TASK_RCNODER10:
-        /* SD Sync - Node */
-        ShimSdSync_nodeR10();
-        break;
-      case TASK_GATHER_DATA:
-        ShimSens_gatherData();
-        break;
+    case TASK_SETUP_DOCK:
+      LogAndStream_checkSetupDockUnDock();
+      break;
+    case TASK_DOCK_PROCESS_CMD:
+      crx->usb_pr_shim_doc_process_cmd_tasklist_entry_count++;
+      ShimDock_processCmd();
+      break;
+    case TASK_DOCK_RESPOND:
+      crx->usb_pr_shim_doc_rsp_tasklist_entry_count++;
+      ShimDock_sendRsp();
+      break;
+    case TASK_BT_PROCESS_CMD:
+      ShimBt_processCmd();
+      break;
+    case TASK_USB_PROCESS_CMD:
+      crx->usb_pr_cmd_tasklist_entry_count++;
+      ShimUsbProcessCmd();
+    case TASK_BT_RESPOND:
+      ShimBt_sendRsp();
+      break;
+    case TASK_RCCENTERR1:
+      /* SD Sync - Center */
+      ShimSdSync_centerR1();
+      break;
+    case TASK_RCNODER10:
+      /* SD Sync - Node */
+      ShimSdSync_nodeR10();
+      break;
+    case TASK_GATHER_DATA:
+      ShimSens_gatherData();
+      break;
 #if defined(SHIMMER3)
-      case TASK_SAMPLE_MPU9150_MAG:
-        MPU9150_startMagMeasurement();
-        break;
-      case TASK_SAMPLE_BMPX80_PRESS:
-        BMPX80_startMeasurement();
-        break;
+    case TASK_SAMPLE_MPU9150_MAG:
+      MPU9150_startMagMeasurement();
+      break;
+    case TASK_SAMPLE_BMPX80_PRESS:
+      BMPX80_startMeasurement();
+      break;
 #endif
-      case TASK_SAVEDATA:
-        ShimSens_saveData();
-        break;
-      case TASK_STARTSENSING:
-        ShimSens_startSensing();
-        ShimBt_instreamStatusRespSendIfNotBtCmd();
-        break;
-      case TASK_STOPSENSING:
-        ShimSens_stopSensing(1);
-        ShimBt_instreamStatusRespSendIfNotBtCmd();
-        break;
-      case TASK_SDWRITE:
-        ShimSdDataFile_writeToCard();
-        break;
-      case TASK_SDLOG_CFG_UPDATE:
-        if (!shimmerStatus.docked && !shimmerStatus.sensing
-            && LogAndStream_checkSdInSlot() && ShimConfig_getFlagWriteCfgToSd())
-        {
-          shimmerStatus.configuring = 1;
-          ShimConfig_readRam();
-          ShimSdCfgFile_generate();
-          ShimConfig_setFlagWriteCfgToSd(0, 1);
-          shimmerStatus.configuring = 0;
-        }
-        break;
-      case TASK_BATT_READ:
+    case TASK_SAVEDATA:
+      ShimSens_saveData();
+      break;
+    case TASK_STARTSENSING:
+      ShimSens_startSensing();
+      ShimBt_instreamStatusRespSendIfNotBtCmd();
+      break;
+    case TASK_STOPSENSING:
+      ShimSens_stopSensing(1);
+      ShimBt_instreamStatusRespSendIfNotBtCmd();
+      break;
+    case TASK_SDWRITE:
+      ShimSdDataFile_writeToCard();
+      break;
+    case TASK_SDLOG_CFG_UPDATE:
+      if (!shimmerStatus.docked && !shimmerStatus.sensing
+          && LogAndStream_checkSdInSlot() && ShimConfig_getFlagWriteCfgToSd())
+      {
+        shimmerStatus.configuring = 1;
+        ShimConfig_readRam();
+        ShimSdCfgFile_generate();
+        ShimConfig_setFlagWriteCfgToSd(0, 1);
+        shimmerStatus.configuring = 0;
+      }
+      break;
+    case TASK_BATT_READ:
 #if defined(SHIMMER3)
-        /* use adc channel2 and mem4, read back battery status every certain period */
-        if (!shimmerStatus.sensing)
-        {
-          manageReadBatt(1);
-        }
+      /* use adc channel2 and mem4, read back battery status every certain period */
+      if (!shimmerStatus.sensing)
+      {
+        manageReadBatt(1);
+      }
 #elif defined(SHIMMER3R)
-        manageReadBatt(0);
-        RTC_setAlarmBattRead();
+      manageReadBatt(0);
+      RTC_setAlarmBattRead();
 #elif defined(SHIMMER4_SDK)
-        S4_ADC_readBatt();
-        I2C_readBatt();
+      S4_ADC_readBatt();
+      I2C_readBatt();
 #endif
-        break;
-      case TASK_FACTORY_TEST:
-        ShimFactoryTest_run();
-        break;
+      break;
+    case TASK_FACTORY_TEST:
+      ShimFactoryTest_run();
+      break;
 #if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
-      case TASK_USB_SETUP:
-        vbusPinStateCheck();
-        LogAndStream_setupDockUndock();
-        break;
+    case TASK_USB_SETUP:
+      vbusPinStateCheck();
+      LogAndStream_setupDockUndock();
+      break;
 #endif
-      case TASK_BT_TX_BUF_CLEAR:
-        ShimBt_clearBtTxBuf(1U);
-        break;
+    case TASK_BT_TX_BUF_CLEAR:
+      ShimBt_clearBtTxBuf(1U);
+      break;
 
-      case TASK_BT_TURN_ON_AFTER_BOOT:
-        InitialiseBtAfterBoot();
-        break;
+    case TASK_BT_TURN_ON_AFTER_BOOT:
+      InitialiseBtAfterBoot();
+      break;
 
 #if defined(SHIMMER3R)
-      case TASK_JUMP_TO_BOOT_LOADER:
-        JumpToBootloader();
-        break;
+    case TASK_JUMP_TO_BOOT_LOADER:
+      JumpToBootloader();
+      break;
 #endif
 
 #if defined(SHIMMER3)
-      case TASK_WRITE_RADIO_DETAILS:
-        if (ShimEeprom_isPresent())
-        {
-          ShimEeprom_writeRadioDetails();
-        }
-        break;
+    case TASK_WRITE_RADIO_DETAILS:
+      if (ShimEeprom_isPresent())
+      {
+        ShimEeprom_writeRadioDetails();
+      }
+      break;
 #endif
 
-      default:
-        break;
-    }
+    default:
+      break;
+  }
 
 #if TEST_TASK_MONITOR
-    /* mark end of task execution */
-    ShimTask_executionEnd();
+  /* mark end of task execution */
+  ShimTask_executionEnd();
 #endif //TEST_TASK_MONITOR
 
-   // executingTask = TASK_NONE;
-
+  //executingTask = TASK_NONE;
 }
 
 TaskId_t ShimTask_NORM_popNext(void)
