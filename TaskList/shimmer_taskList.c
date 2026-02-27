@@ -44,9 +44,8 @@
 
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
-
+#include "usbd_cdc_acm_if.h"
 #include "hal_FactoryTest.h"
-
 static volatile uint32_t taskList = 0;
 static volatile TaskId_t executingTask = TASK_NONE;
 
@@ -66,18 +65,19 @@ void ShimTask_NORM_init(void)
 
 void ShimTask_NORM_manage(void)
 {
+  UsbRxRingFifo_t* crx = &usbCmdRx;
   executingTask = ShimTask_popNext();
 
 #if USE_USBX
   USBX_Device_Process();
 #endif
 
-  if (executingTask == TASK_NONE)
-  {
-    sleepWhenNoTask();
-  }
-  else
-  {
+ // if (executingTask == TASK_NONE)
+ // {
+ //   sleepWhenNoTask();
+ // }
+// if(executingTask == TASK_NONE)
+
 #if TEST_TASK_MONITOR
     /* mark start of task execution for watchdog */
     ShimTask_executionStart();
@@ -85,18 +85,26 @@ void ShimTask_NORM_manage(void)
 
     switch (executingTask)
     {
+      case TASK_NONE :
+        ;
+      break;
       case TASK_SETUP_DOCK:
         LogAndStream_checkSetupDockUnDock();
         break;
       case TASK_DOCK_PROCESS_CMD:
+        crx->usb_pr_shim_doc_process_cmd_tasklist_entry_count++;
         ShimDock_processCmd();
         break;
       case TASK_DOCK_RESPOND:
+       crx->usb_pr_shim_doc_rsp_tasklist_entry_count++;
         ShimDock_sendRsp();
         break;
       case TASK_BT_PROCESS_CMD:
         ShimBt_processCmd();
         break;
+      case TASK_USB_PROCESS_CMD:
+       crx->usb_pr_cmd_tasklist_entry_count++;
+        ShimUsbProcessCmd();
       case TASK_BT_RESPOND:
         ShimBt_sendRsp();
         break;
@@ -200,8 +208,8 @@ void ShimTask_NORM_manage(void)
     ShimTask_executionEnd();
 #endif //TEST_TASK_MONITOR
 
-    executingTask = TASK_NONE;
-  }
+   // executingTask = TASK_NONE;
+
 }
 
 TaskId_t ShimTask_NORM_popNext(void)
