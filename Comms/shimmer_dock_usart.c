@@ -145,7 +145,7 @@ uint8_t ShimDock_rxCallback(uint8_t data)
         uartSteps = 0;
         uartArgSize = 0;
         ShimTask_set(TASK_DOCK_PROCESS_CMD);
-        memset(usbx_cdc_tx_rx.rx_command_buffer,0,usbx_cdc_tx_rx.rx_command_length);
+        memset(usbx_cdc_tx_rx.rx_command_buffer, 0, usbx_cdc_tx_rx.rx_command_length);
         usbx_cdc_tx_rx.rx_command_length = 0;
         uartTimeStart = 0;
         return 1;
@@ -492,7 +492,7 @@ void ShimDock_processCmd(void)
     {
       uartSendRspBadCrc = 1;
     }
-  ShimTask_set(TASK_DOCK_RESPOND);
+    ShimTask_set(TASK_DOCK_RESPOND);
   }
 }
 
