@@ -41,10 +41,10 @@
  */
 
 #include "shimmer_taskList.h"
-
+#include "stm32u5xx_hal.h"
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
-
+#include "ux_device_cdc_acm.h"
 #include "hal_FactoryTest.h"
 
 static volatile uint32_t taskList = 0;
@@ -74,7 +74,8 @@ void ShimTask_NORM_manage(void)
 
   if (executingTask == TASK_NONE)
   {
-    sleepWhenNoTask();
+    if(!shimmerStatus.usbPluggedIn)
+      sleepWhenNoTask();
   }
   else
   {
@@ -97,6 +98,10 @@ void ShimTask_NORM_manage(void)
       case TASK_BT_PROCESS_CMD:
         ShimBt_processCmd();
         break;
+      case TASK_USB_PROCESS_CMD:
+        USBX_CDC_ACM_Receive(usbx_cdc_tx_rx.rx_command_buffer, usbx_cdc_tx_rx.rx_command_length);
+           // allow next command to be copied
+      break;
       case TASK_BT_RESPOND:
         ShimBt_sendRsp();
         break;

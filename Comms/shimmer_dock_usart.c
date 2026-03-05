@@ -115,8 +115,7 @@ uint8_t ShimDock_rxCallback(uint8_t data)
         default:
           uartSteps = 0;
           uartSendRspBadCmd = 1;
-          //ShimTask_set(TASK_DOCK_RESPOND);
-          ShimDock_sendRsp();
+          ShimTask_set(TASK_DOCK_RESPOND);
           return 1;
       }
     }
@@ -145,8 +144,9 @@ uint8_t ShimDock_rxCallback(uint8_t data)
       {
         uartSteps = 0;
         uartArgSize = 0;
-        //ShimTask_set(TASK_DOCK_PROCESS_CMD);
-        ShimDock_processCmd();
+        ShimTask_set(TASK_DOCK_PROCESS_CMD);
+        memset(usbx_cdc_tx_rx.rx_command_buffer,0,usbx_cdc_tx_rx.rx_command_length);
+        usbx_cdc_tx_rx.rx_command_length = 0;
         uartTimeStart = 0;
         return 1;
       }
@@ -492,8 +492,7 @@ void ShimDock_processCmd(void)
     {
       uartSendRspBadCrc = 1;
     }
-    //ShimTask_set(TASK_DOCK_RESPOND);
-    ShimDock_sendRsp();
+  ShimTask_set(TASK_DOCK_RESPOND);
   }
 }
 
@@ -681,9 +680,10 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = 0x0a;
   }
 #if defined(SHIMMER3R)
-
-  /* respond to commands via usb */
-  USBX_CDC_ACM_Transmit(uartRespBuf, uart_resp_len);
+  if (shimmerStatus.usbPluggedIn)
+  {
+    USBX_CDC_ACM_Transmit(uartRespBuf, uart_resp_len);
+  }
 #endif
   if (shimmerStatus.docked)
   {
