@@ -99,7 +99,7 @@ typedef volatile struct STATTypeDef_t
   uint8_t sdSyncCommTimerRunning : 1;
 
   uint8_t usbPluggedIn           : 1;
-
+  uint8_t usbCableState          : 1;
   uint8_t toggleLedRedCmd        : 1;
   uint8_t timerBlinkEnabled      : 1;
   uint8_t timerSamplingEnabled   : 1;
