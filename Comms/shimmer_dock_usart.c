@@ -682,7 +682,6 @@ void ShimDock_sendRsp(void)
   if (shimmerStatus.usbPluggedIn)
   {
     /* respond to commands via usb */
-
   }
   else
 #endif
