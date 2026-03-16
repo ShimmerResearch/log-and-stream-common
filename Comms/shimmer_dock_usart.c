@@ -12,7 +12,7 @@
 
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
-
+#include "ux_device_cdc_acm.h"
 #include "shimmer_definitions.h"
 #include "version.h"
 
@@ -145,6 +145,8 @@ uint8_t ShimDock_rxCallback(uint8_t data)
         uartSteps = 0;
         uartArgSize = 0;
         ShimTask_set(TASK_DOCK_PROCESS_CMD);
+        memset(usbx_cdc_tx_rx.rx_command_buffer, 0, usbx_cdc_tx_rx.rx_command_length);
+        usbx_cdc_tx_rx.rx_command_length = 0;
         uartTimeStart = 0;
         return 1;
       }
@@ -682,6 +684,7 @@ void ShimDock_sendRsp(void)
   if (shimmerStatus.usbPluggedIn)
   {
     /* respond to commands via usb */
+    USBX_CDC_ACM_Transmit(uartRespBuf, uart_resp_len);
   }
   else
 #endif
