@@ -8,8 +8,8 @@
 #ifndef LOG_AND_STREAM_COMMON_LOG_AND_STREAM_COMMON_H_
 #define LOG_AND_STREAM_COMMON_LOG_AND_STREAM_COMMON_H_
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "log_and_stream_definitions.h"
 
