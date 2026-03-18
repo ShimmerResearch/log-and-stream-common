@@ -41,12 +41,12 @@
  */
 
 #include "shimmer_taskList.h"
+#include "app_usbx_device.h"
 #include "hal_FactoryTest.h"
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
 #include "stm32u5xx_hal.h"
 #include "ux_device_cdc_acm.h"
-#include "app_usbx_device.h"
 
 static volatile uint32_t taskList = 0;
 static volatile TaskId_t executingTask = TASK_NONE;
