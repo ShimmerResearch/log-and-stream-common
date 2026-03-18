@@ -46,6 +46,7 @@
 #include "log_and_stream_includes.h"
 #include "stm32u5xx_hal.h"
 #include "ux_device_cdc_acm.h"
+#include "app_usbx_device.h"
 
 static volatile uint32_t taskList = 0;
 static volatile TaskId_t executingTask = TASK_NONE;
@@ -69,7 +70,7 @@ void ShimTask_NORM_manage(void)
   executingTask = ShimTask_popNext();
   if (executingTask == TASK_NONE)
   {
-    if (!shimmerStatus.usbPluggedIn)
+    if (!USBX_IsInitialised())
     {
       sleepWhenNoTask();
     }
@@ -168,7 +169,7 @@ void ShimTask_NORM_manage(void)
         break;
 #if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
       case TASK_USB_SETUP:
-        //vbusPinStateCheck();
+        vbusPinStateCheck();
         LogAndStream_setupDockUndock();
         break;
 #endif
