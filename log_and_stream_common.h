@@ -13,8 +13,6 @@
 
 #include "log_and_stream_definitions.h"
 
-#define SHIMMER_MANUFACTURER_STRING "Shimmer Research Ltd."
-
 void LogAndStream_init(void);
 void LogAndStream_setBootStage(boot_stage_t bootStageNew);
 boot_stage_t LogAndStream_getBootStage(void);
