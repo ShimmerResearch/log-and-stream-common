@@ -41,12 +41,14 @@
  */
 
 #include "shimmer_taskList.h"
-#include "app_usbx_device.h"
 #include "hal_FactoryTest.h"
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
-#include "stm32u5xx_hal.h"
+
+#if defined(SHIMMER3R)
 #include "ux_device_cdc_acm.h"
+#include "gpio.h"
+#endif
 
 static volatile uint32_t taskList = 0;
 static volatile TaskId_t executingTask = TASK_NONE;
@@ -70,10 +72,7 @@ void ShimTask_NORM_manage(void)
   executingTask = ShimTask_popNext();
   if (executingTask == TASK_NONE)
   {
-    if (!USBX_IsInitialised())
-    {
-      sleepWhenNoTask();
-    }
+    sleepWhenNoTask();
   }
   else
   {
@@ -99,7 +98,6 @@ void ShimTask_NORM_manage(void)
 #if defined(SHIMMER3R)
       case TASK_USB_PROCESS_CMD:
         USBX_CDC_ACM_Receive(usbx_cdc_tx_rx.rx_command_buffer, usbx_cdc_tx_rx.rx_command_length);
-        //allow next command to be copied
         break;
 #endif
       case TASK_BT_RESPOND:

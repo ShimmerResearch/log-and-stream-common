@@ -201,8 +201,8 @@ void ShimSens_startSensing(void)
     }
     ShimSens_stepInit();
 
-#if defined(SHIMMER4_SDK) || SUPPORT_SR48_6_0
-    if (sensing.nbrMcuAdcChans)
+#if SUPPORT_SR48_6_0
+    if (sensing.nbrMcuAdcChans && ShimBrd_areMcuAdcsUsedForSensing())
     {
       ADC_startSensing();
     }
@@ -353,7 +353,7 @@ void ShimSens_stopPeripherals(void)
 #endif
 
 #if defined(SHIMMER4_SDK) || SUPPORT_SR48_6_0
-  if (sensing.nbrMcuAdcChans)
+  if (sensing.nbrMcuAdcChans && ShimBrd_areMcuAdcsUsedForSensing())
   {
     ADC_stopSensing();
   }
@@ -390,10 +390,12 @@ __attribute__((weak)) void ShimSens_stopSensingWrapup(void)
 
 void ShimSens_gatherData(void)
 {
+#if defined(SHIMMER4_SDK) || SUPPORT_SR48_6_0
   if (sensing.nbrMcuAdcChans)
   {
     ADC_gatherDataStart();
   }
+#endif
   if (sensing.nbrI2cChans)
   {
     I2C_pollSensors();
@@ -501,12 +503,12 @@ uint8_t ShimSens_sampleTimerTriggered(void)
 void ShimSens_stepInit(void)
 {
 #if defined(SHIMMER3R)
-#if defined(SHIMMER4_SDK) || SUPPORT_SR48_6_0
+#if SUPPORT_SR48_6_0
   if (ShimBrd_areMcuAdcsUsedForSensing())
   {
     ADC_gatherDataCb(ShimSens_adcCompleteCb);
   }
-#endif //SUPPORT_SR48_6_0
+#endif // SUPPORT_SR48_6_0
   I2cSens_gatherDataCb(ShimSens_i2cCompleteCb);
   SPI_gatherDataCb(ShimSens_spiCompleteCb);
 #elif defined(SHIMMER4_SDK)
