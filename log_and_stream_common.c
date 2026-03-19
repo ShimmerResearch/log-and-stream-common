@@ -367,6 +367,15 @@ void LogAndStream_buildShimmerMacSuffix(char *outBuf, size_t outBufLen)
   char *mac = ShimBt_macIdStrPtrGet();
   char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
 
+  /* Validate output buffer before use, similar to LogAndStream_buildShimmerPrefix */
+  if ((outBuf == NULL) || (outBufLen == 0))
+  {
+    return;
+  }
+
+  /* Start with an empty string in case of truncation or early return */
+  outBuf[0] = '\0';
+
   if (mac != NULL)
   {
     size_t macLen = strlen(mac);
