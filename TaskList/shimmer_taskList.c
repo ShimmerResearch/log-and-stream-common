@@ -346,3 +346,13 @@ void ShimTask_setInitialiseBluetooth(void)
 {
   ShimTask_set(TASK_BT_TURN_ON_AFTER_BOOT);
 }
+
+#if defined(SHIMMER3R)
+void ShimTask_setUsbSetup(void)
+{
+  if (!(ShimTask_getList() & TASK_USB_SETUP))
+  {
+    ShimTask_set(TASK_USB_SETUP);
+  }
+}
+#endif

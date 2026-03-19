@@ -153,5 +153,8 @@ void ShimTask_setStopSensing(void);
 void ShimTask_setStopLogging(void);
 void ShimTask_setStopStreaming(void);
 void ShimTask_setInitialiseBluetooth(void);
+#if defined(SHIMMER3R)
+void ShimTask_setUsbSetup(void);
+#endif
 
 #endif //S4_TASKLIST_H
