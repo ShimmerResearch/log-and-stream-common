@@ -405,6 +405,9 @@ void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
     return;
   }
 
+  /* Start with an empty string in case of truncation or formatting errors */
+  outBuf[0] = '\0';
+
   LogAndStream_buildShimmerMacSuffix(suffix, sizeof(suffix));
   snprintf(outBuf, outBufLen, "Shimmer %s", suffix);
 }
