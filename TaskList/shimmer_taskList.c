@@ -44,8 +44,11 @@
 #include "hal_FactoryTest.h"
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
-#include "stm32u5xx_hal.h"
+
+#if defined(SHIMMER3R)
+#include "gpio.h"
 #include "ux_device_cdc_acm.h"
+#endif
 
 static volatile uint32_t taskList = 0;
 static volatile TaskId_t executingTask = TASK_NONE;
@@ -69,10 +72,7 @@ void ShimTask_NORM_manage(void)
   executingTask = ShimTask_popNext();
   if (executingTask == TASK_NONE)
   {
-    if (!shimmerStatus.usbPluggedIn)
-    {
-      sleepWhenNoTask();
-    }
+    sleepWhenNoTask();
   }
   else
   {
@@ -98,7 +98,6 @@ void ShimTask_NORM_manage(void)
 #if defined(SHIMMER3R)
       case TASK_USB_PROCESS_CMD:
         USBX_CDC_ACM_Receive(usbx_cdc_tx_rx.rx_command_buffer, usbx_cdc_tx_rx.rx_command_length);
-        //allow next command to be copied
         break;
 #endif
       case TASK_BT_RESPOND:
@@ -168,7 +167,7 @@ void ShimTask_NORM_manage(void)
         break;
 #if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
       case TASK_USB_SETUP:
-        //vbusPinStateCheck();
+        vbusPinStateCheck();
         LogAndStream_setupDockUndock();
         break;
 #endif
@@ -347,3 +346,13 @@ void ShimTask_setInitialiseBluetooth(void)
 {
   ShimTask_set(TASK_BT_TURN_ON_AFTER_BOOT);
 }
+
+#if defined(SHIMMER3R)
+void ShimTask_setUsbSetup(void)
+{
+  if (!(ShimTask_getList() & TASK_USB_SETUP))
+  {
+    ShimTask_set(TASK_USB_SETUP);
+  }
+}
+#endif
