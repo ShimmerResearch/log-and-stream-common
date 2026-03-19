@@ -379,7 +379,7 @@ void LogAndStream_buildShimmerMacSuffix(char *outBuf, size_t outBufLen)
     }
   }
 
-  /* suffix fits within SHIMMER_MAC_SUFFIX_LEN (e.g. "AAAA") */
+  /* suffix is 4 characters plus terminating NUL (e.g. "AAAA") */
   snprintf(outBuf, outBufLen, "%c%c%c%c", c8, c9, c10, c11);
 }
 
