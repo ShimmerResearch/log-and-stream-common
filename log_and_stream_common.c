@@ -7,6 +7,9 @@
 
 #include "log_and_stream_common.h"
 
+#include <string.h>
+#include <stdio.h>
+
 #include "hal_Board.h"
 #include "log_and_stream_includes.h"
 
