@@ -46,8 +46,8 @@
 #include "log_and_stream_includes.h"
 
 #if defined(SHIMMER3R)
-#include "ux_device_cdc_acm.h"
 #include "gpio.h"
+#include "ux_device_cdc_acm.h"
 #endif
 
 static volatile uint32_t taskList = 0;

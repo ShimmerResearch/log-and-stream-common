@@ -508,7 +508,7 @@ void ShimSens_stepInit(void)
   {
     ADC_gatherDataCb(ShimSens_adcCompleteCb);
   }
-#endif // SUPPORT_SR48_6_0
+#endif //SUPPORT_SR48_6_0
   I2cSens_gatherDataCb(ShimSens_i2cCompleteCb);
   SPI_gatherDataCb(ShimSens_spiCompleteCb);
 #elif defined(SHIMMER4_SDK)
