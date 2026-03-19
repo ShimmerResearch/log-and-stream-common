@@ -7,6 +7,9 @@
 
 #include "log_and_stream_common.h"
 
+#include <stdio.h>
+#include <string.h>
+
 #include "hal_Board.h"
 #include "log_and_stream_includes.h"
 
@@ -367,6 +370,15 @@ void LogAndStream_buildShimmerMacSuffix(char *outBuf, size_t outBufLen)
   char *mac = ShimBt_macIdStrPtrGet();
   char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
 
+  /* Validate output buffer before use, similar to LogAndStream_buildShimmerPrefix */
+  if ((outBuf == NULL) || (outBufLen == 0))
+  {
+    return;
+  }
+
+  /* Start with an empty string in case of truncation or early return */
+  outBuf[0] = '\0';
+
   if (mac != NULL)
   {
     size_t macLen = strlen(mac);
@@ -379,7 +391,7 @@ void LogAndStream_buildShimmerMacSuffix(char *outBuf, size_t outBufLen)
     }
   }
 
-  /* suffix fits within SHIMMER_MAC_SUFFIX_LEN (e.g. "AAAA") */
+  /* suffix is 4 characters plus terminating NUL (e.g. "AAAA") */
   snprintf(outBuf, outBufLen, "%c%c%c%c", c8, c9, c10, c11);
 }
 
@@ -392,6 +404,9 @@ void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
   {
     return;
   }
+
+  /* Start with an empty string in case of truncation or formatting errors */
+  outBuf[0] = '\0';
 
   LogAndStream_buildShimmerMacSuffix(suffix, sizeof(suffix));
   snprintf(outBuf, outBufLen, "Shimmer %s", suffix);
