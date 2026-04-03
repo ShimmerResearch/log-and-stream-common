@@ -12,7 +12,7 @@
 
 #include "hal_Board.h"
 #include "log_and_stream_includes.h"
-
+#include "dcache.h"
 boot_stage_t bootStage;
 
 uint8_t sdInfoSyncDelayed = 0;
@@ -277,6 +277,12 @@ void LogAndStream_setupDock(void)
   shimmerStatus.sdlogReady = 0;
   ShimSens_stopSensing(0);
 
+  uint32_t timeout = HAL_GetTick() + 1500;
+  while (HAL_SD_GetCardState(&hsd1) != HAL_SD_CARD_TRANSFER && HAL_GetTick() < timeout)
+  {
+    platform_delayMs(150);
+  }
+
   /* Prioritise dock over USB for SD card access */
   if (shimmerStatus.docked)
   {
@@ -288,6 +294,12 @@ void LogAndStream_setupDock(void)
     {
       DockUart_init();
     }
+  }
+  else if (shimmerStatus.usbPluggedIn)
+  {
+    DockUart_deinit();
+    Board_sd2Mcu();
+    HAL_DCACHE_Invalidate(&hdcache1);
   }
   else
   {
