@@ -276,9 +276,8 @@ void LogAndStream_setupDock(void)
   shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
   shimmerStatus.sdlogReady = 0;
   ShimSens_stopSensing(0);
-
-  uint32_t timeout = HAL_GetTick() + 1500;
-  while (HAL_SD_GetCardState(&hsd1) != HAL_SD_CARD_TRANSFER && HAL_GetTick() < timeout)
+  uint32_t start_tick = HAL_GetTick();
+  while (HAL_SD_GetCardState(&hsd1) != HAL_SD_CARD_TRANSFER && ((HAL_GetTick() - start_tick) < 1500U))
   {
     platform_delayMs(150);
   }
