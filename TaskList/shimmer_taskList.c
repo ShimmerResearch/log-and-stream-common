@@ -97,7 +97,7 @@ void ShimTask_NORM_manage(void)
         break;
 #if defined(SHIMMER3R)
       case TASK_USB_PROCESS_CMD:
-        USBX_CDC_ACM_Receive(usbx_cdc_tx_rx.rx_command_buffer, usbx_cdc_tx_rx.rx_command_length);
+        USBX_CDC_ACM_Receive_To_RxBuf();
         break;
 #endif
       case TASK_BT_RESPOND:
