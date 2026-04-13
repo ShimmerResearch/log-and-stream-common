@@ -13,7 +13,6 @@
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
 #include "shimmer_definitions.h"
-#include "ux_device_cdc_acm.h"
 #include "version.h"
 
 #if defined(SHIMMER3)
@@ -26,6 +25,7 @@
 #include "../CAT24C16/CAT24C16.h"
 #else
 #include "stm32u5xx_hal_uart.h"
+#include "ux_device_cdc_acm.h"
 #endif
 #define EN_CALIB_DUMP_RSP 0
 
