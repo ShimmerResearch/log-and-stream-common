@@ -41,11 +41,14 @@
  */
 
 #include "shimmer_taskList.h"
-
+#include "hal_FactoryTest.h"
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
 
-#include "hal_FactoryTest.h"
+#if defined(SHIMMER3R)
+#include "gpio.h"
+#include "ux_device_cdc_acm.h"
+#endif
 
 static volatile uint32_t taskList = 0;
 static volatile TaskId_t executingTask = TASK_NONE;
@@ -67,11 +70,6 @@ void ShimTask_NORM_init(void)
 void ShimTask_NORM_manage(void)
 {
   executingTask = ShimTask_popNext();
-
-#if USE_USBX
-  USBX_Device_Process();
-#endif
-
   if (executingTask == TASK_NONE)
   {
     sleepWhenNoTask();
@@ -97,6 +95,11 @@ void ShimTask_NORM_manage(void)
       case TASK_BT_PROCESS_CMD:
         ShimBt_processCmd();
         break;
+#if defined(SHIMMER3R)
+      case TASK_USB_PROCESS_CMD:
+        USBX_CDC_ACM_Receive_To_RxBuf();
+        break;
+#endif
       case TASK_BT_RESPOND:
         ShimBt_sendRsp();
         break;
@@ -343,3 +346,13 @@ void ShimTask_setInitialiseBluetooth(void)
 {
   ShimTask_set(TASK_BT_TURN_ON_AFTER_BOOT);
 }
+
+#if defined(SHIMMER3R)
+void ShimTask_setUsbSetup(void)
+{
+  if (!(ShimTask_getList() & TASK_USB_SETUP))
+  {
+    ShimTask_set(TASK_USB_SETUP);
+  }
+}
+#endif

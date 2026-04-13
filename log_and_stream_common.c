@@ -7,6 +7,9 @@
 
 #include "log_and_stream_common.h"
 
+#include <stdio.h>
+#include <string.h>
+
 #include "hal_Board.h"
 #include "log_and_stream_includes.h"
 
@@ -362,11 +365,19 @@ void LogAndStream_processDaughterCardId(void)
   platform_initGpioForRevision();
 }
 
-#if defined(SHIMMER3R)
-static void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
+void LogAndStream_buildShimmerMacSuffix(char *outBuf, size_t outBufLen)
 {
   char *mac = ShimBt_macIdStrPtrGet();
   char c8 = 'X', c9 = 'X', c10 = 'X', c11 = 'X';
+
+  /* Validate output buffer before use, similar to LogAndStream_buildShimmerPrefix */
+  if ((outBuf == NULL) || (outBufLen == 0))
+  {
+    return;
+  }
+
+  /* Start with an empty string in case of truncation or early return */
+  outBuf[0] = '\0';
 
   if (mac != NULL)
   {
@@ -380,87 +391,23 @@ static void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
     }
   }
 
+  /* suffix is 4 characters plus terminating NUL (e.g. "AAAA") */
+  snprintf(outBuf, outBufLen, "%c%c%c%c", c8, c9, c10, c11);
+}
+
+void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
+{
   /* prefix fits within SHIMMER_PREFIX_LEN (e.g. "Shimmer AAAA") */
-  snprintf(outBuf, outBufLen, "Shimmer %c%c%c%c", c8, c9, c10, c11);
-}
+  char suffix[8]; /* enough for "AAAA" + NUL */
 
-void LogAndStream_generateUsbDiskDriveId(char *usbDeviceIdStr)
-{
-  char prefix[SHIMMER_PREFIX_LEN];
-  char sdCardSize[10];
-
-  LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
-  printSdCardSize(sdCardSize);
-
-  /* start with prefix in destination */
-  int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
-  if (written < 0)
+  if ((outBuf == NULL) || (outBufLen == 0))
   {
-    usbDeviceIdStr[0] = '\0';
     return;
   }
 
-  /* compute remaining space (leave room for NUL) */
-  size_t curLen = (size_t) written < USB_DEVICE_ID_STR_LEN ? (size_t) written :
-                                                             USB_DEVICE_ID_STR_LEN - 1;
-  size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
+  /* Start with an empty string in case of truncation or formatting errors */
+  outBuf[0] = '\0';
 
-  /* append " SD " and card size safely */
-  /* use snprintf into the tail to ensure null termination */
-  snprintf(usbDeviceIdStr + curLen, rem, " SD %s", sdCardSize);
+  LogAndStream_buildShimmerMacSuffix(suffix, sizeof(suffix));
+  snprintf(outBuf, outBufLen, "Shimmer %s", suffix);
 }
-
-void LogAndStream_generateUsbMscId(char *usbDeviceIdStr)
-{
-  char prefix[SHIMMER_PREFIX_LEN];
-  LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
-
-  int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
-  if (written < 0)
-  {
-    usbDeviceIdStr[0] = '\0';
-    return;
-  }
-  size_t curLen = (size_t) written < USB_DEVICE_ID_STR_LEN ? (size_t) written :
-                                                             USB_DEVICE_ID_STR_LEN - 1;
-  size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
-
-  snprintf(usbDeviceIdStr + curLen, rem, " MSC");
-}
-
-void LogAndStream_generateUsbCdcId(char *usbDeviceIdStr)
-{
-  char prefix[SHIMMER_PREFIX_LEN];
-  LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
-
-  int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
-  if (written < 0)
-  {
-    usbDeviceIdStr[0] = '\0';
-    return;
-  }
-  size_t curLen = (size_t) written < USB_DEVICE_ID_STR_LEN ? (size_t) written :
-                                                             USB_DEVICE_ID_STR_LEN - 1;
-  size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
-
-  snprintf(usbDeviceIdStr + curLen, rem, " CDC ACM");
-}
-
-void LogAndStream_generateUsbCompositeDeviceId(char *usbDeviceIdStr)
-{
-  char prefix[SHIMMER_PREFIX_LEN];
-  LogAndStream_buildShimmerPrefix(prefix, sizeof(prefix));
-
-  int written = snprintf(usbDeviceIdStr, USB_DEVICE_ID_STR_LEN, "%s", prefix);
-  if (written < 0)
-  {
-    usbDeviceIdStr[0] = '\0';
-    return;
-  }
-  size_t curLen = (size_t) written < USB_DEVICE_ID_STR_LEN ? (size_t) written :
-                                                             USB_DEVICE_ID_STR_LEN - 1;
-  size_t rem = USB_DEVICE_ID_STR_LEN - curLen;
-
-  snprintf(usbDeviceIdStr + curLen, rem, " Composite Device");
-}
-#endif

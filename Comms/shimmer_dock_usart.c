@@ -12,7 +12,6 @@
 
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
-
 #include "shimmer_definitions.h"
 #include "version.h"
 
@@ -24,11 +23,9 @@
 #include "../5xx_HAL/hal_UCA0.h"
 #include "../5xx_HAL/hal_UartA0.h"
 #include "../CAT24C16/CAT24C16.h"
-#else
+#elif defined(SHIMMER3R)
 #include "stm32u5xx_hal_uart.h"
-#endif
-#if defined(SHIMMER3R)
-#include "usbd_cdc_acm_if.h"
+#include "ux_device_cdc_acm.h"
 #endif
 #define EN_CALIB_DUMP_RSP 0
 
@@ -148,6 +145,8 @@ uint8_t ShimDock_rxCallback(uint8_t data)
         uartSteps = 0;
         uartArgSize = 0;
         ShimTask_set(TASK_DOCK_PROCESS_CMD);
+        memset(usbx_cdc_tx_rx.rx_command_buffer, 0, usbx_cdc_tx_rx.rx_command_length);
+        usbx_cdc_tx_rx.rx_command_length = 0;
         uartTimeStart = 0;
         return 1;
       }
@@ -685,7 +684,7 @@ void ShimDock_sendRsp(void)
   if (shimmerStatus.usbPluggedIn)
   {
     /* respond to commands via usb */
-    CDC_Transmit(CDC_CH_DOCK_COMMS, uartRespBuf, uart_resp_len);
+    USBX_CDC_ACM_Transmit(uartRespBuf, uart_resp_len);
   }
   else
 #endif

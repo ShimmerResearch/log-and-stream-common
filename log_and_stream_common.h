@@ -8,6 +8,7 @@
 #ifndef LOG_AND_STREAM_COMMON_LOG_AND_STREAM_COMMON_H_
 #define LOG_AND_STREAM_COMMON_LOG_AND_STREAM_COMMON_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "log_and_stream_definitions.h"
@@ -28,11 +29,7 @@ void LogAndStream_setupDock(void);
 void LogAndStream_setupUndock(void);
 uint8_t LogAndStream_checkSdInSlot(void);
 void LogAndStream_processDaughterCardId(void);
-#if defined(SHIMMER3R)
-void LogAndStream_generateUsbDiskDriveId(char *usbDeviceIdStr);
-void LogAndStream_generateUsbMscId(char *usbDeviceIdStr);
-void LogAndStream_generateUsbCdcId(char *usbDeviceIdStr);
-void LogAndStream_generateUsbCompositeDeviceId(char *usbDeviceIdStr);
-#endif /* defined(SHIMMER3R) */
+void LogAndStream_buildShimmerMacSuffix(char *outBuf, size_t outBufLen);
+void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen);
 
 #endif /* LOG_AND_STREAM_COMMON_LOG_AND_STREAM_COMMON_H_ */

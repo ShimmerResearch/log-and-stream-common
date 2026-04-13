@@ -201,7 +201,7 @@ void ShimSens_startSensing(void)
     }
     ShimSens_stepInit();
 
-    if (sensing.nbrMcuAdcChans)
+    if (sensing.nbrMcuAdcChans && ShimBrd_areMcuAdcsUsedForSensing())
     {
       ADC_startSensing();
     }
@@ -350,7 +350,7 @@ void ShimSens_stopPeripherals(void)
   RTC_wakeUpOff();
 #endif
 
-  if (sensing.nbrMcuAdcChans)
+  if (sensing.nbrMcuAdcChans && ShimBrd_areMcuAdcsUsedForSensing())
   {
     ADC_stopSensing();
   }
@@ -386,7 +386,7 @@ __attribute__((weak)) void ShimSens_stopSensingWrapup(void)
 
 void ShimSens_gatherData(void)
 {
-  if (sensing.nbrMcuAdcChans)
+  if (sensing.nbrMcuAdcChans && ShimBrd_areMcuAdcsUsedForSensing())
   {
     ADC_gatherDataStart();
   }
