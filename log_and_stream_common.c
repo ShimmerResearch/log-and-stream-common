@@ -187,19 +187,17 @@ void LogAndStream_dockedStateChange(void)
    * invalid state. Called directly here to set correct LED state while waiting
    * for TASK_SETUP_DOCK to trigger. */
   ShimBatt_resetBatteryChargingStatus();
+
   ShimTask_set(TASK_SETUP_DOCK);
 
-  if (!undockEvent)
+  if (!undockEvent && !LogAndStream_isDockedOrUsbIn())
   {
-    if (!shimmerStatus.docked) //undocked
-    {
-      undockEvent = 1;
-      ShimBatt_setBattCritical(0);
-      time_newUnDockEvent = RTC_get64();
-    }
+    undockEvent = 1;
+    ShimBatt_setBattCritical(0);
+    time_newUnDockEvent = RTC_get64();
   }
 
-  if (shimmerStatus.docked)
+  if (shimmerStatus.docked || shimmerStatus.usbPluggedIn)
   {
     shimmerStatus.sdlogReady = 0;
   }
@@ -220,15 +218,18 @@ void LogAndStream_infomemUpdate(void)
 
 void LogAndStream_checkSetupDockUnDock(void)
 {
-  uint8_t dockedStateSaved = shimmerStatus.docked;
+  uint8_t dockedOrUsbStateSaved = LogAndStream_isDockedOrUsbIn();
+  uint8_t undockTimeoutEvent = !dockedOrUsbStateSaved
+      && ((RTC_get64() - time_newUnDockEvent) > TIMEOUT_100_MS);
+
   if (!shimmerStatus.configuring && !sensing.inSdWr
-      && (dockedStateSaved || ((RTC_get64() - time_newUnDockEvent) > TIMEOUT_100_MS)))
+      && (dockedOrUsbStateSaved || undockTimeoutEvent))
   {
     LogAndStream_setupDockUndock();
 
-    /* If Shimmer is docking status has changed while dock was being setup, set
+    /* If docked/USB status has changed while dock was being setup, set
      * task again. */
-    if (dockedStateSaved != Board_isDocked())
+    if (dockedOrUsbStateSaved != LogAndStream_isDockedOrUsbIn())
     {
       ShimTask_set(TASK_SETUP_DOCK);
     }
@@ -270,20 +271,153 @@ void LogAndStream_setupDockUndock(void)
   shimmerStatus.configuring = 0;
 }
 
+#if defined(SHIMMER3R)
+
+/**
+ * @brief  Wait for any in-flight SD transfer to complete, then abort.
+ *
+ * Safe to call even when the peripheral is not initialised — returns
+ * immediately in that case.
+ */
+static void LogAndStream_sdWaitAndAbort(void)
+{
+  if (hsd1.Instance != NULL && shimmerStatus.sdPeripheralInit)
+  {
+    uint32_t start_tick = HAL_GetTick();
+    while (HAL_SD_GetCardState(&hsd1) != HAL_SD_CARD_TRANSFER
+        && ((HAL_GetTick() - start_tick) < 1500U))
+    {
+      platform_delayMs(10);
+    }
+    HAL_SD_Abort(&hsd1);
+  }
+}
+
+/** Hand SD card to USB-C (USBX MSC + CDC). */
+static void LogAndStream_assignSdToUsb(void)
+{
+  /* Tear down dock if it had ownership */
+  DockUart_deinit();
+  Board_dockDetectN(DOCK_CARD_NOT_PRESENT);
+
+  /* Tear down USB if it was already running (clean re-init) */
+  if (USBX_IsInitialised())
+  {
+    MX_USBX_Device_DeInit();
+  }
+
+  /* Route SD to MCU so USBX MSC can access it */
+  Board_sd2Mcu();
+  HAL_DCACHE_Invalidate(&hdcache1);
+
+  /* Bring up USB device only if SD card initialised successfully */
+  if (!USBX_IsInitialised() && shimmerStatus.sdPeripheralInit)
+  {
+    MX_USBX_Device_Init();
+  }
+
+  shimmerStatus.sdOwner = SD_OWNER_USB;
+}
+
+/** Hand SD card to the physical dock's USB-SD bridge. */
+static void LogAndStream_assignSdToDock(void)
+{
+  /* Tear down USB device first — must happen before touching SDMMC so that
+   * the MSC class stops issuing SD commands. */
+  if (USBX_IsInitialised())
+  {
+    MX_USBX_Device_DeInit();
+  }
+
+  /* Wait for any in-flight SD transfer to complete and abort so the card
+   * returns to transfer state before we power-cycle it for the dock. */
+  LogAndStream_sdWaitAndAbort();
+
+  if (LogAndStream_checkSdInSlot())
+  {
+    Board_sd2Pc();
+  }
+  if (!shimmerStatus.sensing)
+  {
+    DockUart_init();
+  }
+
+  shimmerStatus.sdOwner = SD_OWNER_DOCK;
+}
+
+/** Release SD card back to MCU (no external owner). */
+static void LogAndStream_releaseSdToMcu(void)
+{
+  if (USBX_IsInitialised())
+  {
+    MX_USBX_Device_DeInit();
+  }
+  DockUart_deinit();
+
+  shimmerStatus.sdOwner = SD_OWNER_MCU;
+}
+#endif
+
 void LogAndStream_setupDock(void)
 {
-  //Only one of these conditions needs to be true to stop loggin
+  //Only one of these conditions needs to be true to stop logging
   shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
   shimmerStatus.sdlogReady = 0;
   ShimSens_stopSensing(0);
-  uint32_t start_tick = HAL_GetTick();
-  while (HAL_SD_GetCardState(&hsd1) != HAL_SD_CARD_TRANSFER
-      && ((HAL_GetTick() - start_tick) < 1500U))
+
+#if defined(SHIMMER3R)
+  /* --- SD ownership logic ---
+   *
+   * The SD card can only be owned by one entity at a time: MCU (for sensor
+   * recording), USB-C (USBX MSC) or physical dock (USB-SD bridge).
+   *
+   * Rules:
+   *   1. Dock has priority over USB (simpler boot, avoids USB→dock handover).
+   *   2. If the current owner disconnects, re-evaluate and hand SD to whoever
+   *      is still connected.
+   *   3. If the current owner is still connected, a new connection by the other
+   *      does NOT steal the SD card.
+   */
+  uint8_t currentOwnerStillConnected = 0;
+
+  switch (shimmerStatus.sdOwner)
   {
-    platform_delayMs(150);
+  case SD_OWNER_USB:
+    currentOwnerStillConnected = shimmerStatus.usbPluggedIn;
+    break;
+  case SD_OWNER_DOCK:
+    currentOwnerStillConnected = shimmerStatus.docked;
+    break;
+  case SD_OWNER_MCU:
+  default:
+    /* Nobody external owns it yet — always re-evaluate */
+    currentOwnerStillConnected = 0;
+    break;
   }
 
-  /* Prioritise dock over USB for SD card access */
+  if (!currentOwnerStillConnected)
+  {
+    /* Current owner disconnected (or first time) — re-evaluate.
+     * Dock has priority over USB when choosing a new owner. */
+    if (shimmerStatus.docked)
+    {
+      LogAndStream_assignSdToDock();
+    }
+    else if (shimmerStatus.usbPluggedIn)
+    {
+      LogAndStream_assignSdToUsb();
+    }
+    else
+    {
+      /* Should not happen in setupDock (called when isDockedOrUsbIn),
+       * but handle defensively */
+      LogAndStream_releaseSdToMcu();
+    }
+  }
+  /* else: current owner still connected — no SD switchover needed. */
+
+#else
+  /* Non-SHIMMER3R: original dock-only logic */
   if (shimmerStatus.docked)
   {
     if (LogAndStream_checkSdInSlot())
@@ -295,16 +429,7 @@ void LogAndStream_setupDock(void)
       DockUart_init();
     }
   }
-  else if (shimmerStatus.usbPluggedIn)
-  {
-    DockUart_deinit();
-    Board_sd2Mcu();
-    HAL_DCACHE_Invalidate(&hdcache1);
-  }
-  else
-  {
-    DockUart_deinit();
-  }
+#endif
 
   ShimBatt_setBatteryInterval(BATT_INTERVAL_SECS_DOCKED);
   /* Reset battery critical count on dock to allow logging to begin again if
@@ -317,7 +442,13 @@ void LogAndStream_setupDock(void)
 void LogAndStream_setupUndock(void)
 {
   ShimBatt_setBatteryInterval(BATT_INTERVAL_SECS_UNDOCKED);
+
+#if defined(SHIMMER3R)
+  /* Release any external SD ownership before reclaiming for sensor recording */
+  LogAndStream_releaseSdToMcu();
+#else
   DockUart_deinit();
+#endif
 
   /* Set dock detect high to let dock know SD card is not available and kill
    * power to SD card. It will get turned back on as part of power cycle if

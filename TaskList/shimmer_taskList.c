@@ -165,11 +165,9 @@ void ShimTask_NORM_manage(void)
       case TASK_FACTORY_TEST:
         ShimFactoryTest_run();
         break;
-#if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
-      case TASK_USB_SETUP:
-        vbusPinStateCheck();
+      case TASK_DOCK_OR_USB_STATE_CHANGE:
+        dockOrUsbStateUpdate();
         break;
-#endif
       case TASK_BT_TX_BUF_CLEAR:
         ShimBt_clearBtTxBuf(1U);
         break;
@@ -346,12 +344,10 @@ void ShimTask_setInitialiseBluetooth(void)
   ShimTask_set(TASK_BT_TURN_ON_AFTER_BOOT);
 }
 
-#if defined(SHIMMER3R)
-void ShimTask_setUsbSetup(void)
+void ShimTask_setDockOrUsbStateChange(void)
 {
-  if (!(ShimTask_getList() & TASK_USB_SETUP))
+  if (!(ShimTask_getList() & TASK_DOCK_OR_USB_STATE_CHANGE))
   {
-    ShimTask_set(TASK_USB_SETUP);
+    ShimTask_set(TASK_DOCK_OR_USB_STATE_CHANGE);
   }
 }
-#endif

@@ -8,6 +8,8 @@
 #ifndef SHIMMER_EXTERNS_H_
 #define SHIMMER_EXTERNS_H_
 
+#include <stdbool.h>
+
 #include "log_and_stream_definitions.h"
 #include <Battery/shimmer_battery.h>
 
@@ -50,6 +52,12 @@ extern uint8_t Board_isDocked(void);
 
 extern void DockUart_init(void);
 extern void DockUart_deinit(void);
+
+#if defined(SHIMMER3R)
+extern unsigned int MX_USBX_Device_Init(void);
+extern unsigned int MX_USBX_Device_DeInit(void);
+extern bool USBX_IsInitialised(void);
+#endif
 
 extern void InitialiseBtAfterBoot(void);
 extern void BtStop(uint8_t isCalledFromMain);
