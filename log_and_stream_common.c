@@ -222,8 +222,7 @@ void LogAndStream_checkSetupDockUnDock(void)
   uint8_t undockTimeoutEvent = !dockedOrUsbStateSaved
       && ((RTC_get64() - time_newUnDockEvent) > TIMEOUT_100_MS);
 
-  if (!shimmerStatus.configuring && !sensing.inSdWr
-      && (dockedOrUsbStateSaved || undockTimeoutEvent))
+  if (!shimmerStatus.configuring && !sensing.inSdWr && (dockedOrUsbStateSaved || undockTimeoutEvent))
   {
     LogAndStream_setupDockUndock();
 
@@ -382,17 +381,17 @@ void LogAndStream_setupDock(void)
 
   switch (shimmerStatus.sdOwner)
   {
-  case SD_OWNER_USB:
-    currentOwnerStillConnected = shimmerStatus.usbPluggedIn;
-    break;
-  case SD_OWNER_DOCK:
-    currentOwnerStillConnected = shimmerStatus.docked;
-    break;
-  case SD_OWNER_MCU:
-  default:
-    /* Nobody external owns it yet — always re-evaluate */
-    currentOwnerStillConnected = 0;
-    break;
+    case SD_OWNER_USB:
+      currentOwnerStillConnected = shimmerStatus.usbPluggedIn;
+      break;
+    case SD_OWNER_DOCK:
+      currentOwnerStillConnected = shimmerStatus.docked;
+      break;
+    case SD_OWNER_MCU:
+    default:
+      /* Nobody external owns it yet — always re-evaluate */
+      currentOwnerStillConnected = 0;
+      break;
   }
 
   if (!currentOwnerStillConnected)
