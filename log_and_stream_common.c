@@ -10,10 +10,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "Platform/platform_api.h"
 #include "dcache.h"
 #include "hal_Board.h"
 #include "log_and_stream_includes.h"
-#include "Platform/platform_api.h"
 
 boot_stage_t bootStage;
 
@@ -268,9 +268,9 @@ void LogAndStream_dockOrUsbStateUpdate(void)
 #endif
       || shimmerStatus.booting)
     if (dockChanged || shimmerStatus.booting)
-  {
-    LogAndStream_dockedStateChange();
-  }
+    {
+      LogAndStream_dockedStateChange();
+    }
 }
 
 void LogAndStream_checkSetupDockUnDock(void)

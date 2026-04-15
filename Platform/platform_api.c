@@ -11,8 +11,8 @@
 
 #include "platform_api.h"
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "CRC/shimmer_swCrc.h"
 #include "Sensing/shimmer_sensing.h"

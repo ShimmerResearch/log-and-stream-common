@@ -8,8 +8,8 @@
 #ifndef PLATFORM_API_H_
 #define PLATFORM_API_H_
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C"
