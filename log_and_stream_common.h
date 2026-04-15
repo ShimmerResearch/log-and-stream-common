@@ -29,6 +29,8 @@ void LogAndStream_checkSetupDockUnDock(void);
 void LogAndStream_setupDockUndock(void);
 void LogAndStream_setupDock(void);
 void LogAndStream_setupUndock(void);
+void LogAndStream_assignSdToDock(void);
+void LogAndStream_releaseSdToMcu(void);
 uint8_t LogAndStream_checkSdInSlot(void);
 void LogAndStream_processDaughterCardId(void);
 void LogAndStream_buildShimmerMacSuffix(char *outBuf, size_t outBufLen);
