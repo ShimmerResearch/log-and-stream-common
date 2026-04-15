@@ -23,6 +23,7 @@ void LogAndStream_blinkTimerCommon(void);
 uint8_t LogAndStream_isDockedOrUsbIn(void);
 void LogAndStream_dockedStateChange(void);
 void LogAndStream_infomemUpdate(void);
+uint8_t LogAndStream_updateDockedStateAndCheckChanged(void);
 void LogAndStream_dockOrUsbStateUpdate(void);
 void LogAndStream_checkSetupDockUnDock(void);
 void LogAndStream_setupDockUndock(void);

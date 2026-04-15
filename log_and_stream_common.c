@@ -222,16 +222,28 @@ void LogAndStream_infomemUpdate(void)
 }
 
 /**
- * @brief  Unified debounced handler for both dock and USB-VBUS state changes.
+ * @brief  Check docked state and update shimmerStatus.docked, return whether state has changed
+ * @param  none
+ * @return 1 if docked state has changed, 0 if not
+ */
+uint8_t LogAndStream_updateDockedStateAndCheckChanged(void)
+{
+  uint8_t previousDockedState = shimmerStatus.docked;
+#if TEST_UNDOCKED
+  shimmerStatus.docked = 0;
+#else  //TEST_UNDOCKED
+  shimmerStatus.docked = Board_isDocked();
+#endif //TEST_UNDOCKED
+  return previousDockedState != shimmerStatus.docked;
+}
 
- * *
+/**
+ * @brief Unified debounced handler for both dock and USB-VBUS state changes.
+ *
  * Called from the task runner (TASK_USB_SETUP) so that both DOCK_DETECT and
-
- * * USB_VBUS interrupts are funnelled through a single deferred path with
- * debounce.
- * Re-reads both pins after the debounce window, updates
- * shimmerStatus, and
- * triggers the dock/undock sequence only when something
+ * USB_VBUS interrupts are funnelled through a single deferred path with
+ * debounce. Re-reads both pins after the debounce window, updates
+ * shimmerStatus, and triggers the dock/undock sequence only when something
  * has actually changed (or on first boot).
  */
 void LogAndStream_dockOrUsbStateUpdate(void)
@@ -251,7 +263,7 @@ void LogAndStream_dockOrUsbStateUpdate(void)
   uint8_t prevUsb = shimmerStatus.usbPluggedIn;
 #endif
 
-  Board_checkDockedDetectState(); /* updates shimmerStatus.docked */
+  LogAndStream_updateDockedStateAndCheckChanged(); /* updates shimmerStatus.docked */
 
 #if defined(SHIMMER3R)
   shimmerStatus.usbPluggedIn = Board_isUsbPluggedIn();
