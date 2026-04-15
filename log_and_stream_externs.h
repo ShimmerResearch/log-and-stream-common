@@ -49,6 +49,9 @@ extern void Board_sd2Mcu(void);
 extern void Board_dockDetectN(uint8_t state);
 extern uint8_t Board_isSdInserted(void);
 extern uint8_t Board_isDocked(void);
+#if defined(SHIMMER3R)
+extern bool Board_isUsbPluggedIn(void);
+#endif
 
 extern void DockUart_init(void);
 extern void DockUart_deinit(void);

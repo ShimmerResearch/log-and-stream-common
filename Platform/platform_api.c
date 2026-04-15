@@ -12,6 +12,7 @@
 #include "platform_api.h"
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "CRC/shimmer_swCrc.h"
 #include "Sensing/shimmer_sensing.h"
@@ -56,4 +57,14 @@ PLATFORM_WEAK uint32_t platform_crcData(uint8_t *buf, uint8_t len)
   /* This function can be overridden by the main application to provide hardware
    based CRC calculation. */
   return ShimSwCrc_calc(buf, len);
+}
+
+PLATFORM_WEAK bool platform_isDockUartInitialised(void)
+{
+  return false;
+}
+
+PLATFORM_WEAK bool platform_isUsbUartInitialised(void)
+{
+  return false;
 }

@@ -682,14 +682,14 @@ void ShimDock_sendRsp(void)
   }
 
 #if defined(SHIMMER3R)
-  if (shimmerStatus.usbPluggedIn && USBX_IsInitialised())
+  if (shimmerStatus.usbPluggedIn && platform_isUsbUartInitialised())
   {
     /* respond to commands via usb */
     USBX_CDC_ACM_Transmit(uartRespBuf, uart_resp_len);
   }
-  else if (shimmerStatus.docked && DockUart_isInitialised())
+  else if (shimmerStatus.docked && platform_isDockUartInitialised())
 #else
-  if (shimmerStatus.docked && DockUart_isInitialised())
+  if (shimmerStatus.docked && platform_isDockUartInitialised())
 #endif
   {
     /* respond to commands via dock usart */

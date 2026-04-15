@@ -13,6 +13,8 @@
 #include "dcache.h"
 #include "hal_Board.h"
 #include "log_and_stream_includes.h"
+#include "Platform/platform_api.h"
+
 boot_stage_t bootStage;
 
 uint8_t sdInfoSyncDelayed = 0;
@@ -20,6 +22,9 @@ uint8_t sdInfoSyncDelayed = 0;
 /* variables used for delayed undock-start */
 uint8_t undockEvent;
 uint64_t time_newUnDockEvent;
+
+static uint32_t g_dock_usb_last_tick = 0U;
+#define DOCK_USB_DEBOUNCE_MS 50U
 
 void LogAndStream_init(void)
 {
@@ -216,6 +221,58 @@ void LogAndStream_infomemUpdate(void)
 #endif
 }
 
+/**
+ * @brief  Unified debounced handler for both dock and USB-VBUS state changes.
+
+ * *
+ * Called from the task runner (TASK_USB_SETUP) so that both DOCK_DETECT and
+
+ * * USB_VBUS interrupts are funnelled through a single deferred path with
+ * debounce.
+ * Re-reads both pins after the debounce window, updates
+ * shimmerStatus, and
+ * triggers the dock/undock sequence only when something
+ * has actually changed (or on first boot).
+ */
+void LogAndStream_dockOrUsbStateUpdate(void)
+{
+  const uint32_t now = platform_getTick();
+  if ((now - g_dock_usb_last_tick) < DOCK_USB_DEBOUNCE_MS)
+  {
+    /* Still inside the debounce window – reschedule so we come back later */
+    ShimTask_setDockOrUsbStateChange();
+    return;
+  }
+  g_dock_usb_last_tick = now;
+
+  /* --- Sample both pins --- */
+  uint8_t prevDocked = shimmerStatus.docked;
+#if defined(SHIMMER3R)
+  uint8_t prevUsb = shimmerStatus.usbPluggedIn;
+#endif
+
+  Board_checkDockedDetectState(); /* updates shimmerStatus.docked */
+
+#if defined(SHIMMER3R)
+  shimmerStatus.usbPluggedIn = Board_isUsbPluggedIn();
+#endif
+
+  uint8_t dockChanged = (prevDocked != shimmerStatus.docked);
+#if defined(SHIMMER3R)
+  uint8_t usbChanged = (prevUsb != shimmerStatus.usbPluggedIn);
+#endif
+
+  if (dockChanged
+#if defined(SHIMMER3R)
+      || usbChanged
+#endif
+      || shimmerStatus.booting)
+    if (dockChanged || shimmerStatus.booting)
+  {
+    LogAndStream_dockedStateChange();
+  }
+}
+
 void LogAndStream_checkSetupDockUnDock(void)
 {
   uint8_t dockedOrUsbStateSaved = LogAndStream_isDockedOrUsbIn();
@@ -371,7 +428,7 @@ void LogAndStream_setupDock(void)
    * recording), USB-C (USBX MSC) or physical dock (USB-SD bridge).
    *
    * Rules:
-   *   1. Dock has priority over USB (simpler boot, avoids USB→dock handover).
+   *   1. USB has priority over dock when both are connected.
    *   2. If the current owner disconnects, re-evaluate and hand SD to whoever
    *      is still connected.
    *   3. If the current owner is still connected, a new connection by the other
@@ -397,14 +454,14 @@ void LogAndStream_setupDock(void)
   if (!currentOwnerStillConnected)
   {
     /* Current owner disconnected (or first time) — re-evaluate.
-     * Dock has priority over USB when choosing a new owner. */
-    if (shimmerStatus.docked)
-    {
-      LogAndStream_assignSdToDock();
-    }
-    else if (shimmerStatus.usbPluggedIn)
+     * USB has priority over dock when choosing a new owner. */
+    if (shimmerStatus.usbPluggedIn)
     {
       LogAndStream_assignSdToUsb();
+    }
+    else if (shimmerStatus.docked)
+    {
+      LogAndStream_assignSdToDock();
     }
     else
     {

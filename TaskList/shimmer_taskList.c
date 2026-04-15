@@ -166,7 +166,7 @@ void ShimTask_NORM_manage(void)
         ShimFactoryTest_run();
         break;
       case TASK_DOCK_OR_USB_STATE_CHANGE:
-        dockOrUsbStateUpdate();
+        LogAndStream_dockOrUsbStateUpdate();
         break;
       case TASK_BT_TX_BUF_CLEAR:
         ShimBt_clearBtTxBuf(1U);
