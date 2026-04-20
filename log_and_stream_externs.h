@@ -55,6 +55,8 @@ extern bool Board_isUsbPluggedIn(void);
 
 extern void DockUart_init(void);
 extern void DockUart_deinit(void);
+extern void USB_init(void);
+extern void USB_deinit(void);
 
 #if defined(SHIMMER3R)
 extern unsigned int MX_USBX_Device_Init(void);
