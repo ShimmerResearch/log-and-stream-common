@@ -346,8 +346,7 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
      * a working SD backend — matches the check in LogAndStream_assignSdToUsb).
      * Reuses the enableDockUartIfDocked flag as a single "restore external
      * interfaces" request from the caller. */
-    if (enableDockUartIfDocked && shimmerStatus.usbPluggedIn
-        && shimmerStatus.sdPeripheralInit)
+    if (enableDockUartIfDocked && shimmerStatus.usbPluggedIn && shimmerStatus.sdPeripheralInit)
     {
       USB_init();
     }
