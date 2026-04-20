@@ -230,13 +230,13 @@ void LogAndStream_infomemUpdate(void)
  */
 uint8_t LogAndStream_updateDockedStateAndCheckChanged(void)
 {
-  uint8_t previousDockedState = shimmerStatus.docked;
+  uint8_t prevDocked = shimmerStatus.docked;
 #if TEST_UNDOCKED
   shimmerStatus.docked = 0;
 #else  //TEST_UNDOCKED
   shimmerStatus.docked = Board_isDocked();
 #endif //TEST_UNDOCKED
-  return previousDockedState != shimmerStatus.docked;
+  return prevDocked != shimmerStatus.docked;
 }
 
 /**
@@ -261,9 +261,8 @@ void LogAndStream_dockOrUsbStateUpdate(void)
   g_dock_usb_last_tick = now;
 
   /* --- Sample pin(s) --- */
-  uint8_t prevDocked = shimmerStatus.docked;
-  LogAndStream_updateDockedStateAndCheckChanged(); /* updates shimmerStatus.docked */
-  uint8_t dockChanged = (prevDocked != shimmerStatus.docked);
+  /* Check docked state and update shimmerStatus.docked, also return whether state has changed since last check. */
+  uint8_t dockChanged = LogAndStream_updateDockedStateAndCheckChanged();
 
 #if defined(SHIMMER3R)
   uint8_t prevUsb = shimmerStatus.usbPluggedIn;
