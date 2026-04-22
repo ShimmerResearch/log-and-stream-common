@@ -76,12 +76,12 @@ typedef union
     uint8_t bleEnabled       : 1;
     uint8_t btClassicEnabled : 1;
     /* 0 = USB FS, 1 = USB HS (only applicable for Shimmer3R) */
-    uint8_t usbHighSpeed     : 1;
-    uint8_t unusedIdx3Bit3   : 1;
-    uint8_t unusedIdx3Bit4   : 1;
-    uint8_t unusedIdx3Bit5   : 1;
-    uint8_t unusedIdx3Bit6   : 1;
-    uint8_t unusedIdx3Bit7   : 1;
+    uint8_t usbHighSpeed   : 1;
+    uint8_t unusedIdx3Bit3 : 1;
+    uint8_t unusedIdx3Bit4 : 1;
+    uint8_t unusedIdx3Bit5 : 1;
+    uint8_t unusedIdx3Bit6 : 1;
+    uint8_t unusedIdx3Bit7 : 1;
 
 #if defined(SHIMMER3)
     uint16_t btCntDisconnectWhileStreaming;
