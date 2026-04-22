@@ -364,19 +364,16 @@ static void LogAndStream_assignSdToUsb(void)
   Board_dockDetectN(DOCK_CARD_NOT_PRESENT);
 
   /* Tear down USB if it was already running (clean re-init) */
-  if (USBX_IsInitialised())
-  {
-    MX_USBX_Device_DeInit();
-  }
+  USB_deinit();
 
   /* Route SD to MCU so USBX MSC can access it */
   Board_sd2Mcu();
   HAL_DCACHE_Invalidate(&hdcache1);
 
   /* Bring up USB device only if SD card initialised successfully */
-  if (!USBX_IsInitialised() && shimmerStatus.sdPeripheralInit)
+  if (shimmerStatus.sdPeripheralInit)
   {
-    MX_USBX_Device_Init();
+    USB_init();
   }
 
   shimmerStatus.sdOwner = SD_OWNER_USB;
