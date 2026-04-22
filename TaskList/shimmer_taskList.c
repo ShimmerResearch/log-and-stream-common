@@ -72,7 +72,7 @@ void ShimTask_NORM_manage(void)
   executingTask = ShimTask_popNext();
   if (executingTask == TASK_NONE)
   {
-    sleepWhenNoTask();
+    platform_sleepWhenNoTask();
   }
   else
   {

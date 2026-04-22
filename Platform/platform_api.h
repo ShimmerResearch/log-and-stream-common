@@ -43,6 +43,7 @@ extern "C"
   PLATFORM_WEAK uint32_t platform_crcData(uint8_t *buf, uint8_t len);
   PLATFORM_WEAK bool platform_isDockUartInitialised(void);
   PLATFORM_WEAK bool platform_isUsbUartInitialised(void);
+  PLATFORM_WEAK void platform_sleepWhenNoTask(void);
 
 #ifdef __cplusplus
 }

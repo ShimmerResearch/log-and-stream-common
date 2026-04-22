@@ -68,3 +68,8 @@ PLATFORM_WEAK bool platform_isUsbUartInitialised(void)
 {
   return false;
 }
+
+PLATFORM_WEAK void platform_sleepWhenNoTask(void)
+{
+  //default no-op
+}
