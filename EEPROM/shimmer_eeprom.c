@@ -46,14 +46,14 @@ void ShimEeprom_readHwDetails(void)
 
 void ShimEeprom_readSensorSettingsPage(void)
 {
-  eepromRead(EEPROM_ADDRESS_BLUETOOTH_DETAILS,
-      sizeof(eepromSensorSettingsPage.rawBytes), &eepromSensorSettingsPage.rawBytes[0]);
+  eepromRead(EEPROM_ADDRESS_BLUETOOTH_DETAILS, sizeof(eepromSensorSettingsPage.rawBytes),
+      &eepromSensorSettingsPage.rawBytes[0]);
 }
 
 void ShimEeprom_writeSensorSettingsPage(void)
 {
-  eepromWrite(EEPROM_ADDRESS_BLUETOOTH_DETAILS,
-      sizeof(eepromSensorSettingsPage.rawBytes), &eepromSensorSettingsPage.rawBytes[0]);
+  eepromWrite(EEPROM_ADDRESS_BLUETOOTH_DETAILS, sizeof(eepromSensorSettingsPage.rawBytes),
+      &eepromSensorSettingsPage.rawBytes[0]);
 }
 
 void ShimEeprom_updateRadioDetails(void)
