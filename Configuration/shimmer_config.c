@@ -686,7 +686,7 @@ void ShimConfig_loadSensorConfigAndCalib(void)
   //Read storedConfig from flash or generate default config if not available
   ShimConfig_readRam();
 
-  // Check the config from RAM for faults and write back if change needed
+  //Check the config from RAM for faults and write back if change needed
   if (ShimConfig_checkAndCorrectConfig())
   {
     LogAndStream_infomemUpdate();
