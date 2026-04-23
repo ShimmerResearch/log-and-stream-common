@@ -212,7 +212,7 @@ TaskId_t ShimTask_NORM_popNext(void)
   {
     for (i = 0; i < TASK_SIZE; i++)
     {
-      task = 0x00000001UL << i;
+      task = (TaskId_t) (0x00000001UL << i);
       if (taskList & task)
       {
         ShimTask_clear(task);
@@ -220,7 +220,7 @@ TaskId_t ShimTask_NORM_popNext(void)
       }
     }
   }
-  return 0;
+  return TASK_NONE;
 }
 
 void ShimTask_NORM_clear(TaskId_t task_id)
