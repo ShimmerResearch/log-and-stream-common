@@ -259,7 +259,6 @@ typedef enum
   SENSOR_DATA
 } btResponseType;
 
-#if defined(SHIMMER3)
 /* Order here needs to be maintained as it's saved to the EEPROM */
 enum BT_BAUD_RATE
 {
@@ -279,6 +278,7 @@ enum BT_BAUD_RATE
   BAUD_NO_CHANGE_NEEDED = 0xFF,
 };
 
+#if defined(SHIMMER3)
 enum
 {
   BT_ERROR_NONE = (0x01UL << 0U),
