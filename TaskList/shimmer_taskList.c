@@ -186,7 +186,7 @@ void ShimTask_NORM_manage(void)
       case TASK_WRITE_RADIO_DETAILS:
         if (ShimEeprom_isPresent())
         {
-          ShimEeprom_writeRadioDetails();
+          ShimEeprom_writeSensorSettingsPage();
         }
         break;
 #endif
