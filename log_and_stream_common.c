@@ -391,10 +391,7 @@ void LogAndStream_assignSdToDock(void)
 #if defined(SHIMMER3R)
   /* Tear down USB device first — must happen before touching SDMMC so that
    * the MSC class stops issuing SD commands. */
-  if (USBX_IsInitialised())
-  {
-    MX_USBX_Device_DeInit();
-  }
+  USB_deinit();
 
   /* Wait for any in-flight SD transfer to complete and abort so the card
    * returns to transfer state before we power-cycle it for the dock. */
