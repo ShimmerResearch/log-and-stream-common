@@ -70,11 +70,11 @@ void ShimEeprom_updateRadioDetails(void)
     eepromSensorSettingsPage.baudRate = ShimBt_getBtBaudRateToUse();
   }
 #else
-  /* Shimmer3R stores baud rate as the actual baud rate value, but Shimmer3 and
-   * Shimmer4 store it as an index representing the baud rate to use. To
-   * maintain compatibility with both formats, we need to convert the actual
-   * baud rate value to the corresponding index when updating the radio details
-   * for Shimmer3R.*/
+  /* EEPROM stores baudRate as a baud-rate index. On Shimmer3R,
+   * ShimBt_getBtBaudRateToUse() returns the actual baud rate value, so map
+   * that source value to the corresponding EEPROM baud-rate index before
+   * updating the radio details.
+   */
   uint32_t baudRateToUse = ShimBt_getBtBaudRateToUse();
   uint8_t baudEnum;
   switch (baudRateToUse)
