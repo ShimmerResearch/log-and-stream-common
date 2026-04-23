@@ -110,9 +110,7 @@ typedef enum TaskId_Tag
   TASK_SAVEDATA = (0x00000001UL << 15U),
   TASK_SDWRITE = (0x00000001UL << 16U),
   TASK_FACTORY_TEST = (0x00000001UL << 17U),
-#if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
-  TASK_USB_SETUP = (0x00000001UL << 18U),
-#endif
+  TASK_DOCK_OR_USB_STATE_CHANGE = (0x00000001UL << 18U),
   TASK_BT_TX_BUF_CLEAR = (0x00000001UL << 19U),
   TASK_BT_TURN_ON_AFTER_BOOT = (0x00000001UL << 20U),
 #if defined(SHIMMER3R)
@@ -153,8 +151,6 @@ void ShimTask_setStopSensing(void);
 void ShimTask_setStopLogging(void);
 void ShimTask_setStopStreaming(void);
 void ShimTask_setInitialiseBluetooth(void);
-#if defined(SHIMMER3R)
-void ShimTask_setUsbSetup(void);
-#endif
+void ShimTask_setDockOrUsbStateChange(void);
 
 #endif //S4_TASKLIST_H

@@ -199,14 +199,22 @@ void ShimSens_startSensing(void)
     {
       DockUart_deinit();
     }
+#if defined(SHIMMER3R)
+    /* If USB-C is plugged in, the USB device stack (MSC+CDC) may currently
+     * own the SD card. Tear it down before starting sensing so the MCU has
+     * exclusive access to the SD card for logging, and so the USB peripheral
+     * stops issuing SD commands. Mirrors the DockUart_deinit behaviour above. */
+    if (shimmerStatus.usbPluggedIn)
+    {
+      USB_deinit();
+    }
+#endif
     ShimSens_stepInit();
 
-#if SUPPORT_SR48_6_0
     if (sensing.nbrMcuAdcChans && ShimBrd_areMcuAdcsUsedForSensing())
     {
       ADC_startSensing();
     }
-#endif
     I2C_startSensing();
     SPI_startSensing();
 
@@ -329,6 +337,20 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     {
       DockUart_init();
     }
+#if defined(SHIMMER3R)
+    /* Mirror of the MX_USBX_Device_DeInit() call in ShimSens_startSensing():
+     * if USB-C is still plugged in when sensing stops, bring the USB device
+     * stack (MSC + CDC) back up so the host can see the SD card again.
+     * Guarded with USBX_IsInitialised() to avoid a double-init, and only
+     * attempted when the SD peripheral initialised successfully (MSC needs
+     * a working SD backend — matches the check in LogAndStream_assignSdToUsb).
+     * Reuses the enableDockUartIfDocked flag as a single "restore external
+     * interfaces" request from the caller. */
+    if (enableDockUartIfDocked && shimmerStatus.usbPluggedIn && shimmerStatus.sdPeripheralInit)
+    {
+      USB_init();
+    }
+#endif
 
     ShimSens_stopSensingWrapup();
 
@@ -352,12 +374,10 @@ void ShimSens_stopPeripherals(void)
   RTC_wakeUpOff();
 #endif
 
-#if defined(SHIMMER4_SDK) || SUPPORT_SR48_6_0
   if (sensing.nbrMcuAdcChans && ShimBrd_areMcuAdcsUsedForSensing())
   {
     ADC_stopSensing();
   }
-#endif
   if (sensing.nbrI2cChans)
   {
     I2C_stopSensing();
@@ -390,12 +410,10 @@ __attribute__((weak)) void ShimSens_stopSensingWrapup(void)
 
 void ShimSens_gatherData(void)
 {
-#if defined(SHIMMER4_SDK) || SUPPORT_SR48_6_0
-  if (sensing.nbrMcuAdcChans)
+  if (sensing.nbrMcuAdcChans && ShimBrd_areMcuAdcsUsedForSensing())
   {
     ADC_gatherDataStart();
   }
-#endif
   if (sensing.nbrI2cChans)
   {
     I2C_pollSensors();
@@ -503,12 +521,10 @@ uint8_t ShimSens_sampleTimerTriggered(void)
 void ShimSens_stepInit(void)
 {
 #if defined(SHIMMER3R)
-#if SUPPORT_SR48_6_0
   if (ShimBrd_areMcuAdcsUsedForSensing())
   {
     ADC_gatherDataCb(ShimSens_adcCompleteCb);
   }
-#endif //SUPPORT_SR48_6_0
   I2cSens_gatherDataCb(ShimSens_i2cCompleteCb);
   SPI_gatherDataCb(ShimSens_spiCompleteCb);
 #elif defined(SHIMMER4_SDK)

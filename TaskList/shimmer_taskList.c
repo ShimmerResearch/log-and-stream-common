@@ -72,7 +72,7 @@ void ShimTask_NORM_manage(void)
   executingTask = ShimTask_popNext();
   if (executingTask == TASK_NONE)
   {
-    sleepWhenNoTask();
+    platform_sleepWhenNoTask();
   }
   else
   {
@@ -97,7 +97,7 @@ void ShimTask_NORM_manage(void)
         break;
 #if defined(SHIMMER3R)
       case TASK_USB_PROCESS_CMD:
-        USBX_CDC_ACM_Receive(usbx_cdc_tx_rx.rx_command_buffer, usbx_cdc_tx_rx.rx_command_length);
+        USBX_CDC_ACM_Receive_To_RxBuf();
         break;
 #endif
       case TASK_BT_RESPOND:
@@ -165,11 +165,9 @@ void ShimTask_NORM_manage(void)
       case TASK_FACTORY_TEST:
         ShimFactoryTest_run();
         break;
-#if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
-      case TASK_USB_SETUP:
-        vbusPinStateCheck();
+      case TASK_DOCK_OR_USB_STATE_CHANGE:
+        LogAndStream_dockOrUsbStateUpdate();
         break;
-#endif
       case TASK_BT_TX_BUF_CLEAR:
         ShimBt_clearBtTxBuf(1U);
         break;
@@ -188,7 +186,7 @@ void ShimTask_NORM_manage(void)
       case TASK_WRITE_RADIO_DETAILS:
         if (ShimEeprom_isPresent())
         {
-          ShimEeprom_writeRadioDetails();
+          ShimEeprom_writeSensorSettingsPage();
         }
         break;
 #endif
@@ -214,7 +212,7 @@ TaskId_t ShimTask_NORM_popNext(void)
   {
     for (i = 0; i < TASK_SIZE; i++)
     {
-      task = 0x00000001UL << i;
+      task = (TaskId_t) (0x00000001UL << i);
       if (taskList & task)
       {
         ShimTask_clear(task);
@@ -222,7 +220,7 @@ TaskId_t ShimTask_NORM_popNext(void)
       }
     }
   }
-  return 0;
+  return TASK_NONE;
 }
 
 void ShimTask_NORM_clear(TaskId_t task_id)
@@ -346,12 +344,10 @@ void ShimTask_setInitialiseBluetooth(void)
   ShimTask_set(TASK_BT_TURN_ON_AFTER_BOOT);
 }
 
-#if defined(SHIMMER3R)
-void ShimTask_setUsbSetup(void)
+void ShimTask_setDockOrUsbStateChange(void)
 {
-  if (!(ShimTask_getList() & TASK_USB_SETUP))
+  if (!(ShimTask_getList() & TASK_DOCK_OR_USB_STATE_CHANGE))
   {
-    ShimTask_set(TASK_USB_SETUP);
+    ShimTask_set(TASK_DOCK_OR_USB_STATE_CHANGE);
   }
 }
-#endif
