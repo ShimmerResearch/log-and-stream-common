@@ -113,7 +113,8 @@ void ShimEeprom_updateRadioDetails(void)
     eepromSensorSettingsPage.baudRate = ShimBt_getBtBaudRateToUse();
   }
 #else
-  eepromSensorSettingsPage.baudRate = ShimEeprom_baudRateToEnum(ShimBt_getBtBaudRateToUse());
+  eepromSensorSettingsPage.baudRate
+      = ShimEeprom_baudRateToEnum(ShimBt_getBtBaudRateToUse());
 #endif
   //leave eepromBtSettings.bleDisabled as is
 }
