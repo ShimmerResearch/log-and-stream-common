@@ -417,10 +417,7 @@ void LogAndStream_assignSdToDock(void)
 void LogAndStream_releaseSdToMcu(void)
 {
 #if defined(SHIMMER3R)
-  if (USBX_IsInitialised())
-  {
-    MX_USBX_Device_DeInit();
-  }
+  USB_deinit();
 #endif
   DockUart_deinit();
 

@@ -91,7 +91,7 @@ typedef union
 
     uint8_t padding[5];
   };
-} gEepromBtSettings;
+} gEepromSensorSettings;
 
 void ShimEeprom_init(void);
 void ShimEeprom_setIsPresent(uint8_t eeprom_is_preset);
@@ -106,7 +106,7 @@ uint8_t ShimEeprom_areRadioDetailsIncorrect(void);
 uint8_t ShimEeprom_checkBtErrorCounts(void);
 void ShimEeprom_resetBtErrorCounts(void);
 #endif
-gEepromBtSettings *ShimEeprom_getSensorSettingsPage(void);
+gEepromSensorSettings *ShimEeprom_getSensorSettingsPage(void);
 uint8_t ShimEeprom_isBleEnabled(void);
 uint8_t ShimEeprom_isBtClassicEnabled(void);
 enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void);

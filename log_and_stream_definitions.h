@@ -67,7 +67,7 @@
 #if defined(SHIMMER3R)
 /** Tracks who currently owns the SD card bus.
  *  Re-evaluated only when the current owner disconnects.
- *  Dock has priority over USB when both are connected. */
+ *  USB has priority over Dock when both are connected. */
 typedef enum
 {
   SD_OWNER_MCU = 0, /**< Default – MCU owns SD for sensor recording */

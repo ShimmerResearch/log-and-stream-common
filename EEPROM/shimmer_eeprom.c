@@ -13,7 +13,7 @@
 #include "log_and_stream_includes.h"
 
 uint8_t eepromIsPresent = 0;
-gEepromBtSettings eepromSensorSettingsPage;
+gEepromSensorSettings eepromSensorSettingsPage;
 
 void ShimEeprom_init(void)
 {
@@ -116,7 +116,7 @@ void ShimEeprom_updateRadioDetails(void)
   eepromSensorSettingsPage.baudRate
       = ShimEeprom_baudRateToEnum(ShimBt_getBtBaudRateToUse());
 #endif
-  //leave eepromBtSettings.bleDisabled as is
+  //leave eepromSensorSettingsPage.bleDisabled as is
 }
 
 uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
@@ -155,7 +155,7 @@ uint8_t ShimEeprom_checkBtErrorCounts(void)
 }
 
 /**
- * Resets all Bluetooth error counters in eepromBtSettings to zero.
+ * Resets all Bluetooth error counters in eepromSensorSettingsPage to zero.
  */
 void ShimEeprom_resetBtErrorCounts(void)
 {
@@ -166,7 +166,7 @@ void ShimEeprom_resetBtErrorCounts(void)
 }
 #endif
 
-gEepromBtSettings *ShimEeprom_getSensorSettingsPage(void)
+gEepromSensorSettings *ShimEeprom_getSensorSettingsPage(void)
 {
   return &eepromSensorSettingsPage;
 }
