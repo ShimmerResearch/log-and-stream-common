@@ -13,12 +13,12 @@
 #include "log_and_stream_includes.h"
 
 uint8_t eepromIsPresent = 0;
-gEepromBtSettings eepromBtSettings;
+gEepromBtSettings eepromSensorSettingsPage;
 
 void ShimEeprom_init(void)
 {
   ShimEeprom_setIsPresent(0);
-  memset((uint8_t *) &eepromBtSettings, 0xFF, sizeof(eepromBtSettings));
+  memset((uint8_t *) &eepromSensorSettingsPage, 0xFF, sizeof(eepromSensorSettingsPage));
 }
 
 void ShimEeprom_setIsPresent(uint8_t eeprom_is_preset)
@@ -36,7 +36,7 @@ void ShimEeprom_readAll(void)
   /* Read Daughter card ID */
   ShimEeprom_readHwDetails();
   //Read Bluetooth configuration parameters from EEPROM
-  ShimEeprom_readRadioDetails();
+  ShimEeprom_readSensorSettingsPage();
 }
 
 void ShimEeprom_readHwDetails(void)
@@ -44,47 +44,47 @@ void ShimEeprom_readHwDetails(void)
   eepromRead(EEPROM_ADDRESS_HW_DETAILS, CAT24C16_PAGE_SIZE, ShimBrd_getDaughtCardIdPtr());
 }
 
-void ShimEeprom_readRadioDetails(void)
+void ShimEeprom_readSensorSettingsPage(void)
 {
   eepromRead(EEPROM_ADDRESS_BLUETOOTH_DETAILS,
-      sizeof(eepromBtSettings.rawBytes), &eepromBtSettings.rawBytes[0]);
+      sizeof(eepromSensorSettingsPage.rawBytes), &eepromSensorSettingsPage.rawBytes[0]);
 }
 
-void ShimEeprom_writeRadioDetails(void)
+void ShimEeprom_writeSensorSettingsPage(void)
 {
   eepromWrite(EEPROM_ADDRESS_BLUETOOTH_DETAILS,
-      sizeof(eepromBtSettings.rawBytes), &eepromBtSettings.rawBytes[0]);
+      sizeof(eepromSensorSettingsPage.rawBytes), &eepromSensorSettingsPage.rawBytes[0]);
 }
 
 void ShimEeprom_updateRadioDetails(void)
 {
-  eepromBtSettings.radioHwVer = (uint8_t) ShimEeprom_getRadioHwVersion();
+  eepromSensorSettingsPage.radioHwVer = (uint8_t) ShimEeprom_getRadioHwVersion();
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
   if (isBtDeviceRn41orRN42())
   {
-    eepromBtSettings.baudRate = BAUD_115200;
-    eepromBtSettings.bleEnabled = 0; //BLE not supported in RN42
+    eepromSensorSettingsPage.baudRate = BAUD_115200;
+    eepromSensorSettingsPage.bleEnabled = 0; //BLE not supported in RN42
   }
   else
   {
-    eepromBtSettings.baudRate = ShimBt_getBtBaudRateToUse();
+    eepromSensorSettingsPage.baudRate = ShimBt_getBtBaudRateToUse();
   }
 #else
-  eepromBtSettings.baudRate = ShimBt_getBtBaudRateToUse();
+  eepromSensorSettingsPage.baudRate = ShimBt_getBtBaudRateToUse();
 #endif
   //leave eepromBtSettings.bleDisabled as is
 }
 
 uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
 {
-  return (eepromBtSettings.radioHwVer != ShimEeprom_getRadioHwVersion()
-      || eepromBtSettings.baudRate == 0xFF
+  return (eepromSensorSettingsPage.radioHwVer != ShimEeprom_getRadioHwVersion()
+      || eepromSensorSettingsPage.baudRate == 0xFF
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
-      || (isBtDeviceRn41orRN42() && eepromBtSettings.baudRate != BAUD_115200)
-      || (isBtDeviceRn4678() && eepromBtSettings.baudRate != ShimBt_getBtBaudRateToUse())
-      || (!ShimBrd_doesDeviceSupportBle() && eepromBtSettings.bleEnabled != 0)
+      || (isBtDeviceRn41orRN42() && eepromSensorSettingsPage.baudRate != BAUD_115200)
+      || (isBtDeviceRn4678() && eepromSensorSettingsPage.baudRate != ShimBt_getBtBaudRateToUse())
+      || (!ShimBrd_doesDeviceSupportBle() && eepromSensorSettingsPage.bleEnabled != 0)
 #else
-      || eepromBtSettings.baudRate != ShimBt_getBtBaudRateToUse()
+      || eepromSensorSettingsPage.baudRate != ShimBt_getBtBaudRateToUse()
 #endif
   );
 }
@@ -99,10 +99,10 @@ uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
  */
 uint8_t ShimEeprom_checkBtErrorCounts(void)
 {
-  if (eepromBtSettings.btCntDisconnectWhileStreaming == 0xFFFF
-      || eepromBtSettings.btCntUnsolicitedReboot == 0xFFFF
-      || eepromBtSettings.btCntRtsLockup == 0xFFFF
-      || eepromBtSettings.btCntDataRateTestBlockage == 0xFFFF)
+  if (eepromSensorSettingsPage.btCntDisconnectWhileStreaming == 0xFFFF
+      || eepromSensorSettingsPage.btCntUnsolicitedReboot == 0xFFFF
+      || eepromSensorSettingsPage.btCntRtsLockup == 0xFFFF
+      || eepromSensorSettingsPage.btCntDataRateTestBlockage == 0xFFFF)
   {
     return 1;
   }
@@ -114,26 +114,26 @@ uint8_t ShimEeprom_checkBtErrorCounts(void)
  */
 void ShimEeprom_resetBtErrorCounts(void)
 {
-  eepromBtSettings.btCntDisconnectWhileStreaming = 0;
-  eepromBtSettings.btCntUnsolicitedReboot = 0;
-  eepromBtSettings.btCntRtsLockup = 0;
-  eepromBtSettings.btCntDataRateTestBlockage = 0;
+  eepromSensorSettingsPage.btCntDisconnectWhileStreaming = 0;
+  eepromSensorSettingsPage.btCntUnsolicitedReboot = 0;
+  eepromSensorSettingsPage.btCntRtsLockup = 0;
+  eepromSensorSettingsPage.btCntDataRateTestBlockage = 0;
 }
 #endif
 
-gEepromBtSettings *ShimEeprom_getRadioDetails(void)
+gEepromBtSettings *ShimEeprom_getSensorSettingsPage(void)
 {
-  return &eepromBtSettings;
+  return &eepromSensorSettingsPage;
 }
 
 uint8_t ShimEeprom_isBleEnabled(void)
 {
-  return eepromBtSettings.bleEnabled;
+  return eepromSensorSettingsPage.bleEnabled;
 }
 
 uint8_t ShimEeprom_isBtClassicEnabled(void)
 {
-  return eepromBtSettings.btClassicEnabled;
+  return eepromSensorSettingsPage.btClassicEnabled;
 }
 
 enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void)
@@ -175,7 +175,7 @@ uint8_t ShimEeprom_writeDaughterCardMem(uint16_t memOffset, uint8_t memLength, u
     /* Handle if the BLE/BT state is being changed */
     if (writeStart <= targetAddr && writeEnd >= targetAddr)
     {
-      ShimEeprom_readRadioDetails();
+      ShimEeprom_readSensorSettingsPage();
     }
 
     return 1;
