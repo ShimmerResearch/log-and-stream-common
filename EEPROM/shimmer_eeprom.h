@@ -73,9 +73,10 @@ typedef union
     uint8_t radioHwVer;
     uint8_t baudRate;
 
+    // Byte index 2
     uint8_t bleEnabled       : 1;
     uint8_t btClassicEnabled : 1;
-    /* 0 = USB FS, 1 = USB HS (only applicable for Shimmer3R) */
+    /* USB Speed. 0 = HS, 1 = FS (only applicable for Shimmer3R) */
     uint8_t usbFullSpeed   : 1;
     uint8_t unusedIdx3Bit3 : 1;
     uint8_t unusedIdx3Bit4 : 1;
@@ -83,15 +84,12 @@ typedef union
     uint8_t unusedIdx3Bit6 : 1;
     uint8_t unusedIdx3Bit7 : 1;
 
-#if defined(SHIMMER3)
-    uint16_t btCntDisconnectWhileStreaming;
-    uint16_t btCntUnsolicitedReboot;
-    uint16_t btCntRtsLockup;
-    uint16_t btCntDataRateTestBlockage;
+    uint16_t btCntDisconnectWhileStreaming; // Shimmer3 RN4678 error count
+    uint16_t btCntUnsolicitedReboot; // Shimmer3 RN4678 error count
+    uint16_t btCntRtsLockup; // Shimmer3 RN4678 error count
+    uint16_t btCntDataRateTestBlockage; // Shimmer3 RN4678 error count
+
     uint8_t padding[5];
-#else
-    uint8_t padding[13];
-#endif
   };
 } gEepromBtSettings;
 
