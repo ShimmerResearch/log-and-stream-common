@@ -428,10 +428,6 @@ void LogAndStream_releaseSdToMcu(void)
   USB_deinit();
 #endif
   DockUart_deinit();
-
-#if defined(SHIMMER3R)
-  shimmerStatus.sdOwner = SD_OWNER_MCU;
-#endif
 }
 
 void LogAndStream_setupDock(void)
