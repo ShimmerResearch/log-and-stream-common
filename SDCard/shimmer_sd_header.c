@@ -12,6 +12,7 @@
 #include <Calibration/shimmer_calibration.h>
 #include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd_header.h>
+#include "Comms/shimmer_bt_uart.h"
 
 #if defined(SHIMMER3)
 #include "../BMPX80/bmpX80.h"
