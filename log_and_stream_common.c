@@ -11,9 +11,6 @@
 #include <string.h>
 
 #include "Platform/platform_api.h"
-#if defined(SHIMMER3R)
-#include "dcache.h"
-#endif
 #include "hal_Board.h"
 #include "log_and_stream_includes.h"
 
@@ -368,7 +365,6 @@ static void LogAndStream_assignSdToUsb(void)
 
   /* Route SD to MCU so USBX MSC can access it */
   Board_sd2Mcu();
-  HAL_DCACHE_Invalidate(&hdcache1);
 
   /* Bring up USB device only if SD card initialised successfully */
   if (shimmerStatus.sdPeripheralInit)
@@ -391,10 +387,7 @@ void LogAndStream_assignSdToDock(void)
 #if defined(SHIMMER3R)
   /* Tear down USB device first — must happen before touching SDMMC so that
    * the MSC class stops issuing SD commands. */
-  if (USBX_IsInitialised())
-  {
-    MX_USBX_Device_DeInit();
-  }
+  USB_deinit();
 
   /* Wait for any in-flight SD transfer to complete and abort so the card
    * returns to transfer state before we power-cycle it for the dock. */
