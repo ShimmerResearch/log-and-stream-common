@@ -73,7 +73,7 @@ typedef union
     uint8_t radioHwVer;
     uint8_t baudRate;
 
-    // Byte index 2
+    //Byte index 2
     uint8_t bleEnabled       : 1;
     uint8_t btClassicEnabled : 1;
     /* USB Speed. 0 = HS, 1 = FS (only applicable for Shimmer3R) */
@@ -84,10 +84,10 @@ typedef union
     uint8_t unusedIdx3Bit6 : 1;
     uint8_t unusedIdx3Bit7 : 1;
 
-    uint16_t btCntDisconnectWhileStreaming; // Shimmer3 RN4678 error count
-    uint16_t btCntUnsolicitedReboot; // Shimmer3 RN4678 error count
-    uint16_t btCntRtsLockup; // Shimmer3 RN4678 error count
-    uint16_t btCntDataRateTestBlockage; // Shimmer3 RN4678 error count
+    uint16_t btCntDisconnectWhileStreaming; //Shimmer3 RN4678 error count
+    uint16_t btCntUnsolicitedReboot;        //Shimmer3 RN4678 error count
+    uint16_t btCntRtsLockup;                //Shimmer3 RN4678 error count
+    uint16_t btCntDataRateTestBlockage;     //Shimmer3 RN4678 error count
 
     uint8_t padding[5];
   };
