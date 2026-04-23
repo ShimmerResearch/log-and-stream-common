@@ -249,13 +249,21 @@ uint8_t LogAndStream_updateDockedStateAndCheckChanged(void)
 void LogAndStream_dockOrUsbStateUpdate(void)
 {
   const uint32_t now = platform_getTick();
-  if ((now - g_dock_usb_last_tick) < DOCK_USB_DEBOUNCE_MS)
+
+  /* Only apply time-based debounce when the platform tick source is valid.
+   * Some builds may fall back to a weak platform_getTick() that returns 0,
+   * and repeatedly re-queueing in that case can livelock the main loop.
+   */
+  if (now != 0U)
   {
-    /* Still inside the debounce window – reschedule so we come back later */
-    ShimTask_setDockOrUsbStateChange();
-    return;
+    if ((now - g_dock_usb_last_tick) < DOCK_USB_DEBOUNCE_MS)
+    {
+      /* Still inside the debounce window – reschedule so we come back later */
+      ShimTask_setDockOrUsbStateChange();
+      return;
+    }
+    g_dock_usb_last_tick = now;
   }
-  g_dock_usb_last_tick = now;
 
   /* --- Sample pin(s) --- */
   /* Check docked state and update shimmerStatus.docked, also return whether state has changed since last check. */
