@@ -56,6 +56,49 @@ void ShimEeprom_writeSensorSettingsPage(void)
       &eepromSensorSettingsPage.rawBytes[0]);
 }
 
+#if defined(SHIMMER3R)
+/* Shimmer3R stores baud rate as the actual baud rate value, but Shimmer3 and
+ * Shimmer4 store it as an index representing the baud rate to use. To
+ * maintain compatibility with both formats, we need to convert the actual
+ * baud rate value to the corresponding index when updating/checking the radio
+ * details for Shimmer3R. */
+static uint8_t ShimEeprom_baudRateToEnum(uint32_t baudRateToUse)
+{
+  switch (baudRateToUse)
+  {
+    case 0: //Default to 115200 if baud rate not set
+    case 115200L:
+      return BAUD_115200;
+    case 1200L:
+      return BAUD_1200;
+    case 2400L:
+      return BAUD_2400;
+    case 4800L:
+      return BAUD_4800;
+    case 9600L:
+      return BAUD_9600;
+    case 19200L:
+      return BAUD_19200;
+    case 38400L:
+      return BAUD_38400;
+    case 57600L:
+      return BAUD_57600;
+    case 230400L:
+      return BAUD_230400;
+    case 460800L:
+      return BAUD_460800;
+    case 921600L:
+      return BAUD_921600;
+    case 1000000L:
+      return BAUD_1000000;
+    case 2000000L:
+      return BAUD_2000000;
+    default:
+      return BAUD_INVALID; //Invalid/unknown baud rate
+  }
+}
+#endif
+
 void ShimEeprom_updateRadioDetails(void)
 {
   eepromSensorSettingsPage.radioHwVer = (uint8_t) ShimEeprom_getRadioHwVersion();
@@ -70,61 +113,7 @@ void ShimEeprom_updateRadioDetails(void)
     eepromSensorSettingsPage.baudRate = ShimBt_getBtBaudRateToUse();
   }
 #else
-  /* Shimmer3R stores baud rate as the actual baud rate value, but Shimmer3 and
-   * Shimmer4 store it as an index representing the baud rate to use. To
-   * maintain compatibility with both formats, we need to convert the actual
-   * baud rate value to the corresponding index when updating the radio details
-   * for Shimmer3R.*/
-  uint32_t baudRateToUse = ShimBt_getBtBaudRateToUse();
-  uint8_t baudEnum;
-  switch (baudRateToUse)
-  {
-    case 0: //Default to 115200 if baud rate not set
-    case 115200L:
-      baudEnum = BAUD_115200;
-      break;
-    case 1200L:
-      baudEnum = BAUD_1200;
-      break;
-    case 2400L:
-      baudEnum = BAUD_2400;
-      break;
-    case 4800L:
-      baudEnum = BAUD_4800;
-      break;
-    case 9600L:
-      baudEnum = BAUD_9600;
-      break;
-    case 19200L:
-      baudEnum = BAUD_19200;
-      break;
-    case 38400L:
-      baudEnum = BAUD_38400;
-      break;
-    case 57600L:
-      baudEnum = BAUD_57600;
-      break;
-    case 230400L:
-      baudEnum = BAUD_230400;
-      break;
-    case 460800L:
-      baudEnum = BAUD_460800;
-      break;
-    case 921600L:
-      baudEnum = BAUD_921600;
-      break;
-    case 1000000L:
-      baudEnum = BAUD_1000000;
-      break;
-    case 2000000L:
-      baudEnum = BAUD_2000000;
-      break;
-    default:
-      baudEnum = 0xFF; //Invalid/unknown baud rate
-      break;
-  }
-
-  eepromSensorSettingsPage.baudRate = baudEnum;
+  eepromSensorSettingsPage.baudRate = ShimEeprom_baudRateToEnum(ShimBt_getBtBaudRateToUse());
 #endif
   //leave eepromBtSettings.bleDisabled as is
 }
@@ -132,13 +121,14 @@ void ShimEeprom_updateRadioDetails(void)
 uint8_t ShimEeprom_areRadioDetailsIncorrect(void)
 {
   return (eepromSensorSettingsPage.radioHwVer != ShimEeprom_getRadioHwVersion()
-      || eepromSensorSettingsPage.baudRate == 0xFF
+      || eepromSensorSettingsPage.baudRate == BAUD_INVALID
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
       || (isBtDeviceRn41orRN42() && eepromSensorSettingsPage.baudRate != BAUD_115200)
       || (isBtDeviceRn4678() && eepromSensorSettingsPage.baudRate != ShimBt_getBtBaudRateToUse())
       || (!ShimBrd_doesDeviceSupportBle() && eepromSensorSettingsPage.bleEnabled != 0)
 #else
-      || eepromSensorSettingsPage.baudRate != ShimBt_getBtBaudRateToUse()
+      || eepromSensorSettingsPage.baudRate
+          != ShimEeprom_baudRateToEnum(ShimBt_getBtBaudRateToUse())
 #endif
   );
 }
