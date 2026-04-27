@@ -5,6 +5,7 @@
  *      Author: MarkNolan
  */
 
+#include "Comms/shimmer_bt_uart.h"
 #include "log_and_stream_externs.h"
 #include "shimmer_definitions.h"
 #include "version.h"

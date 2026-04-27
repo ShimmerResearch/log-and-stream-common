@@ -64,6 +64,18 @@
     shimmerStatus.periStat &= ~x; \
   } while (0)
 
+#if defined(SHIMMER3R)
+/** Tracks who currently owns the SD card bus.
+ *  Re-evaluated only when the current owner disconnects.
+ *  USB has priority over Dock when both are connected. */
+typedef enum
+{
+  SD_OWNER_MCU = 0, /**< Default – MCU owns SD for sensor recording */
+  SD_OWNER_USB,     /**< USB-C MSC owns SD */
+  SD_OWNER_DOCK,    /**< Physical dock bridge owns SD */
+} sd_owner_t;
+#endif
+
 typedef volatile struct STATTypeDef_t
 { //STATUS
   uint8_t booting          : 1;
@@ -89,6 +101,7 @@ typedef volatile struct STATTypeDef_t
   uint8_t sdPowerOn  : 1;
 #if defined(SHIMMER3R)
   uint8_t sdMcu0Pc1 : 1;
+  sd_owner_t sdOwner;
 #endif
   uint8_t sdLogging  : 1;
   uint8_t sdlogReady : 1;

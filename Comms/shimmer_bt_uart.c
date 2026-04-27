@@ -1433,7 +1433,7 @@ void ShimBt_processCmd(void)
         if (ShimEeprom_isPresent())
         {
           ShimEeprom_resetBtErrorCounts();
-          ShimEeprom_writeRadioDetails();
+          ShimEeprom_writeSensorSettingsPage();
         }
         else
         {

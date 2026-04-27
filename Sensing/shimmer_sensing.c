@@ -199,6 +199,16 @@ void ShimSens_startSensing(void)
     {
       DockUart_deinit();
     }
+#if defined(SHIMMER3R)
+    /* If USB-C is plugged in, the USB device stack (MSC+CDC) may currently
+     * own the SD card. Tear it down before starting sensing so the MCU has
+     * exclusive access to the SD card for logging, and so the USB peripheral
+     * stops issuing SD commands. Mirrors the DockUart_deinit behaviour above. */
+    if (shimmerStatus.usbPluggedIn)
+    {
+      USB_deinit();
+    }
+#endif
     ShimSens_stepInit();
 
     if (sensing.nbrMcuAdcChans && ShimBrd_areMcuAdcsUsedForSensing())
@@ -327,6 +337,20 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     {
       DockUart_init();
     }
+#if defined(SHIMMER3R)
+    /* Mirror of the MX_USBX_Device_DeInit() call in ShimSens_startSensing():
+     * if USB-C is still plugged in when sensing stops, bring the USB device
+     * stack (MSC + CDC) back up so the host can see the SD card again.
+     * Guarded with USBX_IsInitialised() to avoid a double-init, and only
+     * attempted when the SD peripheral initialised successfully (MSC needs
+     * a working SD backend — matches the check in LogAndStream_assignSdToUsb).
+     * Reuses the enableDockUartIfDocked flag as a single "restore external
+     * interfaces" request from the caller. */
+    if (enableDockUartIfDocked && shimmerStatus.usbPluggedIn && shimmerStatus.sdPeripheralInit)
+    {
+      USB_init();
+    }
+#endif
 
     ShimSens_stopSensingWrapup();
 
