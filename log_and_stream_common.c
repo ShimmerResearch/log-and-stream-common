@@ -277,9 +277,10 @@ void LogAndStream_dockOrUsbStateUpdate(void)
 
   if ((dockChanged
 #if defined(SHIMMER3R)
-      || usbChanged
+          || usbChanged
 #endif
-      || shimmerStatus.booting) && LogAndStream_allowProcessDockChange())
+          || shimmerStatus.booting)
+      && LogAndStream_allowProcessDockChange())
   {
     LogAndStream_dockedStateChange();
   }
@@ -616,5 +617,8 @@ void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
   snprintf(outBuf, outBufLen, "Shimmer %s", suffix);
 }
 
-bool LogAndStream_allowProcessDockChange(void){
-  /* Don't allow dock change processing if we're in the middle of sensing */  return !shimmerStatus.sensing;}
+bool LogAndStream_allowProcessDockChange(void)
+{
+  /* Don't allow dock change processing if we're in the middle of sensing */
+  return !shimmerStatus.sensing;
+}
