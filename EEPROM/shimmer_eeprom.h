@@ -29,6 +29,7 @@ enum EEPROM_HARDWARE_REVISON
   DAUGHT_CARD_SPECIAL_REV = 2,
 };
 
+/* Order here needs to be maintained as it's saved to the EEPROM */
 enum RADIO_HARDWARE_VERSION
 {
   RN42 = 0U,
@@ -72,29 +73,40 @@ typedef union
     uint8_t radioHwVer;
     uint8_t baudRate;
 
+    //Byte index 2
     uint8_t bleEnabled       : 1;
     uint8_t btClassicEnabled : 1;
-    uint8_t unusedIdx3Bit2   : 1;
-    uint8_t unusedIdx3Bit3   : 1;
-    uint8_t unusedIdx3Bit4   : 1;
-    uint8_t unusedIdx3Bit5   : 1;
-    uint8_t unusedIdx3Bit6   : 1;
-    uint8_t unusedIdx3Bit7   : 1;
+    /* USB Speed. 0 = HS, 1 = FS (only applicable for Shimmer3R) */
+    uint8_t usbFullSpeed   : 1;
+    uint8_t unusedIdx3Bit3 : 1;
+    uint8_t unusedIdx3Bit4 : 1;
+    uint8_t unusedIdx3Bit5 : 1;
+    uint8_t unusedIdx3Bit6 : 1;
+    uint8_t unusedIdx3Bit7 : 1;
 
-    uint8_t padding[13];
+    uint16_t btCntDisconnectWhileStreaming; //Shimmer3 RN4678 error count
+    uint16_t btCntUnsolicitedReboot;        //Shimmer3 RN4678 error count
+    uint16_t btCntRtsLockup;                //Shimmer3 RN4678 error count
+    uint16_t btCntDataRateTestBlockage;     //Shimmer3 RN4678 error count
+
+    uint8_t padding[5];
   };
-} gEepromBtSettings;
+} gEepromSensorSettings;
 
 void ShimEeprom_init(void);
 void ShimEeprom_setIsPresent(uint8_t eeprom_is_preset);
 uint8_t ShimEeprom_isPresent(void);
 void ShimEeprom_readAll(void);
 void ShimEeprom_readHwDetails(void);
-void ShimEeprom_readRadioDetails(void);
-void ShimEeprom_writeRadioDetails(void);
+void ShimEeprom_readSensorSettingsPage(void);
+void ShimEeprom_writeSensorSettingsPage(void);
 void ShimEeprom_updateRadioDetails(void);
 uint8_t ShimEeprom_areRadioDetailsIncorrect(void);
-gEepromBtSettings *ShimEeprom_getRadioDetails(void);
+#if defined(SHIMMER3)
+uint8_t ShimEeprom_checkBtErrorCounts(void);
+void ShimEeprom_resetBtErrorCounts(void);
+#endif
+gEepromSensorSettings *ShimEeprom_getSensorSettingsPage(void);
 uint8_t ShimEeprom_isBleEnabled(void);
 uint8_t ShimEeprom_isBtClassicEnabled(void);
 enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void);

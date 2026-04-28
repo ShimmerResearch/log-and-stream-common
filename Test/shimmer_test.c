@@ -16,7 +16,7 @@
 factory_test_target_t factoryTestTarget = PRINT_TO_DEBUGGER;
 factory_test_t factoryTestToRun;
 
-char outputBuffer[100];
+char outputBuffer[512];
 
 uint32_t ShimFactoryTest_run(void)
 {

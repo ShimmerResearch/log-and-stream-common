@@ -8,6 +8,7 @@
 #ifndef PLATFORM_API_H_
 #define PLATFORM_API_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -33,9 +34,16 @@ extern "C"
 #endif
 #endif
 
+  PLATFORM_WEAK void platform_reset(void);
   PLATFORM_WEAK void platform_delayMs(const uint32_t delay_time_ms);
+  PLATFORM_WEAK uint32_t platform_getTick(void);
   PLATFORM_WEAK void platform_processHwRevision(void);
   PLATFORM_WEAK void platform_initGpioForRevision(void);
+  PLATFORM_WEAK uint8_t platform_gatherData(void);
+  PLATFORM_WEAK uint32_t platform_crcData(uint8_t *buf, uint8_t len);
+  PLATFORM_WEAK bool platform_isDockUartInitialised(void);
+  PLATFORM_WEAK bool platform_isUsbUartInitialised(void);
+  PLATFORM_WEAK void platform_sleepWhenNoTask(void);
 
 #ifdef __cplusplus
 }

@@ -686,6 +686,12 @@ void ShimConfig_loadSensorConfigAndCalib(void)
   //Read storedConfig from flash or generate default config if not available
   ShimConfig_readRam();
 
+  //Check the config from RAM for faults and write back if change needed
+  if (ShimConfig_checkAndCorrectConfig())
+  {
+    LogAndStream_infomemUpdate();
+  }
+
   ShimCalib_init();
   ShimCalib_initFromConfigBytesAll();
 
@@ -699,7 +705,6 @@ void ShimConfig_loadSensorConfigAndCalib(void)
     }
     if (ShimConfig_getFlagWriteCfgToSd())
     { //info > sdcard
-      ShimConfig_readRam();
       ShimSdCfgFile_generate();
       ShimConfig_setFlagWriteCfgToSd(0, 1);
       if (!ShimSdDataFile_isFileStatusOk())
@@ -719,8 +724,6 @@ void ShimConfig_loadSensorConfigAndCalib(void)
     {
       //fail, i.e. no such file. use current DumpRam to generate a file
       ShimCalib_ram2File();
-      //?
-      ShimConfig_readRam();
     }
   }
 

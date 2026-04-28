@@ -5,6 +5,7 @@
  *      Author: MarkNolan
  */
 
+#include "Comms/shimmer_bt_uart.h"
 #include "log_and_stream_externs.h"
 #include "shimmer_definitions.h"
 #include "version.h"
@@ -175,7 +176,9 @@ void ShimSdHead_config2SdHead(void)
   sdHeadText[SDH_RTC_DIFF_0] = 0;
 #endif
 
-  memcpy(&sdHeadText[SDH_MAC_ADDR], &configBytes->rawBytes[NV_MAC_ADDRESS], 6);
+  //Take MAC ID direct from BT and not configuration
+  memcpy(&sdHeadText[SDH_MAC_ADDR], ShimBt_macIdBytesPtrGet(), 6);
+
   memcpy(&sdHeadText[SDH_CONFIG_TIME_0], &configBytes->rawBytes[NV_SD_CONFIG_TIME], 4);
   ShimSdHead_saveBmpCalibrationToSdHeader();
 

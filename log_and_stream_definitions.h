@@ -13,12 +13,13 @@
 #define TEST_UNDOCKED             0
 #define TEST_RTC_ERR_FLASH_OFF    0
 #define TEST_PRESS2UNDOCK         0
+#define TEST_TASK_MONITOR         0
 
 #define IS_SUPPORTED_SINGLE_TOUCH 0
 #define USE_FATFS                 1
 #define USE_SD                    1
 #define USE_BT                    1
-#define SKIP_50MS                 1
+#define TICKS_TO_SKIP             2130 //0 = off, 2130 = 65ms, 1638 = 50ms
 
 #define MAX_NODES                 20
 #define MAX_CHARS                 13
@@ -31,6 +32,11 @@
 #endif
 
 #define TIMEOUT_100_MS (3277)
+
+#if defined(SHIMMER3R)
+#define USB_DEVICE_ID_STR_LEN 32
+#define SHIMMER_PREFIX_LEN    16 /* "Shimmer " + 4 chars + nul = 13; 16 is safe */
+#endif
 
 #if defined(SHIMMER3)
 #define __NOP() __no_operation()
@@ -57,6 +63,18 @@
   {                               \
     shimmerStatus.periStat &= ~x; \
   } while (0)
+
+#if defined(SHIMMER3R)
+/** Tracks who currently owns the SD card bus.
+ *  Re-evaluated only when the current owner disconnects.
+ *  USB has priority over Dock when both are connected. */
+typedef enum
+{
+  SD_OWNER_MCU = 0, /**< Default – MCU owns SD for sensor recording */
+  SD_OWNER_USB,     /**< USB-C MSC owns SD */
+  SD_OWNER_DOCK,    /**< Physical dock bridge owns SD */
+} sd_owner_t;
+#endif
 
 typedef volatile struct STATTypeDef_t
 { //STATUS
@@ -86,6 +104,7 @@ typedef volatile struct STATTypeDef_t
   uint8_t sdPowerOn  : 1;
 #if defined(SHIMMER3R)
   uint8_t sdMcu0Pc1 : 1;
+  sd_owner_t sdOwner;
 #endif
   uint8_t sdLogging  : 1;
   uint8_t sdlogReady : 1;
@@ -102,8 +121,8 @@ typedef volatile struct STATTypeDef_t
   uint8_t timerSamplingEnabled   : 1;
   uint32_t testResult;
 #if defined(SHIMMER3R)
-  uint8_t pendingRebootForDfu : 1;
-  uint8_t micSensing          : 1;
+  uint8_t micSensing       : 1;
+  uint8_t bslRebootPending : 1;
   uint16_t bslCheckTimeMs;
 #endif
   uint16_t bootTimePerStageMs;

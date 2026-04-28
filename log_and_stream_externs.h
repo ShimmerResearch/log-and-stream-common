@@ -8,6 +8,8 @@
 #ifndef SHIMMER_EXTERNS_H_
 #define SHIMMER_EXTERNS_H_
 
+#include <stdbool.h>
+
 #include "log_and_stream_definitions.h"
 #include <Battery/shimmer_battery.h>
 
@@ -35,6 +37,9 @@ extern void BMPX80_startMeasurement(void);
 
 extern void SampleTimerStart(void);
 extern void SampleTimerStop(void);
+
+extern void saveBtError(uint8_t btError);
+extern void resetLatestBtError(void);
 #endif //SHIMMER3
 
 extern void Board_setExpansionBrdPower(uint8_t state);
@@ -44,15 +49,25 @@ extern void Board_sd2Mcu(void);
 extern void Board_dockDetectN(uint8_t state);
 extern uint8_t Board_isSdInserted(void);
 extern uint8_t Board_isDocked(void);
+#if defined(SHIMMER3R)
+extern bool Board_isUsbPluggedIn(void);
+#endif
 
 extern void DockUart_init(void);
 extern void DockUart_deinit(void);
+extern void USB_init(void);
+extern void USB_deinit(void);
+
+#if defined(SHIMMER3R)
+extern unsigned int MX_USBX_Device_Init(void);
+extern unsigned int MX_USBX_Device_DeInit(void);
+extern bool USBX_IsInitialised(void);
+#endif
 
 extern void InitialiseBtAfterBoot(void);
 extern void BtStop(uint8_t isCalledFromMain);
 
-extern void sleepWhenNoTask(void);
-
+extern uint32_t RTC_get32(void);
 extern uint64_t RTC_get64(void);
 extern void RTC_setTimeFromTicksPtr(uint8_t *ticksPtr);
 extern uint8_t RTC_isRwcTimeSet(void);
@@ -88,7 +103,6 @@ extern void ADC_stopSensing(void);
 extern void I2C_stopSensing(void);
 extern void SPI_stopSensing(void);
 
-extern void ADC_gatherDataStart(void);
 extern void I2C_pollSensors(void);
 extern void SPI_pollSensors(void);
 

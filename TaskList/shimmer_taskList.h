@@ -51,25 +51,38 @@
 #endif
 
 #if USE_FREERTOS
-#define ShimTask_init       S4_RTOS_Task_init
-#define ShimTask_manage     S4_RTOS_Task_manage
-#define ShimTask_getCurrent S4_RTOS_Task_getCurrent
-#define ShimTask_clear      S4_RTOS_Task_clear
-#define ShimTask_set        S4_RTOS_Task_set
-#define ShimTask_getList    S4_RTOS_Task_getList
+#define ShimTask_init    S4_RTOS_Task_init
+#define ShimTask_manage  S4_RTOS_Task_manage
+#define ShimTask_popNext S4_RTOS_Task_getCurrent
+#define ShimTask_clear   S4_RTOS_Task_clear
+#define ShimTask_set     S4_RTOS_Task_set
+#define ShimTask_getList S4_RTOS_Task_getList
 #else
-#define ShimTask_init       ShimTask_NORM_init
-#define ShimTask_manage     ShimTask_NORM_manage
-#define ShimTask_getCurrent ShimTask_NORM_getCurrent
-#define ShimTask_clear      ShimTask_NORM_clear
-#define ShimTask_set        ShimTask_NORM_set
-#define ShimTask_getList    ShimTask_NORM_getList
+#define ShimTask_init    ShimTask_NORM_init
+#define ShimTask_manage  ShimTask_NORM_manage
+#define ShimTask_popNext ShimTask_NORM_popNext
+#define ShimTask_clear   ShimTask_NORM_clear
+#define ShimTask_set     ShimTask_NORM_set
+#define ShimTask_getList ShimTask_NORM_getList
 #endif //USE_FREERTOS
+
+/* task stuck detection */
+#define TASK_STUCK_TIMEOUT_S       5  /* consider task stuck after 5s */
+#define TASK_STUCK_RESET_TIMEOUT_S 10 /* reset after 10s */
+#if defined(SHIMMER3)
+#define TASK_STUCK_TIMEOUT (TASK_STUCK_TIMEOUT_S * 32768UL) /* in ticks */
+#define TASK_STUCK_RESET_TIMEOUT \
+  (TASK_STUCK_RESET_TIMEOUT_S * 32768UL) /* in ticks */
+#else
+#define TASK_STUCK_TIMEOUT (TASK_STUCK_TIMEOUT_S * 1000UL) /* in ms */
+#define TASK_STUCK_RESET_TIMEOUT \
+  (TASK_STUCK_RESET_TIMEOUT_S * 1000UL) /* in ticks */
+#endif
 
 #define TASK_SIZE 32
 
 /* In order of priority */
-typedef enum
+typedef enum TaskId_Tag
 {
   TASK_NONE = 0,
   TASK_SETUP_DOCK = (0x00000001UL << 0U),
@@ -77,6 +90,9 @@ typedef enum
   TASK_DOCK_PROCESS_CMD = (0x00000001UL << 2U),
   TASK_DOCK_RESPOND = (0x00000001UL << 3U),
   TASK_BT_PROCESS_CMD = (0x00000001UL << 4U),
+#if defined(SHIMMER3R)
+  TASK_USB_PROCESS_CMD = (0x00000001UL << 5U),
+#endif
 #if defined(SHIMMER3)
   TASK_CFGCH = (0x00000001UL << 5U),
 #endif
@@ -87,36 +103,46 @@ typedef enum
   TASK_SAMPLE_MPU9150_MAG = (0x00000001UL << 9U),
   TASK_SAMPLE_BMPX80_PRESS = (0x00000001UL << 10U),
 #endif
-  TASK_STREAMDATA = (0x00000001UL << 11U),
+  TASK_GATHER_DATA = (0x00000001UL << 11U),
   TASK_STOPSENSING = (0x00000001UL << 12U),
   TASK_SDLOG_CFG_UPDATE = (0x00000001UL << 13U),
   TASK_STARTSENSING = (0x00000001UL << 14U),
   TASK_SAVEDATA = (0x00000001UL << 15U),
   TASK_SDWRITE = (0x00000001UL << 16U),
   TASK_FACTORY_TEST = (0x00000001UL << 17U),
-#if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
-  TASK_USB_SETUP = (0x00000001UL << 18U),
-#endif
+  TASK_DOCK_OR_USB_STATE_CHANGE = (0x00000001UL << 18U),
   TASK_BT_TX_BUF_CLEAR = (0x00000001UL << 19U),
-  TASK_BT_TURN_ON_AFTER_BOOT = (0x00000001UL << 20U)
-
-} TASK_FLAGS;
+  TASK_BT_TURN_ON_AFTER_BOOT = (0x00000001UL << 20U),
+#if defined(SHIMMER3R)
+  TASK_JUMP_TO_BOOT_LOADER = (0x00000001UL << 21U),
+#endif
+#if defined(SHIMMER3)
+  TASK_WRITE_RADIO_DETAILS = (0x00000001UL << 22U),
+#endif
+} TaskId_t;
 //return the task id of the current task
 
 void ShimTask_NORM_init(void);
 
 void ShimTask_NORM_manage(void);
 
-uint32_t ShimTask_NORM_getCurrent(void);
+TaskId_t ShimTask_NORM_popNext(void);
 
 //clear the task from the tasklist
-void ShimTask_NORM_clear(uint32_t task_id);
+void ShimTask_NORM_clear(TaskId_t task_id);
 
 //add the task to the tasklist
-uint8_t ShimTask_NORM_set(uint32_t task_id);
+uint8_t ShimTask_NORM_set(TaskId_t task_id);
 
 //return the whole tasklist
 uint32_t ShimTask_NORM_getList(void);
+
+#if TEST_TASK_MONITOR
+void ShimTask_executionStart(void);
+void ShimTask_executionEnd(void);
+uint32_t ShimTask_getExecStartTick(void);
+#endif //TEST_TASK_MONITOR
+uint32_t ShimTask_getExecutingTask(void);
 
 void ShimTask_setStartLoggingIfReady(void);
 void ShimTask_setStartStreamingIfReady(void);
@@ -125,5 +151,6 @@ void ShimTask_setStopSensing(void);
 void ShimTask_setStopLogging(void);
 void ShimTask_setStopStreaming(void);
 void ShimTask_setInitialiseBluetooth(void);
+void ShimTask_setDockOrUsbStateChange(void);
 
 #endif //S4_TASKLIST_H

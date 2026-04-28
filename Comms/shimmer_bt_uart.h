@@ -10,11 +10,10 @@
 
 #include <stdint.h>
 
+#include "CRC/shimmer_crc.h"
 #if defined(SHIMMER3)
-#include "../5xx_HAL/hal_CRC.h"
 #include "../RN4X/RN4678.h"
 #elif defined(SHIMMER3R)
-#include "hal_CRC.h"
 #include "shimmer_definitions.h"
 #include <shimmer_include.h>
 #endif
@@ -209,6 +208,8 @@
 #define ALT_MAG_SAMPLING_RATE_RESPONSE                0xB3
 #define GET_ALT_MAG_SAMPLING_RATE_COMMAND             0xB4
 #define DUMMY_COMMAND                                 0xB5
+#define RESET_BT_ERROR_COUNTS                         0xB6
+#define SET_FEATURE                                   0xB7
 
 #define SET_SD_SYNC_COMMAND                           0xE0
 #define SD_SYNC_RESPONSE                              0xE1
@@ -220,6 +221,12 @@
 #define BT_RX_COMMS_TIMEOUT_TICKS                     328U /* 32768*0.01s = 327.68  */
 
 #define DATA_RATE_TEST_PACKET_SIZE                    5U //1 header byte + uint32_t counter value
+
+#if defined(SHIMMER3)
+#define STATUS_BYTE_COUNT 1U
+#else
+#define STATUS_BYTE_COUNT 2U
+#endif
 
 enum
 {
@@ -242,6 +249,12 @@ enum
   PRESSURE_SENSOR_BMP390 = 2
 };
 
+enum
+{
+  FEATURE_NONE = 0,
+  FEATURE_RN4678_ERROR_LEDS = 1
+};
+
 typedef enum
 {
   BT_SETUP,
@@ -249,7 +262,6 @@ typedef enum
   SENSOR_DATA
 } btResponseType;
 
-#if defined(SHIMMER3)
 /* Order here needs to be maintained as it's saved to the EEPROM */
 enum BT_BAUD_RATE
 {
@@ -266,7 +278,18 @@ enum BT_BAUD_RATE
   BAUD_921600 = 10U, //Only supported in RN42
   BAUD_1000000 = 11U, //Only supported in RN4678 v1.23 (issues with v1.13.5 & v1.22)
   BAUD_2000000 = 12U, //Only supported on CYW20820
-  BAUD_NO_CHANGE_NEEDED = 0xFF,
+  BAUD_INVALID = 0xFF,
+};
+
+#if defined(SHIMMER3)
+enum
+{
+  BT_ERROR_NONE = (0x01UL << 0U),
+  BT_ERROR_RTS_LOCK = (0x01UL << 1U),
+  BT_ERROR_UNSOLICITED_REBOOT = (0x01UL << 2U),
+  BT_ERROR_DATA_RATE_TEST_BLOCKAGE = (0x01UL << 3U),
+  BT_ERROR_DISCONNECT_WHILE_STREAMING = (0x01UL << 4U),
+  BT_ERROR_COUNT = (0x01UL << 5U)
 };
 #endif
 
@@ -274,11 +297,11 @@ typedef struct
 {
   uint8_t data[BT_TX_BUF_SIZE];
   //tail points to the buffer index for the oldest byte that was added to it
-  uint16_t rdIdx;
+  volatile uint16_t rdIdx;
   //head points to the index of the next empty byte in the buffer
-  uint16_t wrIdx;
+  volatile uint16_t wrIdx;
 #if !defined(SHIMMER3)
-  uint16_t numBytesBeingRead;
+  volatile uint16_t numBytesBeingRead;
 #endif
 } RingFifoTx_t;
 
@@ -326,7 +349,7 @@ uint8_t *ShimBt_getBtArgsPtr(void);
 void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain);
 uint8_t ShimBt_isBtTxBufEmpty(void);
 void ShimBt_pushByteToBtTxBuf(uint8_t b);
-void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len);
+uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len);
 uint8_t ShimBt_popBytefromBtTxBuf(void);
 uint16_t ShimBt_getUsedSpaceInBtTxBuf(void);
 uint16_t ShimBt_getSpaceInBtTxBuf(void);
@@ -356,5 +379,8 @@ void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 __weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 uint8_t ShimBt_isBleCurrentlyEnabled(void);
 uint8_t ShimBt_isBtClassicCurrentlyEnabled(void);
+#if defined(SHIMMER3)
+uint8_t ShimBt_checkForBtDataRateTestBlockage(void);
+#endif
 
 #endif /* SHIMMER3_COMMON_SOURCE_BLUETOOTH_SD_SHIMMER_BT_COMMS_H_ */

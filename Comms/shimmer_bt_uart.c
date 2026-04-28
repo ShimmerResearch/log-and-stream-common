@@ -60,9 +60,11 @@ uint16_t infomemOffset, dcMemOffset, calibRamOffset;
 //ExG
 uint8_t exgLength, exgChip, exgStartAddr;
 
-uint8_t btDataRateTestState;
+volatile uint8_t btDataRateTestState;
 #if defined(SHIMMER3)
-uint32_t btDataRateTestCounter;
+volatile uint32_t btDataRateTestCounter;
+volatile uint32_t btDataRateTestCounterSaved;
+volatile uint8_t dataRateTestBlockageCounter;
 #else
 uint8_t dataRateTestTxPacket[] = { DATA_RATE_TEST_RESPONSE, 0, 0, 0, 0 };
 #endif
@@ -95,7 +97,7 @@ uint32_t btBaudRateToUse;
 #define RINGFIFO_COUNT(ringFifo, mask) \
   (mask & (ringFifo.wrIdx - ringFifo.rdIdx))
 
-volatile RingFifoTx_t gBtTxFifo;
+RingFifoTx_t gBtTxFifo;
 
 uint8_t bleCurrentlyEnabled = 1, btClassicCurrentlyEnabled = 1;
 
@@ -121,7 +123,7 @@ void ShimBt_btCommsProtocolInit(void)
   ShimBt_resetBtRxBuffs();
 
 #if defined(SHIMMER3)
-  RN4678_resetStatusString();
+  RN4678_driverInit();
 
   setBtRxFullResponsePtr(btRxBuffFullResponse);
 
@@ -405,6 +407,12 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           btVerRemainingChars = RN4678_VERSION_LEN_V1_23_0;
           btFwVerNew = RN4678_V1_23_0;
         }
+        /* RN4678_VERSION_RESPONSE_V1_24_0 */
+        else if (btRxBuffFullResponse[10U] == '2' && btRxBuffFullResponse[11U] == '4')
+        {
+          btVerRemainingChars = RN4678_VERSION_LEN_V1_24_0;
+          btFwVerNew = RN4678_V1_24_0;
+        }
       }
       else
       {
@@ -606,6 +614,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
           case GET_ALT_MAG_CALIBRATION_COMMAND:
           case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
+          case RESET_BT_ERROR_COUNTS:
             gAction = data;
             ShimTask_set(TASK_BT_PROCESS_CMD);
             setDmaWaitingForResponse(1U);
@@ -644,6 +653,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case SET_SAMPLING_RATE_COMMAND:
           case GET_DAUGHTER_CARD_ID_COMMAND:
           case SET_DAUGHTER_CARD_ID_COMMAND:
+          case SET_FEATURE:
             gAction = data;
             waitingForArgs = 2U;
             break;
@@ -1420,6 +1430,50 @@ void ShimBt_processCmd(void)
         }
         break;
       }
+      case RESET_BT_ERROR_COUNTS:
+      {
+#if defined(SHIMMER3)
+        if (ShimEeprom_isPresent())
+        {
+          ShimEeprom_resetBtErrorCounts();
+          ShimEeprom_writeSensorSettingsPage();
+        }
+        else
+        {
+          sendNack = 1;
+        }
+#else
+        sendNack = 1;
+#endif
+        break;
+      }
+      case SET_FEATURE:
+      {
+        if (args[0] == FEATURE_NONE)
+        {
+#if defined(SHIMMER3)
+          RN4678_setErrorLedsEnabled(0);
+#endif
+        }
+#if defined(SHIMMER3)
+        else if (args[0] == FEATURE_RN4678_ERROR_LEDS)
+        {
+          if (isBtDeviceRn4678())
+          {
+            RN4678_setErrorLedsEnabled(args[1]);
+          }
+          else
+          {
+            //ignore command if not supported
+          }
+        }
+#endif
+        else
+        {
+          sendNack = 1;
+        }
+        break;
+      }
       case ACK_COMMAND_PROCESSED:
       {
         if (shimmerStatus.btInSyncMode && ShimSdSync_isBtSdSyncRunning())
@@ -2123,7 +2177,7 @@ void ShimBt_sendRsp(void)
     }
     getCmdWaitingResponse = 0;
 
-    uint8_t crcMode = ShimBt_getCrcMode();
+    COMMS_CRC_MODE crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
     {
       calculateCrcAndInsert(crcMode, resPacket, packet_length);
@@ -2156,18 +2210,14 @@ uint8_t ShimBt_getExpectedRspForGetCmd(uint8_t getCmd)
 
 void ShimBt_setCrcMode(COMMS_CRC_MODE btCrcModeNew)
 {
-  btCrcMode = btCrcModeNew;
-#if defined(SHIMMER3R)
-  //TODO turn on/off peripheral when needed to save power
-  //if (btCrcMode == CRC_OFF)
-  //{
-  //  HAL_CRC_DeInit(hcrc);
-  //}
-  //else
-  //{
-  //  MX_CRC_Init();
-  //}
-#endif
+  if (btCrcModeNew < CRC_MAX_SUPPORTED_BYTES)
+  {
+    btCrcMode = btCrcModeNew;
+  }
+  else
+  {
+    btCrcMode = CRC_OFF; //safe fall-back
+  }
 }
 
 COMMS_CRC_MODE ShimBt_getCrcMode(void)
@@ -2236,7 +2286,9 @@ void ShimBt_instreamStatusRespSend(void)
   if (shimmerStatus.btConnected)
   {
     uint8_t i = 0;
-    uint8_t selfcmd[6]; /* max is 6 bytes */
+    COMMS_CRC_MODE crcModeAndLen = ShimBt_getCrcMode();
+    /* max is 7 bytes [header bytes (2 or 3), STATUS_BYTE_COUNT (1 or 2), CRC bytes (0 or 1 or 2)] */
+    uint8_t selfcmd[3 + STATUS_BYTE_COUNT + CRC_MAX_SUPPORTED_BYTES];
 
     if (useAckPrefixForInstreamResponses)
     {
@@ -2246,11 +2298,10 @@ void ShimBt_instreamStatusRespSend(void)
     selfcmd[i++] = STATUS_RESPONSE;
     i += ShimBt_assembleStatusBytes(&selfcmd[i]);
 
-    uint8_t crcMode = ShimBt_getCrcMode();
-    if (crcMode != CRC_OFF)
+    if (crcModeAndLen != CRC_OFF)
     {
-      calculateCrcAndInsert(crcMode, &selfcmd[0], i);
-      i += crcMode; //Ordinal of enum is how many bytes are used
+      calculateCrcAndInsert(crcModeAndLen, &selfcmd[0], i);
+      i += crcModeAndLen;
     }
 
     ShimBt_writeToTxBufAndSend(selfcmd, i, SHIMMER_CMD);
@@ -2269,6 +2320,11 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   if (isConnected)
   { //BT is connected
     ShimBt_resetBtRxVariablesOnConnect();
+#if defined(SHIMMER3)
+    //Reset BT errors upon new connections
+    resetLatestBtError();
+    RN4678_setErrorLedsEnabled(0);
+#endif
 
     if (shimmerStatus.sdSyncEnabled)
     {
@@ -2307,6 +2363,12 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   }
   else
   { //BT is disconnected
+#if defined(SHIMMER3)
+    if (shimmerStatus.btStreaming || ShimBt_getDataRateTestState())
+    {
+      saveBtError(BT_ERROR_DISCONNECT_WHILE_STREAMING);
+    }
+#endif
     shimmerStatus.btstreamReady = 0;
     ShimTask_setStopStreaming();
 
@@ -2317,6 +2379,10 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
     ShimBt_setCrcMode(CRC_OFF);
     /* Revert to default state if changed */
     ShimBt_resetBtResponseVars();
+
+#if defined(SHIMMER3)
+    setRn4678ConnectionState(RN4678_DISCONNECTED);
+#endif
 
     /* Check BT module configuration after disconnection in case
      * sensor configuration (i.e., BT on vs. BT off vs. SD Sync) was changed
@@ -2377,35 +2443,51 @@ void ShimBt_pushByteToBtTxBuf(uint8_t c)
   }
 }
 
-void ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
+uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
 {
-  uint8_t i;
-  for (i = 0; i < len; i++)
+  uint16_t wr = gBtTxFifo.wrIdx & BT_TX_BUF_MASK;
+
+  /* Note: There must always be a space of >=1 byte within the ring buffer. */
+  if (ShimBt_getSpaceInBtTxBuf() <= len)
   {
-    ShimBt_pushByteToBtTxBuf(*(buf + i));
+    return 1; //FAIL
   }
 
-  ///* if enough space at after head, copy it in */
-  //uint16_t spaceAfterHead = BT_TX_BUF_SIZE - (gBtTxFifo.wrIdx &
-  //BT_TX_BUF_MASK); if (spaceAfterHead > len)
-  //{
-  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-  //  buf, len); gBtTxFifo.wrIdx += len;
-  //}
-  //else
-  //{
-  //  /* Fill from head to end of buf */
-  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-  //  buf, spaceAfterHead); gBtTxFifo.wrIdx += spaceAfterHead;
-  //
-  //  /* Fill from start of buf. We already checked above whether there is
-  //   * enough space in the buf (getSpaceInBtTxBuf()) so we don't need to
-  //   * worry about the tail position. */
-  //  uint16_t remaining = len - spaceAfterHead;
-  //  ShimUtil_memcpy_v(&gBtTxFifo.data[(gBtTxFifo.wrIdx & BT_TX_BUF_MASK)],
-  //      buf + spaceAfterHead, remaining);
-  //  gBtTxFifo.wrIdx += remaining;
-  //}
+  uint16_t spaceAfterHead = BT_TX_BUF_SIZE - wr;
+
+  if (spaceAfterHead >= len)
+  {
+    /* Linear copy is enough */
+    memcpy(&gBtTxFifo.data[wr], buf, len);
+  }
+  else
+  {
+    /* Copy to end of buffer */
+    memcpy(&gBtTxFifo.data[wr], buf, spaceAfterHead);
+
+    /* Copy remainder at start */
+    memcpy(&gBtTxFifo.data[0], buf + spaceAfterHead, len - spaceAfterHead);
+  }
+
+  /* ---- Atomic update of wrIdx (MSP430 + STM32 safe) ---- */
+#if defined(__MSP430__)
+  uint16_t gie = __get_interrupt_state();
+  __disable_interrupt();
+  gBtTxFifo.wrIdx = (gBtTxFifo.wrIdx + len);
+  __set_interrupt_state(gie);
+
+#elif defined(__arm__) || defined(__ARM_ARCH) //STM32 GCC/Clang/ARMCC
+  uint32_t primask = __get_PRIMASK();
+  __disable_irq();
+  gBtTxFifo.wrIdx = gBtTxFifo.wrIdx + len;
+  __set_PRIMASK(primask);
+
+#else
+#error "Need atomic section implementation for this MCU"
+#endif
+  /* ------------------------------------------------------ */
+
+  return 0; //SUCCESS
 }
 
 uint8_t ShimBt_popBytefromBtTxBuf(void)
@@ -2534,6 +2616,8 @@ void ShimBt_setDataRateTestState(uint8_t state)
   btDataRateTestState = state;
 #if defined(SHIMMER3)
   btDataRateTestCounter = 0;
+  btDataRateTestCounterSaved = 0;
+  dataRateTestBlockageCounter = 0;
 #else
   *((uint32_t *) &dataRateTestTxPacket[1]) = 0;
 #endif
@@ -2581,7 +2665,6 @@ uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType res
 
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)
 {
-  uint8_t statusByteCnt = 1;
   *(bufPtr) = (shimmerStatus.toggleLedRedCmd << 7) | (shimmerStatus.sdBadFile << 6)
       | (shimmerStatus.sdInserted << 5) | (shimmerStatus.btStreaming << 4)
       | (shimmerStatus.sdLogging << 3) | (RTC_isRwcTimeSet() << 2)
@@ -2589,10 +2672,9 @@ uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)
 
 #if defined(SHIMMER3R)
   *(bufPtr + 1) = shimmerStatus.usbPluggedIn;
-  statusByteCnt++;
 #endif /* SHIMMER3R */
 
-  return statusByteCnt;
+  return STATUS_BYTE_COUNT;
 }
 
 uint8_t ShimBt_isCmdAllowedWhileSdSyncing(uint8_t command)
@@ -2706,3 +2788,46 @@ uint8_t ShimBt_isBtClassicCurrentlyEnabled(void)
 {
   return btClassicCurrentlyEnabled;
 }
+
+#if defined(SHIMMER3)
+/**
+ * @brief Checks for blockage during Bluetooth data rate testing.
+ *
+ * This function monitors the progress of the Bluetooth data rate test by
+ * comparing the current value of btDataRateTestCounter to its value in the
+ * previous call. If the counter does not increment over consecutive calls,
+ * it increments dataRateTestBlockageCounter. Each call is assumed to occur
+ * at 100ms intervals. If the counter has not changed for more than 2 seconds
+ * (i.e., 20 consecutive calls), the function returns 1 to indicate a blockage.
+ * Otherwise, it returns 0.
+ *
+ * The function relies on volatile variables for state tracking and should be
+ * called regularly (every 100ms) during the data rate test.
+ *
+ * @return 1 if a blockage is detected (counter unchanged for >2s), 0 otherwise.
+ */
+uint8_t ShimBt_checkForBtDataRateTestBlockage(void)
+{
+  uint32_t btDataRateTestCounterLcl = btDataRateTestCounter;
+  if (btDataRateTestState && shimmerStatus.btConnected)
+  {
+    if (btDataRateTestCounterLcl == btDataRateTestCounterSaved)
+    {
+      dataRateTestBlockageCounter++;
+    }
+    else
+    {
+      dataRateTestBlockageCounter = 0;
+    }
+
+    /* Each count is 100ms. Checking for a blockage longer than 2s */
+    if (dataRateTestBlockageCounter > 20)
+    {
+      return 1;
+    }
+
+    btDataRateTestCounterSaved = btDataRateTestCounterLcl;
+  }
+  return 0;
+}
+#endif

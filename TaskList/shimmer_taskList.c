@@ -41,39 +41,47 @@
  */
 
 #include "shimmer_taskList.h"
-
+#include "hal_FactoryTest.h"
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
 
-#include "hal_FactoryTest.h"
+#if defined(SHIMMER3R)
+#include "gpio.h"
+#include "ux_device_cdc_acm.h"
+#endif
 
-volatile uint32_t taskList = 0;
-uint32_t taskCurrent;
+static volatile uint32_t taskList = 0;
+static volatile TaskId_t executingTask = TASK_NONE;
+
+#if TEST_TASK_MONITOR
+/* new state for task watchdog */
+static volatile uint32_t execStartTick = 0;
+#endif //TEST_TASK_MONITOR
 
 void ShimTask_NORM_init(void)
 {
   taskList = 0;
+  executingTask = TASK_NONE;
+#if TEST_TASK_MONITOR
+  execStartTick = 0;
+#endif
 }
 
 void ShimTask_NORM_manage(void)
 {
-  taskCurrent = ShimTask_getCurrent();
-
-#if USE_USBX
-  USBX_Device_Process();
-#endif
-
-#if defined(SHIMMER3)
-  if (!taskCurrent)
-#elif defined(SHIMMER3R)
-  if (!taskCurrent || shimmerStatus.pendingRebootForDfu)
-#endif
+  executingTask = ShimTask_popNext();
+  if (executingTask == TASK_NONE)
   {
-    sleepWhenNoTask();
+    platform_sleepWhenNoTask();
   }
   else
   {
-    switch (taskCurrent)
+#if TEST_TASK_MONITOR
+    /* mark start of task execution for watchdog */
+    ShimTask_executionStart();
+#endif //TEST_TASK_MONITOR
+
+    switch (executingTask)
     {
       case TASK_SETUP_DOCK:
         LogAndStream_checkSetupDockUnDock();
@@ -87,6 +95,11 @@ void ShimTask_NORM_manage(void)
       case TASK_BT_PROCESS_CMD:
         ShimBt_processCmd();
         break;
+#if defined(SHIMMER3R)
+      case TASK_USB_PROCESS_CMD:
+        USBX_CDC_ACM_Receive_To_RxBuf();
+        break;
+#endif
       case TASK_BT_RESPOND:
         ShimBt_sendRsp();
         break;
@@ -98,8 +111,8 @@ void ShimTask_NORM_manage(void)
         /* SD Sync - Node */
         ShimSdSync_nodeR10();
         break;
-      case TASK_STREAMDATA:
-        ShimSens_streamData();
+      case TASK_GATHER_DATA:
+        ShimSens_gatherData();
         break;
 #if defined(SHIMMER3)
       case TASK_SAMPLE_MPU9150_MAG:
@@ -152,12 +165,9 @@ void ShimTask_NORM_manage(void)
       case TASK_FACTORY_TEST:
         ShimFactoryTest_run();
         break;
-#if defined(SHIMMER3R) || defined(SHIMMER4_SDK)
-      case TASK_USB_SETUP:
-        vbusPinStateCheck();
-        LogAndStream_setupDockUndock();
+      case TASK_DOCK_OR_USB_STATE_CHANGE:
+        LogAndStream_dockOrUsbStateUpdate();
         break;
-#endif
       case TASK_BT_TX_BUF_CLEAR:
         ShimBt_clearBtTxBuf(1U);
         break;
@@ -166,21 +176,43 @@ void ShimTask_NORM_manage(void)
         InitialiseBtAfterBoot();
         break;
 
+#if defined(SHIMMER3R)
+      case TASK_JUMP_TO_BOOT_LOADER:
+        JumpToBootloader();
+        break;
+#endif
+
+#if defined(SHIMMER3)
+      case TASK_WRITE_RADIO_DETAILS:
+        if (ShimEeprom_isPresent())
+        {
+          ShimEeprom_writeSensorSettingsPage();
+        }
+        break;
+#endif
+
       default:
         break;
     }
+
+#if TEST_TASK_MONITOR
+    /* mark end of task execution */
+    ShimTask_executionEnd();
+#endif //TEST_TASK_MONITOR
+
+    executingTask = TASK_NONE;
   }
 }
 
-uint32_t ShimTask_NORM_getCurrent()
+TaskId_t ShimTask_NORM_popNext(void)
 {
   uint8_t i;
-  uint32_t task;
+  TaskId_t task;
   if (taskList)
   {
     for (i = 0; i < TASK_SIZE; i++)
     {
-      task = 0x00000001UL << i;
+      task = (TaskId_t) (0x00000001UL << i);
       if (taskList & task)
       {
         ShimTask_clear(task);
@@ -188,24 +220,34 @@ uint32_t ShimTask_NORM_getCurrent()
       }
     }
   }
-  return 0;
+  return TASK_NONE;
 }
 
-void ShimTask_NORM_clear(uint32_t task_id)
+void ShimTask_NORM_clear(TaskId_t task_id)
 {
   taskList &= ~task_id;
 }
 
-uint8_t ShimTask_NORM_set(uint32_t task_id)
+uint8_t ShimTask_NORM_set(TaskId_t task_id)
 {
   uint8_t is_sleeping = 0;
-  if (!taskList && !taskCurrent)
+  if (!taskList && !executingTask)
   {
     is_sleeping = 1;
   }
   taskList |= task_id;
 #if defined(SHIMMER3R)
-  HAL_PWR_DisableSleepOnExit();
+  /* if called from an ISR, force main context to run:
+     - Pend PendSV to wake the scheduler / main loop
+     - optionally disable Sleep-on-Exit so the main executes after IRQ return */
+  if (__get_IPSR() != 0)
+  {
+    /* If your code uses HAL_PWR_EnableSleepOnExit() elsewhere, disable it so main runs once */
+    HAL_PWR_DisableSleepOnExit();
+
+    /* Pend PendSV to ensure main context runs to handle the task */
+    SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
+  }
 #endif
   return is_sleeping;
 }
@@ -213,6 +255,28 @@ uint8_t ShimTask_NORM_set(uint32_t task_id)
 uint32_t ShimTask_NORM_getList()
 {
   return taskList;
+}
+
+#if TEST_TASK_MONITOR
+void ShimTask_executionStart(void)
+{
+  execStartTick = platform_getTick();
+}
+
+void ShimTask_executionEnd(void)
+{
+  execStartTick = 0;
+}
+
+uint32_t ShimTask_getExecStartTick(void)
+{
+  return execStartTick;
+}
+#endif //TEST_TASK_MONITOR
+
+uint32_t ShimTask_getExecutingTask(void)
+{
+  return executingTask;
 }
 
 void ShimTask_setStartLoggingIfReady(void)
@@ -278,4 +342,12 @@ void ShimTask_setStopStreaming(void)
 void ShimTask_setInitialiseBluetooth(void)
 {
   ShimTask_set(TASK_BT_TURN_ON_AFTER_BOOT);
+}
+
+void ShimTask_setDockOrUsbStateChange(void)
+{
+  if (!(ShimTask_getList() & TASK_DOCK_OR_USB_STATE_CHANGE))
+  {
+    ShimTask_set(TASK_DOCK_OR_USB_STATE_CHANGE);
+  }
 }

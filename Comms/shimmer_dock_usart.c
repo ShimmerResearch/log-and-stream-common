@@ -12,7 +12,6 @@
 
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
-
 #include "shimmer_definitions.h"
 #include "version.h"
 
@@ -24,11 +23,9 @@
 #include "../5xx_HAL/hal_UCA0.h"
 #include "../5xx_HAL/hal_UartA0.h"
 #include "../CAT24C16/CAT24C16.h"
-#else
+#elif defined(SHIMMER3R)
 #include "stm32u5xx_hal_uart.h"
-#endif
-#if defined(SHIMMER3R)
-#include "usbd_cdc_acm_if.h"
+#include "ux_device_cdc_acm.h"
 #endif
 #define EN_CALIB_DUMP_RSP 0
 
@@ -148,6 +145,9 @@ uint8_t ShimDock_rxCallback(uint8_t data)
         uartSteps = 0;
         uartArgSize = 0;
         ShimTask_set(TASK_DOCK_PROCESS_CMD);
+#if defined(SHIMMER3R)
+        USBX_CDC_ACM_RxBuf_Reset();
+#endif
         uartTimeStart = 0;
         return 1;
       }
@@ -416,12 +416,11 @@ void ShimDock_processCmd(void)
 #endif
 #if defined(SHIMMER3R)
             case UART_PROP_ENTER_BOOTLOADER:
-              shimmerStatus.pendingRebootForDfu = 1;
+              /* Cancel any pending reboot-to-bootloader operation */
+              shimmerStatus.bslRebootPending = dockRxBuf[UART_RXBUF_DATA] == 0 ? 0 : 1;
               RTC_setAlarmRebootToBootloader(dockRxBuf[UART_RXBUF_DATA]);
 
               uartSendRspAck = 1;
-              /* Exception to the general flow to ensure the response is sent before all other operations are locked out */
-              ShimDock_sendRsp();
               break;
 #endif
             default:
@@ -674,7 +673,7 @@ void ShimDock_sendRsp(void)
     uart_resp_len += btVerStrLen;
   }
 
-  uartRespCrc = CRC_data(uartRespBuf, uart_resp_len);
+  uartRespCrc = (uint16_t) platform_crcData(uartRespBuf, uart_resp_len);
   *(uartRespBuf + uart_resp_len++) = uartRespCrc & 0xff;
   *(uartRespBuf + uart_resp_len++) = (uartRespCrc & 0xff00) >> 8;
   if (cr)
@@ -682,15 +681,17 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = 0x0d;
     *(uartRespBuf + uart_resp_len++) = 0x0a;
   }
+
 #if defined(SHIMMER3R)
-  if (shimmerStatus.usbPluggedIn)
+  if (shimmerStatus.usbPluggedIn && platform_isUsbUartInitialised())
   {
     /* respond to commands via usb */
-    CDC_Transmit(CDC_CH_DOCK_COMMS, uartRespBuf, uart_resp_len);
+    USBX_CDC_ACM_Transmit(uartRespBuf, uart_resp_len);
   }
-  else
+  else if (shimmerStatus.docked && platform_isDockUartInitialised())
+#else
+  if (shimmerStatus.docked && platform_isDockUartInitialised())
 #endif
-      if (shimmerStatus.docked)
   {
     /* respond to commands via dock usart */
     DockUart_writeBlocking(uartRespBuf, uart_resp_len);
@@ -704,7 +705,7 @@ uint8_t ShimDock_uartCheckCrc(uint8_t len)
     return 0;
   }
   uint16_t uart_rx_crc, uart_calc_crc;
-  uart_calc_crc = CRC_data(dockRxBuf, len);
+  uart_calc_crc = (uint16_t) platform_crcData(dockRxBuf, len);
   uart_rx_crc = (uint16_t) dockRxBuf[len];
   uart_rx_crc += ((uint16_t) dockRxBuf[(uint8_t) (len + 1)]) << 8;
   return (uart_rx_crc == uart_calc_crc);
