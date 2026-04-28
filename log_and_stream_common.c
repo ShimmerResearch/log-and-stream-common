@@ -7,8 +7,8 @@
 
 #include "log_and_stream_common.h"
 
-#include <stdio.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "Platform/platform_api.h"
