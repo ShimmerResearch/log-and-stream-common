@@ -22,7 +22,10 @@
 #define __weak __attribute__((weak))
 #endif /* __weak */
 
-#define BT_TX_BUF_SIZE                              256U /* serial buffer in bytes (power 2)  */
+/* serial buffer in bytes (power 2).
+ * Note, the CYW20820 PUART features a 256 byte FIFO on both RX/TX which is
+ * normally ready byte-by-byte. */
+#define BT_TX_BUF_SIZE                              256U
 #define BT_TX_BUF_MASK                              (BT_TX_BUF_SIZE - 1UL)
 
 /* maximum number of arguments for any command sent (daughter card mem write) */
@@ -352,6 +355,7 @@ uint16_t ShimBt_getUsedSpaceInBtTxBuf(void);
 uint16_t ShimBt_getSpaceInBtTxBuf(void);
 
 void ShimBt_TxCpltCallback(void);
+void ShimBt_triggerNextTransfer(void);
 void ShimBt_sendNextCharIfNotInProgress(void);
 void ShimBt_sendNextChar(void);
 
