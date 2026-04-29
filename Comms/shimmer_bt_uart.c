@@ -175,7 +175,7 @@ void ShimBt_stopCommon(uint8_t isCalledFromMain)
   shimmerStatus.btConnected = 0;
   shimmerStatus.btIsInitialised = 0;
   shimmerStatus.btInSyncMode = 0;
-#if TRANSPARANT_MODE
+#if defined(SHIMMER3R) && defined(TRANSPARANT_MODE) && TRANSPARANT_MODE
   shimmerStatus.btFirstConnectionEstablished = 0;
 #endif
 }
