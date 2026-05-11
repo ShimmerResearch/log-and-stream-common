@@ -442,7 +442,7 @@ void ShimLeds_blinkSetLwrBtnPress(void)
   Board_ledOff(LED_LWR_RED | LED_LWR_YELLOW);
   Board_ledOn(LED_LWR_GREEN);
 #else
-  Board_ledLwrSetColourRgb(LED_PWM_OFF, LED_PWM_ON, LED_PWM_OFF); //Green
+  Board_ledLwrSetColourRgb(LED_PWM_OFF, LED_PWM_ON, LED_PWM_OFF); //green
 #endif
 }
 
