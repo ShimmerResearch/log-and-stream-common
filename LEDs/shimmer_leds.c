@@ -439,9 +439,10 @@ void ShimLeds_blinkSetLwrState(void)
 void ShimLeds_blinkSetLwrBtnPress(void)
 {
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
+  Board_ledOff(LED_LWR_RED | LED_LWR_YELLOW);
   Board_ledOn(LED_LWR_GREEN);
 #else
-  Board_ledLwrSetColourRgb(-1, LED_PWM_ON, -1);
+  Board_ledLwrSetColourRgb(LED_PWM_OFF, LED_PWM_ON, LED_PWM_OFF); //green
 #endif
 }
 
