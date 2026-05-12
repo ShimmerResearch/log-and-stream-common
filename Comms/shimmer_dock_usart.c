@@ -29,9 +29,9 @@
 #endif
 #define EN_CALIB_DUMP_RSP 0
 
-uint8_t uartSteps, uartArgSize, uartArg2Wait, uartCrc2Wait, uartAction;
-uint8_t dockRxBuf[UART_DATA_LEN_MAX];
-uint8_t uartSendRspMac, uartSendRspVer, uartSendRspBat,
+volatile uint8_t uartSteps, uartArgSize, uartArg2Wait, uartCrc2Wait, uartAction;
+volatile uint8_t dockRxBuf[UART_DATA_LEN_MAX];
+volatile uint8_t uartSendRspMac, uartSendRspVer, uartSendRspBat,
     uartSendRspRtcConfigTime, uartSendRspCurrentTime, uartSendRspGdi,
     uartSendRspGdm, uartSendRspGim, uartSendRspBtVer, uartSendRspAck,
     uartSendRspBadCmd, uartSendRspBadArg, uartSendRspBadCrc;
@@ -42,7 +42,7 @@ uint8_t uartRespBuf[UART_RSP_PACKET_SIZE];
 
 uint8_t uartDcMemLength, uartInfoMemLength;
 uint16_t uartDcMemOffset, uartInfoMemOffset;
-uint64_t uartTimeStart;
+volatile uint64_t uartTimeStart;
 
 void ShimDock_resetVariables(void)
 {
