@@ -68,7 +68,7 @@ uint32_t temp_cnt1, temp_cnt2, temp_cnt3, temp_cnt4;
 #endif
 //I2CBatteryTypeDef *sensing_i2c_batt;
 
-uint32_t maxExpLenSecs, currentExpLenSecs;
+volatile uint32_t maxExpLenSecs, currentExpLenSecs;
 
 void ShimSens_init(void)
 {

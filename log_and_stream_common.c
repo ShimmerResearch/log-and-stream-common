@@ -15,7 +15,7 @@
 #include "hal_Board.h"
 #include "log_and_stream_includes.h"
 
-boot_stage_t bootStage;
+volatile boot_stage_t bootStage;
 
 uint8_t sdInfoSyncDelayed = 0;
 
