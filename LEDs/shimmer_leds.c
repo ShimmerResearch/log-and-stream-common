@@ -16,7 +16,8 @@
 #endif
 
 uint16_t blinkCnt20, blinkCnt50;
-uint8_t lastLedToggleUpr, lastLedToggleCnt, lastLedToggleLwr, rwcErrorFlash;
+uint8_t lastLedToggleUpr, lastLedToggleCnt, lastLedToggleLwr;
+volatile uint8_t rwcErrorFlash;
 
 static int bootLedIndex = 0;
 static int bootLedDirection = 1; //1: forward, -1: backward
