@@ -502,7 +502,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 #if defined(SHIMMER3)
         else if (gAction == RN4678_STATUS_STRING_SEPARATOR)
         {
-          return RN4678_parseStatusString(&waitingForArgs, btRxBuffPtr);
+          return RN4678_parseStatusString((uint8_t *) &waitingForArgs, btRxBuffPtr);
         }
 #endif
 
