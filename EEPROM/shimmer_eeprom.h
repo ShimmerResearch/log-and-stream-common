@@ -76,8 +76,8 @@ typedef union
     //Byte index 2
     uint8_t bleEnabled       : 1;
     uint8_t btClassicEnabled : 1;
-    /* USB Speed. 0 = HS, 1 = FS (only applicable for Shimmer3R) */
-    uint8_t usbFullSpeed   : 1;
+    /* USB Speed. 1 = HS, 0 = FS (only applicable for Shimmer3R) */
+    uint8_t usbHighSpeed   : 1;
     uint8_t unusedIdx3Bit3 : 1;
     uint8_t unusedIdx3Bit4 : 1;
     uint8_t unusedIdx3Bit5 : 1;
