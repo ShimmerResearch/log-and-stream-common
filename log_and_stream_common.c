@@ -276,12 +276,11 @@ void LogAndStream_dockOrUsbStateUpdate(void)
   uint8_t usbChanged = (prevUsb != shimmerStatus.usbPluggedIn);
 #endif
 
-  if ((dockChanged
+  if (dockChanged
 #if defined(SHIMMER3R)
-          || usbChanged
+      || usbChanged
 #endif
-          || shimmerStatus.booting)
-      && LogAndStream_allowProcessDockChange())
+      || shimmerStatus.booting)
   {
     LogAndStream_dockedStateChange();
   }
@@ -376,8 +375,11 @@ static void LogAndStream_assignSdToUsb(void)
   /* Route SD to MCU so USBX MSC can access it */
   Board_sd2Mcu();
 
-  /* Bring up USB device only if SD card initialised successfully */
-  if (shimmerStatus.sdPeripheralInit)
+  /* Bring up USB device only if SD card initialised successfully and not
+   * currently streaming over BT. If BT streaming is active, USB init is
+   * deferred; it will be restored by ShimSens_stopSensing(1) when streaming
+   * ends. */
+  if (shimmerStatus.sdPeripheralInit && LogAndStream_allowDockComms())
   {
     USB_init();
   }
@@ -408,7 +410,7 @@ void LogAndStream_assignSdToDock(void)
   {
     Board_sd2Pc();
   }
-  if (LogAndStream_allowProcessDockChange())
+  if (LogAndStream_allowDockComms())
   {
     DockUart_init();
   }
@@ -618,8 +620,12 @@ void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
   snprintf(outBuf, outBufLen, "Shimmer %s", suffix);
 }
 
-bool LogAndStream_allowProcessDockChange(void)
+bool LogAndStream_allowDockComms(void)
 {
-  /* Don't allow dock change processing if we're in the middle of sensing */
-  return !shimmerStatus.sensing;
+  /* Don't allow dock UART/USB init if we're actively streaming over BT.
+   * SD routing to the dock/host and the dock state-change sequence always
+   * proceed; only the communication interfaces (DockUart, USB-CDC/MSC) are
+   * deferred and will be restored by ShimSens_stopSensing(1) when BT
+   * streaming ends. SD-only logging does not block dock change processing. */
+  return !shimmerStatus.btStreaming;
 }
