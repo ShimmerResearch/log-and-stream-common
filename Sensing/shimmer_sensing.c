@@ -123,8 +123,8 @@ void ShimSens_configureChannels(void)
  */
 uint8_t ShimSens_checkStartLoggingConditions(void)
 {
-  return shimmerStatus.sdInserted && !shimmerStatus.sdBadFile
-      && shimmerStatus.sdlogReady && !shimmerStatus.sdLogging;
+  return shimmerStatus.sdInserted && !shimmerStatus.sdBadFile && shimmerStatus.sdlogReady
+      && !shimmerStatus.sdLogging && !LogAndStream_isDockedOrUsbIn();
 }
 
 /* Check if the conditions are met to start streaming to BT.
