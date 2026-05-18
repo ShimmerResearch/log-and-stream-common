@@ -278,9 +278,9 @@ void LogAndStream_dockOrUsbStateUpdate(void)
 
   if (dockChanged
 #if defined(SHIMMER3R)
-          || usbChanged
+      || usbChanged
 #endif
-          || shimmerStatus.booting)
+      || shimmerStatus.booting)
   {
     LogAndStream_dockedStateChange();
   }
