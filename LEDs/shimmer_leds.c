@@ -16,7 +16,8 @@
 #endif
 
 uint16_t blinkCnt20, blinkCnt50;
-uint8_t lastLedToggleUpr, lastLedToggleCnt, lastLedToggleLwr, rwcErrorFlash;
+uint8_t lastLedToggleUpr, lastLedToggleCnt, lastLedToggleLwr;
+volatile uint8_t rwcErrorFlash;
 
 static int bootLedIndex = 0;
 static int bootLedDirection = 1; //1: forward, -1: backward
@@ -439,9 +440,10 @@ void ShimLeds_blinkSetLwrState(void)
 void ShimLeds_blinkSetLwrBtnPress(void)
 {
 #if defined(SHIMMER3) || defined(SHIMMER4_SDK)
+  Board_ledOff(LED_LWR_RED | LED_LWR_YELLOW);
   Board_ledOn(LED_LWR_GREEN);
 #else
-  Board_ledLwrSetColourRgb(-1, LED_PWM_ON, -1);
+  Board_ledLwrSetColourRgb(LED_PWM_OFF, LED_PWM_ON, LED_PWM_OFF); //green
 #endif
 }
 

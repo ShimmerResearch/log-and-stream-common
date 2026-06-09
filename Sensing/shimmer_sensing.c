@@ -68,7 +68,7 @@ uint32_t temp_cnt1, temp_cnt2, temp_cnt3, temp_cnt4;
 #endif
 //I2CBatteryTypeDef *sensing_i2c_batt;
 
-uint32_t maxExpLenSecs, currentExpLenSecs;
+volatile uint32_t maxExpLenSecs, currentExpLenSecs;
 
 void ShimSens_init(void)
 {
@@ -123,8 +123,8 @@ void ShimSens_configureChannels(void)
  */
 uint8_t ShimSens_checkStartLoggingConditions(void)
 {
-  return shimmerStatus.sdInserted && !shimmerStatus.sdBadFile
-      && shimmerStatus.sdlogReady && !shimmerStatus.sdLogging;
+  return shimmerStatus.sdInserted && !shimmerStatus.sdBadFile && shimmerStatus.sdlogReady
+      && !shimmerStatus.sdLogging && !LogAndStream_isDockedOrUsbIn();
 }
 
 /* Check if the conditions are met to start streaming to BT.

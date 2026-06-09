@@ -29,9 +29,9 @@
 #endif
 #define EN_CALIB_DUMP_RSP 0
 
-uint8_t uartSteps, uartArgSize, uartArg2Wait, uartCrc2Wait, uartAction;
-uint8_t dockRxBuf[UART_DATA_LEN_MAX];
-uint8_t uartSendRspMac, uartSendRspVer, uartSendRspBat,
+volatile uint8_t uartSteps, uartArgSize, uartArg2Wait, uartCrc2Wait, uartAction;
+volatile uint8_t dockRxBuf[UART_DATA_LEN_MAX];
+volatile uint8_t uartSendRspMac, uartSendRspVer, uartSendRspBat,
     uartSendRspRtcConfigTime, uartSendRspCurrentTime, uartSendRspGdi,
     uartSendRspGdm, uartSendRspGim, uartSendRspBtVer, uartSendRspAck,
     uartSendRspBadCmd, uartSendRspBadArg, uartSendRspBadCrc;
@@ -42,7 +42,7 @@ uint8_t uartRespBuf[UART_RSP_PACKET_SIZE];
 
 uint8_t uartDcMemLength, uartInfoMemLength;
 uint16_t uartDcMemOffset, uartInfoMemOffset;
-uint64_t uartTimeStart;
+volatile uint64_t uartTimeStart;
 
 void ShimDock_resetVariables(void)
 {
@@ -353,7 +353,7 @@ void ShimDock_processCmd(void)
             case UART_PROP_RWC_CFG_TIME:
               if (dockRxBuf[UART_RXBUF_LEN] == 10)
               {
-                RTC_setTimeFromTicksPtr(dockRxBuf + UART_RXBUF_DATA);
+                RTC_setTimeFromTicksPtr((uint8_t *) (dockRxBuf + UART_RXBUF_DATA));
                 ShimRtc_rwcErrorCheck();
 
                 ShimConfig_getStoredConfig()->rtcSetByBt = 0;
@@ -377,7 +377,7 @@ void ShimDock_processCmd(void)
                   && (uartInfoMemOffset <= (STOREDCONFIG_SIZE - 1))
                   && (uartInfoMemLength + uartInfoMemOffset <= STOREDCONFIG_SIZE))
               {
-                ShimConfig_storedConfigSet(dockRxBuf + UART_RXBUF_DATA + 3,
+                ShimConfig_storedConfigSet((uint8_t *) (dockRxBuf + UART_RXBUF_DATA + 3),
                     uartInfoMemOffset, uartInfoMemLength);
 
                 ShimConfig_checkAndCorrectConfig();
@@ -439,10 +439,10 @@ void ShimDock_processCmd(void)
               {
                 //Write (up to) 16 bytes to eeprom
                 eepromWrite(uartDcMemOffset, (uint16_t) uartDcMemLength,
-                    dockRxBuf + UART_RXBUF_DATA + 2U);
+                    (uint8_t *) (dockRxBuf + UART_RXBUF_DATA + 2U));
                 /* Copy new bytes to active daughter card byte array so it can be read back immediately and verified */
                 ShimBrd_setDaugherCardIdMemory((uint8_t) uartDcMemOffset,
-                    dockRxBuf + UART_RXBUF_DATA + 2, uartDcMemLength);
+                    (uint8_t *) (dockRxBuf + UART_RXBUF_DATA + 2), uartDcMemLength);
                 uartSendRspAck = 1;
               }
               else
@@ -455,8 +455,8 @@ void ShimDock_processCmd(void)
               uartDcMemOffset = (uint16_t) dockRxBuf[UART_RXBUF_DATA + 1]
                   + (((uint16_t) dockRxBuf[UART_RXBUF_DATA + 2]) << 8);
 
-              if (ShimEeprom_writeDaughterCardMem(uartDcMemOffset,
-                      uartDcMemLength, dockRxBuf + UART_RXBUF_DATA + 3U))
+              if (ShimEeprom_writeDaughterCardMem(uartDcMemOffset, uartDcMemLength,
+                      (uint8_t *) (dockRxBuf + UART_RXBUF_DATA + 3U)))
               {
                 uartSendRspAck = 1;
               }
@@ -705,7 +705,7 @@ uint8_t ShimDock_uartCheckCrc(uint8_t len)
     return 0;
   }
   uint16_t uart_rx_crc, uart_calc_crc;
-  uart_calc_crc = (uint16_t) platform_crcData(dockRxBuf, len);
+  uart_calc_crc = (uint16_t) platform_crcData((uint8_t *) dockRxBuf, len);
   uart_rx_crc = (uint16_t) dockRxBuf[len];
   uart_rx_crc += ((uint16_t) dockRxBuf[(uint8_t) (len + 1)]) << 8;
   return (uart_rx_crc == uart_calc_crc);

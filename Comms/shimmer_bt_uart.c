@@ -35,7 +35,7 @@
 
 uint8_t unwrappedResponse[256] = { 0 };
 volatile uint8_t gAction;
-uint8_t args[MAX_COMMAND_ARG_SIZE], waitingForArgs, waitingForArgsLength, argsSize;
+volatile uint8_t args[MAX_COMMAND_ARG_SIZE], waitingForArgs, waitingForArgsLength, argsSize;
 
 #if defined(SHIMMER3)
 volatile char btRxBuffFullResponse[BT_VER_RESPONSE_LARGEST + 1U]; /* +1 to always have a null char */
@@ -505,7 +505,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 #if defined(SHIMMER3)
         else if (gAction == RN4678_STATUS_STRING_SEPARATOR)
         {
-          return RN4678_parseStatusString(&waitingForArgs, btRxBuffPtr);
+          return RN4678_parseStatusString((uint8_t *) &waitingForArgs, btRxBuffPtr);
         }
 #endif
 
@@ -529,11 +529,11 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 
         if (waitingForArgsLength)
         {
-          memcpy(&args[waitingForArgs], btRxBuffPtr, waitingForArgsLength);
+          memcpy((uint8_t *) &args[waitingForArgs], btRxBuffPtr, waitingForArgsLength);
         }
         else
         {
-          memcpy(&args[0], btRxBuffPtr, waitingForArgs);
+          memcpy((uint8_t *) &args[0], btRxBuffPtr, waitingForArgs);
         }
 
         waitingForArgsLength = 0;
@@ -891,7 +891,7 @@ void ShimBt_processCmd(void)
       }
       case SET_SENSORS_COMMAND:
       {
-        ShimConfig_storedConfigSet(&args[0], NV_SENSORS0, 3);
+        ShimConfig_storedConfigSet((uint8_t *) &args[0], NV_SENSORS0, 3);
         ShimBt_settingChangeCommon(NV_SENSORS0, SDH_SENSORS0, 3);
         break;
       }
@@ -926,7 +926,7 @@ void ShimBt_processCmd(void)
       }
       case SET_SHIMMERNAME_COMMAND:
       {
-        ShimConfig_shimmerNameSet(&args[1], args[0]);
+        ShimConfig_shimmerNameSet((uint8_t *) &args[1], args[0]);
         InfoMem_write(NV_SD_SHIMMER_NAME, (uint8_t *) &storedConfigPtr->shimmerName[0],
             sizeof(storedConfigPtr->shimmerName));
         update_sdconfig = 1;
@@ -934,7 +934,7 @@ void ShimBt_processCmd(void)
       }
       case SET_EXPID_COMMAND:
       {
-        ShimConfig_expIdSet(&args[1], args[0]);
+        ShimConfig_expIdSet((uint8_t *) &args[1], args[0]);
         InfoMem_write(NV_SD_EXP_ID_NAME, (uint8_t *) &storedConfigPtr->expIdName[0],
             sizeof(storedConfigPtr->expIdName));
         update_sdconfig = 1;
@@ -942,7 +942,7 @@ void ShimBt_processCmd(void)
       }
       case SET_CONFIGTIME_COMMAND:
       {
-        ShimConfig_configTimeSetFromStr(&args[1], args[0]);
+        ShimConfig_configTimeSetFromStr((uint8_t *) &args[1], args[0]);
         ShimSdHead_sdHeadTextSet(&storedConfigPtr->configTime0, SDH_CONFIG_TIME_0, 4);
         InfoMem_write(NV_SD_CONFIG_TIME, &storedConfigPtr->rawBytes[NV_SD_CONFIG_TIME], 4);
         update_sdconfig = 1;
@@ -1059,7 +1059,7 @@ void ShimBt_processCmd(void)
       }
       case SET_CONFIG_SETUP_BYTES_COMMAND:
       {
-        ShimConfig_storedConfigSet(&args[0], NV_CONFIG_SETUP_BYTE0, 4);
+        ShimConfig_storedConfigSet((uint8_t *) &args[0], NV_CONFIG_SETUP_BYTE0, 4);
         ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE0, SDH_CONFIG_SETUP_BYTE0, 4);
         break;
       }
@@ -1086,7 +1086,7 @@ void ShimBt_processCmd(void)
         //max length of this command = 132
         calibRamLength = args[0];
         calibRamOffset = args[1] + (args[2] << 8);
-        if (ShimCalib_ramWrite(&args[3], calibRamLength, calibRamOffset) == 1)
+        if (ShimCalib_ramWrite((uint8_t *) &args[3], calibRamLength, calibRamOffset) == 1)
         {
           ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
           update_calib_dump_file = 1;
@@ -1118,8 +1118,9 @@ void ShimBt_processCmd(void)
 #elif defined(SHIMMER3R)
         sensorCalibId = SC_SENSOR_LSM6DSV_ACCEL;
 #endif
-        ShimBt_calibrationChangeCommon(NV_LN_ACCEL_CALIBRATION, SDH_LN_ACCEL_CALIBRATION,
-            &storedConfigPtr->lnAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+        ShimBt_calibrationChangeCommon(NV_LN_ACCEL_CALIBRATION,
+            SDH_LN_ACCEL_CALIBRATION, &storedConfigPtr->lnAccelCalib.rawBytes[0],
+            (uint8_t *) &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
@@ -1131,7 +1132,7 @@ void ShimBt_processCmd(void)
         sensorCalibId = SC_SENSOR_LSM6DSV_GYRO;
 #endif
         ShimBt_calibrationChangeCommon(NV_GYRO_CALIBRATION, SDH_GYRO_CALIBRATION,
-            &storedConfigPtr->gyroCalib.rawBytes[0], &args[0], sensorCalibId);
+            &storedConfigPtr->gyroCalib.rawBytes[0], (uint8_t *) &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
@@ -1143,7 +1144,7 @@ void ShimBt_processCmd(void)
         sensorCalibId = SC_SENSOR_LIS2MDL_MAG;
 #endif
         ShimBt_calibrationChangeCommon(NV_MAG_CALIBRATION, SDH_MAG_CALIBRATION,
-            &storedConfigPtr->magCalib.rawBytes[0], &args[0], sensorCalibId);
+            &storedConfigPtr->magCalib.rawBytes[0], (uint8_t *) &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
@@ -1154,8 +1155,9 @@ void ShimBt_processCmd(void)
 #elif defined(SHIMMER3R)
         sensorCalibId = SC_SENSOR_LIS2DW12_ACCEL;
 #endif
-        ShimBt_calibrationChangeCommon(NV_WR_ACCEL_CALIBRATION, SDH_WR_ACCEL_CALIBRATION,
-            &storedConfigPtr->wrAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+        ShimBt_calibrationChangeCommon(NV_WR_ACCEL_CALIBRATION,
+            SDH_WR_ACCEL_CALIBRATION, &storedConfigPtr->wrAccelCalib.rawBytes[0],
+            (uint8_t *) &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
@@ -1178,7 +1180,8 @@ void ShimBt_processCmd(void)
           uint16_t exgSdHeadOffset = (exgChip == 0) ? SDH_EXG_ADS1292R_1_CONFIG1 :
                                                       SDH_EXG_ADS1292R_2_CONFIG1;
 
-          ShimConfig_storedConfigSet(&args[3], exgConfigOffset + exgStartAddr, exgLength);
+          ShimConfig_storedConfigSet(
+              (uint8_t *) &args[3], exgConfigOffset + exgStartAddr, exgLength);
 
           /* Check if unit is SR47-4 or greater.
            * If so, amend configuration byte 2 of ADS chip 1 to have bit 3 set
@@ -1249,9 +1252,10 @@ void ShimBt_processCmd(void)
         dcMemOffset = args[1];
         if ((dcMemLength <= 16) && (dcMemOffset <= 15) && (dcMemLength + dcMemOffset <= 16))
         {
-          eepromWrite(dcMemOffset, dcMemLength, &args[2]);
+          eepromWrite(dcMemOffset, dcMemLength, (uint8_t *) &args[2]);
           /* Copy new bytes to active daughter card byte array so it can be read back immediately and verified */
-          ShimBrd_setDaugherCardIdMemory((uint8_t) dcMemOffset, &args[2], dcMemLength);
+          ShimBrd_setDaugherCardIdMemory(
+              (uint8_t) dcMemOffset, (uint8_t *) &args[2], dcMemLength);
         }
         break;
       }
@@ -1270,7 +1274,7 @@ void ShimBt_processCmd(void)
       {
         dcMemLength = args[0];
         dcMemOffset = args[1] + (args[2] << 8);
-        if (!ShimEeprom_writeDaughterCardMem(dcMemOffset, dcMemLength, &args[3]))
+        if (!ShimEeprom_writeDaughterCardMem(dcMemOffset, dcMemLength, (uint8_t *) &args[3]))
         {
           sendNack = 1;
         }
@@ -1294,8 +1298,8 @@ void ShimBt_processCmd(void)
       }
       case SET_DERIVED_CHANNEL_BYTES:
       {
-        memcpy(&storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_0], &args[0], 3);
-        memcpy(&storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_3], &args[3], 5);
+        memcpy(&storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_0], (uint8_t *) &args[0], 3);
+        memcpy(&storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_3], (uint8_t *) &args[3], 5);
         InfoMem_write(NV_DERIVED_CHANNELS_0,
             &storedConfigPtr->rawBytes[NV_DERIVED_CHANNELS_0], 3);
         InfoMem_write(NV_DERIVED_CHANNELS_3,
@@ -1325,7 +1329,7 @@ void ShimBt_processCmd(void)
         if ((infomemLength <= 128) && (infomemOffset <= (NV_NUM_RWMEM_BYTES - 1))
             && (infomemLength + infomemOffset <= NV_NUM_RWMEM_BYTES))
         {
-          ShimConfig_storedConfigSet(&args[3], infomemOffset, infomemLength);
+          ShimConfig_storedConfigSet((uint8_t *) &args[3], infomemOffset, infomemLength);
 
           if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
           {
@@ -1371,7 +1375,7 @@ void ShimBt_processCmd(void)
         ShimSdHead_sdHeadTextSetByte(
             SDH_TRIAL_CONFIG0, storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0]);
 
-        RTC_setTimeFromTicksPtr(&args[0]);
+        RTC_setTimeFromTicksPtr((uint8_t *) &args[0]);
         ShimRtc_rwcErrorCheck();
 #if defined(SHIMMER3R)
         RTC_setAlarmBattRead(); //configure RTC alarm after time set from BT.
@@ -1385,8 +1389,9 @@ void ShimBt_processCmd(void)
 #elif defined(SHIMMER3R)
         sensorCalibId = SC_SENSOR_ADXL371_ACCEL;
 #endif
-        ShimBt_calibrationChangeCommon(NV_ALT_ACCEL_CALIBRATION, SDH_ALT_ACCEL_CALIBRATION,
-            &storedConfigPtr->altAccelCalib.rawBytes[0], &args[0], sensorCalibId);
+        ShimBt_calibrationChangeCommon(NV_ALT_ACCEL_CALIBRATION,
+            SDH_ALT_ACCEL_CALIBRATION, &storedConfigPtr->altAccelCalib.rawBytes[0],
+            (uint8_t *) &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
@@ -1397,8 +1402,9 @@ void ShimBt_processCmd(void)
 #elif defined(SHIMMER3R)
         sensorCalibId = SC_SENSOR_LIS3MDL_MAG;
 #endif
-        ShimBt_calibrationChangeCommon(NV_ALT_MAG_CALIBRATION, SDH_ALT_MAG_CALIBRATION,
-            &storedConfigPtr->altMagCalib.rawBytes[0], &args[0], sensorCalibId);
+        ShimBt_calibrationChangeCommon(NV_ALT_MAG_CALIBRATION,
+            SDH_ALT_MAG_CALIBRATION, &storedConfigPtr->altMagCalib.rawBytes[0],
+            (uint8_t *) &args[0], sensorCalibId);
         update_calib_dump_file = 1;
         break;
       }
@@ -1420,7 +1426,8 @@ void ShimBt_processCmd(void)
         {
           /* Reassemble full packet so that original RcNodeR10() will work without modificiation */
           fullSyncResp[0] = gAction;
-          memcpy(&fullSyncResp[1], &args[0], SYNC_PACKET_MAX_SIZE - SYNC_PACKET_SIZE_CMD);
+          memcpy(&fullSyncResp[1], (uint8_t *) &args[0],
+              SYNC_PACKET_MAX_SIZE - SYNC_PACKET_SIZE_CMD);
           ShimSdSync_syncRespSet(&fullSyncResp[0], SYNC_PACKET_MAX_SIZE);
           ShimTask_set(TASK_RCNODER10);
         }
@@ -1482,7 +1489,7 @@ void ShimBt_processCmd(void)
           if (args[0] == SD_SYNC_RESPONSE)
           {
             /* SD Sync Center - get's into this case when the center is waiting for a 0x01 or 0xFF from a node */
-            ShimSdSync_syncRespSet(&args[1], 1U);
+            ShimSdSync_syncRespSet((uint8_t *) &args[1], 1U);
             ShimTask_set(TASK_RCCENTERR1);
           }
         }
@@ -2403,7 +2410,7 @@ volatile uint8_t *ShimBt_getBtActionPtr(void)
 
 uint8_t *ShimBt_getBtArgsPtr(void)
 {
-  return &args[0];
+  return (uint8_t *) &args[0];
 }
 
 void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain)
