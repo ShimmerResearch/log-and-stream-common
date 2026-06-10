@@ -24,8 +24,14 @@
 
 /* serial buffer in bytes (power 2).
  * Note, the CYW20820 PUART features a 256 byte FIFO on both RX/TX which is
- * normally ready byte-by-byte. */
-#define BT_TX_BUF_SIZE                              256U
+ * normally ready byte-by-byte.
+ * In non-transparent SPP mode each drain of this FIFO becomes one SPPS
+ * (spp_send_command) packet, and sending is stop-and-wait (one outstanding
+ * command at a time). A larger buffer lets more stream data accumulate while
+ * we wait for RSP_SPP_SEND_COMMAND, so each round-trip carries a bigger payload
+ * and fewer round-trips are needed. Capped at the EZ-Serial SPPS payload max
+ * (EZS_LONGUINT8A_ACTUAL_MAX, 512) - see the static check in hal_CYW20820.c. */
+#define BT_TX_BUF_SIZE                              512U
 #define BT_TX_BUF_MASK                              (BT_TX_BUF_SIZE - 1UL)
 
 /* maximum number of arguments for any command sent (daughter card mem write) */

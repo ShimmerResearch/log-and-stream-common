@@ -86,6 +86,12 @@ extern uint8_t InfoMem_write(uint16_t addr, uint8_t *buf, uint16_t size);
 extern uint8_t InfoMem_read(uint16_t addr, uint8_t *buf, uint16_t size);
 
 extern void setDmaWaitingForResponse(uint16_t count);
+#if defined(SHIMMER3R)
+/* SHIMMER3R takes a 16-bit length so a single SPPS packet can carry the full
+ * TX FIFO span (up to 511 bytes). SHIMMER3 sends byte-by-byte and keeps its own
+ * narrower signature, so this prototype is intentionally not exposed there. */
+extern HAL_StatusTypeDefShimmer BtTransmit(uint8_t *buf, uint16_t len);
+#endif
 
 extern void eepromRead(uint16_t dataAddr, uint16_t dataSize, uint8_t *dataBuf);
 extern void eepromWrite(uint16_t dataAddr, uint16_t dataSize, uint8_t *dataBuf);
