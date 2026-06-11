@@ -762,8 +762,8 @@ uint8_t *ShimSens_getDataBuffAtNextWrIdx(void)
  * PRECONDITION: this only holds a completed sample once at least one sample has
  * been captured. Before that (e.g. right after ShimSens_resetPacketBuffAll()
  * sets the indices to 0, so "previous" wraps to the last slot) it points at an
- * idle/uninitialised buffer. Callers must only use it while sampling is active -
- * the sole caller (battery read, used only when sensing) satisfies this. */
+ * idle/uninitialised buffer. Callers must only use it while sampling is active
+ * - the sole caller (battery read, used only when sensing) satisfies this. */
 uint8_t *ShimSens_getDataBuffAtPrevWrIdx(void)
 {
   return &sensing.packetBuffers[ShimSens_getPacketBufAtPrevWrIdx()].dataBuf[0];
