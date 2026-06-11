@@ -755,10 +755,15 @@ uint8_t *ShimSens_getDataBuffAtNextWrIdx(void)
   return &sensing.packetBuffers[ShimSens_getPacketBufAtNextWrIdx()].dataBuf[0];
 }
 
-/* Buffer for the most recently completed sample (the write index points at the
- * sample currently being filled by the DMA, so the previous slot is the last
- * complete one and is never the DMA's current target - safe to read without a
- * critical section). */
+/* Buffer for the slot before the write index. The write index points at the
+ * sample the DMA is currently filling, so the previous slot is never the DMA's
+ * current target and is safe to read without a critical section. Always returns
+ * a valid (non-NULL) pointer.
+ * PRECONDITION: this only holds a completed sample once at least one sample has
+ * been captured. Before that (e.g. right after ShimSens_resetPacketBuffAll()
+ * sets the indices to 0, so "previous" wraps to the last slot) it points at an
+ * idle/uninitialised buffer. Callers must only use it while sampling is active -
+ * the sole caller (battery read, used only when sensing) satisfies this. */
 uint8_t *ShimSens_getDataBuffAtPrevWrIdx(void)
 {
   return &sensing.packetBuffers[ShimSens_getPacketBufAtPrevWrIdx()].dataBuf[0];

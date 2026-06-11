@@ -297,6 +297,8 @@ void ShimSens_currentExperimentLengthReset(void);
 void ShimSens_maxExperimentLengthSecsSet(uint16_t expLengthMins);
 uint8_t *ShimSens_getDataBuffAtWrIdx(void);
 uint8_t *ShimSens_getDataBuffAtNextWrIdx(void);
+//Buffer before the write index (the last completed sample). Never NULL, but only
+//holds a completed sample once sampling is underway - see definition for details.
 uint8_t *ShimSens_getDataBuffAtPrevWrIdx(void);
 PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void);
 PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void);
