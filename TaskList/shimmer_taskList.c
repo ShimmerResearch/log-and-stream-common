@@ -149,11 +149,10 @@ void ShimTask_NORM_manage(void)
         break;
       case TASK_BATT_READ:
 #if defined(SHIMMER3)
-        /* use adc channel2 and mem4, read back battery status every certain period */
-        if (!shimmerStatus.sensing)
-        {
-          manageReadBatt(1);
-        }
+        /* use adc channel2 and mem4, read back battery status every certain period.
+         * Safe to run while sensing: manageReadBatt() applies the ADC-priority
+         * policy so the read never disturbs the ADC sensor stream. */
+        manageReadBatt(1);
 #elif defined(SHIMMER3R)
         manageReadBatt(0);
         RTC_setAlarmBattRead();

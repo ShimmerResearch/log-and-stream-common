@@ -558,6 +558,33 @@ uint8_t LogAndStream_checkSdInSlot(void)
   return shimmerStatus.sdInserted;
 }
 
+battReadAction_t LogAndStream_getBattReadAction(void)
+{
+  /* Prioritise ADC sensor data over an up-to-date battery value - never let a
+   * battery read disturb the ADC sensor stream:
+   *   1) sensing + VBatt streamed   -> use the latest streamed sample
+   *   2) sensing + another ADC chan -> Shimmer3 shares one ADC with the battery,
+   *        so a read would disturb the sensor data: keep the last value.
+   *        Shimmer3R has a dedicated battery ADC (no collision) so it falls
+   *        through and just takes a fresh measurement
+   *   3) sensing + no ADC channels  -> take a new measurement (nothing to disturb)
+   *   4) not sensing                -> take a new measurement */
+  if (shimmerStatus.sensing)
+  {
+    if (ShimConfig_getStoredConfig()->chEnVBattery)
+    {
+      return BATT_READ_USE_STREAM;
+    }
+#if defined(SHIMMER3)
+    if (sensing.nbrMcuAdcChans)
+    {
+      return BATT_READ_REPEAT_LAST;
+    }
+#endif
+  }
+  return BATT_READ_NEW;
+}
+
 void LogAndStream_processDaughterCardId(void)
 {
   /* Read all from EEPROM if present */
