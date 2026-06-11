@@ -19,10 +19,10 @@
  * when it cannot disturb the ADC sensor stream. See LogAndStream_getBattReadAction(). */
 typedef enum
 {
-  BATT_READ_NEW = 0,     //take a fresh battery measurement now
-  BATT_READ_USE_STREAM,  //sensing + VBatt streamed: use the latest streamed sample
-  BATT_READ_REPEAT_LAST  //Shimmer3 sensing + other ADC channel(s), no VBatt: keep the
-                         //last value - a read on the shared ADC would disturb the data
+  BATT_READ_NEW = 0,    //take a fresh battery measurement now
+  BATT_READ_USE_STREAM, //sensing + VBatt streamed: use the latest streamed sample
+  BATT_READ_REPEAT_LAST //Shimmer3 sensing + other ADC channel(s), no VBatt: keep the
+                        //last value - a read on the shared ADC would disturb the data
 } battReadAction_t;
 
 void LogAndStream_init(void);
