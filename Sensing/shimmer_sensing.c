@@ -755,6 +755,15 @@ uint8_t *ShimSens_getDataBuffAtNextWrIdx(void)
   return &sensing.packetBuffers[ShimSens_getPacketBufAtNextWrIdx()].dataBuf[0];
 }
 
+/* Buffer for the most recently completed sample (the write index points at the
+ * sample currently being filled by the DMA, so the previous slot is the last
+ * complete one and is never the DMA's current target - safe to read without a
+ * critical section). */
+uint8_t *ShimSens_getDataBuffAtPrevWrIdx(void)
+{
+  return &sensing.packetBuffers[ShimSens_getPacketBufAtPrevWrIdx()].dataBuf[0];
+}
+
 PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void)
 {
   return &sensing.packetBuffers[ShimSens_getPacketBufWrIdx()];
@@ -837,6 +846,11 @@ uint8_t ShimSens_getPacketBufWrIdx(void)
 uint8_t ShimSens_getPacketBufAtNextWrIdx(void)
 {
   return (DATA_BUF_MASK & (sensing.packetBuffWrIdx + 1));
+}
+
+uint8_t ShimSens_getPacketBufAtPrevWrIdx(void)
+{
+  return (DATA_BUF_MASK & (sensing.packetBuffWrIdx - 1));
 }
 
 __weak void ADC_gatherDataStart(void)

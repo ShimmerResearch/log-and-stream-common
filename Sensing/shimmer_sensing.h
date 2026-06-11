@@ -297,6 +297,7 @@ void ShimSens_currentExperimentLengthReset(void);
 void ShimSens_maxExperimentLengthSecsSet(uint16_t expLengthMins);
 uint8_t *ShimSens_getDataBuffAtWrIdx(void);
 uint8_t *ShimSens_getDataBuffAtNextWrIdx(void);
+uint8_t *ShimSens_getDataBuffAtPrevWrIdx(void);
 PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void);
 PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void);
 void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll);
@@ -310,6 +311,7 @@ uint8_t ShimSens_getPacketBuffFullCount(void);
 uint8_t ShimSens_getPacketBufRdIdx(void);
 uint8_t ShimSens_getPacketBufWrIdx(void);
 uint8_t ShimSens_getPacketBufAtNextWrIdx(void);
+uint8_t ShimSens_getPacketBufAtPrevWrIdx(void);
 
 __weak void ADC_gatherDataStart(void);
 
