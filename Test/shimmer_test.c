@@ -12,6 +12,7 @@
 #include <stdio.h>
 
 #include "log_and_stream_includes.h"
+#include "version.h"
 
 factory_test_target_t factoryTestTarget = PRINT_TO_DEBUGGER;
 factory_test_t factoryTestToRun;
@@ -22,6 +23,11 @@ uint32_t ShimFactoryTest_run(void)
 {
   ShimFactoryTest_sendReport("//**************************** TEST START "
                              "************************************//\r\n");
+
+  /* Record the firmware version running this test so the captured report
+   * documents exactly which build was used for testing. FW_VERSION_STRING is
+   * the compile-time version baked into this binary. Prints on every report. */
+  ShimFactoryTest_sendReport("Firmware version: " FW_VERSION_STRING "\r\n");
 
   shimmerStatus.testResult = 0;
 
