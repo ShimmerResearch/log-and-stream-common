@@ -25,8 +25,8 @@ uint32_t ShimFactoryTest_run(void)
                              "************************************//\r\n");
 
   /* Record the firmware version running this test so the captured report
-   * documents exactly which build was used for testing. FW_VERSION_STRING is the
-   * compile-time version baked into this binary. Prints on every report. */
+   * documents exactly which build was used for testing. FW_VERSION_STRING is
+   * the compile-time version baked into this binary. Prints on every report. */
   ShimFactoryTest_sendReport("Firmware version: " FW_VERSION_STRING "\r\n");
 
   shimmerStatus.testResult = 0;
