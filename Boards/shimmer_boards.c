@@ -318,10 +318,14 @@ uint8_t ShimBrd_isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8
 
 uint8_t ShimBrd_isBoardSrNumberGte(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_brd_minor)
 {
-  return (ShimBrd_isDaughterCardIdSet()
-      && (daughterCardIdPage.expansion_brd.exp_brd_id == exp_brd_id
-          && daughterCardIdPage.expansion_brd.exp_brd_major >= exp_brd_major
-          && daughterCardIdPage.expansion_brd.exp_brd_minor >= exp_brd_minor));
+  if (!ShimBrd_isDaughterCardIdSet() || daughterCardIdPage.expansion_brd.exp_brd_id != exp_brd_id)
+  {
+    return 0;
+  }
+  uint8_t brd_major = daughterCardIdPage.expansion_brd.exp_brd_major;
+  uint8_t brd_minor = daughterCardIdPage.expansion_brd.exp_brd_minor;
+  return (brd_major > exp_brd_major)
+      || (brd_major == exp_brd_major && brd_minor >= exp_brd_minor);
 }
 
 uint8_t ShimBrd_isBmp581PresentPerSrNumber(void)
