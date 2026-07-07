@@ -316,6 +316,25 @@ uint8_t ShimBrd_isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8
           && daughterCardIdPage.expansion_brd.exp_brd_minor == exp_brd_minor));
 }
 
+uint8_t ShimBrd_isBoardSrNumberGte(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_brd_minor)
+{
+  return (ShimBrd_isDaughterCardIdSet()
+      && (daughterCardIdPage.expansion_brd.exp_brd_id == exp_brd_id
+          && daughterCardIdPage.expansion_brd.exp_brd_major >= exp_brd_major
+          && daughterCardIdPage.expansion_brd.exp_brd_minor >= exp_brd_minor));
+}
+
+uint8_t ShimBrd_isBmp581PresentPerSrNumber(void)
+{
+  /* The BMP581 replaces the BMP390 on up-rev'd Shimmer3R boards (DEV-818).
+   * Note the >= applies to both the major and minor revs. */
+  return (ShimBrd_isHwId(HW_ID_SHIMMER3R)
+      && (ShimBrd_isBoardSrNumberGte(SHIMMER3_IMU, 11, 2)
+          || ShimBrd_isBoardSrNumberGte(EXP_BRD_EXG_UNIFIED, 8, 2)
+          || ShimBrd_isBoardSrNumberGte(EXP_BRD_GSR_UNIFIED, 8, 2)
+          || ShimBrd_isBoardSrNumberGte(EXP_BRD_BR_AMP_UNIFIED, 4, 2)));
+}
+
 uint8_t ShimBrd_isHwId(uint8_t hwIdToCheck)
 {
   return hwId == hwIdToCheck;

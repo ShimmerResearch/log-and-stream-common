@@ -797,7 +797,6 @@ void ShimBt_processCmd(void)
       case GET_GYRO_RANGE_COMMAND:
       case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
       case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
-      case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       case GET_GYRO_SAMPLING_RATE_COMMAND:
       case GET_ALT_ACCEL_RANGE_COMMAND:
       case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
@@ -828,6 +827,22 @@ void ShimBt_processCmd(void)
       case GET_ALT_MAG_CALIBRATION_COMMAND:
       case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
       {
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
+      {
+#if defined(SHIMMER3R)
+        if (isBmp581InUse())
+        {
+          /* The BMP581 outputs pre-compensated pressure/temperature and so
+           * has no calibration coefficients. In keeping with the approach
+           * taken for the BMP180/BMP280 calibration commands, a NACK is sent
+           * back instead. */
+          sendNack = 1;
+          break;
+        }
+#endif
         getCmdWaitingResponse = gAction;
         break;
       }
@@ -1894,7 +1909,11 @@ void ShimBt_sendRsp(void)
           *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
         }
 #elif defined(SHIMMER3R)
-        *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
+        /* Note: not expected to be reached for the BMP581 as a NACK is sent
+         * back during command processing (the BMP581 has no calibration
+         * coefficients) */
+        *(resPacket + packet_length++)
+            = isBmp581InUse() ? PRESSURE_SENSOR_BMP581 : PRESSURE_SENSOR_BMP390;
 #endif
         memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
         packet_length += bmpCalibByteLen;
