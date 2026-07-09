@@ -832,17 +832,12 @@ void ShimBt_processCmd(void)
       }
       case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       {
-#if defined(SHIMMER3R)
-        if (isBmp581InUse())
-        {
-          /* The BMP581 outputs pre-compensated pressure/temperature and so
-           * has no calibration coefficients. In keeping with the approach
-           * taken for the BMP180/BMP280 calibration commands, a NACK is sent
-           * back instead. */
-          sendNack = 1;
-          break;
-        }
-#endif
+        /* TODO DEV-818: when a BMP581 is fitted this should NACK (the BMP581
+         * self-compensates and has no calibration coefficients, per the
+         * BMP180/BMP280 approach). That NACK is temporarily disabled because
+         * current Consensys aborts the connection when it receives it during
+         * its connect-time handshake. Re-enable the BMP581 NACK once the host
+         * (Consensys) handles it / recognises the BMP581 sensor id. */
         getCmdWaitingResponse = gAction;
         break;
       }
@@ -1909,11 +1904,11 @@ void ShimBt_sendRsp(void)
           *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
         }
 #elif defined(SHIMMER3R)
-        /* Note: not expected to be reached for the BMP581 as a NACK is sent
-         * back during command processing (the BMP581 has no calibration
-         * coefficients) */
-        *(resPacket + packet_length++)
-            = isBmp581InUse() ? PRESSURE_SENSOR_BMP581 : PRESSURE_SENSOR_BMP390;
+        /* TODO DEV-818: report PRESSURE_SENSOR_BMP581 (and NACK this command)
+         * once the host handles the BMP581. For now report BMP390 so current
+         * Consensys accepts the response and completes its connect handshake -
+         * paired with the temporarily-disabled NACK in ShimBt_processCmd(). */
+        *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
 #endif
         memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
         packet_length += bmpCalibByteLen;
