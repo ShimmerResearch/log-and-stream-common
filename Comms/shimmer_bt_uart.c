@@ -175,6 +175,9 @@ void ShimBt_stopCommon(uint8_t isCalledFromMain)
   shimmerStatus.btConnected = 0;
   shimmerStatus.btIsInitialised = 0;
   shimmerStatus.btInSyncMode = 0;
+#if defined(SHIMMER3R) && defined(TRANSPARANT_MODE) && TRANSPARANT_MODE
+  shimmerStatus.btFirstConnectionEstablished = 0;
+#endif
 }
 
 void ShimBt_resetBtResponseVars(void)
@@ -2520,6 +2523,13 @@ void ShimBt_TxCpltCallback(void)
   gBtTxFifo.numBytesBeingRead = 0;
 #endif
 
+#if defined(SHIMMER3)
+  ShimBt_triggerNextTransfer();
+#endif
+}
+
+void ShimBt_triggerNextTransfer(void)
+{
   if (shimmerStatus.btConnected
 #if defined(SHIMMER3)
       || areBtSetupCommandsRunning())
@@ -2544,7 +2554,11 @@ void ShimBt_TxCpltCallback(void)
 
 void ShimBt_sendNextCharIfNotInProgress(void)
 {
+#if defined(SHIMMER3)
   if (!ShimBt_btTxInProgressGet())
+#else
+  if (!ShimBt_btTxInProgressGet() && !isPendingResponseFromBtModule())
+#endif
   {
     ShimBt_sendNextChar();
   }
