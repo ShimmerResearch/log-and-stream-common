@@ -1917,11 +1917,10 @@ void ShimBt_sendRsp(void)
           *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
         }
 #elif defined(SHIMMER3R)
-        /* TODO DEV-818: report PRESSURE_SENSOR_BMP581 (and NACK this command)
-         * once the host handles the BMP581. For now report BMP390 so current
-         * Consensys accepts the response and completes its connect handshake -
-         * paired with the temporarily-disabled NACK in ShimBt_processCmd(). */
-        *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
+        /* BMP581 NACKs this command in ShimBt_processCmd() - this path is only
+         * reached for BMP390. */
+        *(resPacket + packet_length++)
+            = isBmp581InUse() ? PRESSURE_SENSOR_BMP581 : PRESSURE_SENSOR_BMP390;
 #endif
         memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
         packet_length += bmpCalibByteLen;
