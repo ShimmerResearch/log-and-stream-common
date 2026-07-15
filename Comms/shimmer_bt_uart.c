@@ -832,13 +832,26 @@ void ShimBt_processCmd(void)
       }
       case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       {
-        /* TODO DEV-818: when a BMP581 is fitted this should NACK (the BMP581
-         * self-compensates and has no calibration coefficients, per the
-         * BMP180/BMP280 approach). That NACK is temporarily disabled because
-         * current Consensys aborts the connection when it receives it during
-         * its connect-time handshake. Re-enable the BMP581 NACK once the host
-         * (Consensys) handles it / recognises the BMP581 sensor id. */
+#if defined(SHIMMER3R)
+        /* DEV-818: the BMP581 self-compensates and has NO calibration
+         * coefficients, so NACK this command when a BMP581 is fitted (mirrors
+         * the "no coefficients" nature of the part). The host must treat the
+         * NACK as "sensor is pre-compensated - convert raw pressure/temperature
+         * directly". Only the BMP390 path returns coefficients.
+         * WARNING: current Consensys aborts its connect-time handshake on this
+         * NACK; re-enabling it here is intended for custom hosts/test scripts
+         * (e.g. bmp581.py) that handle the NACK. */
+        if (isBmp581InUse())
+        {
+          sendNack = 1;
+        }
+        else
+        {
+          getCmdWaitingResponse = gAction;
+        }
+#else
         getCmdWaitingResponse = gAction;
+#endif
         break;
       }
       case TEST_CONNECTION_COMMAND:
