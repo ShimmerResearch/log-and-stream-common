@@ -1917,10 +1917,9 @@ void ShimBt_sendRsp(void)
           *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
         }
 #elif defined(SHIMMER3R)
-        /* BMP581 NACKs this command in ShimBt_processCmd() - this path is only
-         * reached for BMP390. */
-        *(resPacket + packet_length++)
-            = isBmp581InUse() ? PRESSURE_SENSOR_BMP581 : PRESSURE_SENSOR_BMP390;
+        /* BMP581 NACKs this command in ShimBt_processCmd() so this path is
+         * only reached when a BMP390 is fitted. */
+        *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
 #endif
         memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
         packet_length += bmpCalibByteLen;
