@@ -1,5 +1,5 @@
 #!/usr/bin/python
-# encoding=utf-8
+# -*- coding: utf-8 -*-
 #
 # BMP581 Bluetooth streaming test (Shimmer3R).
 #
@@ -185,7 +185,11 @@ def check_calibration_nack():
     if b == ACK:
         hdr = ser.read(1)
         if len(hdr) and hdr[0] == PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE:
-            length = ser.read(1)[0]
+            lenb = ser.read(1)
+            if len(lenb) == 0:
+                print("WARNING: timed out reading calibration length byte.")
+                return False
+            length = lenb[0]
             payload = ser.read(length)
             sensor_id = payload[0] if len(payload) else -1
             print("WARNING: device ACK'd and returned coefficients (sensor id "
