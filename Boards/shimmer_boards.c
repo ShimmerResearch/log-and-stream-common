@@ -335,7 +335,7 @@ uint8_t ShimBrd_isBmp581PresentPerSrNumber(void)
   return (ShimBrd_isHwId(HW_ID_SHIMMER3R)
       && (ShimBrd_isBoardSrNumberGte(SHIMMER3_IMU, 11, 2)
           || ShimBrd_isBoardSrNumberGte(EXP_BRD_EXG_UNIFIED, 8, 2)
-          || ShimBrd_isBoardSrNumberGte(EXP_BRD_GSR_UNIFIED, 8, 2)
+          || ShimBrd_isBoardSrNumberGte(EXP_BRD_GSR_UNIFIED, 7, 2)
           || ShimBrd_isBoardSrNumberGte(EXP_BRD_BR_AMP_UNIFIED, 4, 2)));
 }
 
