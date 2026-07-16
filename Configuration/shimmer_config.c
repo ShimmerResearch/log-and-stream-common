@@ -378,7 +378,10 @@ void ShimConfig_configBytePressureOversamplingRatioSet(uint8_t value)
 #if defined(SHIMMER3)
   value = (value <= BMPX80_OSS_8) ? (value & 0x03) : BMPX80_OSS_1;
 #elif defined(SHIMMER3R)
-  value = (value <= BMP3_OVERSAMPLING_32X) ? value : BMP3_NO_OVERSAMPLING;
+  /* The BMP581 supports two additional oversampling settings (64x and 128x)
+   * over the BMP390's maximum of 32x */
+  uint8_t maxOversamplingRatio = isBmp581InUse() ? BMP5_OVERSAMPLING_128X : BMP3_OVERSAMPLING_32X;
+  value = (value <= maxOversamplingRatio) ? value : BMP3_NO_OVERSAMPLING;
 #endif
   storedConfig.pressureOversamplingRatioLsb = value & 0x03;
 #if defined(SHIMMER3R)

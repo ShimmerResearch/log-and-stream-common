@@ -206,7 +206,12 @@ void ShimSdHead_saveBmpCalibrationToSdHeader(void)
         bmpCalibPtr + BMP180_CALIB_DATA_SIZE, BMP280_CALIB_XTRA_BYTES);
   }
 #elif defined(SHIMMER3R)
-  /* BMP390 had 21 bytes stored in index SDH_TEMP_PRES_CALIBRATION */
-  memcpy(&sdHeadText[SDH_TEMP_PRES_CALIBRATION], bmpCalibPtr, BMP3_LEN_CALIB_DATA);
+  /* BMP390 had 21 bytes stored in index SDH_TEMP_PRES_CALIBRATION. The BMP581
+   * outputs pre-compensated pressure/temperature and so has no calibration
+   * coefficients to store. */
+  if (!isBmp581InUse())
+  {
+    memcpy(&sdHeadText[SDH_TEMP_PRES_CALIBRATION], bmpCalibPtr, BMP3_LEN_CALIB_DATA);
+  }
 #endif
 }

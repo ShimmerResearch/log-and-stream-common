@@ -75,6 +75,7 @@ static int cfg_key_is(const char *line, const char *key)
 #define CFG_KEY_PRES_BMP180_PREC   "pres_bmp180_prec"
 #define CFG_KEY_PRES_BMP280_PREC   "pres_bmp280_prec"
 #define CFG_KEY_PRES_BMP390_PREC   "pres_bmp390_prec"
+#define CFG_KEY_PRES_BMP581_PREC   "pres_bmp581_prec"
 #define CFG_KEY_GSR_RANGE          "gsr_range"
 #define CFG_KEY_EXP_POWER          "exp_power"
 #define CFG_KEY_GYRO_RANGE         "gyro_range"
@@ -252,7 +253,8 @@ void ShimSdCfgFile_generate(void)
           (isBmp180InUse() ? CFG_KEY_PRES_BMP180_PREC : CFG_KEY_PRES_BMP280_PREC),
           ShimConfig_configBytePressureOversamplingRatioGet());
 #elif defined(SHIMMER3R)
-      CFG_WRITE_INT(&cfgFile, CFG_KEY_PRES_BMP390_PREC,
+      CFG_WRITE_INT(&cfgFile,
+          (isBmp581InUse() ? CFG_KEY_PRES_BMP581_PREC : CFG_KEY_PRES_BMP390_PREC),
           ShimConfig_configBytePressureOversamplingRatioGet());
 #endif
       CFG_WRITE_INT(&cfgFile, CFG_KEY_GSR_RANGE, storedConfig->gsrRange);
@@ -638,7 +640,8 @@ void ShimSdCfgFile_parse(void)
         ShimConfig_configBytePressureOversamplingRatioSet(atoi(equals));
       }
 #elif defined(SHIMMER3R)
-      else if (cfg_key_is(buffer, CFG_KEY_PRES_BMP390_PREC))
+      else if (cfg_key_is(buffer, CFG_KEY_PRES_BMP390_PREC)
+          || cfg_key_is(buffer, CFG_KEY_PRES_BMP581_PREC))
       {
         ShimConfig_configBytePressureOversamplingRatioSet(atoi(equals));
       }
