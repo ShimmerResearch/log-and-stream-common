@@ -832,25 +832,10 @@ void ShimBt_processCmd(void)
       }
       case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       {
-#if defined(SHIMMER3R)
-        /* The BMP581 self-compensates and has NO calibration coefficients, so
-         * NACK this command when a BMP581 is fitted; a BMP390 returns its
-         * coefficients via ShimBt_sendRsp. Handled here (not in ShimBt_sendRsp
-         * like the BMP180/BMP280 cases) so a clean NACK is emitted: the
-         * ACK/NACK byte is written before the sendRsp response switch, so
-         * setting sendNack from inside that switch would send an ACK with no
-         * data and leave sendNack lingering into the next command. */
-        if (isBmp581InUse())
-        {
-          sendNack = 1;
-        }
-        else
-        {
-          getCmdWaitingResponse = gAction;
-        }
-#else
+        /* Handled in ShimBt_sendRsp alongside GET_BMP180/BMP280_CALIBRATION_
+         * COEFFICIENTS_COMMAND: a BMP581 self-compensates (no coefficients) and
+         * NACKs there; a BMP390 returns its coefficients. */
         getCmdWaitingResponse = gAction;
-#endif
         break;
       }
       case TEST_CONNECTION_COMMAND:
@@ -1899,6 +1884,16 @@ void ShimBt_sendRsp(void)
       }
       case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       {
+#if defined(SHIMMER3R)
+        /* BMP581 self-compensates - no calibration coefficients, so NACK (like
+         * the BMP180/BMP280 cases above). The switch-set NACK is turned into a
+         * clean single-byte NACK by the sendNack fixup after this switch. */
+        if (isBmp581InUse())
+        {
+          sendNack = 1;
+          break;
+        }
+#endif
         bmpCalibByteLen = get_bmp_calib_data_bytes_len();
         *(resPacket + packet_length++) = PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE;
         *(resPacket + packet_length++) = 1U + bmpCalibByteLen;
@@ -1916,8 +1911,7 @@ void ShimBt_sendRsp(void)
           *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
         }
 #elif defined(SHIMMER3R)
-        /* BMP581 NACKs this command in ShimBt_processCmd() so this path is
-         * only reached when a BMP390 is fitted. */
+        /* Only reached when a BMP390 is fitted (BMP581 NACKs above). */
         *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
 #endif
         memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
@@ -2204,6 +2198,18 @@ void ShimBt_sendRsp(void)
       }
     }
     getCmdWaitingResponse = 0;
+
+    /* A response case above may set sendNack (an unsupported command for the
+     * fitted hardware - e.g. a pressure-calibration request on a self-
+     * compensating sensor). The ACK/NACK byte is written before the switch, so
+     * honour a switch-set NACK here: overwrite the staged ACK with a NACK and
+     * drop any response bytes so a clean single-byte NACK is sent. */
+    if (sendNack)
+    {
+      resPacket[0] = NACK_COMMAND_PROCESSED;
+      packet_length = 1;
+      sendNack = 0;
+    }
 
     COMMS_CRC_MODE crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
