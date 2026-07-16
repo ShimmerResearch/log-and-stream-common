@@ -832,10 +832,25 @@ void ShimBt_processCmd(void)
       }
       case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       {
-        /* Handled in ShimBt_sendRsp (as for GET_BMP180/BMP280_CALIBRATION_
-         * COEFFICIENTS_COMMAND): a BMP581 self-compensates and has no
-         * coefficients, so that path NACKs it; a BMP390 returns coefficients. */
+#if defined(SHIMMER3R)
+        /* The BMP581 self-compensates and has NO calibration coefficients, so
+         * NACK this command when a BMP581 is fitted; a BMP390 returns its
+         * coefficients via ShimBt_sendRsp. Handled here (not in ShimBt_sendRsp
+         * like the BMP180/BMP280 cases) so a clean NACK is emitted: the ACK/NACK
+         * byte is written before the sendRsp response switch, so setting
+         * sendNack from inside that switch would send an ACK with no data and
+         * leave sendNack lingering into the next command. */
+        if (isBmp581InUse())
+        {
+          sendNack = 1;
+        }
+        else
+        {
+          getCmdWaitingResponse = gAction;
+        }
+#else
         getCmdWaitingResponse = gAction;
+#endif
         break;
       }
       case TEST_CONNECTION_COMMAND:
@@ -1884,21 +1899,6 @@ void ShimBt_sendRsp(void)
       }
       case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       {
-#if defined(SHIMMER3R)
-        if (isBmp581InUse())
-        {
-          /* The BMP581 self-compensates and has no calibration coefficients, so
-           * NACK this command. Discard the ACK already staged (reset
-           * packet_length) and emit only the NACK, matching a normal NACK's
-           * on-wire form. The bare sendNack flag can't be used here: the
-           * ACK/NACK bytes are written before this switch, so setting it now
-           * would send ACK-only and leave sendNack lingering into the next
-           * command. */
-          packet_length = 0;
-          *(resPacket + packet_length++) = NACK_COMMAND_PROCESSED;
-          break;
-        }
-#endif
         bmpCalibByteLen = get_bmp_calib_data_bytes_len();
         *(resPacket + packet_length++) = PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE;
         *(resPacket + packet_length++) = 1U + bmpCalibByteLen;
@@ -1916,7 +1916,8 @@ void ShimBt_sendRsp(void)
           *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
         }
 #elif defined(SHIMMER3R)
-        /* Only reached when a BMP390 is fitted (BMP581 NACKs above). */
+        /* BMP581 NACKs this command in ShimBt_processCmd() so this path is
+         * only reached when a BMP390 is fitted. */
         *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
 #endif
         memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
