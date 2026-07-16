@@ -836,10 +836,10 @@ void ShimBt_processCmd(void)
         /* The BMP581 self-compensates and has NO calibration coefficients, so
          * NACK this command when a BMP581 is fitted; a BMP390 returns its
          * coefficients via ShimBt_sendRsp. Handled here (not in ShimBt_sendRsp
-         * like the BMP180/BMP280 cases) so a clean NACK is emitted: the ACK/NACK
-         * byte is written before the sendRsp response switch, so setting
-         * sendNack from inside that switch would send an ACK with no data and
-         * leave sendNack lingering into the next command. */
+         * like the BMP180/BMP280 cases) so a clean NACK is emitted: the
+         * ACK/NACK byte is written before the sendRsp response switch, so
+         * setting sendNack from inside that switch would send an ACK with no
+         * data and leave sendNack lingering into the next command. */
         if (isBmp581InUse())
         {
           sendNack = 1;
