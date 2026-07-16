@@ -330,12 +330,15 @@ uint8_t ShimBrd_isBoardSrNumberGte(uint8_t exp_brd_id, uint8_t exp_brd_major, ui
 
 uint8_t ShimBrd_isBmp581PresentPerSrNumber(void)
 {
-  /* The BMP581 replaces the BMP390 on up-rev'd Shimmer3R boards (DEV-818).
-   * Note the >= applies to both the major and minor revs. */
+  /* The BMP581 replaces the BMP390 on up-rev'd Shimmer3R boards. Per DEV-818
+   * the fitted models are (>= applies to both rev fields):
+   *   SR31-11-2, SR47-8-2, SR48-7-2, SR48-8-2, SR49-4-2
+   * SR48 (GSR unified) is listed for both the 7.x and 8.x lines. */
   return (ShimBrd_isHwId(HW_ID_SHIMMER3R)
       && (ShimBrd_isBoardSrNumberGte(SHIMMER3_IMU, 11, 2)
           || ShimBrd_isBoardSrNumberGte(EXP_BRD_EXG_UNIFIED, 8, 2)
           || ShimBrd_isBoardSrNumberGte(EXP_BRD_GSR_UNIFIED, 7, 2)
+          || ShimBrd_isBoardSrNumberGte(EXP_BRD_GSR_UNIFIED, 8, 2)
           || ShimBrd_isBoardSrNumberGte(EXP_BRD_BR_AMP_UNIFIED, 4, 2)));
 }
 
