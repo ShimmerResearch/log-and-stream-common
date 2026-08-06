@@ -128,6 +128,7 @@ def report(label, temp, press_kpa):
 
 # --- Load ------------------------------------------------------------------
 NO_SHOW = ("--no-show" in sys.argv) or bool(os.environ.get("BMP_NOSHOW"))
+NO_CORR = ("--no-corr" in sys.argv)   # drop the BMP581 corrected-pressure panel + its temp cal
 args = [a for a in sys.argv[1:] if a and not a.startswith("-")]
 p581 = args[0] if len(args) >= 1 else DEFAULT_581
 p390 = args[1] if len(args) >= 2 else DEFAULT_390
@@ -145,7 +146,9 @@ d390 = read_stream_csv(path390) if path390 else {}
 t581 = col(d581, "elapsed_s")
 p581_raw = col(d581, "pressure_kPa")
 p581_cor = col(d581, "pressure_corr_kPa") or p581_raw   # fall back if not corrected
-temp581 = col(d581, "temperature_cal_C", "temperature_C")   # prefer calibrated temp
+# Prefer the calibrated temp, unless --no-corr (then the 2678-tuned cal doesn't apply)
+temp581 = (col(d581, "temperature_C") if NO_CORR
+           else col(d581, "temperature_cal_C", "temperature_C"))
 
 t390 = col(d390, "elapsed_s")
 p390_c = col(d390, "pressure_kPa")
@@ -159,7 +162,7 @@ if path390:
 
 print("\nPressure vs temperature (flatness):")
 report("BMP581 raw comp=3", temp581, p581_raw)
-if col(d581, "pressure_corr_kPa"):
+if col(d581, "pressure_corr_kPa") and not NO_CORR:
     report("BMP581 corrected", temp581, p581_cor)
 report("BMP390 host-compensated", temp390, p390_c)
 
@@ -175,7 +178,7 @@ def value_at(temp, p_kpa, tref=25.0):
     return mp - s * (mt - tref)
 
 
-if temp581 and p581_cor and temp390 and p390_c:
+if temp581 and p581_cor and temp390 and p390_c and not NO_CORR:
     off = value_at(temp390, p390_c) - value_at(temp581, p581_cor)
     print("\nAbsolute offset at 25 C:  BMP390 - corrected BMP581 = %+.0f Pa" % off)
     print("   (~0 means the CORR_OFFSET in bmp581_plot.py is aligned; track this across reboots)")
@@ -211,7 +214,7 @@ if t581 and temp581:
 if t581 and p581_raw:
     panels.append(("BMP581 original pressure (raw comp=3)", "Pressure (kPa)",
                    t581, p581_raw, COL_RAW, temp581))
-if t581 and has_corr and p581_cor:
+if t581 and has_corr and p581_cor and not NO_CORR:
     panels.append(("BMP581 corrected pressure", "Pressure (kPa)",
                    t581, p581_cor, COL_COR, temp581))
 if t390 and temp390:
