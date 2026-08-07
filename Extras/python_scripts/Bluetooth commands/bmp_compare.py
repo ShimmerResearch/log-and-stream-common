@@ -126,9 +126,71 @@ def report(label, temp, press_kpa):
           % (label, slope, r2, span, mean))
 
 
+def pressure_agreement(t581, p581_kpa, t390, p390_kpa, out_png, no_show):
+    """Pressure-tracking check (for a room-temperature pressure test, e.g. a climb
+    up/down): time-align the two streams via cross-correlation, then verify the
+    BMP581 tracks the BMP390 1:1. Prints slope/R2/offset and saves a 2-panel figure
+    (pressure vs aligned time + BMP581-vs-BMP390 scatter). Uses RAW BMP581 pressure."""
+    import numpy as np
+    a_t = np.asarray(t581, float); a_p = np.asarray(p581_kpa, float) * 1000.0   # Pa
+    b_t = np.asarray(t390, float); b_p = np.asarray(p390_kpa, float) * 1000.0
+    dt = 0.2  # resample to 5 Hz - ample for pressure steps, keeps xcorr cheap
+    ga = np.arange(a_t[0], a_t[-1], dt); pa = np.interp(ga, a_t, a_p)
+    gb = np.arange(b_t[0], b_t[-1], dt); pb = np.interp(gb, b_t, b_p)
+    # cross-correlate (mean-removed) to find the BMP581->BMP390 time lag, searching a
+    # bounded +/-60 s window around zero (the two scripts are started together)
+    a0 = pa - pa.mean(); b0 = pb - pb.mean()
+    full = np.correlate(b0, a0, mode="full")
+    zero = len(a0) - 1
+    w = int(60.0 / dt)
+    lo_i = max(0, zero - w); hi_i = min(len(full), zero + w + 1)
+    lag = (lo_i + int(np.argmax(full[lo_i:hi_i])) - zero) * dt   # add to a_t to align to b
+    # pair on the overlapping, aligned grid
+    ta = ga + lag
+    lo = max(ta[0], gb[0]); hi = min(ta[-1], gb[-1])
+    grid = np.arange(lo, hi, dt)
+    P581 = np.interp(grid, ta, pa)
+    P390 = np.interp(grid, gb, pb)
+    # fit BMP581 = slope*BMP390 + offset
+    slope, intercept = np.polyfit(P390, P581, 1)
+    resid = P581 - (slope * P390 + intercept)
+    ss_res = float(np.sum(resid ** 2)); ss_tot = float(np.sum((P581 - P581.mean()) ** 2))
+    r2 = (1.0 - ss_res / ss_tot) if ss_tot else 0.0
+    rng = float(P390.max() - P390.min())
+    print("\nPressure agreement (BMP581 vs BMP390, time-aligned, lag %.1f s):" % lag)
+    print("  slope        = %.4f   (1.000 = BMP581 tracks real pressure 1:1)" % slope)
+    print("  R2           = %.5f" % r2)
+    print("  offset       = %+.0f Pa  (BMP581 - BMP390)" % intercept)
+    print("  residual sd  = %.1f Pa    applied pressure range = %.0f Pa" % (resid.std(), rng))
+    if rng < 30.0:
+        print("  NOTE: applied range < 30 Pa - climb more / bigger steps for a reliable slope.")
+    if not HAVE_MPL:
+        return
+    fig, ax = plt.subplots(2, 1, figsize=(9, 8))
+    ax[0].plot(grid, P581 - P581.mean(), color="tab:blue", lw=0.7, label="BMP581 (raw)")
+    ax[0].plot(grid, P390 - P390.mean(), color="tab:green", lw=0.7, label="BMP390 (ref)")
+    ax[0].set_xlabel("elapsed (s, aligned)"); ax[0].set_ylabel("Pressure, mean-centred (Pa)")
+    ax[0].grid(alpha=0.3); ax[0].legend(fontsize=8)
+    ax[0].set_title("Pressure vs time - BMP581 should step in lockstep with BMP390")
+    ax[1].scatter(P390, P581, s=2, color="tab:blue")
+    xs = np.array([P390.min(), P390.max()])
+    ax[1].plot(xs, slope * xs + intercept, color="tab:red", lw=1.2,
+               label="fit: slope=%.3f, R2=%.4f" % (slope, r2))
+    ax[1].plot(xs, xs + (P581.mean() - P390.mean()), color="0.6", ls="--", lw=1.0,
+               label="ideal (slope 1)")
+    ax[1].set_xlabel("BMP390 pressure (Pa)"); ax[1].set_ylabel("BMP581 pressure (Pa)")
+    ax[1].grid(alpha=0.3); ax[1].legend(fontsize=8)
+    ax[1].set_title("BMP581 vs BMP390 pressure - slope ~1 = correct magnitude", fontsize=9)
+    fig.tight_layout(); fig.savefig(out_png, dpi=120)
+    print("  plot saved -> %s" % out_png)
+    if not no_show:
+        plt.show()
+
+
 # --- Load ------------------------------------------------------------------
 NO_SHOW = ("--no-show" in sys.argv) or bool(os.environ.get("BMP_NOSHOW"))
 NO_CORR = ("--no-corr" in sys.argv)   # drop the BMP581 corrected-pressure panel + its temp cal
+PRESSURE_MODE = ("--pressure" in sys.argv)  # pressure-tracking check (climb test) instead of TCO
 args = [a for a in sys.argv[1:] if a and not a.startswith("-")]
 p581 = args[0] if len(args) >= 1 else DEFAULT_581
 p390 = args[1] if len(args) >= 2 else DEFAULT_390
@@ -159,6 +221,14 @@ if path581:
     print("  BMP581: %s  (%d samples)" % (path581, len(t581 or [])))
 if path390:
     print("  BMP390: %s  (%d samples)" % (path390, len(t390 or [])))
+
+if PRESSURE_MODE:
+    if not (t581 and p581_raw and t390 and p390_c):
+        print("\n--pressure needs both the BMP581 and BMP390 streams.")
+        sys.exit(1)
+    pressure_agreement(t581, p581_raw, t390, p390_c,
+                       os.path.abspath("bmp_pressure_agreement.png"), NO_SHOW)
+    sys.exit(0)
 
 print("\nPressure vs temperature (flatness):")
 report("BMP581 raw comp=3", temp581, p581_raw)
