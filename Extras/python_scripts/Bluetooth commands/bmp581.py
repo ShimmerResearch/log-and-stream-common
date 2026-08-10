@@ -13,8 +13,9 @@
 #
 # Flow:
 #   1. Send GET_PRESSURE_CALIBRATION_COEFFICIENTS (0xA7). A BMP581 self-compensates
-#      and has NO calibration coefficients, so the firmware replies with a NACK
-#      (0xFE). This script expects that NACK and proceeds - no coefficients needed.
+#      and has NO calibration coefficients: current firmware replies with the
+#      0xA6 response carrying just the sensor-id byte (3 = BMP581); an interim
+#      DEV-818 build replied NACK (0xFE). This script accepts either and proceeds.
 #   2. Enable pressure + temperature, set the sampling rate, start streaming.
 #   3. Convert each sample straight from the RAW 24-bit values (no host trimming):
 #        pressure    (uint24 little-endian)  Pa   = raw / 64
@@ -37,6 +38,7 @@ ACK = 0xFF
 NACK = 0xFE
 GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND = 0xA7
 PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE = 0xA6
+PRESSURE_SENSOR_BMP581 = 3  # sensor-id byte in the 0xA6 response
 SET_SENSORS_COMMAND = 0x08
 SET_SAMPLING_RATE_COMMAND = 0x05
 START_STREAMING_COMMAND = 0x07
@@ -179,8 +181,13 @@ def s24_le(b0, b1, b2):
     return v
 
 
-def check_calibration_nack():
-    """Send GET_PRESSURE_CALIBRATION_COEFFICIENTS and expect a NACK for a BMP581."""
+def check_pressure_sensor_id():
+    """Identify the fitted pressure sensor via GET_PRESSURE_CALIBRATION_
+    COEFFICIENTS (0xA7). Current firmware replies ACK + 0xA6 + len + sensor-id
+    [+ coefficients]: a BMP581 reports id 3 with no coefficient bytes (it is
+    pre-compensated). An interim DEV-818 build NACK'd instead - accept that
+    too. A BMP390 (id 2 + 21 coefficient bytes) means this is the wrong
+    script. Returns True when the device is (or is assumed to be) a BMP581."""
     ser.write(struct.pack('B', GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND))
     resp = ser.read(1)
     if len(resp) == 0:
@@ -188,8 +195,8 @@ def check_calibration_nack():
         return False
     b = resp[0]
     if b == NACK:
-        print("calibration command NACK'd (0xFE) - BMP581 is pre-compensated, "
-              "no coefficients needed. Good.")
+        print("calibration command NACK'd (0xFE) - interim DEV-818 firmware; "
+              "assuming BMP581 (pre-compensated). Good.")
         return True
     if b == ACK:
         hdr = ser.read(1)
@@ -201,9 +208,14 @@ def check_calibration_nack():
             length = lenb[0]
             payload = ser.read(length)
             sensor_id = payload[0] if len(payload) else -1
-            print("WARNING: device ACK'd and returned coefficients (sensor id "
-                  "0x%02x). NACK not active for this unit - discarding "
-                  "coefficients and streaming raw anyway." % sensor_id)
+            if sensor_id == PRESSURE_SENSOR_BMP581:
+                print("device reports sensor id 3 (BMP581, pre-compensated, "
+                      "no coefficients). Good.")
+                return True
+            print("WARNING: device reports sensor id 0x%02x with %d coefficient "
+                  "bytes - this looks like a BMP390/280/180 unit. Use "
+                  "bmp390_plot.py (host compensation) instead; raw values from "
+                  "this script will be meaningless." % (sensor_id, max(0, len(payload) - 1)))
         else:
             print("WARNING: unexpected response header after ACK: %r" % hdr)
         return False
@@ -237,8 +249,8 @@ ser = serial.Serial(port, 115200, timeout=2)
 ser.flushInput()
 print("port %s opened." % port)
 
-# 1. calibration handshake - expect NACK for a BMP581
-check_calibration_nack()
+# 1. identify the fitted pressure sensor (BMP581 = sensor id 3, no coefficients)
+check_pressure_sensor_id()
 
 # 2. enable pressure + temperature
 ser.write(struct.pack('BBBB', SET_SENSORS_COMMAND, SENSORS0, SENSORS1, SENSORS2))

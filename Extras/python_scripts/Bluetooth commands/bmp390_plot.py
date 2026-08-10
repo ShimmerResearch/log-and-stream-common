@@ -20,13 +20,12 @@
 # Usage (same as bmp581_plot.py):
 #   bmp390_plot.py COM<n>          bmp390_plot.py <MAC>          bmp390_plot.py --list
 #
-# Requires pyserial; matplotlib is auto-installed on first run if missing.
+# Requires pyserial; requires matplotlib (pip install matplotlib).
 
 import bisect
 import os
 import re
 import struct
-import subprocess
 import sys
 import time
 
@@ -39,14 +38,8 @@ def _ensure_matplotlib():
         import matplotlib  # noqa: F401
         return True
     except Exception:
-        print("matplotlib not found - attempting a one-time install via pip ...")
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "matplotlib"])
-            import matplotlib  # noqa: F401
-            return True
-        except Exception as e:
-            print("  auto-install failed (%s). Run manually:  pip install matplotlib" % e)
-            return False
+        print("matplotlib not found - install it with:  pip install matplotlib")
+        return False
 
 
 HAVE_MPL = _ensure_matplotlib()
@@ -77,6 +70,7 @@ ACK = 0xFF
 NACK = 0xFE
 GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND = 0xA7
 PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE = 0xA6
+PRESSURE_SENSOR_BMP581 = 3  # sensor-id byte in the 0xA6 response
 SET_SENSORS_COMMAND = 0x08
 SET_SAMPLING_RATE_COMMAND = 0x05
 START_STREAMING_COMMAND = 0x07
@@ -192,7 +186,10 @@ def wait_for_ack(ser, timeout=ACK_TIMEOUT_S):
 
 # --- BMP390 calibration: read 21 NVM coefficients and convert to floats -----
 def read_bmp390_calib(ser):
-    """Send 0xA7, expect 0xFF 0xA6 <len> <id> <21 bytes>. Returns a dict of par_*."""
+    """Send 0xA7, expect 0xFF 0xA6 <len> <id> <21 bytes>. Returns a dict of par_*.
+    A BMP581 unit answers with sensor id 3 and NO coefficient bytes (older
+    interim DEV-818 firmware NACK'd instead) - both raise with a pointer to
+    bmp581_plot.py."""
     ser.write(struct.pack('B', GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND))
     deadline = time.monotonic() + 3.0
     resp_seen = False
@@ -202,7 +199,8 @@ def read_bmp390_calib(ser):
             continue
         if b[0] == NACK:
             raise RuntimeError("device NACK'd (0xFE) the calibration command - this is a "
-                               "BMP581 (self-compensating). Use bmp581_plot.py instead.")
+                               "BMP581 (self-compensating, interim DEV-818 firmware). "
+                               "Use bmp581_plot.py instead.")
         if b[0] == PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE:  # 0xA6
             resp_seen = True
             break
@@ -212,6 +210,9 @@ def read_bmp390_calib(ser):
     length = ser.read(1)[0]              # 1 (sensor id) + 21 (calib) = 22
     payload = ser.read(length)
     sensor_id = payload[0]
+    if sensor_id == PRESSURE_SENSOR_BMP581:
+        raise RuntimeError("device reports sensor id 3 (BMP581, self-compensating, "
+                           "no coefficients). Use bmp581_plot.py instead.")
     c = payload[1:1 + 21]                # 21 raw NVM bytes, register order 0x31..0x45
     if len(c) < 21:
         raise RuntimeError("short calibration payload (%d bytes)." % len(c))

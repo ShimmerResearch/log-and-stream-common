@@ -20,11 +20,10 @@
 # Independent scales mean a well-corrected BMP581 and the BMP390 both look flat
 # even though the two chips sit at different absolute offsets ("not very off").
 #
-# Requires matplotlib (auto-installed on first run if missing).
+# Requires matplotlib (pip install matplotlib).
 
 import csv
 import os
-import subprocess
 import sys
 
 DEFAULT_581 = "bmp581_stream.csv"
@@ -40,14 +39,8 @@ def _ensure_matplotlib():
         import matplotlib  # noqa: F401
         return True
     except Exception:
-        print("matplotlib not found - attempting a one-time install via pip ...")
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "matplotlib"])
-            import matplotlib  # noqa: F401
-            return True
-        except Exception as e:
-            print("  auto-install failed (%s). Run manually:  pip install matplotlib" % e)
-            return False
+        print("matplotlib not found - install it with:  pip install matplotlib")
+        return False
 
 
 HAVE_MPL = _ensure_matplotlib()

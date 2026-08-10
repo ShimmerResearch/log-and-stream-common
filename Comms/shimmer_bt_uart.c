@@ -797,6 +797,7 @@ void ShimBt_processCmd(void)
       case GET_GYRO_RANGE_COMMAND:
       case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
       case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
+      case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       case GET_GYRO_SAMPLING_RATE_COMMAND:
       case GET_ALT_ACCEL_RANGE_COMMAND:
       case GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND:
@@ -827,14 +828,6 @@ void ShimBt_processCmd(void)
       case GET_ALT_MAG_CALIBRATION_COMMAND:
       case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
       {
-        getCmdWaitingResponse = gAction;
-        break;
-      }
-      case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
-      {
-        /* Handled in ShimBt_sendRsp alongside GET_BMP180/BMP280_CALIBRATION_
-         * COEFFICIENTS_COMMAND: a BMP581 self-compensates (no coefficients) and
-         * NACKs there; a BMP390 returns its coefficients. */
         getCmdWaitingResponse = gAction;
         break;
       }
@@ -1884,18 +1877,18 @@ void ShimBt_sendRsp(void)
       }
       case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       {
+        bmpCalibByteLen = get_bmp_calib_data_bytes_len();
 #if defined(SHIMMER3R)
-        /* BMP581 self-compensates - no calibration coefficients, so NACK (like
-         * the BMP180/BMP280 cases above). The switch-set NACK is turned into a
-         * NACK-only response (single NACK byte, plus CRC bytes when CRC mode
-         * is enabled) by the sendNack fixup after this switch. */
+        /* The BMP581 outputs pre-compensated data so there are no calibration
+         * coefficients - respond with just the sensor-ID byte. Sending the ID
+         * in-band (rather than a NACK) lets hosts positively identify the
+         * fitted sensor: a NACK is ambiguous with older firmware that lacks
+         * the command. */
         if (isBmp581InUse())
         {
-          sendNack = 1;
-          break;
+          bmpCalibByteLen = 0;
         }
 #endif
-        bmpCalibByteLen = get_bmp_calib_data_bytes_len();
         *(resPacket + packet_length++) = PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE;
         *(resPacket + packet_length++) = 1U + bmpCalibByteLen;
 #if defined(SHIMMER3)
@@ -1912,8 +1905,8 @@ void ShimBt_sendRsp(void)
           *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
         }
 #elif defined(SHIMMER3R)
-        /* Only reached when a BMP390 is fitted (BMP581 NACKs above). */
-        *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
+        *(resPacket + packet_length++)
+            = isBmp581InUse() ? PRESSURE_SENSOR_BMP581 : PRESSURE_SENSOR_BMP390;
 #endif
         memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
         packet_length += bmpCalibByteLen;
@@ -2201,11 +2194,11 @@ void ShimBt_sendRsp(void)
     getCmdWaitingResponse = 0;
 
     /* A response case above may set sendNack (an unsupported command for the
-     * fitted hardware - e.g. a pressure-calibration request on a self-
-     * compensating sensor). The ACK/NACK byte is written before the switch, so
-     * honour a switch-set NACK here: overwrite the staged ACK with a NACK and
-     * drop any response bytes. The payload is then the single NACK byte (CRC
-     * bytes are still appended below when CRC mode is enabled). */
+     * fitted hardware - e.g. a BMP180/BMP280 calibration request on a
+     * Shimmer3R). The ACK/NACK byte is written before the switch, so honour a
+     * switch-set NACK here: overwrite the staged ACK with a NACK and drop any
+     * response bytes. The payload is then the single NACK byte (CRC bytes are
+     * still appended below when CRC mode is enabled). */
     if (sendNack)
     {
       resPacket[0] = NACK_COMMAND_PROCESSED;

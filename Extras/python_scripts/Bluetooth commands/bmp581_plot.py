@@ -20,13 +20,12 @@
 # for each sensor; set CORRECTION_ENABLE=False to see only the raw comp=3 output.
 #
 # Usage:  bmp581_plot.py COM56   |   <MAC>   |   --list
-# Requires pyserial; matplotlib is auto-installed on first run if missing.
+# Requires pyserial; requires matplotlib (pip install matplotlib).
 
 import bisect
 import os
 import re
 import struct
-import subprocess
 import sys
 import time
 
@@ -39,14 +38,8 @@ def _ensure_matplotlib():
         import matplotlib  # noqa: F401
         return True
     except Exception:
-        print("matplotlib not found - attempting a one-time install via pip ...")
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "matplotlib"])
-            import matplotlib  # noqa: F401
-            return True
-        except Exception as e:
-            print("  auto-install failed (%s). Run manually:  pip install matplotlib" % e)
-            return False
+        print("matplotlib not found - install it with:  pip install matplotlib")
+        return False
 
 
 HAVE_MPL = _ensure_matplotlib()
@@ -72,6 +65,15 @@ RECONNECT_WAIT_S = 3.0     # pause between reconnect attempts
 MAX_RECONNECTS = 20        # give up after this many consecutive failures
 ACK_TIMEOUT_S = 4.0        # how long to wait for a command ACK
 
+# =============================================================================
+# !!! EXPERIMENTAL / PER-UNIT DIAGNOSTIC VALUES - NOT A CALIBRATION !!!
+# Every coefficient in the two blocks below was fitted to ONE bench unit while
+# DEV-818 root-causes the out-of-spec temperature sensitivity (the BMP581
+# datasheet TCO is +/-0.5 Pa/K; this unit showed ~444 Pa/degC). They WILL be
+# wrong for any other unit, drift ~10% between boots on this one, and are
+# expected to become unnecessary once the firmware-side fix lands. Use them
+# only to visualise the residual during bench tests - never for real data.
+# =============================================================================
 # --- Host-side pressure temperature-correction (PER-UNIT; fit from a fridge sweep)
 # P_corr = P_meas - (CORR_C*dt^3 + CORR_A*dt^2 + CORR_B*dt),  dt = T_raw - CORR_TREF  [Pa]
 # Fit to the 2026-07-29 15:22 run (BMP581 UID 1600 2988 86DF C7B2) vs the RAW
@@ -112,6 +114,7 @@ ACK = 0xFF
 NACK = 0xFE
 GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND = 0xA7
 PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE = 0xA6
+PRESSURE_SENSOR_BMP581 = 3  # sensor-id byte in the 0xA6 response
 SET_SENSORS_COMMAND = 0x08
 SET_SAMPLING_RATE_COMMAND = 0x05
 START_STREAMING_COMMAND = 0x07
@@ -216,26 +219,42 @@ def wait_for_ack(ser, timeout=ACK_TIMEOUT_S):
     return False
 
 
-def check_calibration_nack(ser):
+def check_pressure_sensor_id(ser):
+    """Identify the fitted pressure sensor via the 0xA7 probe. Current firmware
+    replies ACK + 0xA6 + len + sensor-id [+ coefficients]: a BMP581 reports
+    id 3 with no coefficient bytes. An interim DEV-818 build NACK'd instead -
+    accept that too. Coefficients (a BMP390-family unit) mean the wrong script
+    is being used."""
     try:
         ser.write(struct.pack('B', GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND))
         resp = ser.read(1)
     except Exception as e:
-        print("WARNING: calibration probe failed (%s)." % e)
+        print("WARNING: sensor-id probe failed (%s)." % e)
         return
     if len(resp) == 0:
         print("WARNING: no reply to calibration command (timeout).")
         return
     b = resp[0]
     if b == NACK:
-        print("calibration command NACK'd (0xFE) - BMP581 pre-compensated. Good.")
+        print("calibration command NACK'd (0xFE) - interim DEV-818 firmware; "
+              "assuming BMP581 (pre-compensated). Good.")
     elif b == ACK:
+        sensor_id = -1
+        n_coeffs = 0
         hdr = ser.read(1)
         if len(hdr) and hdr[0] == PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE:
             lenb = ser.read(1)
             if len(lenb):
-                ser.read(lenb[0])
-        print("WARNING: device ACK'd coefficients - streaming raw anyway.")
+                payload = ser.read(lenb[0])
+                sensor_id = payload[0] if len(payload) else -1
+                n_coeffs = max(0, len(payload) - 1)
+        if sensor_id == PRESSURE_SENSOR_BMP581:
+            print("device reports sensor id 3 (BMP581, pre-compensated). Good.")
+        else:
+            print("WARNING: device reports sensor id 0x%02x with %d coefficient "
+                  "bytes - looks like a BMP390-family unit. Use bmp390_plot.py "
+                  "(host compensation); raw values here will be meaningless."
+                  % (sensor_id, n_coeffs))
     else:
         print("WARNING: unexpected reply 0x%02x." % b)
 
@@ -248,7 +267,7 @@ def open_serial(port):
 
 def start_streaming(ser):
     """Run the full handshake. Returns True if streaming was (re)started."""
-    check_calibration_nack(ser)
+    check_pressure_sensor_id(ser)
     ser.write(struct.pack('BBBB', SET_SENSORS_COMMAND, SENSORS0, SENSORS1, SENSORS2))
     if not wait_for_ack(ser):
         print("WARNING: no ACK for SET_SENSORS.")
