@@ -149,12 +149,21 @@ def resolve_port(arg):
     return a
 
 
-def wait_for_ack():
+def wait_for_ack(max_timeouts=10):
+    """Wait for an ACK byte; abort instead of blocking forever if the link
+    drops or the command is unsupported (ser.read returns b'' on timeout)."""
     ack = struct.pack('B', ACK)
-    ddata = bytes()
-    while ddata != ack:
+    timeouts = 0
+    while True:
         ddata = ser.read(1)
-    return
+        if ddata == ack:
+            return
+        if not ddata:
+            timeouts += 1
+            if timeouts >= max_timeouts:
+                print("ERROR: no ACK from device (timed out %d times) - aborting." % timeouts)
+                ser.close()
+                sys.exit(1)
 
 
 def u24_le(b0, b1, b2):

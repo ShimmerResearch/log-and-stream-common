@@ -1887,7 +1887,8 @@ void ShimBt_sendRsp(void)
 #if defined(SHIMMER3R)
         /* BMP581 self-compensates - no calibration coefficients, so NACK (like
          * the BMP180/BMP280 cases above). The switch-set NACK is turned into a
-         * clean single-byte NACK by the sendNack fixup after this switch. */
+         * NACK-only response (single NACK byte, plus CRC bytes when CRC mode
+         * is enabled) by the sendNack fixup after this switch. */
         if (isBmp581InUse())
         {
           sendNack = 1;
@@ -2203,7 +2204,8 @@ void ShimBt_sendRsp(void)
      * fitted hardware - e.g. a pressure-calibration request on a self-
      * compensating sensor). The ACK/NACK byte is written before the switch, so
      * honour a switch-set NACK here: overwrite the staged ACK with a NACK and
-     * drop any response bytes so a clean single-byte NACK is sent. */
+     * drop any response bytes. The payload is then the single NACK byte (CRC
+     * bytes are still appended below when CRC mode is enabled). */
     if (sendNack)
     {
       resPacket[0] = NACK_COMMAND_PROCESSED;
