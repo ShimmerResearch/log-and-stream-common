@@ -346,6 +346,9 @@ typedef union
     uint8_t unusedIdx129;
 
     //Idx 130: Config setup byte 4
+    /* Lsb (2 bits) + Msb (1 bit) hold the full oversampling value: 0-7. The
+     * BMP581's maximum, BMP5_OVERSAMPLING_128X = 0x07, uses the entire range -
+     * any future setting above 7 needs another config bit. */
     uint8_t pressureOversamplingRatioMsb : 1;
     uint8_t wrAccelLpModeMsb             : 1;
     uint8_t gyroRangeMsb                 : 1;

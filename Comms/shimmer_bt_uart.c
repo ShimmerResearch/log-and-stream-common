@@ -1878,6 +1878,17 @@ void ShimBt_sendRsp(void)
       case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       {
         bmpCalibByteLen = get_bmp_calib_data_bytes_len();
+#if defined(SHIMMER3R)
+        /* The BMP581 outputs pre-compensated data so there are no calibration
+         * coefficients - respond with just the sensor-ID byte. Sending the ID
+         * in-band (rather than a NACK) lets hosts positively identify the
+         * fitted sensor: a NACK is ambiguous with older firmware that lacks
+         * the command. */
+        if (isBmp581InUse())
+        {
+          bmpCalibByteLen = 0;
+        }
+#endif
         *(resPacket + packet_length++) = PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE;
         *(resPacket + packet_length++) = 1U + bmpCalibByteLen;
 #if defined(SHIMMER3)
@@ -1894,7 +1905,8 @@ void ShimBt_sendRsp(void)
           *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
         }
 #elif defined(SHIMMER3R)
-        *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
+        *(resPacket + packet_length++)
+            = isBmp581InUse() ? PRESSURE_SENSOR_BMP581 : PRESSURE_SENSOR_BMP390;
 #endif
         memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
         packet_length += bmpCalibByteLen;
@@ -2180,6 +2192,19 @@ void ShimBt_sendRsp(void)
       }
     }
     getCmdWaitingResponse = 0;
+
+    /* A response case above may set sendNack (an unsupported command for the
+     * fitted hardware - e.g. a BMP180/BMP280 calibration request on a
+     * Shimmer3R). The ACK/NACK byte is written before the switch, so honour a
+     * switch-set NACK here: overwrite the staged ACK with a NACK and drop any
+     * response bytes. The payload is then the single NACK byte (CRC bytes are
+     * still appended below when CRC mode is enabled). */
+    if (sendNack)
+    {
+      resPacket[0] = NACK_COMMAND_PROCESSED;
+      packet_length = 1;
+      sendNack = 0;
+    }
 
     COMMS_CRC_MODE crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
