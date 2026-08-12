@@ -23,17 +23,23 @@ minors. Base board IDs never change; the revision signifies the variant.
 | Gate | Revisions (>= within same board ID) | Firmware hook |
 | --- | --- | --- |
 | BMP581 replaces BMP390 | SR31-11-2, SR38-4-2, SR47-8-2, SR48-8-2, SR49-4-2, plus dev build SR48-7-2 | `ShimBrd_isBmp581PresentPerSrNumber()` (log-and-stream-common PR #111 / DEV-818) |
-| Crystal load-cap fix (LSE 22 pF, HSE 15 pF) | SR31-11-2, SR38-4-2, SR47-8-2, SR48-8-2, SR49-4-2 — **not** SR48-7-2 (dev build predates the cap change) | `lseCapFixFitted()` in shimmer3r-firmware `hal_FactoryTest.c` (DEV-866); picks the S3R_TEST_0028 pass limit |
+| HSE (16 MHz) load-cap fix 6.8 → 15 pF | SR31-11-2, SR38-4-2, SR47-8-2, SR48-8-2, SR49-4-2 — **not** SR48-7-2 (dev build predates the cap change) | `hseCapFixFitted()` in shimmer3r-firmware `hal_FactoryTest.c` (DEV-866); picks the S3R_TEST_0028 pass limit (±35 ppm fixed / ±100 ppm pre-fix) |
 | IM68D121JV01 replaces MP23DB01HP microphone | SR31-11-3, SR38-4-3, SR47-8-3, SR48-8-3, SR49-4-3 | none yet (DEV-686; both mics are PDM, same interface) |
 | LIS3MDL + ADXL371 no longer placed | `.1` minors (SR31-11-1 keeps ADXL371; see tables) | `ShimBrd_isLis3mdlPresent()` / `ShimBrd_isAdxl371Present()` |
 
 Notes:
 
-- The crystal cap change is **not** tracked per-row in the source workbook (it
-  is bundled into the "Fourth (BMP-581, IM68D121JV01 fitted, XTAL cap change)"
-  generation column); the `.2` gate above is per DEV-866. A board's boot LSE
-  drive level (factory-test report line "LSE drive applied at boot") is the
-  runtime cross-check.
+- The crystal cap change is **HSE-only** and is **not** tracked per-row in the
+  source workbook (it is bundled into the "Fourth (BMP-581, IM68D121JV01
+  fitted, XTAL cap change)" generation column); the `.2` gate above is per
+  DEV-866. **The 32 kHz LSE caps stay at 12 pF on all revisions**: hardware
+  measurement (2026-08-11, overnight RTC-vs-host drift runs on three boards)
+  showed the S3R LSE near-spec at 12 pF (−7 ± 2 ppm — the STM32's pin strays
+  complete the load, unlike the Verisense nRF52840 whose identical BOM ran
+  +40…+65 ppm fast), while 22 pF over-loads it (−54 / −113 ppm measured).
+  A board's boot LSE drive level (factory-test report line "LSE drive applied
+  at boot") is the runtime cross-check — production boards lock LOW / run
+  MEDIUMLOW.
 - Hand-reworked bench units may carry corrected caps and/or a BMP581 under a
   pre-fix revision; revision gates cannot see rework.
 
