@@ -186,7 +186,7 @@ class BtCmds:
     DUMMY_COMMAND = 0xB5
     RESET_BT_ERROR_COUNTS = 0xB6
     SET_FEATURE = 0xB7
-    # SD-card file transfer (LogAndStream_Shimmer3R >= v1.01.008).
+    # SD-card file transfer (LogAndStream_Shimmer3R >= v1.01.009).
     # Command opcodes avoid the EZ-Serial SOF bytes 0x80/0xC0/0xD0 (CYW20820
     # UART RX demux would swallow them), hence LIST sits at 0xCC.
     SD_LIST_DIR_COMMAND = 0xCC
@@ -384,7 +384,7 @@ class ShimmerBluetooth:
         return True
 
     # ------------------------------------------------------------------
-    # SD-card file transfer (LogAndStream_Shimmer3R >= v1.01.008)
+    # SD-card file transfer (LogAndStream_Shimmer3R >= v1.01.009)
     # ------------------------------------------------------------------
 
     @staticmethod
