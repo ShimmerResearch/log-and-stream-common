@@ -29,8 +29,8 @@ static uint8_t ShimEeprom_isBrandRecordValid(void);
 static void ShimEeprom_seedBrandDefaults(void);
 static void ShimEeprom_updateBrandStrings(void);
 static uint8_t ShimEeprom_isBrandNameFieldValid(const char *field, uint8_t len, uint8_t maxLen);
-static void ShimEeprom_setBrandNameField(
-    char *fieldPtr, uint8_t *lenPtr, const char *str, uint8_t maxLen);
+static void
+ShimEeprom_setBrandNameField(char *fieldPtr, uint8_t *lenPtr, const char *str, uint8_t maxLen);
 
 void ShimEeprom_init(void)
 {
@@ -81,8 +81,8 @@ void ShimEeprom_writeSensorSettingsPage(void)
 }
 
 /* Copies a NUL-terminated string into a length-prefixed brand record field. */
-static void ShimEeprom_setBrandNameField(
-    char *fieldPtr, uint8_t *lenPtr, const char *str, uint8_t maxLen)
+static void
+ShimEeprom_setBrandNameField(char *fieldPtr, uint8_t *lenPtr, const char *str, uint8_t maxLen)
 {
   uint8_t i;
   for (i = 0; i < maxLen && str[i] != '\0'; i++)
@@ -134,8 +134,8 @@ static void ShimEeprom_seedBrandDefaults(void)
   memset((uint8_t *) &eepromBrandDetails, 0, sizeof(eepromBrandDetails));
   eepromBrandDetails.magic = EEPROM_BRAND_MAGIC;
   eepromBrandDetails.layoutVer = EEPROM_BRAND_LAYOUT_VER;
-  eepromBrandDetails.flags
-      = (BRAND_PLATFORM_CURRENT << EEPROM_BRAND_PLATFORM_SHIFT) & EEPROM_BRAND_PLATFORM_MASK;
+  eepromBrandDetails.flags = (BRAND_PLATFORM_CURRENT << EEPROM_BRAND_PLATFORM_SHIFT)
+      & EEPROM_BRAND_PLATFORM_MASK;
   ShimEeprom_setBrandNameField(&eepromBrandDetails.btClassic[0],
       &eepromBrandDetails.btClassicLen, BRAND_DEFAULT_BT_CLASSIC,
       EEPROM_BRAND_BT_CLASSIC_MAX_CHARS);
@@ -191,8 +191,7 @@ void ShimEeprom_readBrandDetails(uint8_t seedIfInvalid)
   {
     if (!eepromBrandIsValid
         || (!(eepromBrandDetails.flags & EEPROM_BRAND_FLAG_CUSTOMER_BRANDED)
-            && ((eepromBrandDetails.flags & EEPROM_BRAND_PLATFORM_MASK)
-                    >> EEPROM_BRAND_PLATFORM_SHIFT)
+            && ((eepromBrandDetails.flags & EEPROM_BRAND_PLATFORM_MASK) >> EEPROM_BRAND_PLATFORM_SHIFT)
                 != BRAND_PLATFORM_CURRENT))
     {
       /* Blank/invalid record, or a stock record seeded by a different

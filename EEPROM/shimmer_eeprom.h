@@ -22,7 +22,7 @@
 #define EEPROM_ADDRESS_BLUETOOTH_DETAILS_HOST_OFFSET_ALIAS \
   (EEPROM_ADDRESS_BLUETOOTH_DETAILS - CAT24C16_PAGE_SIZE)
 
-#define EEPROM_AVAILABLE_SIZE (CAT24C16_TOTAL_SIZE - CAT24C16_PAGE_SIZE)
+#define EEPROM_AVAILABLE_SIZE     (CAT24C16_TOTAL_SIZE - CAT24C16_PAGE_SIZE)
 
 /* Brand (advertising name) record, stored in the 4 pages directly below the
  * Bluetooth details page. Absolute bytes 1968-2031 (host offset 1952). */
@@ -30,12 +30,12 @@
 #define EEPROM_ADDRESS_BRAND_DETAILS \
   (EEPROM_ADDRESS_BLUETOOTH_DETAILS - EEPROM_BRAND_DETAILS_SIZE)
 
-#define EEPROM_BRAND_MAGIC      0x5342 /* "SB" */
-#define EEPROM_BRAND_LAYOUT_VER 1
+#define EEPROM_BRAND_MAGIC                 0x5342 /* "SB" */
+#define EEPROM_BRAND_LAYOUT_VER            1
 
-#define EEPROM_BRAND_BT_CLASSIC_MAX_CHARS 16
-#define EEPROM_BRAND_BLE_MAX_CHARS        10
-#define EEPROM_BRAND_USB_MAX_CHARS        16
+#define EEPROM_BRAND_BT_CLASSIC_MAX_CHARS  16
+#define EEPROM_BRAND_BLE_MAX_CHARS         10
+#define EEPROM_BRAND_USB_MAX_CHARS         16
 
 /* Flags byte in the brand record */
 #define EEPROM_BRAND_FLAG_CUSTOMER_BRANDED 0x01
@@ -152,9 +152,9 @@ typedef union
 
   struct __attribute__((packed))
   {
-    uint16_t magic;     /* EEPROM_BRAND_MAGIC */
-    uint8_t layoutVer;  /* EEPROM_BRAND_LAYOUT_VER */
-    uint8_t flags;      /* EEPROM_BRAND_FLAG_* + EEPROM_BRAND_PLATFORM_* */
+    uint16_t magic;    /* EEPROM_BRAND_MAGIC */
+    uint8_t layoutVer; /* EEPROM_BRAND_LAYOUT_VER */
+    uint8_t flags;     /* EEPROM_BRAND_FLAG_* + EEPROM_BRAND_PLATFORM_* */
     uint8_t btClassicLen;
     uint8_t bleLen;
     uint8_t usbLen;
