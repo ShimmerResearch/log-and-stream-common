@@ -1,4 +1,4 @@
-"""Bench test for the SD-card file transfer commands (opcodes 0xC0-0xCB,
+"""Bench test for the SD-card file transfer commands (opcodes 0xC1-0xCC,
 LogAndStream_Shimmer3R >= v1.01.009).
 
 Walks the card's data/ tree over the BT serial link, prints it, downloads the
