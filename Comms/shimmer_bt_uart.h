@@ -218,8 +218,13 @@
 /* SD-card file transfer over BT. Opcodes are reserved protocol-wide but the
  * commands are currently only served on SHIMMER3R (older FW silently ignores
  * unknown opcodes, so hosts gate on GET_FW_VERSION_COMMAND). See
- * Comms/shimmer_sd_file_transfer.h for the payload formats. */
-#define SD_LIST_DIR_COMMAND                           0xC0
+ * Comms/shimmer_sd_file_transfer.h for the payload formats.
+ *
+ * NOTE: command opcodes (the first byte the host sends) must avoid the
+ * EZ-Serial binary SOF bytes 0x80/0xC0/0xD0 - the CYW20820 UART RX demux
+ * (hal_CYW20820.c) routes those to the EZ-Serial parser, not the Shimmer
+ * command parser. Hence SD_LIST_DIR_COMMAND sits at 0xCC, not 0xC0. */
+#define SD_LIST_DIR_COMMAND                           0xCC
 #define SD_LIST_DIR_RESPONSE                          0xC1
 #define SD_FILE_STAT_COMMAND                          0xC2
 #define SD_FILE_STAT_RESPONSE                         0xC3
