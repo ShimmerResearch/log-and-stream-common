@@ -26,9 +26,9 @@
 /* Sized for SD file transfer: deep enough to keep the radio fed with
  * ~1 KB data frames while preserving headroom for command responses.
  * Must remain a power of 2. */
-#define BT_TX_BUF_SIZE                              4096U /* serial buffer in bytes (power 2)  */
+#define BT_TX_BUF_SIZE 4096U /* serial buffer in bytes (power 2)  */
 #else
-#define BT_TX_BUF_SIZE                              256U /* serial buffer in bytes (power 2)  */
+#define BT_TX_BUF_SIZE 256U /* serial buffer in bytes (power 2)  */
 #endif
 #define BT_TX_BUF_MASK                              (BT_TX_BUF_SIZE - 1UL)
 

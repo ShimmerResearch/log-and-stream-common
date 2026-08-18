@@ -506,8 +506,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
          * length is not armed for; the command proceeds with what was
          * received and the handler reports bad-args in the response. */
         else if ((!waitingForArgsLength)
-            && ((waitingForArgs == 1
-                    && (gAction == SD_FILE_STAT_COMMAND || gAction == SD_DELETE_COMMAND))
+            && ((waitingForArgs == 1 && (gAction == SD_FILE_STAT_COMMAND || gAction == SD_DELETE_COMMAND))
                 || (waitingForArgs == 4 && gAction == SD_LIST_DIR_COMMAND)
                 || (waitingForArgs == 11 && gAction == SD_FILE_READ_COMMAND)))
         {

@@ -32,9 +32,11 @@
  * one-shot responses within the reach of platforms whose response path
  * still uses uint8_t lengths (SHIMMER3), so the wire format ports without
  * change. Larger listings are served via startIdx paging. */
-#define SD_FT_LIST_RSP_BUDGET   240
-#define SD_FT_LIST_RSP_HDR_LEN  8 /* opcode, status, startIdx u16, entriesLen u16, nEntries, flags */
-#define SD_FT_LIST_ENTRY_FIXED  10 /* attr, size u32, fdate u16, ftime u16, nameLen */
+#define SD_FT_LIST_RSP_BUDGET 240
+#define SD_FT_LIST_RSP_HDR_LEN \
+  8 /* opcode, status, startIdx u16, entriesLen u16, nEntries, flags */
+#define SD_FT_LIST_ENTRY_FIXED \
+  10 /* attr, size u32, fdate u16, ftime u16, nameLen */
 
 typedef enum
 {
@@ -58,8 +60,8 @@ static uint8_t stagedListMaxEntries;
 
 /* Windowed-read context */
 static uint8_t sdFtState = SD_FT_STATE_IDLE;
-static uint8_t sessionIdCounter;  /* increments on every SD_FILE_READ_COMMAND */
-static uint8_t windowSessionId;   /* session id of the active/last window */
+static uint8_t sessionIdCounter; /* increments on every SD_FILE_READ_COMMAND */
+static uint8_t windowSessionId;  /* session id of the active/last window */
 static uint16_t blockSeq;
 static uint16_t blockPayloadLen = SD_FT_BLOCK_PAYLOAD_DEFAULT;
 static uint32_t readOffset;
@@ -85,8 +87,7 @@ static uint8_t sdPowerRequested;
 static sdFtPendingStatus_t pendingStatus[2];
 static uint8_t pendingStatusCount;
 
-static uint8_t xferBuf[SD_FT_DATA_FRAME_HEADER_LEN + SD_FT_BLOCK_PAYLOAD_MAX
-    + SD_FT_FRAME_CRC_LEN];
+static uint8_t xferBuf[SD_FT_DATA_FRAME_HEADER_LEN + SD_FT_BLOCK_PAYLOAD_MAX + SD_FT_FRAME_CRC_LEN];
 
 static uint16_t u16FromLe(const uint8_t *p)
 {
@@ -137,9 +138,8 @@ static uint8_t sdFtAccessCheck(void)
 {
   LogAndStream_checkSdInSlot();
 
-  if (shimmerStatus.docked || shimmerStatus.usbPluggedIn
-      || shimmerStatus.sdOwner != SD_OWNER_MCU || !shimmerStatus.sdInserted
-      || shimmerStatus.sdBadFile)
+  if (shimmerStatus.docked || shimmerStatus.usbPluggedIn || shimmerStatus.sdOwner != SD_OWNER_MCU
+      || !shimmerStatus.sdInserted || shimmerStatus.sdBadFile)
   {
     return SD_FT_STATUS_SD_UNAVAILABLE;
   }
@@ -176,8 +176,8 @@ static uint8_t sdFtIsDeletablePath(const char *path)
     p++;
   }
   if (!((p[0] == 'd' || p[0] == 'D') && (p[1] == 'a' || p[1] == 'A')
-        && (p[2] == 't' || p[2] == 'T') && (p[3] == 'a' || p[3] == 'A')
-        && p[4] == '/' && p[5] != '\0'))
+          && (p[2] == 't' || p[2] == 'T') && (p[3] == 'a' || p[3] == 'A')
+          && p[4] == '/' && p[5] != '\0'))
   {
     return 0;
   }
@@ -347,8 +347,7 @@ void ShimSdFileTransfer_startRead(uint8_t *argsPtr)
   if (access != SD_FT_STATUS_OK)
   {
     sdFtQueueStatus(windowSessionId,
-        (access == SD_FT_STATUS_SD_UNAVAILABLE) ? SD_FT_XFER_SD_LOST :
-                                                  SD_FT_XFER_DENIED,
+        (access == SD_FT_STATUS_SD_UNAVAILABLE) ? SD_FT_XFER_SD_LOST : SD_FT_XFER_DENIED,
         offset);
     return;
   }
@@ -373,8 +372,7 @@ void ShimSdFileTransfer_startRead(uint8_t *argsPtr)
   }
 
   readOffset = offset;
-  windowEnd = (windowLen > (0xFFFFFFFFUL - offset)) ? 0xFFFFFFFFUL :
-                                                      (offset + windowLen);
+  windowEnd = (windowLen > (0xFFFFFFFFUL - offset)) ? 0xFFFFFFFFUL : (offset + windowLen);
   blockSeq = 0;
   blockPayloadLen = blockLen;
   sdFtState = SD_FT_STATE_STREAMING;
@@ -410,8 +408,7 @@ void ShimSdFileTransfer_run(void)
     sdFtCloseXferFil();
     sdFtState = SD_FT_STATE_IDLE;
     sdFtQueueStatus(windowSessionId,
-        (access == SD_FT_STATUS_SD_UNAVAILABLE) ? SD_FT_XFER_SD_LOST :
-                                                  SD_FT_XFER_DENIED,
+        (access == SD_FT_STATUS_SD_UNAVAILABLE) ? SD_FT_XFER_SD_LOST : SD_FT_XFER_DENIED,
         readOffset);
     sdFtEmitPendingStatusFrames();
     return;
@@ -502,8 +499,7 @@ void ShimSdFileTransfer_run(void)
           sdFtCalcCrc(xferBuf, SD_FT_DATA_FRAME_HEADER_LEN + (uint16_t) bytesRead));
 
       if (ShimBt_writeToTxBufAndSend(xferBuf,
-              SD_FT_DATA_FRAME_HEADER_LEN + (uint16_t) bytesRead + SD_FT_FRAME_CRC_LEN,
-              SENSOR_DATA))
+              SD_FT_DATA_FRAME_HEADER_LEN + (uint16_t) bytesRead + SD_FT_FRAME_CRC_LEN, SENSOR_DATA))
       {
         waitingForTxSpace = 1;
         return;
@@ -593,8 +589,7 @@ uint16_t ShimSdFileTransfer_buildListDirRsp(uint8_t *dst)
           nameLen = SD_FT_LIST_NAME_MAX;
           attr |= SD_FT_ATTR_NAME_TRUNCATED;
         }
-        if ((uint16_t) (SD_FT_LIST_RSP_HDR_LEN + entriesLen
-                + SD_FT_LIST_ENTRY_FIXED + nameLen)
+        if ((uint16_t) (SD_FT_LIST_RSP_HDR_LEN + entriesLen + SD_FT_LIST_ENTRY_FIXED + nameLen)
             > SD_FT_LIST_RSP_BUDGET)
         {
           flags |= 0x01; /* hasMore */

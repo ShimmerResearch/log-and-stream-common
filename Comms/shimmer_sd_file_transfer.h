@@ -29,24 +29,25 @@
 /* Status byte shared by the one-shot responses (SD_LIST_DIR_RESPONSE,
  * SD_FILE_STAT_RESPONSE, SD_FREE_SPACE_RESPONSE, SD_DELETE_RESPONSE).
  * Values 0x01-0x13 are raw FatFs FRESULT codes passed through. */
-#define SD_FT_STATUS_OK             0x00
-#define SD_FT_STATUS_SD_UNAVAILABLE 0xF0 /* docked / USB-C / no card / bad card */
+#define SD_FT_STATUS_OK 0x00
+#define SD_FT_STATUS_SD_UNAVAILABLE \
+  0xF0 /* docked / USB-C / no card / bad card */
 #define SD_FT_STATUS_BUSY           0xF1 /* sensing / logging / streaming */
 #define SD_FT_STATUS_BAD_ARGS       0xF2
 
 /* Transfer status codes carried in SD_FILE_STATUS_RESPONSE (0xC6) frames */
-#define SD_FT_XFER_WINDOW_COMPLETE 0
-#define SD_FT_XFER_EOF             1
-#define SD_FT_XFER_HOST_ABORT      2
-#define SD_FT_XFER_SD_LOST         3
-#define SD_FT_XFER_FS_ERROR        4
-#define SD_FT_XFER_SUPERSEDED      5
-#define SD_FT_XFER_DENIED          6
-#define SD_FT_XFER_NOT_FOUND       7
+#define SD_FT_XFER_WINDOW_COMPLETE  0
+#define SD_FT_XFER_EOF              1
+#define SD_FT_XFER_HOST_ABORT       2
+#define SD_FT_XFER_SD_LOST          3
+#define SD_FT_XFER_FS_ERROR         4
+#define SD_FT_XFER_SUPERSEDED       5
+#define SD_FT_XFER_DENIED           6
+#define SD_FT_XFER_NOT_FOUND        7
 
 /* Directory entry attribute bits in SD_LIST_DIR_RESPONSE */
-#define SD_FT_ATTR_DIR            (1 << 0)
-#define SD_FT_ATTR_NAME_TRUNCATED (1 << 1)
+#define SD_FT_ATTR_DIR              (1 << 0)
+#define SD_FT_ATTR_NAME_TRUNCATED   (1 << 1)
 
 #define SD_FT_MAX_PATH_LEN          96
 #define SD_FT_LIST_MAX_ENTRIES      16
