@@ -365,6 +365,9 @@ static void LogAndStream_sdWaitAndAbort(void)
 /** Hand SD card to USB-C (USBX MSC + CDC).  SHIMMER3R only. */
 static void LogAndStream_assignSdToUsb(void)
 {
+  /* Close out any BT file transfer before the card changes hands */
+  ShimSdFileTransfer_abort(SD_FT_XFER_SD_LOST);
+
   /* Tear down dock if it had ownership */
   DockUart_deinit();
   Board_dockDetectN(DOCK_CARD_NOT_PRESENT);
@@ -397,6 +400,9 @@ static void LogAndStream_assignSdToUsb(void)
 void LogAndStream_assignSdToDock(void)
 {
 #if defined(SHIMMER3R)
+  /* Close out any BT file transfer before the card changes hands */
+  ShimSdFileTransfer_abort(SD_FT_XFER_SD_LOST);
+
   /* Tear down USB device first — must happen before touching SDMMC so that
    * the MSC class stops issuing SD commands. */
   USB_deinit();

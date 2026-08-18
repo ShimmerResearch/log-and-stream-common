@@ -119,6 +119,11 @@ typedef enum TaskId_Tag
 #if defined(SHIMMER3)
   TASK_WRITE_RADIO_DETAILS = (0x00000001UL << 22U),
 #endif
+#if defined(SHIMMER3R)
+  /* Deliberately below TASK_SDWRITE and TASK_DOCK_OR_USB_STATE_CHANGE so
+   * logging and SD-ownership handovers always pre-empt a file transfer */
+  TASK_SD_FILE_TRANSFER = (0x00000001UL << 23U),
+#endif
 } TaskId_t;
 //return the task id of the current task
 

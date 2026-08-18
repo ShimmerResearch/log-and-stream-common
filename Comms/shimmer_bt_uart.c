@@ -137,6 +137,8 @@ void ShimBt_btCommsProtocolInit(void)
 
   ShimBt_setDataRateTestState(0);
 
+  ShimSdFileTransfer_init();
+
   ShimBt_resetBtResponseVars();
   ShimBt_macIdVarsReset();
 
@@ -498,6 +500,28 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
             return 0;
           }
         }
+#if defined(SHIMMER3R)
+        /* SD file-transfer commands carry a trailing path string whose
+         * length sits in the last fixed argument byte. A zero or oversized
+         * length is not armed for; the command proceeds with what was
+         * received and the handler reports bad-args in the response. */
+        else if ((!waitingForArgsLength)
+            && ((waitingForArgs == 1
+                    && (gAction == SD_FILE_STAT_COMMAND || gAction == SD_DELETE_COMMAND))
+                || (waitingForArgs == 4 && gAction == SD_LIST_DIR_COMMAND)
+                || (waitingForArgs == 11 && gAction == SD_FILE_READ_COMMAND)))
+        {
+          uint8_t pathLen;
+          memcpy((uint8_t *) &args[0], btRxBuffPtr, waitingForArgs);
+          pathLen = args[waitingForArgs - 1U];
+          if (pathLen && pathLen <= (MAX_COMMAND_ARG_SIZE - waitingForArgs))
+          {
+            waitingForArgsLength = pathLen;
+            setDmaWaitingForResponse(waitingForArgsLength);
+            return 0;
+          }
+        }
+#endif
 
 #if defined(SHIMMER3)
         else if (gAction == RN4678_STATUS_STRING_SEPARATOR)
@@ -526,7 +550,13 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 
         if (waitingForArgsLength)
         {
-          memcpy((uint8_t *) &args[waitingForArgs], btRxBuffPtr, waitingForArgsLength);
+          /* Clamp so a host-supplied length can never overrun args[] */
+          uint16_t argsCopyLen = waitingForArgsLength;
+          if ((uint16_t) (waitingForArgs + argsCopyLen) > MAX_COMMAND_ARG_SIZE)
+          {
+            argsCopyLen = MAX_COMMAND_ARG_SIZE - waitingForArgs;
+          }
+          memcpy((uint8_t *) &args[waitingForArgs], btRxBuffPtr, argsCopyLen);
         }
         else
         {
@@ -612,6 +642,10 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case GET_ALT_MAG_CALIBRATION_COMMAND:
           case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
           case RESET_BT_ERROR_COUNTS:
+#if defined(SHIMMER3R)
+          case SD_TRANSFER_ABORT_COMMAND:
+          case SD_FREE_SPACE_COMMAND:
+#endif
             gAction = data;
             ShimTask_set(TASK_BT_PROCESS_CMD);
             setDmaWaitingForResponse(1U);
@@ -644,6 +678,10 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case SET_FACTORY_TEST:
           case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
           case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
+#if defined(SHIMMER3R)
+          case SD_FILE_STAT_COMMAND:
+          case SD_DELETE_COMMAND:
+#endif
             gAction = data;
             waitingForArgs = 1U;
             break;
@@ -668,9 +706,19 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
             waitingForArgs = 3U;
             break;
           case SET_CONFIG_SETUP_BYTES_COMMAND:
+#if defined(SHIMMER3R)
+          case SD_LIST_DIR_COMMAND:
+#endif
             gAction = data;
             waitingForArgs = 4U;
             break;
+#if defined(SHIMMER3R)
+          case SD_FILE_READ_COMMAND:
+            gAction = data;
+            /* offset u32, windowLen u32, blockPayloadLen u16, pathLen u8 */
+            waitingForArgs = 11U;
+            break;
+#endif
           case SET_RWC_COMMAND:
           case SET_DERIVED_CHANNEL_BYTES:
             gAction = data;
@@ -1478,6 +1526,38 @@ void ShimBt_processCmd(void)
         }
         break;
       }
+#if defined(SHIMMER3R)
+      case SD_LIST_DIR_COMMAND:
+      {
+        ShimSdFileTransfer_stageListDir((uint8_t *) args);
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SD_FILE_STAT_COMMAND:
+      case SD_DELETE_COMMAND:
+      {
+        ShimSdFileTransfer_stagePath((uint8_t *) args);
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SD_FREE_SPACE_COMMAND:
+      {
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SD_FILE_READ_COMMAND:
+      {
+        /* ACKed via the normal response path; the window verdict then
+         * arrives asynchronously as SD_FILE_DATA/SD_FILE_STATUS frames */
+        ShimSdFileTransfer_startRead((uint8_t *) args);
+        break;
+      }
+      case SD_TRANSFER_ABORT_COMMAND:
+      {
+        ShimSdFileTransfer_abort(SD_FT_XFER_HOST_ABORT);
+        break;
+      }
+#endif
       case ACK_COMMAND_PROCESSED:
       {
         if (shimmerStatus.btInSyncMode && ShimSdSync_isBtSdSyncRunning())
@@ -2185,6 +2265,28 @@ void ShimBt_sendRsp(void)
         break
       }
 #endif
+#if defined(SHIMMER3R)
+      case SD_LIST_DIR_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildListDirRsp(resPacket + packet_length);
+        break;
+      }
+      case SD_FILE_STAT_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildStatRsp(resPacket + packet_length);
+        break;
+      }
+      case SD_FREE_SPACE_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildFreeSpaceRsp(resPacket + packet_length);
+        break;
+      }
+      case SD_DELETE_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildDeleteRsp(resPacket + packet_length);
+        break;
+      }
+#endif
 
       default:
       {
@@ -2403,6 +2505,9 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
 
     ShimBt_setDataRateTestState(0);
 
+    /* Drop any SD file transfer silently - there is no link to report on */
+    ShimSdFileTransfer_reset();
+
     ShimBt_clearBtTxBuf(0);
 
     ShimBt_setCrcMode(CRC_OFF);
@@ -2472,7 +2577,7 @@ void ShimBt_pushByteToBtTxBuf(uint8_t c)
   }
 }
 
-uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
+uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint16_t len)
 {
   uint16_t wr = gBtTxFifo.wrIdx & BT_TX_BUF_MASK;
 
@@ -2543,6 +2648,12 @@ void ShimBt_TxCpltCallback(void)
   /* Advance the fifo buffer read index after TX is complete */
   gBtTxFifo.rdIdx += gBtTxFifo.numBytesBeingRead;
   gBtTxFifo.numBytesBeingRead = 0;
+#endif
+
+#if defined(SHIMMER3R)
+  /* Ring space has been freed: let a paused SD file transfer continue.
+   * ShimTask_set() is ISR-safe; the transfer itself runs in task context. */
+  ShimSdFileTransfer_txSpaceAvailableEvent();
 #endif
 
   if (shimmerStatus.btConnected
@@ -2666,7 +2777,7 @@ void ShimBt_loadTxBufForDataRateTest(void)
 }
 
 #if defined(SHIMMER3R)
-uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType)
+uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType responseType)
 {
   if (ShimBt_getSpaceInBtTxBuf() <= len)
   {

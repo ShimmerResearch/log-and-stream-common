@@ -22,7 +22,14 @@
 #define __weak __attribute__((weak))
 #endif /* __weak */
 
+#if defined(SHIMMER3R)
+/* Sized for SD file transfer: deep enough to keep the radio fed with
+ * ~1 KB data frames while preserving headroom for command responses.
+ * Must remain a power of 2. */
+#define BT_TX_BUF_SIZE                              4096U /* serial buffer in bytes (power 2)  */
+#else
 #define BT_TX_BUF_SIZE                              256U /* serial buffer in bytes (power 2)  */
+#endif
 #define BT_TX_BUF_MASK                              (BT_TX_BUF_SIZE - 1UL)
 
 /* maximum number of arguments for any command sent (daughter card mem write) */
@@ -208,6 +215,23 @@
 #define RESET_BT_ERROR_COUNTS                         0xB6
 #define SET_FEATURE                                   0xB7
 
+/* SD-card file transfer over BT. Opcodes are reserved protocol-wide but the
+ * commands are currently only served on SHIMMER3R (older FW silently ignores
+ * unknown opcodes, so hosts gate on GET_FW_VERSION_COMMAND). See
+ * Comms/shimmer_sd_file_transfer.h for the payload formats. */
+#define SD_LIST_DIR_COMMAND                           0xC0
+#define SD_LIST_DIR_RESPONSE                          0xC1
+#define SD_FILE_STAT_COMMAND                          0xC2
+#define SD_FILE_STAT_RESPONSE                         0xC3
+#define SD_FILE_READ_COMMAND                          0xC4
+#define SD_FILE_DATA_RESPONSE                         0xC5
+#define SD_FILE_STATUS_RESPONSE                       0xC6
+#define SD_TRANSFER_ABORT_COMMAND                     0xC7
+#define SD_FREE_SPACE_COMMAND                         0xC8
+#define SD_FREE_SPACE_RESPONSE                        0xC9
+#define SD_DELETE_COMMAND                             0xCA
+#define SD_DELETE_RESPONSE                            0xCB
+
 #define SET_SD_SYNC_COMMAND                           0xE0
 #define SD_SYNC_RESPONSE                              0xE1
 
@@ -347,7 +371,7 @@ uint8_t *ShimBt_getBtArgsPtr(void);
 void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain);
 uint8_t ShimBt_isBtTxBufEmpty(void);
 void ShimBt_pushByteToBtTxBuf(uint8_t b);
-uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len);
+uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint16_t len);
 uint8_t ShimBt_popBytefromBtTxBuf(void);
 uint16_t ShimBt_getUsedSpaceInBtTxBuf(void);
 uint16_t ShimBt_getSpaceInBtTxBuf(void);
@@ -362,7 +386,7 @@ void ShimBt_setDataRateTestState(uint8_t state);
 uint8_t ShimBt_getDataRateTestState(void);
 void ShimBt_loadTxBufForDataRateTest(void);
 #if defined(SHIMMER3R)
-uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType);
+uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType responseType);
 #endif
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr);
 
