@@ -632,7 +632,8 @@ void LogAndStream_buildShimmerMacSuffix(char *outBuf, size_t outBufLen)
 
 void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
 {
-  /* prefix fits within SHIMMER_PREFIX_LEN (e.g. "Shimmer AAAA") */
+  /* e.g. "Shimmer AAAA"; worst case is a 16-char EEPROM brand + " AAAA" + NUL
+   * = 22 bytes, so callers must provide at least that much space */
   char suffix[8]; /* enough for "AAAA" + NUL */
 
   if ((outBuf == NULL) || (outBufLen == 0))
@@ -644,7 +645,8 @@ void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
   outBuf[0] = '\0';
 
   LogAndStream_buildShimmerMacSuffix(suffix, sizeof(suffix));
-  snprintf(outBuf, outBufLen, "Shimmer %s", suffix);
+  /* USB product prefix; defaults to "Shimmer" unless a brand record is set */
+  snprintf(outBuf, outBufLen, "%s %s", ShimEeprom_getBrandUsbProduct(), suffix);
 }
 
 bool LogAndStream_allowDockComms(void)
