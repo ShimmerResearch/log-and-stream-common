@@ -7,7 +7,7 @@ import struct
 
 import serial.win32
 from serial import SerialException, Serial
-from Shimmer_common import util_shimmer
+from Shimmer_common import shimmer_crc, util_shimmer
 
 
 class BtCmds:
@@ -186,6 +186,22 @@ class BtCmds:
     DUMMY_COMMAND = 0xB5
     RESET_BT_ERROR_COUNTS = 0xB6
     SET_FEATURE = 0xB7
+    # SD-card file transfer (LogAndStream_Shimmer3R >= v1.01.009).
+    # Command opcodes avoid the EZ-Serial SOF bytes 0x80/0xC0/0xD0 (CYW20820
+    # UART RX demux would swallow them), hence LIST sits at 0xCC.
+    SD_LIST_DIR_COMMAND = 0xCC
+    SD_LIST_DIR_RESPONSE = 0xC1
+    SD_FILE_STAT_COMMAND = 0xC2
+    SD_FILE_STAT_RESPONSE = 0xC3
+    SD_FILE_READ_COMMAND = 0xC4
+    SD_FILE_DATA_RESPONSE = 0xC5
+    SD_FILE_STATUS_RESPONSE = 0xC6
+    SD_TRANSFER_ABORT_COMMAND = 0xC7
+    SD_FREE_SPACE_COMMAND = 0xC8
+    SD_FREE_SPACE_RESPONSE = 0xC9
+    SD_DELETE_COMMAND = 0xCA
+    SD_DELETE_RESPONSE = 0xCB
+    INSTREAM_CMD_RESPONSE = 0x8A
 
 
 class ShimmerBluetooth:
@@ -366,3 +382,195 @@ class ShimmerBluetooth:
         self.ser.write(tx_buf)
         time.sleep(0.1)
         return True
+
+    # ------------------------------------------------------------------
+    # SD-card file transfer (LogAndStream_Shimmer3R >= v1.01.009)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _sd_path_bytes(path):
+        path_bytes = path.encode("ascii")
+        if not 1 <= len(path_bytes) <= 96:
+            raise ValueError("path must be 1..96 ASCII bytes")
+        return list(path_bytes)
+
+    def sd_list_dir_page(self, path, start_idx=0, max_entries=16, timeout_ms=2000):
+        """Read one page of a directory listing.
+
+        Returns (status, entries, has_more); status is None on comms failure,
+        0 on success, otherwise the in-band status byte (FatFs FRESULT or
+        0xF0=SD unavailable / 0xF1=busy / 0xF2=bad args)."""
+        p = self._sd_path_bytes(path)
+        if not self.send_bluetooth([BtCmds.SD_LIST_DIR_COMMAND, start_idx & 0xFF,
+                                    (start_idx >> 8) & 0xFF, max_entries, len(p)] + p):
+            return None, [], False
+        if not self.wait_for_ack(timeout_ms):
+            return None, [], False
+        hdr = self.wait_for_response(8, timeout_ms)
+        if len(hdr) < 8 or hdr[0] != BtCmds.SD_LIST_DIR_RESPONSE:
+            return None, [], False
+        status = hdr[1]
+        entries_len = hdr[4] | (hdr[5] << 8)
+        n_entries = hdr[6]
+        has_more = (hdr[7] & 0x01) != 0
+        body = self.wait_for_response(entries_len, timeout_ms) if entries_len else b""
+        if len(body) < entries_len:
+            return None, [], False
+        entries = []
+        off = 0
+        for _ in range(n_entries):
+            attr = body[off]
+            size = body[off + 1] | body[off + 2] << 8 | body[off + 3] << 16 | body[off + 4] << 24
+            fdate = body[off + 5] | (body[off + 6] << 8)
+            ftime = body[off + 7] | (body[off + 8] << 8)
+            name_len = body[off + 9]
+            name = bytes(body[off + 10:off + 10 + name_len]).decode("ascii", "replace")
+            entries.append({"name": name, "is_dir": bool(attr & 0x01),
+                            "name_truncated": bool(attr & 0x02), "size": size,
+                            "fdate": fdate, "ftime": ftime})
+            off += 10 + name_len
+        return status, entries, has_more
+
+    def sd_list_dir(self, path, timeout_ms=2000):
+        """Full directory listing, following startIdx paging. Returns (status, entries)."""
+        all_entries = []
+        start_idx = 0
+        while True:
+            status, entries, has_more = self.sd_list_dir_page(path, start_idx, 16, timeout_ms)
+            if status is None or status != 0:
+                return status, all_entries
+            all_entries += entries
+            if not has_more or len(entries) == 0:
+                return 0, all_entries
+            start_idx += len(entries)
+
+    def sd_stat(self, path, timeout_ms=2000):
+        """Stat one file/directory. Returns (status, {size, fdate, ftime, is_dir})."""
+        p = self._sd_path_bytes(path)
+        if not self.send_bluetooth([BtCmds.SD_FILE_STAT_COMMAND, len(p)] + p):
+            return None, {}
+        if not self.wait_for_ack(timeout_ms):
+            return None, {}
+        rsp = self.wait_for_response(11, timeout_ms)
+        if len(rsp) < 11 or rsp[0] != BtCmds.SD_FILE_STAT_RESPONSE:
+            return None, {}
+        return rsp[1], {"size": rsp[2] | rsp[3] << 8 | rsp[4] << 16 | rsp[5] << 24,
+                        "fdate": rsp[6] | (rsp[7] << 8), "ftime": rsp[8] | (rsp[9] << 8),
+                        "is_dir": bool(rsp[10] & 0x01)}
+
+    def sd_free_space(self, timeout_ms=20000):
+        """Returns (status, free_kb, total_kb). First call on a large FAT32
+        card can take several seconds (full FAT scan)."""
+        if not self.send_bluetooth([BtCmds.SD_FREE_SPACE_COMMAND]):
+            return None, 0, 0
+        if not self.wait_for_ack(timeout_ms):
+            return None, 0, 0
+        rsp = self.wait_for_response(10, timeout_ms)
+        if len(rsp) < 10 or rsp[0] != BtCmds.SD_FREE_SPACE_RESPONSE:
+            return None, 0, 0
+        free_kb = rsp[2] | rsp[3] << 8 | rsp[4] << 16 | rsp[5] << 24
+        total_kb = rsp[6] | rsp[7] << 8 | rsp[8] << 16 | rsp[9] << 24
+        return rsp[1], free_kb, total_kb
+
+    def sd_delete(self, path, timeout_ms=2000):
+        """Delete one file or empty directory (firmware only allows paths
+        strictly under data/). Returns the status byte or None."""
+        p = self._sd_path_bytes(path)
+        if not self.send_bluetooth([BtCmds.SD_DELETE_COMMAND, len(p)] + p):
+            return None
+        if not self.wait_for_ack(timeout_ms):
+            return None
+        rsp = self.wait_for_response(2, timeout_ms)
+        if len(rsp) < 2 or rsp[0] != BtCmds.SD_DELETE_RESPONSE:
+            return None
+        return rsp[1]
+
+    def sd_abort_transfer(self, timeout_ms=2000):
+        if not self.send_bluetooth([BtCmds.SD_TRANSFER_ABORT_COMMAND]):
+            return False
+        return self.wait_for_ack(timeout_ms)
+
+    def sd_read_window(self, path, offset, window_len, block_len=512, on_block=None,
+                       timeout_ms=5000):
+        """Request one read window and collect its streamed frames.
+
+        Returns (xfer_status, next_offset, data). xfer_status is None on a
+        comms/CRC/sequence failure (resume by re-requesting from
+        offset + len(data)), else the SD_FILE_STATUS_RESPONSE code
+        (0=window complete, 1=EOF, ...)."""
+        p = self._sd_path_bytes(path)
+        cmd = ([BtCmds.SD_FILE_READ_COMMAND,
+                offset & 0xFF, (offset >> 8) & 0xFF, (offset >> 16) & 0xFF, (offset >> 24) & 0xFF,
+                window_len & 0xFF, (window_len >> 8) & 0xFF, (window_len >> 16) & 0xFF,
+                (window_len >> 24) & 0xFF,
+                block_len & 0xFF, (block_len >> 8) & 0xFF, len(p)] + p)
+        data = bytearray()
+        if not self.send_bluetooth(cmd):
+            return None, offset, bytes(data)
+        if not self.wait_for_ack(timeout_ms):
+            return None, offset, bytes(data)
+
+        expected_seq = 0
+        while True:
+            hdr2 = self.wait_for_response(2, timeout_ms)
+            if len(hdr2) < 2 or hdr2[0] != BtCmds.INSTREAM_CMD_RESPONSE:
+                return None, offset + len(data), bytes(data)
+            if hdr2[1] == BtCmds.SD_FILE_DATA_RESPONSE:
+                hdr = self.wait_for_response(5, timeout_ms)  # session, seq u16, len u16
+                if len(hdr) < 5:
+                    return None, offset + len(data), bytes(data)
+                seq = hdr[1] | (hdr[2] << 8)
+                length = hdr[3] | (hdr[4] << 8)
+                payload_crc = self.wait_for_response(length + 2, timeout_ms)
+                if len(payload_crc) < length + 2:
+                    return None, offset + len(data), bytes(data)
+                frame = list(hdr2) + list(hdr) + list(payload_crc)
+                if not shimmer_crc.crc_check(len(frame), frame):
+                    print("SD data frame CRC failure at seq %d" % seq)
+                    return None, offset + len(data), bytes(data)
+                if seq != expected_seq:
+                    print("SD block sequence gap (expected %d, got %d)" % (expected_seq, seq))
+                    return None, offset + len(data), bytes(data)
+                expected_seq += 1
+                payload = bytes(payload_crc[:length])
+                data += payload
+                if on_block:
+                    on_block(payload)
+            elif hdr2[1] == BtCmds.SD_FILE_STATUS_RESPONSE:
+                rest = self.wait_for_response(8, timeout_ms)  # session, status, nextOffset u32, crc
+                if len(rest) < 8:
+                    return None, offset + len(data), bytes(data)
+                frame = list(hdr2) + list(rest)
+                if not shimmer_crc.crc_check(len(frame), frame):
+                    return None, offset + len(data), bytes(data)
+                next_offset = rest[2] | rest[3] << 8 | rest[4] << 16 | rest[5] << 24
+                return rest[1], next_offset, bytes(data)
+            else:
+                return None, offset + len(data), bytes(data)
+
+    def sd_download_file(self, path, size=None, block_len=512, window_len=131072,
+                         on_progress=None):
+        """Download a whole file via windowed reads. Returns bytes or None."""
+        if size is None:
+            status, stat = self.sd_stat(path)
+            if status != 0:
+                print("sd_stat('%s') failed, status=%s" % (path, status))
+                return None
+            size = stat["size"]
+        out = bytearray()
+        offset = 0
+        while offset < size:
+            window = min(window_len, size - offset)
+            status, next_offset, chunk = self.sd_read_window(path, offset, window, block_len)
+            if status is None or status not in (0, 1):
+                print("sd_read_window('%s', %d) failed, status=%s" % (path, offset, status))
+                return None
+            out += chunk
+            if next_offset <= offset:
+                return None
+            offset = next_offset
+            if on_progress:
+                on_progress(offset, size)
+            if status == 1:  # EOF
+                break
+        return bytes(out)

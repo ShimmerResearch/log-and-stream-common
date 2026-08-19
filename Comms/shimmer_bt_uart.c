@@ -36,6 +36,10 @@
 uint8_t unwrappedResponse[256] = { 0 };
 volatile uint8_t gAction;
 volatile uint8_t args[MAX_COMMAND_ARG_SIZE], waitingForArgs, waitingForArgsLength, argsSize;
+/* Set when a host-supplied payload length exceeded args[] and the copy was
+ * truncated, so the staged command is rejected instead of being dispatched
+ * with a length byte that describes more data than args[] actually holds. */
+volatile uint8_t argsPayloadTruncated;
 
 #if defined(SHIMMER3)
 volatile char btRxBuffFullResponse[BT_VER_RESPONSE_LARGEST + 1U]; /* +1 to always have a null char */
@@ -123,6 +127,7 @@ void ShimBt_btCommsProtocolInit(void)
   waitingForArgs = 0;
   waitingForArgsLength = 0;
   argsSize = 0;
+  argsPayloadTruncated = 0;
 
   ShimBt_resetBtRxBuffs();
 
@@ -140,6 +145,8 @@ void ShimBt_btCommsProtocolInit(void)
   memset(btVerStrResponse, 0x00, sizeof(btVerStrResponse) / sizeof(btVerStrResponse[0]));
 
   ShimBt_setDataRateTestState(0);
+
+  ShimSdFileTransfer_init();
 
   ShimBt_resetBtResponseVars();
   ShimBt_macIdVarsReset();
@@ -502,6 +509,27 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
             return 0;
           }
         }
+#if defined(SHIMMER3R)
+        /* SD file-transfer commands carry a trailing path string whose
+         * length sits in the last fixed argument byte. A zero or oversized
+         * length is not armed for; the command proceeds with what was
+         * received and the handler reports bad-args in the response. */
+        else if ((!waitingForArgsLength)
+            && ((waitingForArgs == 1 && (gAction == SD_FILE_STAT_COMMAND || gAction == SD_DELETE_COMMAND))
+                || (waitingForArgs == 4 && gAction == SD_LIST_DIR_COMMAND)
+                || (waitingForArgs == 11 && gAction == SD_FILE_READ_COMMAND)))
+        {
+          uint8_t pathLen;
+          memcpy((uint8_t *) &args[0], btRxBuffPtr, waitingForArgs);
+          pathLen = args[waitingForArgs - 1U];
+          if (pathLen && pathLen <= (MAX_COMMAND_ARG_SIZE - waitingForArgs))
+          {
+            waitingForArgsLength = pathLen;
+            setDmaWaitingForResponse(waitingForArgsLength);
+            return 0;
+          }
+        }
+#endif
 
 #if defined(SHIMMER3)
         else if (gAction == RN4678_STATUS_STRING_SEPARATOR)
@@ -530,7 +558,22 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 
         if (waitingForArgsLength)
         {
-          memcpy((uint8_t *) &args[waitingForArgs], btRxBuffPtr, waitingForArgsLength);
+          /* Clamp so a host-supplied length can never overrun args[]. The
+           * in-band length byte (args[0], or args[2] for SET_EXG_REGS) is
+           * deliberately left untouched: for the commands whose copy capacity
+           * equals their own validation limit (SET_INFOMEM, SET_CALIB_DUMP,
+           * SET_DAUGHTER_CARD_MEM all cap at 128) rewriting it to the clamped
+           * value would turn a malformed oversized request into an accepted
+           * partial write of config/calibration/EEPROM. Flag the truncation
+           * instead and NACK the command in ShimBt_processCmd(), so no handler
+           * ever sees a length longer than the payload that was copied. */
+          uint16_t argsCopyLen = waitingForArgsLength;
+          if ((uint16_t) (waitingForArgs + argsCopyLen) > MAX_COMMAND_ARG_SIZE)
+          {
+            argsCopyLen = MAX_COMMAND_ARG_SIZE - waitingForArgs;
+            argsPayloadTruncated = 1;
+          }
+          memcpy((uint8_t *) &args[waitingForArgs], btRxBuffPtr, argsCopyLen);
         }
         else
         {
@@ -616,6 +659,10 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case GET_ALT_MAG_CALIBRATION_COMMAND:
           case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
           case RESET_BT_ERROR_COUNTS:
+#if defined(SHIMMER3R)
+          case SD_TRANSFER_ABORT_COMMAND:
+          case SD_FREE_SPACE_COMMAND:
+#endif
             gAction = data;
             ShimTask_set(TASK_BT_PROCESS_CMD);
             setDmaWaitingForResponse(1U);
@@ -648,6 +695,10 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case SET_FACTORY_TEST:
           case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
           case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
+#if defined(SHIMMER3R)
+          case SD_FILE_STAT_COMMAND:
+          case SD_DELETE_COMMAND:
+#endif
             gAction = data;
             waitingForArgs = 1U;
             break;
@@ -672,9 +723,19 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
             waitingForArgs = 3U;
             break;
           case SET_CONFIG_SETUP_BYTES_COMMAND:
+#if defined(SHIMMER3R)
+          case SD_LIST_DIR_COMMAND:
+#endif
             gAction = data;
             waitingForArgs = 4U;
             break;
+#if defined(SHIMMER3R)
+          case SD_FILE_READ_COMMAND:
+            gAction = data;
+            /* offset u32, windowLen u32, blockPayloadLen u16, pathLen u8 */
+            waitingForArgs = 11U;
+            break;
+#endif
           case SET_RWC_COMMAND:
           case SET_DERIVED_CHANNEL_BYTES:
             gAction = data;
@@ -773,6 +834,13 @@ void ShimBt_processCmd(void)
   }
   /* Block set commands if sensing */
   else if (shimmerStatus.sensing && ShimBt_isCmdBlockedWhileSensing(gAction))
+  {
+    sendNack = 1;
+  }
+  /* Block commands whose payload did not fit in args[] (see the truncation
+   * clamp in ShimBt_dmaConversionDone) - the in-band length byte would
+   * describe more data than was received */
+  else if (argsPayloadTruncated)
   {
     sendNack = 1;
   }
@@ -1486,6 +1554,38 @@ void ShimBt_processCmd(void)
         }
         break;
       }
+#if defined(SHIMMER3R)
+      case SD_LIST_DIR_COMMAND:
+      {
+        ShimSdFileTransfer_stageListDir((uint8_t *) args);
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SD_FILE_STAT_COMMAND:
+      case SD_DELETE_COMMAND:
+      {
+        ShimSdFileTransfer_stagePath((uint8_t *) args);
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SD_FREE_SPACE_COMMAND:
+      {
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SD_FILE_READ_COMMAND:
+      {
+        /* ACKed via the normal response path; the window verdict then
+         * arrives asynchronously as SD_FILE_DATA/SD_FILE_STATUS frames */
+        ShimSdFileTransfer_startRead((uint8_t *) args);
+        break;
+      }
+      case SD_TRANSFER_ABORT_COMMAND:
+      {
+        ShimSdFileTransfer_abort(SD_FT_XFER_HOST_ABORT);
+        break;
+      }
+#endif
       case ACK_COMMAND_PROCESSED:
       {
         if (shimmerStatus.btInSyncMode && ShimSdSync_isBtSdSyncRunning())
@@ -1510,6 +1610,8 @@ void ShimBt_processCmd(void)
       }
     }
   }
+
+  argsPayloadTruncated = 0;
 
   /* Send Response back for all commands except when FW has received an ACK */
   /* ACK is sent back as part of SD_SYNC_RESPONSE so no need to send it here */
@@ -2193,6 +2295,28 @@ void ShimBt_sendRsp(void)
         break
       }
 #endif
+#if defined(SHIMMER3R)
+      case SD_LIST_DIR_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildListDirRsp(resPacket + packet_length);
+        break;
+      }
+      case SD_FILE_STAT_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildStatRsp(resPacket + packet_length);
+        break;
+      }
+      case SD_FREE_SPACE_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildFreeSpaceRsp(resPacket + packet_length);
+        break;
+      }
+      case SD_DELETE_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildDeleteRsp(resPacket + packet_length);
+        break;
+      }
+#endif
 
       default:
       {
@@ -2411,6 +2535,9 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
 
     ShimBt_setDataRateTestState(0);
 
+    /* Drop any SD file transfer silently - there is no link to report on */
+    ShimSdFileTransfer_reset();
+
     ShimBt_clearBtTxBuf(0);
 
     ShimBt_setCrcMode(CRC_OFF);
@@ -2477,6 +2604,15 @@ void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain)
    * streaming bytes to it */
   if (isCalledFromMain)
   {
+    /* Stop any in-flight transfer before the indices are reset. Its completion
+     * callback advances rdIdx by numBytesBeingRead, which would corrupt the
+     * freshly-reset ring; aborting also prevents up to BT_TX_MAX_DMA_CHUNK
+     * bytes of now-stale data from still being transmitted. */
+    BtTransmitAbort();
+#if !defined(SHIMMER3)
+    gBtTxFifo.numBytesBeingRead = 0;
+#endif
+
     RINGFIFO_RESET(gBtTxFifo);
 
     //Reset all bytes in the buffer -> only used during debugging
@@ -2507,7 +2643,7 @@ void ShimBt_pushByteToBtTxBuf(uint8_t c)
   }
 }
 
-uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
+uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint16_t len)
 {
   uint16_t wr = gBtTxFifo.wrIdx & BT_TX_BUF_MASK;
 
@@ -2580,6 +2716,12 @@ void ShimBt_TxCpltCallback(void)
   gBtTxFifo.numBytesBeingRead = 0;
 #endif
 
+#if defined(SHIMMER3R)
+  /* Ring space has been freed: let a paused SD file transfer continue.
+   * ShimTask_set() is ISR-safe; the transfer itself runs in task context. */
+  ShimSdFileTransfer_txSpaceAvailableEvent();
+#endif
+
   if (shimmerStatus.btConnected
 #if defined(SHIMMER3)
       || areBtSetupCommandsRunning())
@@ -2644,6 +2786,11 @@ void ShimBt_sendNextChar(void)
     {
       numBytes = BT_TX_BUF_SIZE - rdIdx;
     }
+    if (numBytes > BT_TX_MAX_DMA_CHUNK)
+    {
+      numBytes = BT_TX_MAX_DMA_CHUNK;
+    }
+
     gBtTxFifo.numBytesBeingRead = numBytes;
     ret_val = BtTransmit((uint8_t *) &gBtTxFifo.data[rdIdx], numBytes);
 #endif
@@ -2701,7 +2848,7 @@ void ShimBt_loadTxBufForDataRateTest(void)
 }
 
 #if defined(SHIMMER3R)
-uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType)
+uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType responseType)
 {
   if (ShimBt_getSpaceInBtTxBuf() <= len)
   {
@@ -2823,6 +2970,13 @@ void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn)
   btClassicCurrentlyEnabled = btClassicEn;
   bleCurrentlyEnabled = bleEn;
   BT_setBtMode(btClassicEn, bleEn);
+}
+
+__weak void BtTransmitAbort(void)
+{
+  /* Implement in the board file on platforms that hand multi-byte transfers to
+   * a DMA engine. Platforms that write one byte at a time (Shimmer3) have
+   * nothing in flight to abort. */
 }
 
 __weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn)

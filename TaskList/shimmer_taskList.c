@@ -179,6 +179,10 @@ void ShimTask_NORM_manage(void)
       case TASK_JUMP_TO_BOOT_LOADER:
         JumpToBootloader();
         break;
+
+      case TASK_SD_FILE_TRANSFER:
+        ShimSdFileTransfer_run();
+        break;
 #endif
 
 #if defined(SHIMMER3)

@@ -41,6 +41,10 @@ extern "C"
   PLATFORM_WEAK void platform_initGpioForRevision(void);
   PLATFORM_WEAK uint8_t platform_gatherData(void);
   PLATFORM_WEAK uint32_t platform_crcData(uint8_t *buf, uint8_t len);
+  /* 16-bit-length variant for payloads >255 bytes (e.g. SD file-transfer
+   * data frames). Same CRC conventions as platform_crcData(); override in
+   * the main application to offload to a hardware CRC peripheral. */
+  PLATFORM_WEAK uint32_t platform_crcData16(uint8_t *buf, uint16_t len);
   PLATFORM_WEAK bool platform_isDockUartInitialised(void);
   PLATFORM_WEAK bool platform_isUsbUartInitialised(void);
   PLATFORM_WEAK void platform_sleepWhenNoTask(void);
