@@ -27,8 +27,17 @@
  * ~1 KB data frames while preserving headroom for command responses.
  * Must remain a power of 2. */
 #define BT_TX_BUF_SIZE 4096U /* serial buffer in bytes (power 2)  */
+/* Upper bound on a single transfer handed to the BT UART, independent of the
+ * ring depth. The deep ring keeps bulk transfers from stalling; this cap
+ * bounds how long an already-committed transfer delays anything queued behind
+ * it (a command response, or sensor data if a future policy permits transfers
+ * while streaming). At 2 Mbaud 1024 bytes is ~5 ms, versus ~20 ms for a full
+ * 4 KB ring. Must not exceed BT_TX_BUF_SIZE. */
+#define BT_TX_MAX_DMA_CHUNK 1024U
 #else
 #define BT_TX_BUF_SIZE 256U /* serial buffer in bytes (power 2)  */
+/* No cap needed: a transfer can never exceed the ring itself */
+#define BT_TX_MAX_DMA_CHUNK BT_TX_BUF_SIZE
 #endif
 #define BT_TX_BUF_MASK                              (BT_TX_BUF_SIZE - 1UL)
 
@@ -403,6 +412,8 @@ uint32_t ShimBt_getBtBaudRateToUse(void);
 
 void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 __weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
+/* Abort an in-flight BT UART transmit (board-specific; no-op by default) */
+__weak void BtTransmitAbort(void);
 uint8_t ShimBt_isBleCurrentlyEnabled(void);
 uint8_t ShimBt_isBtClassicCurrentlyEnabled(void);
 #if defined(SHIMMER3)

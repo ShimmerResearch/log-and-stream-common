@@ -2546,6 +2546,15 @@ void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain)
    * streaming bytes to it */
   if (isCalledFromMain)
   {
+    /* Stop any in-flight transfer before the indices are reset. Its completion
+     * callback advances rdIdx by numBytesBeingRead, which would corrupt the
+     * freshly-reset ring; aborting also prevents up to BT_TX_MAX_DMA_CHUNK
+     * bytes of now-stale data from still being transmitted. */
+    BtTransmitAbort();
+#if !defined(SHIMMER3)
+    gBtTxFifo.numBytesBeingRead = 0;
+#endif
+
     RINGFIFO_RESET(gBtTxFifo);
 
     //Reset all bytes in the buffer -> only used during debugging
@@ -2719,6 +2728,11 @@ void ShimBt_sendNextChar(void)
     {
       numBytes = BT_TX_BUF_SIZE - rdIdx;
     }
+    if (numBytes > BT_TX_MAX_DMA_CHUNK)
+    {
+      numBytes = BT_TX_MAX_DMA_CHUNK;
+    }
+
     gBtTxFifo.numBytesBeingRead = numBytes;
     ret_val = BtTransmit((uint8_t *) &gBtTxFifo.data[rdIdx], numBytes);
 #endif
@@ -2898,6 +2912,13 @@ void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn)
   btClassicCurrentlyEnabled = btClassicEn;
   bleCurrentlyEnabled = bleEn;
   BT_setBtMode(btClassicEn, bleEn);
+}
+
+__weak void BtTransmitAbort(void)
+{
+  /* Implement in the board file on platforms that hand multi-byte transfers to
+   * a DMA engine. Platforms that write one byte at a time (Shimmer3) have
+   * nothing in flight to abort. */
 }
 
 __weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn)
