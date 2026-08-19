@@ -36,6 +36,10 @@
 uint8_t unwrappedResponse[256] = { 0 };
 volatile uint8_t gAction;
 volatile uint8_t args[MAX_COMMAND_ARG_SIZE], waitingForArgs, waitingForArgsLength, argsSize;
+/* Set when a host-supplied payload length exceeded args[] and the copy was
+ * truncated, so the staged command is rejected instead of being dispatched
+ * with a length byte that describes more data than args[] actually holds. */
+volatile uint8_t argsPayloadTruncated;
 
 #if defined(SHIMMER3)
 volatile char btRxBuffFullResponse[BT_VER_RESPONSE_LARGEST + 1U]; /* +1 to always have a null char */
@@ -119,6 +123,7 @@ void ShimBt_btCommsProtocolInit(void)
   waitingForArgs = 0;
   waitingForArgsLength = 0;
   argsSize = 0;
+  argsPayloadTruncated = 0;
 
   ShimBt_resetBtRxBuffs();
 
@@ -549,11 +554,20 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 
         if (waitingForArgsLength)
         {
-          /* Clamp so a host-supplied length can never overrun args[] */
+          /* Clamp so a host-supplied length can never overrun args[]. The
+           * in-band length byte (args[0], or args[2] for SET_EXG_REGS) is
+           * deliberately left untouched: for the commands whose copy capacity
+           * equals their own validation limit (SET_INFOMEM, SET_CALIB_DUMP,
+           * SET_DAUGHTER_CARD_MEM all cap at 128) rewriting it to the clamped
+           * value would turn a malformed oversized request into an accepted
+           * partial write of config/calibration/EEPROM. Flag the truncation
+           * instead and NACK the command in ShimBt_processCmd(), so no handler
+           * ever sees a length longer than the payload that was copied. */
           uint16_t argsCopyLen = waitingForArgsLength;
           if ((uint16_t) (waitingForArgs + argsCopyLen) > MAX_COMMAND_ARG_SIZE)
           {
             argsCopyLen = MAX_COMMAND_ARG_SIZE - waitingForArgs;
+            argsPayloadTruncated = 1;
           }
           memcpy((uint8_t *) &args[waitingForArgs], btRxBuffPtr, argsCopyLen);
         }
@@ -816,6 +830,13 @@ void ShimBt_processCmd(void)
   }
   /* Block set commands if sensing */
   else if (shimmerStatus.sensing && ShimBt_isCmdBlockedWhileSensing(gAction))
+  {
+    sendNack = 1;
+  }
+  /* Block commands whose payload did not fit in args[] (see the truncation
+   * clamp in ShimBt_dmaConversionDone) - the in-band length byte would
+   * describe more data than was received */
+  else if (argsPayloadTruncated)
   {
     sendNack = 1;
   }
@@ -1581,6 +1602,8 @@ void ShimBt_processCmd(void)
       }
     }
   }
+
+  argsPayloadTruncated = 0;
 
   /* Send Response back for all commands except when FW has received an ACK */
   /* ACK is sent back as part of SD_SYNC_RESPONSE so no need to send it here */
