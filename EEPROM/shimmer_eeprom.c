@@ -24,7 +24,9 @@ static uint8_t eepromBrandIsValid = 0;
  * record, so callers always get a usable string. */
 static char brandBtClassicStr[EEPROM_BRAND_BT_CLASSIC_MAX_CHARS + 1] = BRAND_DEFAULT_BT_CLASSIC;
 static char brandBleStr[EEPROM_BRAND_BLE_MAX_CHARS + 1] = BRAND_DEFAULT_BLE;
-static char brandUsbStr[EEPROM_BRAND_USB_MAX_CHARS + 1] = BRAND_DEFAULT_USB;
+static char brandUsbProductStr[EEPROM_BRAND_USB_PRODUCT_MAX_CHARS + 1] = BRAND_DEFAULT_USB_PRODUCT;
+static char brandUsbManufacturerStr[EEPROM_BRAND_USB_MANUFACTURER_MAX_CHARS + 1]
+    = BRAND_DEFAULT_USB_MANUFACTURER;
 
 static uint8_t ShimEeprom_isBrandRecordValid(void);
 static void ShimEeprom_seedBrandDefaults(void);
@@ -41,7 +43,8 @@ void ShimEeprom_init(void)
   eepromBrandIsValid = 0;
   strcpy(brandBtClassicStr, BRAND_DEFAULT_BT_CLASSIC);
   strcpy(brandBleStr, BRAND_DEFAULT_BLE);
-  strcpy(brandUsbStr, BRAND_DEFAULT_USB);
+  strcpy(brandUsbProductStr, BRAND_DEFAULT_USB_PRODUCT);
+  strcpy(brandUsbManufacturerStr, BRAND_DEFAULT_USB_MANUFACTURER);
 }
 
 void ShimEeprom_setIsPresent(uint8_t eeprom_is_preset)
@@ -120,8 +123,10 @@ static uint8_t ShimEeprom_isBrandRecordValid(void)
           eepromBrandDetails.btClassicLen, EEPROM_BRAND_BT_CLASSIC_MAX_CHARS)
       && ShimEeprom_isBrandNameFieldValid(eepromBrandDetails.ble,
           eepromBrandDetails.bleLen, EEPROM_BRAND_BLE_MAX_CHARS)
-      && ShimEeprom_isBrandNameFieldValid(eepromBrandDetails.usb,
-          eepromBrandDetails.usbLen, EEPROM_BRAND_USB_MAX_CHARS)
+      && ShimEeprom_isBrandNameFieldValid(eepromBrandDetails.usbProduct,
+          eepromBrandDetails.usbProductLen, EEPROM_BRAND_USB_PRODUCT_MAX_CHARS)
+      && ShimEeprom_isBrandNameFieldValid(eepromBrandDetails.usbManufacturer,
+          eepromBrandDetails.usbManufacturerLen, EEPROM_BRAND_USB_MANUFACTURER_MAX_CHARS)
       && checkCrc(CRC_2BYTES_ENABLED, &eepromBrandDetails.rawBytes[0],
           EEPROM_BRAND_DETAILS_SIZE - 2U));
 }
@@ -142,8 +147,12 @@ static void ShimEeprom_seedBrandDefaults(void)
       EEPROM_BRAND_BT_CLASSIC_MAX_CHARS);
   ShimEeprom_setBrandNameField(&eepromBrandDetails.ble[0],
       &eepromBrandDetails.bleLen, BRAND_DEFAULT_BLE, EEPROM_BRAND_BLE_MAX_CHARS);
-  ShimEeprom_setBrandNameField(&eepromBrandDetails.usb[0],
-      &eepromBrandDetails.usbLen, BRAND_DEFAULT_USB, EEPROM_BRAND_USB_MAX_CHARS);
+  ShimEeprom_setBrandNameField(&eepromBrandDetails.usbProduct[0],
+      &eepromBrandDetails.usbProductLen, BRAND_DEFAULT_USB_PRODUCT,
+      EEPROM_BRAND_USB_PRODUCT_MAX_CHARS);
+  ShimEeprom_setBrandNameField(&eepromBrandDetails.usbManufacturer[0],
+      &eepromBrandDetails.usbManufacturerLen, BRAND_DEFAULT_USB_MANUFACTURER,
+      EEPROM_BRAND_USB_MANUFACTURER_MAX_CHARS);
   calculateCrcAndInsert(CRC_2BYTES_ENABLED, &eepromBrandDetails.rawBytes[0],
       EEPROM_BRAND_DETAILS_SIZE - 2U);
 
@@ -161,24 +170,27 @@ static void ShimEeprom_updateBrandStrings(void)
     brandBtClassicStr[eepromBrandDetails.btClassicLen] = '\0';
     memcpy(brandBleStr, eepromBrandDetails.ble, eepromBrandDetails.bleLen);
     brandBleStr[eepromBrandDetails.bleLen] = '\0';
-    memcpy(brandUsbStr, eepromBrandDetails.usb, eepromBrandDetails.usbLen);
-    brandUsbStr[eepromBrandDetails.usbLen] = '\0';
+    memcpy(brandUsbProductStr, eepromBrandDetails.usbProduct, eepromBrandDetails.usbProductLen);
+    brandUsbProductStr[eepromBrandDetails.usbProductLen] = '\0';
+    memcpy(brandUsbManufacturerStr, eepromBrandDetails.usbManufacturer,
+        eepromBrandDetails.usbManufacturerLen);
+    brandUsbManufacturerStr[eepromBrandDetails.usbManufacturerLen] = '\0';
   }
   else
   {
     strcpy(brandBtClassicStr, BRAND_DEFAULT_BT_CLASSIC);
     strcpy(brandBleStr, BRAND_DEFAULT_BLE);
-    strcpy(brandUsbStr, BRAND_DEFAULT_USB);
+    strcpy(brandUsbProductStr, BRAND_DEFAULT_USB_PRODUCT);
+    strcpy(brandUsbManufacturerStr, BRAND_DEFAULT_USB_MANUFACTURER);
   }
 }
 
 /**
  * Reads and validates the brand (advertising name) record from the EEPROM.
  *
- * @param seedIfInvalid  When set (boot path), a blank/invalid record - or a
- *        stock (non-customer-branded) record seeded by a different platform -
- *        is overwritten with this platform's compile-time defaults. Must be 0
- *        when re-reading after a host daughter-card-memory write so that a
+ * @param seedIfInvalid  When set (boot path), a blank or invalid record is
+ *        overwritten with this platform's compile-time defaults. Must be 0
+ *        when re-reading after a host expansion-board-memory write so that a
  *        multi-chunk host write sequence is never raced by a seed write.
  */
 void ShimEeprom_readBrandDetails(uint8_t seedIfInvalid)
@@ -188,20 +200,15 @@ void ShimEeprom_readBrandDetails(uint8_t seedIfInvalid)
 
   eepromBrandIsValid = ShimEeprom_isBrandRecordValid();
 
-  if (seedIfInvalid)
+  if (seedIfInvalid && !eepromBrandIsValid)
   {
-    if (!eepromBrandIsValid
-        || (!(eepromBrandDetails.flags & EEPROM_BRAND_FLAG_CUSTOMER_BRANDED)
-            && ((eepromBrandDetails.flags & EEPROM_BRAND_PLATFORM_MASK) >> EEPROM_BRAND_PLATFORM_SHIFT)
-                != BRAND_PLATFORM_CURRENT))
-    {
-      /* Blank/invalid record, or a stock record seeded by a different
-       * platform (e.g. daughter card moved between a Shimmer3 and a
-       * Shimmer3R): seed this platform's defaults. A customer-branded
-       * record is honoured on any platform. */
-      ShimEeprom_seedBrandDefaults();
-      eepromBrandIsValid = ShimEeprom_isBrandRecordValid();
-    }
+    /* Blank or invalid record: seed this platform's defaults so that, from
+     * here on, the EEPROM record is the single source of truth host software
+     * can read back. A valid record is always honoured - there is no
+     * re-seeding based on which platform wrote it, as the unified PCB means
+     * the EEPROM cannot move between hardware models. */
+    ShimEeprom_seedBrandDefaults();
+    eepromBrandIsValid = ShimEeprom_isBrandRecordValid();
   }
 
   ShimEeprom_updateBrandStrings();
@@ -210,12 +217,6 @@ void ShimEeprom_readBrandDetails(uint8_t seedIfInvalid)
 uint8_t ShimEeprom_isBrandValid(void)
 {
   return eepromBrandIsValid;
-}
-
-uint8_t ShimEeprom_isBrandCustomer(void)
-{
-  return eepromBrandIsValid
-      && (eepromBrandDetails.flags & EEPROM_BRAND_FLAG_CUSTOMER_BRANDED);
 }
 
 const char *ShimEeprom_getBrandBtClassic(void)
@@ -228,9 +229,14 @@ const char *ShimEeprom_getBrandBle(void)
   return &brandBleStr[0];
 }
 
-const char *ShimEeprom_getBrandUsb(void)
+const char *ShimEeprom_getBrandUsbProduct(void)
 {
-  return &brandUsbStr[0];
+  return &brandUsbProductStr[0];
+}
+
+const char *ShimEeprom_getBrandUsbManufacturer(void)
+{
+  return &brandUsbManufacturerStr[0];
 }
 
 #if defined(SHIMMER3R)

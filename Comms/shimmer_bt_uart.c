@@ -61,6 +61,10 @@ uint16_t infomemOffset, dcMemOffset, calibRamOffset;
 uint8_t exgLength, exgChip, exgStartAddr;
 
 volatile uint8_t btDataRateTestState;
+
+/* One-shot: armed by SET_FEATURE/FEATURE_REBOOT_ON_DISCONNECT, consumed by
+ * ShimBt_handleBtRfCommStateChange() when the host disconnects. */
+static uint8_t rebootOnDisconnect = 0;
 #if defined(SHIMMER3)
 volatile uint32_t btDataRateTestCounter;
 volatile uint32_t btDataRateTestCounterSaved;
@@ -1459,6 +1463,10 @@ void ShimBt_processCmd(void)
           RN4678_setErrorLedsEnabled(0);
 #endif
         }
+        else if (args[0] == FEATURE_REBOOT_ON_DISCONNECT)
+        {
+          ShimBt_setRebootOnDisconnect(args[1]);
+        }
 #if defined(SHIMMER3)
         else if (args[0] == FEATURE_RN4678_ERROR_LEDS)
         {
@@ -2423,6 +2431,33 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   {
     ShimTask_set(TASK_SDLOG_CFG_UPDATE);
   }
+
+  /* Fire an armed soft reboot now that the link is down and the disconnect
+   * cleanup above has run. This is what lets a host apply boot-time settings -
+   * such as the EEPROM brand record's advertising names - without the user
+   * power-cycling the device by hand.
+   *
+   * Deliberately skipped while sensing so an armed reboot can never truncate
+   * an active SD recording; the flag is cleared either way so that a request
+   * is strictly one-shot and can never linger into a later disconnect. */
+  if (!isConnected && rebootOnDisconnect)
+  {
+    rebootOnDisconnect = 0;
+    if (!shimmerStatus.sensing)
+    {
+      platform_reset();
+    }
+  }
+}
+
+void ShimBt_setRebootOnDisconnect(uint8_t enable)
+{
+  rebootOnDisconnect = (enable != 0);
+}
+
+uint8_t ShimBt_isRebootOnDisconnectArmed(void)
+{
+  return rebootOnDisconnect;
 }
 
 volatile uint8_t *ShimBt_getBtActionPtr(void)

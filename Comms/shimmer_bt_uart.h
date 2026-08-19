@@ -250,7 +250,13 @@ enum
 enum
 {
   FEATURE_NONE = 0,
-  FEATURE_RN4678_ERROR_LEDS = 1
+  FEATURE_RN4678_ERROR_LEDS = 1,
+  /* Arm a soft reboot that fires once the host disconnects. Lets a host apply
+   * settings that are only picked up at boot (e.g. the EEPROM brand record's
+   * advertising names) without the user power-cycling the device by hand. The
+   * reboot cannot happen while the host is still connected, because the link
+   * has to drop for the Bluetooth module to re-read its name. */
+  FEATURE_REBOOT_ON_DISCONNECT = 2
 };
 
 typedef enum
@@ -341,6 +347,8 @@ void ShimBt_macIdVarsReset(void);
 void ShimBt_instreamStatusRespSendIfNotBtCmd(void);
 void ShimBt_instreamStatusRespSend(void);
 void ShimBt_handleBtRfCommStateChange(uint8_t isConnected);
+void ShimBt_setRebootOnDisconnect(uint8_t enable);
+uint8_t ShimBt_isRebootOnDisconnectArmed(void);
 volatile uint8_t *ShimBt_getBtActionPtr(void);
 uint8_t *ShimBt_getBtArgsPtr(void);
 
