@@ -30,7 +30,8 @@
 #define EEPROM_ADDRESS_BRAND_DETAILS \
   (EEPROM_ADDRESS_BLUETOOTH_DETAILS - EEPROM_BRAND_DETAILS_SIZE)
 
-#define EEPROM_BRAND_MAGIC                 0x5342 /* "SB" */
+#define EEPROM_BRAND_MAGIC \
+  0x5342 /* "SB"; stored little-endian, so a raw hexdump reads 0x42,0x53 ("BS") */
 #define EEPROM_BRAND_LAYOUT_VER            1
 
 #define EEPROM_BRAND_BT_CLASSIC_MAX_CHARS  16

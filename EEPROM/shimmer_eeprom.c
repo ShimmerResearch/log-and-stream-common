@@ -8,6 +8,7 @@
 #include "EEPROM/shimmer_eeprom.h"
 
 #include <stdint.h>
+#include <string.h>
 
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
