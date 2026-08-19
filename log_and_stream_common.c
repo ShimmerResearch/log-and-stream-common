@@ -651,8 +651,8 @@ void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
   outBuf[0] = '\0';
 
   LogAndStream_buildShimmerMacSuffix(suffix, sizeof(suffix));
-  /* Brand defaults to "Shimmer" unless a valid EEPROM brand record is set */
-  snprintf(outBuf, outBufLen, "%s %s", ShimEeprom_getBrandUsb(), suffix);
+  /* USB product prefix; defaults to "Shimmer" unless a brand record is set */
+  snprintf(outBuf, outBufLen, "%s %s", ShimEeprom_getBrandUsbProduct(), suffix);
 }
 
 bool LogAndStream_allowDockComms(void)
