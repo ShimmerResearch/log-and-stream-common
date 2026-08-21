@@ -79,8 +79,11 @@ static char xferFilPath[SD_FT_MAX_PATH_LEN + 1];
 static volatile uint8_t waitingForTxSpace;
 
 /* Set once this module has requested SD power so ShimSdFileTransfer_reset()
- * knows to release it again when the device is otherwise idle */
-static uint8_t sdPowerRequested;
+ * knows to release it again when the device is otherwise idle. volatile because
+ * the release runs in ISR context (BT disconnect, via the CYW20820 UART DMA
+ * RX-complete callback) while the acquire runs in task context - as with
+ * waitingForTxSpace below, the compiler must not cache it across the two. */
+static volatile uint8_t sdPowerRequested;
 
 /* Worst case two frames are owed at once: SUPERSEDED for an in-flight
  * window plus the verdict for the READ that displaced it */
@@ -149,7 +152,56 @@ static uint8_t sdFtAccessCheck(void)
   }
   if (!sdPowerRequested)
   {
-    Board_setSdPower(1);
+    /* If our own release powered the card down on the last BT disconnect, it
+     * needs a FULL bring-up - not just the rail back and a re-mount.
+     *
+     * Re-registering the FatFs volume alone is not enough: the SDMMC peripheral
+     * still holds state from before the card lost power (shimmerStatus
+     * .sdPeripheralInit stays 1 and hsd1.State stays READY, since nothing
+     * de-inited them), so HAL_SD_Init on that stale handle is not a reliable
+     * card re-identification. The mount then fails or hangs, which is exactly
+     * the "unresponsive until power-cycled" symptom.
+     *
+     * Board_sd2Mcu() is the sequence this codebase already uses for precisely
+     * this situation - it is the dock->MCU handover path: unmount, HAL_SD_Abort
+     * plus mmc1DeInit(), hardware-reset SDMMC1, power-cycle the card, wait for
+     * it to stabilise, re-identify it with MX_SDMMC1_SD_Init(), re-link the
+     * FatFs driver and mount. It power-cycles the card itself, so there is
+     * nothing to do here but call it.
+     *
+     * Only when the card is actually down: on the first session after boot it
+     * is already powered and mounted, and re-initialising a working card would
+     * cost several hundred ms for nothing.
+     *
+     * Task context only (Board_sd2Mcu blocks for a few hundred ms of
+     * HAL_Delay), which is why the release path stays a bare
+     * Board_setSdPower(0) in ISR context - see the comment there, and DEV-966
+     * for hoisting the release out of the ISR.
+     *
+     * LANDMINE, safe only because _VOLUMES == 1: Board_sd2Mcu() calls
+     * MX_FATFS_Init() -> FATFS_LinkDriver(), whose body is guarded by
+     * `if (disk.nbr < _VOLUMES)`. With one volume the guard is already false on
+     * the second call, so the repeat is a no-op and SDPath stays "0:/". Raise
+     * _VOLUMES and it stops being a no-op: disk.nbr increments monotonically
+     * (only FATFS_UnLinkDriver decrements) and SDPath gets *rewritten* to the
+     * new drive number, so ShimSd_mount() would mount as "1:/", "2:/", ...
+     * while relative paths still resolve to drive 0 - and it would exhaust
+     * after _VOLUMES sessions. This used to be reached only on a dock<->MCU
+     * handover; calling it once per BT session makes the frequency matter. */
+    if (!shimmerStatus.sdPowerOn)
+    {
+      Board_sd2Mcu();
+
+      /* Board_sd2Mcu() returns void, but MX_SDMMC1_SD_Init() inside it leaves
+       * sdBadFile set when the card will not re-identify. Report that as an
+       * in-band status rather than returning OK and letting the caller walk
+       * into an f_opendir that cannot succeed. */
+      if (shimmerStatus.sdBadFile)
+      {
+        sdPowerRequested = 1; /* we own the rail either way - release it on disconnect */
+        return SD_FT_STATUS_SD_UNAVAILABLE;
+      }
+    }
     sdPowerRequested = 1;
   }
   return SD_FT_STATUS_OK;
@@ -279,6 +331,18 @@ void ShimSdFileTransfer_reset(void)
     if (!shimmerStatus.sensing && !shimmerStatus.docked
         && !shimmerStatus.usbPluggedIn && shimmerStatus.sdOwner == SD_OWNER_MCU)
     {
+      /* Deliberately no unmount and no settle delay here: this runs in ISR
+       * context (BT disconnect arrives via the CYW20820 UART DMA RX-complete
+       * callback), where a blocking delay could stall or deadlock against
+       * SysTick. Bringing the card back up on the next acquire is what makes
+       * the stale mount harmless, and FatFs syncs the volume itself after the
+       * read/delete operations this module performs, so there is no dirty state
+       * to flush.
+       *
+       * Note this function ALREADY calls FatFs from the ISR, via
+       * sdFtCloseXferFil() -> f_close() above - pre-existing, not introduced
+       * here, and left alone to keep this fix minimal. Hoisting the whole
+       * release into task context (which fixes that too) is DEV-966. */
       Board_setSdPower(0);
     }
   }
