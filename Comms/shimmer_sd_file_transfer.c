@@ -176,7 +176,18 @@ static uint8_t sdFtAccessCheck(void)
      * Task context only (Board_sd2Mcu blocks for a few hundred ms of
      * HAL_Delay), which is why the release path stays a bare
      * Board_setSdPower(0) in ISR context - see the comment there, and DEV-966
-     * for hoisting the release out of the ISR. */
+     * for hoisting the release out of the ISR.
+     *
+     * LANDMINE, safe only because _VOLUMES == 1: Board_sd2Mcu() calls
+     * MX_FATFS_Init() -> FATFS_LinkDriver(), whose body is guarded by
+     * `if (disk.nbr < _VOLUMES)`. With one volume the guard is already false on
+     * the second call, so the repeat is a no-op and SDPath stays "0:/". Raise
+     * _VOLUMES and it stops being a no-op: disk.nbr increments monotonically
+     * (only FATFS_UnLinkDriver decrements) and SDPath gets *rewritten* to the
+     * new drive number, so ShimSd_mount() would mount as "1:/", "2:/", ...
+     * while relative paths still resolve to drive 0 - and it would exhaust
+     * after _VOLUMES sessions. This used to be reached only on a dock<->MCU
+     * handover; calling it once per BT session makes the frequency matter. */
     if (!shimmerStatus.sdPowerOn)
     {
       Board_sd2Mcu();
