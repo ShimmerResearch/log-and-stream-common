@@ -82,22 +82,6 @@ static volatile uint8_t waitingForTxSpace;
  * knows to release it again when the device is otherwise idle */
 static uint8_t sdPowerRequested;
 
-/* Board_setSdPower() only flips the rail - it does no mount, unmount, SDMMC
- * re-init and no settle delay - so this module owns the card's mount lifecycle
- * for as long as it holds power. Matches the delay either side of a rail change
- * in Board_sdPowerCycle(); NOT yet measured for the read path. */
-#define SD_FT_POWER_SETTLE_MS 120
-
-/* Let the rail settle after powering the card up: a freshly powered card needs
- * stable Vdd before it will accept the CMD0/CMD8/ACMD41 init sequence. Only
- * called from task context - never on the ISR-driven release path. */
-static void sdFtSettleAfterPowerUp(void)
-{
-  /* No SHIMMER3 variant needed - this whole module is inside
-   * #if defined(SHIMMER3R) && USE_FATFS. */
-  HAL_Delay(SD_FT_POWER_SETTLE_MS);
-}
-
 /* Worst case two frames are owed at once: SUPERSEDED for an in-flight
  * window plus the verdict for the READ that displaced it */
 static sdFtPendingStatus_t pendingStatus[2];
@@ -165,29 +149,36 @@ static uint8_t sdFtAccessCheck(void)
   }
   if (!sdPowerRequested)
   {
-    /* Only pay the settle delay when the rail actually changed - on the first
-     * session after boot the card is already powered and needs no wait. Uses
-     * the shared shimmerStatus.sdPowerOn, as the sdlog.cfg paths do. */
-    uint8_t wasPowered = shimmerStatus.sdPowerOn;
-
-    Board_setSdPower(1);
-    sdPowerRequested = 1;
-    if (!wasPowered)
-    {
-      sdFtSettleAfterPowerUp();
-    }
-
-    /* The card comes back uninitialised after a power cycle, while FatFs still
-     * holds the volume object it mounted before the rail dropped. Re-register
-     * the volume so fs_type is cleared and the next file access re-runs the
-     * card init; without this, f_opendir talks to an uninitialised card and the
-     * driver blocks the main loop until POR.
+    /* If our own release powered the card down on the last BT disconnect, it
+     * needs a FULL bring-up - not just the rail back and a re-mount.
      *
-     * This is a deferred mount (opt 0) - it touches no media - so a genuinely
-     * unreadable card surfaces as FR_NOT_READY/FR_DISK_ERR at the first
-     * f_opendir/f_open, which the response builders already pass back to the
-     * host as the in-band status byte. */
-    ShimSd_mount(SD_MOUNT);
+     * Re-registering the FatFs volume alone is not enough: the SDMMC peripheral
+     * still holds state from before the card lost power (shimmerStatus
+     * .sdPeripheralInit stays 1 and hsd1.State stays READY, since nothing
+     * de-inited them), so HAL_SD_Init on that stale handle is not a reliable
+     * card re-identification. The mount then fails or hangs, which is exactly
+     * the "unresponsive until power-cycled" symptom.
+     *
+     * Board_sd2Mcu() is the sequence this codebase already uses for precisely
+     * this situation - it is the dock->MCU handover path: unmount, HAL_SD_Abort
+     * plus mmc1DeInit(), hardware-reset SDMMC1, power-cycle the card, wait for
+     * it to stabilise, re-identify it with MX_SDMMC1_SD_Init(), re-link the
+     * FatFs driver and mount. It power-cycles the card itself, so there is
+     * nothing to do here but call it.
+     *
+     * Only when the card is actually down: on the first session after boot it
+     * is already powered and mounted, and re-initialising a working card would
+     * cost several hundred ms for nothing.
+     *
+     * Task context only (Board_sd2Mcu blocks for a few hundred ms of
+     * HAL_Delay), which is why the release path stays a bare
+     * Board_setSdPower(0) in ISR context - see the comment there, and DEV-966
+     * for hoisting the release out of the ISR. */
+    if (!shimmerStatus.sdPowerOn)
+    {
+      Board_sd2Mcu();
+    }
+    sdPowerRequested = 1;
   }
   return SD_FT_STATUS_OK;
 }
