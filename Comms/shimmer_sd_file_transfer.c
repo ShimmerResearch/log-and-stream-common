@@ -82,6 +82,22 @@ static volatile uint8_t waitingForTxSpace;
  * knows to release it again when the device is otherwise idle */
 static uint8_t sdPowerRequested;
 
+/* Board_setSdPower() only flips the rail - it does no mount, unmount, SDMMC
+ * re-init and no settle delay - so this module owns the card's mount lifecycle
+ * for as long as it holds power. Matches the delay either side of a rail change
+ * in Board_sdPowerCycle(); NOT yet measured for the read path. */
+#define SD_FT_POWER_SETTLE_MS 120
+
+/* Let the rail settle after powering the card up: a freshly powered card needs
+ * stable Vdd before it will accept the CMD0/CMD8/ACMD41 init sequence. Only
+ * called from task context - never on the ISR-driven release path. */
+static void sdFtSettleAfterPowerUp(void)
+{
+  /* No SHIMMER3 variant needed - this whole module is inside
+   * #if defined(SHIMMER3R) && USE_FATFS. */
+  HAL_Delay(SD_FT_POWER_SETTLE_MS);
+}
+
 /* Worst case two frames are owed at once: SUPERSEDED for an in-flight
  * window plus the verdict for the READ that displaced it */
 static sdFtPendingStatus_t pendingStatus[2];
@@ -149,8 +165,29 @@ static uint8_t sdFtAccessCheck(void)
   }
   if (!sdPowerRequested)
   {
+    /* Only pay the settle delay when the rail actually changed - on the first
+     * session after boot the card is already powered and needs no wait. Uses
+     * the shared shimmerStatus.sdPowerOn, as the sdlog.cfg paths do. */
+    uint8_t wasPowered = shimmerStatus.sdPowerOn;
+
     Board_setSdPower(1);
     sdPowerRequested = 1;
+    if (!wasPowered)
+    {
+      sdFtSettleAfterPowerUp();
+    }
+
+    /* The card comes back uninitialised after a power cycle, while FatFs still
+     * holds the volume object it mounted before the rail dropped. Re-register
+     * the volume so fs_type is cleared and the next file access re-runs the
+     * card init; without this, f_opendir talks to an uninitialised card and the
+     * driver blocks the main loop until POR.
+     *
+     * This is a deferred mount (opt 0) - it touches no media - so a genuinely
+     * unreadable card surfaces as FR_NOT_READY/FR_DISK_ERR at the first
+     * f_opendir/f_open, which the response builders already pass back to the
+     * host as the in-band status byte. */
+    ShimSd_mount(SD_MOUNT);
   }
   return SD_FT_STATUS_OK;
 }
@@ -279,6 +316,14 @@ void ShimSdFileTransfer_reset(void)
     if (!shimmerStatus.sensing && !shimmerStatus.docked
         && !shimmerStatus.usbPluggedIn && shimmerStatus.sdOwner == SD_OWNER_MCU)
     {
+      /* Deliberately no ShimSd_mount(SD_UNMOUNT) and no settle delay here:
+       * this runs in ISR context (BT disconnect arrives via the CYW20820 UART
+       * DMA RX-complete callback), where FatFs is not reentrant and a blocking
+       * delay could stall or deadlock against SysTick. Re-registering the
+       * volume on the next acquire is what makes the stale mount harmless, and
+       * FatFs syncs the volume itself after the read/delete operations this
+       * module performs, so there is no dirty state to flush. See DEV-966 for
+       * hoisting this whole release into task context. */
       Board_setSdPower(0);
     }
   }
