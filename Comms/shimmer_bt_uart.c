@@ -2770,7 +2770,15 @@ void ShimBt_sendNextChar(void)
 #if defined(SHIMMER3)
     /* Shimmer3 sends 1 byte at a time */
     uint8_t buf = ShimBt_popBytefromBtTxBuf();
-    BtTransmit(&buf, 1);
+    if (BtTransmit(&buf, 1) != HAL_SHIM_OK)
+    {
+      /* Same reasoning as the Shimmer3R branch below - without this the TX path
+       * goes mute for the rest of the power cycle. Note the byte has already
+       * been popped here, so it is lost; reworking this path to peek-then-pop
+       * needs hardware we cannot test against, and losing one byte still beats
+       * losing every byte from here on. */
+      ShimBt_btTxInProgressSet(0);
+    }
 #else
     HAL_StatusTypeDefShimmer ret_val;
     uint16_t numBytes;
@@ -2793,6 +2801,28 @@ void ShimBt_sendNextChar(void)
 
     gBtTxFifo.numBytesBeingRead = numBytes;
     ret_val = BtTransmit((uint8_t *) &gBtTxFifo.data[rdIdx], numBytes);
+    if (ret_val != HAL_SHIM_OK)
+    {
+      /* BtTransmit() is HAL_UART_Transmit_DMA(), which returns HAL_BUSY
+       * whenever the UART TX state is not READY. No transfer starts in that
+       * case, so ShimBt_TxCpltCallback() never fires - and that callback is
+       * one of only two places btTxInProgress is ever cleared (the other being
+       * a BT disconnect, via TASK_BT_TX_BUF_CLEAR). Left set, every later
+       * ShimBt_sendNextCharIfNotInProgress() returns without transmitting and
+       * the device goes mute for the rest of the power cycle: it still receives
+       * commands, it just can never answer, and no watchdog recovers it.
+       *
+       * Roll the optimistic state back so the next queued response retries -
+       * ShimBt_writeToTxBufAndSend() calls sendNextCharIfNotInProgress(), so
+       * recovery is automatic. rdIdx is only advanced by the TX-complete
+       * callback, so nothing queued is lost and the retry re-sends it.
+       *
+       * Deliberately no retry loop here: this function is also called from the
+       * TX-complete callback (ISR context), where spinning or blocking would be
+       * wrong. */
+      gBtTxFifo.numBytesBeingRead = 0;
+      ShimBt_btTxInProgressSet(0);
+    }
 #endif
   }
   else
@@ -2843,6 +2873,24 @@ void ShimBt_loadTxBufForDataRateTest(void)
 #else
   HAL_StatusTypeDefShimmer ret_val
       = BtTransmit(&dataRateTestTxPacket[0], sizeof(dataRateTestTxPacket));
+  if (ret_val != HAL_SHIM_OK)
+  {
+    /* This path transmits straight to the UART, bypassing the ring, and the only
+     * thing that re-arms it is its own TX-complete callback - so a failure here
+     * breaks the chain and nothing restarts it. btTxInProgress is still set from
+     * the ShimBt_sendNextChar() that kicked the test off, and TxCplt does not
+     * clear it, so leaving it set would mute the device for the rest of the
+     * power cycle: the host could not even get its SET_DATA_RATE_TEST 0 stop
+     * command answered. Releasing it costs only the test, which stops producing
+     * (the host sees a lower byte count) while the ring path stays usable.
+     *
+     * Note this path floods the UART as fast as it will drain, so it is the most
+     * likely place to meet HAL_BUSY, not the least. */
+    ShimBt_btTxInProgressSet(0);
+    return;
+  }
+  /* Only advance for a packet that actually went out, so the host does not see
+   * a phantom gap in the counter sequence. */
   (*((uint32_t *) &dataRateTestTxPacket[1]))++;
 #endif
 }
