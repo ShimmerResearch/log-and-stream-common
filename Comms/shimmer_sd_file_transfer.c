@@ -79,8 +79,11 @@ static char xferFilPath[SD_FT_MAX_PATH_LEN + 1];
 static volatile uint8_t waitingForTxSpace;
 
 /* Set once this module has requested SD power so ShimSdFileTransfer_reset()
- * knows to release it again when the device is otherwise idle */
-static uint8_t sdPowerRequested;
+ * knows to release it again when the device is otherwise idle. volatile because
+ * the release runs in ISR context (BT disconnect, via the CYW20820 UART DMA
+ * RX-complete callback) while the acquire runs in task context - as with
+ * waitingForTxSpace below, the compiler must not cache it across the two. */
+static volatile uint8_t sdPowerRequested;
 
 /* Worst case two frames are owed at once: SUPERSEDED for an in-flight
  * window plus the verdict for the READ that displaced it */
@@ -177,6 +180,16 @@ static uint8_t sdFtAccessCheck(void)
     if (!shimmerStatus.sdPowerOn)
     {
       Board_sd2Mcu();
+
+      /* Board_sd2Mcu() returns void, but MX_SDMMC1_SD_Init() inside it leaves
+       * sdBadFile set when the card will not re-identify. Report that as an
+       * in-band status rather than returning OK and letting the caller walk
+       * into an f_opendir that cannot succeed. */
+      if (shimmerStatus.sdBadFile)
+      {
+        sdPowerRequested = 1; /* we own the rail either way - release it on disconnect */
+        return SD_FT_STATUS_SD_UNAVAILABLE;
+      }
     }
     sdPowerRequested = 1;
   }
@@ -307,14 +320,18 @@ void ShimSdFileTransfer_reset(void)
     if (!shimmerStatus.sensing && !shimmerStatus.docked
         && !shimmerStatus.usbPluggedIn && shimmerStatus.sdOwner == SD_OWNER_MCU)
     {
-      /* Deliberately no ShimSd_mount(SD_UNMOUNT) and no settle delay here:
-       * this runs in ISR context (BT disconnect arrives via the CYW20820 UART
-       * DMA RX-complete callback), where FatFs is not reentrant and a blocking
-       * delay could stall or deadlock against SysTick. Re-registering the
-       * volume on the next acquire is what makes the stale mount harmless, and
-       * FatFs syncs the volume itself after the read/delete operations this
-       * module performs, so there is no dirty state to flush. See DEV-966 for
-       * hoisting this whole release into task context. */
+      /* Deliberately no unmount and no settle delay here: this runs in ISR
+       * context (BT disconnect arrives via the CYW20820 UART DMA RX-complete
+       * callback), where a blocking delay could stall or deadlock against
+       * SysTick. Bringing the card back up on the next acquire is what makes
+       * the stale mount harmless, and FatFs syncs the volume itself after the
+       * read/delete operations this module performs, so there is no dirty state
+       * to flush.
+       *
+       * Note this function ALREADY calls FatFs from the ISR, via
+       * sdFtCloseXferFil() -> f_close() above - pre-existing, not introduced
+       * here, and left alone to keep this fix minimal. Hoisting the whole
+       * release into task context (which fixes that too) is DEV-966. */
       Board_setSdPower(0);
     }
   }
