@@ -2873,6 +2873,24 @@ void ShimBt_loadTxBufForDataRateTest(void)
 #else
   HAL_StatusTypeDefShimmer ret_val
       = BtTransmit(&dataRateTestTxPacket[0], sizeof(dataRateTestTxPacket));
+  if (ret_val != HAL_SHIM_OK)
+  {
+    /* This path transmits straight to the UART, bypassing the ring, and the only
+     * thing that re-arms it is its own TX-complete callback - so a failure here
+     * breaks the chain and nothing restarts it. btTxInProgress is still set from
+     * the ShimBt_sendNextChar() that kicked the test off, and TxCplt does not
+     * clear it, so leaving it set would mute the device for the rest of the
+     * power cycle: the host could not even get its SET_DATA_RATE_TEST 0 stop
+     * command answered. Releasing it costs only the test, which stops producing
+     * (the host sees a lower byte count) while the ring path stays usable.
+     *
+     * Note this path floods the UART as fast as it will drain, so it is the most
+     * likely place to meet HAL_BUSY, not the least. */
+    ShimBt_btTxInProgressSet(0);
+    return;
+  }
+  /* Only advance for a packet that actually went out, so the host does not see
+   * a phantom gap in the counter sequence. */
   (*((uint32_t *) &dataRateTestTxPacket[1]))++;
 #endif
 }
