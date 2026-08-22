@@ -2773,10 +2773,14 @@ void ShimBt_sendNextChar(void)
     if (BtTransmit(&buf, 1) != HAL_SHIM_OK)
     {
       /* Same reasoning as the Shimmer3R branch below - without this the TX path
-       * goes mute for the rest of the power cycle. Note the byte has already
-       * been popped here, so it is lost; reworking this path to peek-then-pop
-       * needs hardware we cannot test against, and losing one byte still beats
-       * losing every byte from here on. */
+       * goes mute for the rest of the power cycle.
+       *
+       * Roll the pop back so the byte is not lost: RINGFIFO_RD only advances
+       * rdIdx (it reads the pre-increment slot) and nothing but the writer
+       * touches wrIdx, so the byte is still sitting in the ring and the retry
+       * re-sends it. Dropping it instead would silently corrupt the response
+       * the host receives, which is worse than the stall this guard prevents. */
+      gBtTxFifo.rdIdx--;
       ShimBt_btTxInProgressSet(0);
     }
 #else
@@ -2805,9 +2809,11 @@ void ShimBt_sendNextChar(void)
     {
       /* BtTransmit() is HAL_UART_Transmit_DMA(), which returns HAL_BUSY
        * whenever the UART TX state is not READY. No transfer starts in that
-       * case, so ShimBt_TxCpltCallback() never fires - and that callback is
-       * one of only two places btTxInProgress is ever cleared (the other being
-       * a BT disconnect, via TASK_BT_TX_BUF_CLEAR). Left set, every later
+       * case, so ShimBt_TxCpltCallback() never fires - and in this situation
+       * nothing else will clear btTxInProgress either: this function's own
+       * empty-buffer branch cannot be reached (sendNextCharIfNotInProgress
+       * refuses to call in while the flag is set), and ShimBt_clearBtTxBuf(1)
+       * only runs on a BT disconnect. Left set, every later
        * ShimBt_sendNextCharIfNotInProgress() returns without transmitting and
        * the device goes mute for the rest of the power cycle: it still receives
        * commands, it just can never answer, and no watchdog recovers it.
