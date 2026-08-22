@@ -82,7 +82,8 @@ static volatile uint8_t waitingForTxSpace;
  * knows to release it again when the device is otherwise idle. volatile because
  * the release runs in ISR context (BT disconnect, via the CYW20820 UART DMA
  * RX-complete callback) while the acquire runs in task context - as with
- * waitingForTxSpace below, the compiler must not cache it across the two. */
+ * the waitingForTxSpace flag in this file, the compiler must not cache it
+ * across the two. */
 static volatile uint8_t sdPowerRequested;
 
 /* Worst case two frames are owed at once: SUPERSEDED for an in-flight
@@ -192,11 +193,15 @@ static uint8_t sdFtAccessCheck(void)
     {
       Board_sd2Mcu();
 
-      /* Board_sd2Mcu() returns void, but MX_SDMMC1_SD_Init() inside it leaves
-       * sdBadFile set when the card will not re-identify. Report that as an
-       * in-band status rather than returning OK and letting the caller walk
-       * into an f_opendir that cannot succeed. */
-      if (shimmerStatus.sdBadFile)
+      /* Board_sd2Mcu() returns void, so its success has to be read out of the
+       * status flags MX_SDMMC1_SD_Init() sets: it clears sdBadFile and sets
+       * sdPeripheralInit together on success, and on failure leaves sdBadFile
+       * set while mmc1DeInit() has already cleared sdPeripheralInit. Check
+       * both, matching how the other Board_sd2Mcu() callers gate follow-on work
+       * on sdPeripheralInit (log_and_stream_common.c:385). Reporting an in-band
+       * status beats returning OK and letting the caller walk into an f_opendir
+       * that cannot succeed. */
+      if (shimmerStatus.sdBadFile || !shimmerStatus.sdPeripheralInit)
       {
         sdPowerRequested = 1; /* we own the rail either way - release it on disconnect */
         return SD_FT_STATUS_SD_UNAVAILABLE;
@@ -340,7 +345,8 @@ void ShimSdFileTransfer_reset(void)
        * to flush.
        *
        * Note this function ALREADY calls FatFs from the ISR, via
-       * sdFtCloseXferFil() -> f_close() above - pre-existing, not introduced
+       * sdFtCloseXferFil() -> f_close() at the top of this function - pre-existing,
+       * not introduced
        * here, and left alone to keep this fix minimal. Hoisting the whole
        * release into task context (which fixes that too) is DEV-966. */
       Board_setSdPower(0);
