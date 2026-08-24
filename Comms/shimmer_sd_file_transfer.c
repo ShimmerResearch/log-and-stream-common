@@ -109,6 +109,18 @@ static union
 
 static uint8_t *const xferBuf = &xferBufStorage.bytes[1];
 
+/* Guard the alignment invariants at compile time so a future change to the
+ * frame header or the payload bounds cannot silently reintroduce the
+ * misaligned-DMA corruption. The &= ~3 clamp in ShimSdFileTransfer_startRead()
+ * additionally relies on the MIN bound being word-granular (masking must not
+ * drop a minimum-length request below the minimum). */
+_Static_assert((1 + SD_FT_DATA_FRAME_HEADER_LEN) % 4 == 0,
+    "payload must start on a word boundary (see xferBufStorage)");
+_Static_assert(SD_FT_BLOCK_PAYLOAD_MIN % 4 == 0, "block payload MIN must be word-granular");
+_Static_assert(SD_FT_BLOCK_PAYLOAD_DEFAULT % 4 == 0,
+    "block payload DEFAULT must be word-granular");
+_Static_assert(SD_FT_BLOCK_PAYLOAD_MAX % 4 == 0, "block payload MAX must be word-granular");
+
 static uint16_t u16FromLe(const uint8_t *p)
 {
   return (uint16_t) p[0] | ((uint16_t) p[1] << 8);
