@@ -91,7 +91,35 @@ static volatile uint8_t sdPowerRequested;
 static sdFtPendingStatus_t pendingStatus[2];
 static uint8_t pendingStatusCount;
 
-static uint8_t xferBuf[SD_FT_DATA_FRAME_HEADER_LEN + SD_FT_BLOCK_PAYLOAD_MAX + SD_FT_FRAME_CRC_LEN];
+/* The payload region MUST be word-aligned: f_read()'s whole-sector fast path
+ * hands it straight to HAL_SD_ReadBlocks_DMA, and the SDMMC IDMA ignores the
+ * two least-significant address bits. With the frame at offset 0 the payload
+ * would sit at +7, so the hardware would land every sector 3 bytes low -
+ * shifting the block content and leaving 3 stale bytes at its tail, which the
+ * frame CRC (computed afterwards) then faithfully covers, so the host cannot
+ * detect it. Offsetting the frame by 1 inside a word-aligned union puts the
+ * payload at absolute offset 1 + SD_FT_DATA_FRAME_HEADER_LEN = 8. The diskio
+ * scratch-buffer slow path is the backstop for destinations that still end up
+ * misaligned (e.g. a resume from a non-word-aligned byte offset). */
+static union
+{
+  uint32_t align;
+  uint8_t bytes[1 + SD_FT_DATA_FRAME_HEADER_LEN + SD_FT_BLOCK_PAYLOAD_MAX + SD_FT_FRAME_CRC_LEN];
+} xferBufStorage;
+
+static uint8_t *const xferBuf = &xferBufStorage.bytes[1];
+
+/* Guard the alignment invariants at compile time so a future change to the
+ * frame header or the payload bounds cannot silently reintroduce the
+ * misaligned-DMA corruption. The &= ~3 clamp in ShimSdFileTransfer_startRead()
+ * additionally relies on the MIN bound being word-granular (masking must not
+ * drop a minimum-length request below the minimum). */
+_Static_assert((1 + SD_FT_DATA_FRAME_HEADER_LEN) % 4 == 0,
+    "payload must start on a word boundary (see xferBufStorage)");
+_Static_assert(SD_FT_BLOCK_PAYLOAD_MIN % 4 == 0, "block payload MIN must be word-granular");
+_Static_assert(SD_FT_BLOCK_PAYLOAD_DEFAULT % 4 == 0,
+    "block payload DEFAULT must be word-granular");
+_Static_assert(SD_FT_BLOCK_PAYLOAD_MAX % 4 == 0, "block payload MAX must be word-granular");
 
 static uint16_t u16FromLe(const uint8_t *p)
 {
@@ -440,6 +468,11 @@ void ShimSdFileTransfer_startRead(uint8_t *argsPtr)
   {
     blockLen = SD_FT_BLOCK_PAYLOAD_MAX;
   }
+  /* Word-granular so successive blocks keep the payload buffer's alignment
+   * for FatFs's direct whole-sector reads (see the xferBufStorage comment);
+   * the host reassembles from each frame's length field, so it is
+   * indifferent to the rounding. MIN and MAX are multiples of 4 already. */
+  blockLen &= (uint16_t) ~3;
 
   readOffset = offset;
   windowEnd = (windowLen > (0xFFFFFFFFUL - offset)) ? 0xFFFFFFFFUL : (offset + windowLen);
