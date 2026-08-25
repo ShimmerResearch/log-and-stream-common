@@ -30,13 +30,16 @@
  * normally ready byte-by-byte, so the ring depth here is about keeping bulk
  * transfers queued rather than about matching the module's FIFO. */
 #define BT_TX_BUF_SIZE      4096U /* serial buffer in bytes (power 2)  */
-/* Upper bound on a single transfer handed to the BT UART, independent of the
- * ring depth. The deep ring keeps bulk transfers from stalling; this cap
- * bounds how long an already-committed transfer delays anything queued behind
- * it (a command response, or sensor data if a future policy permits transfers
- * while streaming). At 2 Mbaud 1024 bytes is ~5 ms, versus ~20 ms for a full
- * 4 KB ring. Must not exceed BT_TX_BUF_SIZE. */
-#define BT_TX_MAX_DMA_CHUNK 1024U
+/* Upper bound on a single transfer handed to the BT driver, independent of
+ * the ring depth. Capped by the EZ-Serial binary framing used in
+ * non-transparent SPP mode: a frame's payload length field is 8-bit
+ * (ezs_cmd_va() never sets the 3-bit MSB extension), so the largest SPP_SEND
+ * that frames correctly is 255 payload bytes = 1 conn_handle + 2-byte length
+ * prefix + 252 data bytes. An oversized frame is never answered by the
+ * module, which wedges TX for the rest of the power cycle. Costs nothing in
+ * transparent mode: chunks chain from the TX-complete ISR, so the UART stays
+ * saturated regardless of chunk size. Must not exceed BT_TX_BUF_SIZE. */
+#define BT_TX_MAX_DMA_CHUNK 252U
 #else
 #define BT_TX_BUF_SIZE      256U /* serial buffer in bytes (power 2)  */
 /* No cap needed: a transfer can never exceed the ring itself */
@@ -260,6 +263,13 @@
 #define BT_RX_COMMS_TIMEOUT_TICKS                     328U /* 32768*0.01s = 327.68  */
 
 #define DATA_RATE_TEST_PACKET_SIZE                    5U //1 header byte + uint32_t counter value
+/* Whole test packets per transfer. On the Shimmer3R non-transparent EZ-Serial
+ * path every BtTransmit() costs one SPP_SEND command/response round trip, so
+ * single-packet sends cap the measured rate at 5 bytes per RTT no matter the
+ * baud rate; batching amortizes the round trip so the test measures the link
+ * again instead of the command overhead. */
+#define DATA_RATE_TEST_BATCH_BYTES \
+  ((BT_TX_MAX_DMA_CHUNK / DATA_RATE_TEST_PACKET_SIZE) * DATA_RATE_TEST_PACKET_SIZE)
 
 #if defined(SHIMMER3)
 #define STATUS_BYTE_COUNT 1U
