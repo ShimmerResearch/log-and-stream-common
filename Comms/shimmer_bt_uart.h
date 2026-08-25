@@ -31,15 +31,14 @@
  * transfers queued rather than about matching the module's FIFO. */
 #define BT_TX_BUF_SIZE      4096U /* serial buffer in bytes (power 2)  */
 /* Upper bound on a single transfer handed to the BT driver, independent of
- * the ring depth. Capped by the EZ-Serial binary framing used in
- * non-transparent SPP mode: a frame's payload length field is 8-bit
- * (ezs_cmd_va() never sets the 3-bit MSB extension), so the largest SPP_SEND
- * that frames correctly is 255 payload bytes = 1 conn_handle + 2-byte length
- * prefix + 252 data bytes. An oversized frame is never answered by the
- * module, which wedges TX for the rest of the power cycle. Costs nothing in
- * transparent mode: chunks chain from the TX-complete ISR, so the UART stays
- * saturated regardless of chunk size. Must not exceed BT_TX_BUF_SIZE. */
-#define BT_TX_MAX_DMA_CHUNK 252U
+ * the ring depth. In non-transparent SPP mode every chunk is one EZ-Serial
+ * SPP_SEND command/response round trip, so throughput is chunk_size / RTT
+ * and bigger chunks amortize the fixed per-command cost. The EZ-Serial TX
+ * encoder (Fix 10) frames 11-bit payload lengths; the binding limit is
+ * EZS_SPP_SEND_MAX_DATA_BYTES in hal_CYW20820.h (cross-checked there by a
+ * static assert). Also bounds how long a committed transfer delays anything
+ * queued behind it: ~5 ms at 2 Mbaud. Must not exceed BT_TX_BUF_SIZE. */
+#define BT_TX_MAX_DMA_CHUNK 1020U
 #else
 #define BT_TX_BUF_SIZE      256U /* serial buffer in bytes (power 2)  */
 /* No cap needed: a transfer can never exceed the ring itself */
