@@ -16,10 +16,74 @@
 #define EEPROM_ADDRESS_HW_DETAILS 0
 #define EEPROM_ADDRESS_BLUETOOTH_DETAILS \
   (CAT24C16_TOTAL_SIZE - CAT24C16_PAGE_SIZE)
-#define EEPROM_ADDRESS_BLUETOOTH_DETAILS_MINUS_OFFSET \
+/* Host-facing daughter-card-memory offsets skip the first (HW details) page,
+ * so the Bluetooth details page sits at this offset in host address space.
+ * Note: this is NOT a marker for a free/spare EEPROM page. */
+#define EEPROM_ADDRESS_BLUETOOTH_DETAILS_HOST_OFFSET_ALIAS \
   (EEPROM_ADDRESS_BLUETOOTH_DETAILS - CAT24C16_PAGE_SIZE)
 
-#define EEPROM_AVAILABLE_SIZE (CAT24C16_TOTAL_SIZE - CAT24C16_PAGE_SIZE)
+#define EEPROM_AVAILABLE_SIZE     (CAT24C16_TOTAL_SIZE - CAT24C16_PAGE_SIZE)
+
+/* Brand (advertising name) record, stored in the 5 pages directly below the
+ * Bluetooth details page. Absolute bytes 1952-2031 (host offset 1936). */
+#define EEPROM_BRAND_DETAILS_SIZE (5 * CAT24C16_PAGE_SIZE)
+#define EEPROM_ADDRESS_BRAND_DETAILS \
+  (EEPROM_ADDRESS_BLUETOOTH_DETAILS - EEPROM_BRAND_DETAILS_SIZE)
+
+#define EEPROM_BRAND_MAGIC \
+  0x5342 /* "SB"; stored little-endian, so a raw hexdump reads 0x42,0x53 ("BS") */
+/* v2 split the single USB field into separate product and manufacturer names.
+ * A v1 record fails validation and is re-seeded with the defaults at boot. */
+#define EEPROM_BRAND_LAYOUT_VER                 2
+
+#define EEPROM_BRAND_BT_CLASSIC_MAX_CHARS       16
+#define EEPROM_BRAND_BLE_MAX_CHARS              10
+#define EEPROM_BRAND_USB_PRODUCT_MAX_CHARS      16
+/* Long enough for the stock "Shimmer Research Ltd." (21 chars) */
+#define EEPROM_BRAND_USB_MANUFACTURER_MAX_CHARS 24
+
+/* Flags byte in the brand record.
+ * Bit 0 is reserved: it held a "customer branded" marker whose only purposes
+ * were (a) exempting a record from re-seeding when an expansion board was
+ * moved between hardware models and (b) gating the USB manufacturer override.
+ * (a) is obsolete now that the PCBs are unified - a board cannot move between
+ * models - and (b) is unnecessary now that the stock manufacturer string is
+ * seeded into the record itself. Left reserved rather than reused so the bit
+ * is never mistaken for a live setting. */
+#define EEPROM_BRAND_FLAG_RESERVED0             0x01
+#define EEPROM_BRAND_PLATFORM_MASK              0x06
+#define EEPROM_BRAND_PLATFORM_SHIFT             1
+
+enum EEPROM_BRAND_PLATFORM
+{
+  BRAND_PLATFORM_UNKNOWN = 0,
+  BRAND_PLATFORM_SHIMMER3 = 1,
+  BRAND_PLATFORM_SHIMMER3R = 2,
+  BRAND_PLATFORM_SHIMMER4_SDK = 3,
+};
+
+/* Default name prefixes. These are the stock values seeded into the EEPROM
+ * brand record when it is blank or invalid, and the fallback when no EEPROM is
+ * fitted. Because the stock USB manufacturer string lives in the record, the
+ * descriptor code can use the record unconditionally and a stock unit still
+ * reports exactly what it always did. */
+#define BRAND_DEFAULT_USB_MANUFACTURER "Shimmer Research Ltd."
+#if defined(SHIMMER3R)
+#define BRAND_DEFAULT_BT_CLASSIC  "Shimmer3R"
+#define BRAND_DEFAULT_BLE         "Shimmer3R"
+#define BRAND_DEFAULT_USB_PRODUCT "Shimmer"
+#define BRAND_PLATFORM_CURRENT    BRAND_PLATFORM_SHIMMER3R
+#elif defined(SHIMMER4_SDK)
+#define BRAND_DEFAULT_BT_CLASSIC  "Shimmer4"
+#define BRAND_DEFAULT_BLE         "S4BLE"
+#define BRAND_DEFAULT_USB_PRODUCT "Shimmer"
+#define BRAND_PLATFORM_CURRENT    BRAND_PLATFORM_SHIMMER4_SDK
+#else /* SHIMMER3 */
+#define BRAND_DEFAULT_BT_CLASSIC  "Shimmer3"
+#define BRAND_DEFAULT_BLE         "S3BLE"
+#define BRAND_DEFAULT_USB_PRODUCT "Shimmer"
+#define BRAND_PLATFORM_CURRENT    BRAND_PLATFORM_SHIMMER3
+#endif
 
 //Indices of important daughter card information
 enum EEPROM_HARDWARE_REVISON
@@ -93,6 +157,40 @@ typedef union
   };
 } gEepromSensorSettings;
 
+/* Brand (advertising name) record. Name fields are length-prefixed via the
+ * *Len bytes and are NOT NUL-terminated in the EEPROM. The record is only
+ * honoured when magic, layout version, lengths, character set and CRC all
+ * check out - otherwise it is re-seeded with the platform defaults at boot.
+ *
+ * Layout (80 bytes):
+ *   0  2  magic          2  1  layoutVer      3  1  flags
+ *   4  1  btClassicLen   5  1  bleLen         6  1  usbProductLen
+ *   7  1  usbManufacturerLen
+ *   8  16 btClassic     24  10 ble           34  16 usbProduct
+ *  50  24 usbManufacturer                    74   4 padding
+ *  78  2  crc (over bytes 0..77) */
+typedef union
+{
+  uint8_t rawBytes[EEPROM_BRAND_DETAILS_SIZE];
+
+  struct __attribute__((packed))
+  {
+    uint16_t magic;    /* EEPROM_BRAND_MAGIC */
+    uint8_t layoutVer; /* EEPROM_BRAND_LAYOUT_VER */
+    uint8_t flags;     /* EEPROM_BRAND_FLAG_* + EEPROM_BRAND_PLATFORM_* */
+    uint8_t btClassicLen;
+    uint8_t bleLen;
+    uint8_t usbProductLen;
+    uint8_t usbManufacturerLen;
+    char btClassic[EEPROM_BRAND_BT_CLASSIC_MAX_CHARS]; /* Classic BT name prefix */
+    char ble[EEPROM_BRAND_BLE_MAX_CHARS];              /* BLE name prefix */
+    char usbProduct[EEPROM_BRAND_USB_PRODUCT_MAX_CHARS]; /* USB product prefix */
+    char usbManufacturer[EEPROM_BRAND_USB_MANUFACTURER_MAX_CHARS]; /* USB iManufacturer */
+    uint8_t padding[4];
+    uint8_t crc[2]; /* 2-byte CRC over rawBytes[0..77] (comms CRC) */
+  };
+} gEepromBrandDetails;
+
 void ShimEeprom_init(void);
 void ShimEeprom_setIsPresent(uint8_t eeprom_is_preset);
 uint8_t ShimEeprom_isPresent(void);
@@ -107,6 +205,12 @@ uint8_t ShimEeprom_checkBtErrorCounts(void);
 void ShimEeprom_resetBtErrorCounts(void);
 #endif
 gEepromSensorSettings *ShimEeprom_getSensorSettingsPage(void);
+void ShimEeprom_readBrandDetails(uint8_t seedIfInvalid);
+uint8_t ShimEeprom_isBrandValid(void);
+const char *ShimEeprom_getBrandBtClassic(void);
+const char *ShimEeprom_getBrandBle(void);
+const char *ShimEeprom_getBrandUsbProduct(void);
+const char *ShimEeprom_getBrandUsbManufacturer(void);
 uint8_t ShimEeprom_isBleEnabled(void);
 uint8_t ShimEeprom_isBtClassicEnabled(void);
 enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void);

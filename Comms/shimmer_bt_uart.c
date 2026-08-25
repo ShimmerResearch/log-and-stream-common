@@ -36,6 +36,10 @@
 uint8_t unwrappedResponse[256] = { 0 };
 volatile uint8_t gAction;
 volatile uint8_t args[MAX_COMMAND_ARG_SIZE], waitingForArgs, waitingForArgsLength, argsSize;
+/* Set when a host-supplied payload length exceeded args[] and the copy was
+ * truncated, so the staged command is rejected instead of being dispatched
+ * with a length byte that describes more data than args[] actually holds. */
+volatile uint8_t argsPayloadTruncated;
 
 #if defined(SHIMMER3)
 volatile char btRxBuffFullResponse[BT_VER_RESPONSE_LARGEST + 1U]; /* +1 to always have a null char */
@@ -61,6 +65,10 @@ uint16_t infomemOffset, dcMemOffset, calibRamOffset;
 uint8_t exgLength, exgChip, exgStartAddr;
 
 volatile uint8_t btDataRateTestState;
+
+/* One-shot: armed by SET_FEATURE/FEATURE_REBOOT_ON_DISCONNECT, consumed by
+ * ShimBt_handleBtRfCommStateChange() when the host disconnects. */
+static uint8_t rebootOnDisconnect = 0;
 #if defined(SHIMMER3)
 volatile uint32_t btDataRateTestCounter;
 volatile uint32_t btDataRateTestCounterSaved;
@@ -119,6 +127,7 @@ void ShimBt_btCommsProtocolInit(void)
   waitingForArgs = 0;
   waitingForArgsLength = 0;
   argsSize = 0;
+  argsPayloadTruncated = 0;
 
   ShimBt_resetBtRxBuffs();
 
@@ -136,6 +145,8 @@ void ShimBt_btCommsProtocolInit(void)
   memset(btVerStrResponse, 0x00, sizeof(btVerStrResponse) / sizeof(btVerStrResponse[0]));
 
   ShimBt_setDataRateTestState(0);
+
+  ShimSdFileTransfer_init();
 
   ShimBt_resetBtResponseVars();
   ShimBt_macIdVarsReset();
@@ -501,6 +512,27 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
             return 0;
           }
         }
+#if defined(SHIMMER3R)
+        /* SD file-transfer commands carry a trailing path string whose
+         * length sits in the last fixed argument byte. A zero or oversized
+         * length is not armed for; the command proceeds with what was
+         * received and the handler reports bad-args in the response. */
+        else if ((!waitingForArgsLength)
+            && ((waitingForArgs == 1 && (gAction == SD_FILE_STAT_COMMAND || gAction == SD_DELETE_COMMAND))
+                || (waitingForArgs == 4 && gAction == SD_LIST_DIR_COMMAND)
+                || (waitingForArgs == 11 && gAction == SD_FILE_READ_COMMAND)))
+        {
+          uint8_t pathLen;
+          memcpy((uint8_t *) &args[0], btRxBuffPtr, waitingForArgs);
+          pathLen = args[waitingForArgs - 1U];
+          if (pathLen && pathLen <= (MAX_COMMAND_ARG_SIZE - waitingForArgs))
+          {
+            waitingForArgsLength = pathLen;
+            setDmaWaitingForResponse(waitingForArgsLength);
+            return 0;
+          }
+        }
+#endif
 
 #if defined(SHIMMER3)
         else if (gAction == RN4678_STATUS_STRING_SEPARATOR)
@@ -529,7 +561,22 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 
         if (waitingForArgsLength)
         {
-          memcpy((uint8_t *) &args[waitingForArgs], btRxBuffPtr, waitingForArgsLength);
+          /* Clamp so a host-supplied length can never overrun args[]. The
+           * in-band length byte (args[0], or args[2] for SET_EXG_REGS) is
+           * deliberately left untouched: for the commands whose copy capacity
+           * equals their own validation limit (SET_INFOMEM, SET_CALIB_DUMP,
+           * SET_DAUGHTER_CARD_MEM all cap at 128) rewriting it to the clamped
+           * value would turn a malformed oversized request into an accepted
+           * partial write of config/calibration/EEPROM. Flag the truncation
+           * instead and NACK the command in ShimBt_processCmd(), so no handler
+           * ever sees a length longer than the payload that was copied. */
+          uint16_t argsCopyLen = waitingForArgsLength;
+          if ((uint16_t) (waitingForArgs + argsCopyLen) > MAX_COMMAND_ARG_SIZE)
+          {
+            argsCopyLen = MAX_COMMAND_ARG_SIZE - waitingForArgs;
+            argsPayloadTruncated = 1;
+          }
+          memcpy((uint8_t *) &args[waitingForArgs], btRxBuffPtr, argsCopyLen);
         }
         else
         {
@@ -615,6 +662,10 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case GET_ALT_MAG_CALIBRATION_COMMAND:
           case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
           case RESET_BT_ERROR_COUNTS:
+#if defined(SHIMMER3R)
+          case SD_TRANSFER_ABORT_COMMAND:
+          case SD_FREE_SPACE_COMMAND:
+#endif
             gAction = data;
             ShimTask_set(TASK_BT_PROCESS_CMD);
             setDmaWaitingForResponse(1U);
@@ -647,6 +698,10 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case SET_FACTORY_TEST:
           case SET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
           case SET_ALT_MAG_SAMPLING_RATE_COMMAND:
+#if defined(SHIMMER3R)
+          case SD_FILE_STAT_COMMAND:
+          case SD_DELETE_COMMAND:
+#endif
             gAction = data;
             waitingForArgs = 1U;
             break;
@@ -671,9 +726,19 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
             waitingForArgs = 3U;
             break;
           case SET_CONFIG_SETUP_BYTES_COMMAND:
+#if defined(SHIMMER3R)
+          case SD_LIST_DIR_COMMAND:
+#endif
             gAction = data;
             waitingForArgs = 4U;
             break;
+#if defined(SHIMMER3R)
+          case SD_FILE_READ_COMMAND:
+            gAction = data;
+            /* offset u32, windowLen u32, blockPayloadLen u16, pathLen u8 */
+            waitingForArgs = 11U;
+            break;
+#endif
           case SET_RWC_COMMAND:
           case SET_DERIVED_CHANNEL_BYTES:
             gAction = data;
@@ -772,6 +837,13 @@ void ShimBt_processCmd(void)
   }
   /* Block set commands if sensing */
   else if (shimmerStatus.sensing && ShimBt_isCmdBlockedWhileSensing(gAction))
+  {
+    sendNack = 1;
+  }
+  /* Block commands whose payload did not fit in args[] (see the truncation
+   * clamp in ShimBt_dmaConversionDone) - the in-band length byte would
+   * describe more data than was received */
+  else if (argsPayloadTruncated)
   {
     sendNack = 1;
   }
@@ -1462,6 +1534,10 @@ void ShimBt_processCmd(void)
           RN4678_setErrorLedsEnabled(0);
 #endif
         }
+        else if (args[0] == FEATURE_REBOOT_ON_DISCONNECT)
+        {
+          ShimBt_setRebootOnDisconnect(args[1]);
+        }
 #if defined(SHIMMER3)
         else if (args[0] == FEATURE_RN4678_ERROR_LEDS)
         {
@@ -1481,6 +1557,38 @@ void ShimBt_processCmd(void)
         }
         break;
       }
+#if defined(SHIMMER3R)
+      case SD_LIST_DIR_COMMAND:
+      {
+        ShimSdFileTransfer_stageListDir((uint8_t *) args);
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SD_FILE_STAT_COMMAND:
+      case SD_DELETE_COMMAND:
+      {
+        ShimSdFileTransfer_stagePath((uint8_t *) args);
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SD_FREE_SPACE_COMMAND:
+      {
+        getCmdWaitingResponse = gAction;
+        break;
+      }
+      case SD_FILE_READ_COMMAND:
+      {
+        /* ACKed via the normal response path; the window verdict then
+         * arrives asynchronously as SD_FILE_DATA/SD_FILE_STATUS frames */
+        ShimSdFileTransfer_startRead((uint8_t *) args);
+        break;
+      }
+      case SD_TRANSFER_ABORT_COMMAND:
+      {
+        ShimSdFileTransfer_abort(SD_FT_XFER_HOST_ABORT);
+        break;
+      }
+#endif
       case ACK_COMMAND_PROCESSED:
       {
         if (shimmerStatus.btInSyncMode && ShimSdSync_isBtSdSyncRunning())
@@ -1505,6 +1613,8 @@ void ShimBt_processCmd(void)
       }
     }
   }
+
+  argsPayloadTruncated = 0;
 
   /* Send Response back for all commands except when FW has received an ACK */
   /* ACK is sent back as part of SD_SYNC_RESPONSE so no need to send it here */
@@ -1881,6 +1991,17 @@ void ShimBt_sendRsp(void)
       case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND:
       {
         bmpCalibByteLen = get_bmp_calib_data_bytes_len();
+#if defined(SHIMMER3R)
+        /* The BMP581 outputs pre-compensated data so there are no calibration
+         * coefficients - respond with just the sensor-ID byte. Sending the ID
+         * in-band (rather than a NACK) lets hosts positively identify the
+         * fitted sensor: a NACK is ambiguous with older firmware that lacks
+         * the command. */
+        if (isBmp581InUse())
+        {
+          bmpCalibByteLen = 0;
+        }
+#endif
         *(resPacket + packet_length++) = PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE;
         *(resPacket + packet_length++) = 1U + bmpCalibByteLen;
 #if defined(SHIMMER3)
@@ -1897,7 +2018,8 @@ void ShimBt_sendRsp(void)
           *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
         }
 #elif defined(SHIMMER3R)
-        *(resPacket + packet_length++) = PRESSURE_SENSOR_BMP390;
+        *(resPacket + packet_length++)
+            = isBmp581InUse() ? PRESSURE_SENSOR_BMP581 : PRESSURE_SENSOR_BMP390;
 #endif
         memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), bmpCalibByteLen);
         packet_length += bmpCalibByteLen;
@@ -2176,6 +2298,28 @@ void ShimBt_sendRsp(void)
         break
       }
 #endif
+#if defined(SHIMMER3R)
+      case SD_LIST_DIR_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildListDirRsp(resPacket + packet_length);
+        break;
+      }
+      case SD_FILE_STAT_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildStatRsp(resPacket + packet_length);
+        break;
+      }
+      case SD_FREE_SPACE_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildFreeSpaceRsp(resPacket + packet_length);
+        break;
+      }
+      case SD_DELETE_COMMAND:
+      {
+        packet_length += ShimSdFileTransfer_buildDeleteRsp(resPacket + packet_length);
+        break;
+      }
+#endif
 
       default:
       {
@@ -2183,6 +2327,19 @@ void ShimBt_sendRsp(void)
       }
     }
     getCmdWaitingResponse = 0;
+
+    /* A response case above may set sendNack (an unsupported command for the
+     * fitted hardware - e.g. a BMP180/BMP280 calibration request on a
+     * Shimmer3R). The ACK/NACK byte is written before the switch, so honour a
+     * switch-set NACK here: overwrite the staged ACK with a NACK and drop any
+     * response bytes. The payload is then the single NACK byte (CRC bytes are
+     * still appended below when CRC mode is enabled). */
+    if (sendNack)
+    {
+      resPacket[0] = NACK_COMMAND_PROCESSED;
+      packet_length = 1;
+      sendNack = 0;
+    }
 
     COMMS_CRC_MODE crcMode = ShimBt_getCrcMode();
     if (crcMode != CRC_OFF)
@@ -2381,6 +2538,9 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
 
     ShimBt_setDataRateTestState(0);
 
+    /* Drop any SD file transfer silently - there is no link to report on */
+    ShimSdFileTransfer_reset();
+
     ShimBt_clearBtTxBuf(0);
 
     ShimBt_setCrcMode(CRC_OFF);
@@ -2401,6 +2561,33 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   {
     ShimTask_set(TASK_SDLOG_CFG_UPDATE);
   }
+
+  /* Fire an armed soft reboot now that the link is down and the disconnect
+   * cleanup above has run. This is what lets a host apply boot-time settings -
+   * such as the EEPROM brand record's advertising names - without the user
+   * power-cycling the device by hand.
+   *
+   * Deliberately skipped while sensing so an armed reboot can never truncate
+   * an active SD recording; the flag is cleared either way so that a request
+   * is strictly one-shot and can never linger into a later disconnect. */
+  if (!isConnected && rebootOnDisconnect)
+  {
+    rebootOnDisconnect = 0;
+    if (!shimmerStatus.sensing)
+    {
+      platform_reset();
+    }
+  }
+}
+
+void ShimBt_setRebootOnDisconnect(uint8_t enable)
+{
+  rebootOnDisconnect = (enable != 0);
+}
+
+uint8_t ShimBt_isRebootOnDisconnectArmed(void)
+{
+  return rebootOnDisconnect;
 }
 
 volatile uint8_t *ShimBt_getBtActionPtr(void)
@@ -2420,6 +2607,15 @@ void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain)
    * streaming bytes to it */
   if (isCalledFromMain)
   {
+    /* Stop any in-flight transfer before the indices are reset. Its completion
+     * callback advances rdIdx by numBytesBeingRead, which would corrupt the
+     * freshly-reset ring; aborting also prevents up to BT_TX_MAX_DMA_CHUNK
+     * bytes of now-stale data from still being transmitted. */
+    BtTransmitAbort();
+#if !defined(SHIMMER3)
+    gBtTxFifo.numBytesBeingRead = 0;
+#endif
+
     RINGFIFO_RESET(gBtTxFifo);
 
     //Reset all bytes in the buffer -> only used during debugging
@@ -2450,7 +2646,7 @@ void ShimBt_pushByteToBtTxBuf(uint8_t c)
   }
 }
 
-uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len)
+uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint16_t len)
 {
   uint16_t wr = gBtTxFifo.wrIdx & BT_TX_BUF_MASK;
 
@@ -2523,7 +2719,15 @@ void ShimBt_TxCpltCallback(void)
   gBtTxFifo.numBytesBeingRead = 0;
 #endif
 
+#if defined(SHIMMER3R)
+  /* Ring space has been freed: let a paused SD file transfer continue.
+   * ShimTask_set() is ISR-safe; the transfer itself runs in task context. */
+  ShimSdFileTransfer_txSpaceAvailableEvent();
+#endif
+
 #if defined(SHIMMER3)
+  /* On SHIMMER3R the next transfer is triggered by the firmware once the BT
+   * module has acknowledged the previous one, not from this callback. */
   ShimBt_triggerNextTransfer();
 #endif
 }
@@ -2582,7 +2786,19 @@ void ShimBt_sendNextChar(void)
 #if defined(SHIMMER3)
     /* Shimmer3 sends 1 byte at a time */
     uint8_t buf = ShimBt_popBytefromBtTxBuf();
-    BtTransmit(&buf, 1);
+    if (BtTransmit(&buf, 1) != HAL_SHIM_OK)
+    {
+      /* Same reasoning as the Shimmer3R branch below - without this the TX path
+       * goes mute for the rest of the power cycle.
+       *
+       * Roll the pop back so the byte is not lost: RINGFIFO_RD only advances
+       * rdIdx (it reads the pre-increment slot) and nothing but the writer
+       * touches wrIdx, so the byte is still sitting in the ring and the retry
+       * re-sends it. Dropping it instead would silently corrupt the response
+       * the host receives, which is worse than the stall this guard prevents. */
+      gBtTxFifo.rdIdx--;
+      ShimBt_btTxInProgressSet(0);
+    }
 #else
     HAL_StatusTypeDefShimmer ret_val;
     uint16_t numBytes;
@@ -2598,8 +2814,37 @@ void ShimBt_sendNextChar(void)
     {
       numBytes = BT_TX_BUF_SIZE - rdIdx;
     }
+    if (numBytes > BT_TX_MAX_DMA_CHUNK)
+    {
+      numBytes = BT_TX_MAX_DMA_CHUNK;
+    }
+
     gBtTxFifo.numBytesBeingRead = numBytes;
     ret_val = BtTransmit((uint8_t *) &gBtTxFifo.data[rdIdx], numBytes);
+    if (ret_val != HAL_SHIM_OK)
+    {
+      /* BtTransmit() is HAL_UART_Transmit_DMA(), which returns HAL_BUSY
+       * whenever the UART TX state is not READY. No transfer starts in that
+       * case, so ShimBt_TxCpltCallback() never fires - and in this situation
+       * nothing else will clear btTxInProgress either: this function's own
+       * empty-buffer branch cannot be reached (sendNextCharIfNotInProgress
+       * refuses to call in while the flag is set), and ShimBt_clearBtTxBuf(1)
+       * only runs on a BT disconnect. Left set, every later
+       * ShimBt_sendNextCharIfNotInProgress() returns without transmitting and
+       * the device goes mute for the rest of the power cycle: it still receives
+       * commands, it just can never answer, and no watchdog recovers it.
+       *
+       * Roll the optimistic state back so the next queued response retries -
+       * ShimBt_writeToTxBufAndSend() calls sendNextCharIfNotInProgress(), so
+       * recovery is automatic. rdIdx is only advanced by the TX-complete
+       * callback, so nothing queued is lost and the retry re-sends it.
+       *
+       * Deliberately no retry loop here: this function is also called from the
+       * TX-complete callback (ISR context), where spinning or blocking would be
+       * wrong. */
+      gBtTxFifo.numBytesBeingRead = 0;
+      ShimBt_btTxInProgressSet(0);
+    }
 #endif
   }
   else
@@ -2650,12 +2895,30 @@ void ShimBt_loadTxBufForDataRateTest(void)
 #else
   HAL_StatusTypeDefShimmer ret_val
       = BtTransmit(&dataRateTestTxPacket[0], sizeof(dataRateTestTxPacket));
+  if (ret_val != HAL_SHIM_OK)
+  {
+    /* This path transmits straight to the UART, bypassing the ring, and the only
+     * thing that re-arms it is its own TX-complete callback - so a failure here
+     * breaks the chain and nothing restarts it. btTxInProgress is still set from
+     * the ShimBt_sendNextChar() that kicked the test off, and TxCplt does not
+     * clear it, so leaving it set would mute the device for the rest of the
+     * power cycle: the host could not even get its SET_DATA_RATE_TEST 0 stop
+     * command answered. Releasing it costs only the test, which stops producing
+     * (the host sees a lower byte count) while the ring path stays usable.
+     *
+     * Note this path floods the UART as fast as it will drain, so it is the most
+     * likely place to meet HAL_BUSY, not the least. */
+    ShimBt_btTxInProgressSet(0);
+    return;
+  }
+  /* Only advance for a packet that actually went out, so the host does not see
+   * a phantom gap in the counter sequence. */
   (*((uint32_t *) &dataRateTestTxPacket[1]))++;
 #endif
 }
 
 #if defined(SHIMMER3R)
-uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType)
+uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType responseType)
 {
   if (ShimBt_getSpaceInBtTxBuf() <= len)
   {
@@ -2777,6 +3040,13 @@ void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn)
   btClassicCurrentlyEnabled = btClassicEn;
   bleCurrentlyEnabled = bleEn;
   BT_setBtMode(btClassicEn, bleEn);
+}
+
+__weak void BtTransmitAbort(void)
+{
+  /* Implement in the board file on platforms that hand multi-byte transfers to
+   * a DMA engine. Platforms that write one byte at a time (Shimmer3) have
+   * nothing in flight to abort. */
 }
 
 __weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn)

@@ -22,10 +22,27 @@
 #define __weak __attribute__((weak))
 #endif /* __weak */
 
-/* serial buffer in bytes (power 2).
+#if defined(SHIMMER3R)
+/* Sized for SD file transfer: deep enough to keep the radio fed with
+ * ~1 KB data frames while preserving headroom for command responses.
+ * Must remain a power of 2.
  * Note, the CYW20820 PUART features a 256 byte FIFO on both RX/TX which is
- * normally ready byte-by-byte. */
-#define BT_TX_BUF_SIZE                              256U
+ * normally ready byte-by-byte, so the ring depth here is about keeping bulk
+ * transfers queued rather than about matching the module's FIFO. */
+#define BT_TX_BUF_SIZE      4096U /* serial buffer in bytes (power 2)  */
+/* Upper bound on a single transfer handed to the BT UART, independent of the
+ * ring depth. The deep ring keeps bulk transfers from stalling; this cap
+ * bounds how long an already-committed transfer delays anything queued behind
+ * it (a command response, or sensor data if a future policy permits transfers
+ * while streaming). At 2 Mbaud 1024 bytes is ~5 ms, versus ~20 ms for a full
+ * 4 KB ring. Must not exceed BT_TX_BUF_SIZE. */
+#define BT_TX_MAX_DMA_CHUNK 1024U
+#else
+#define BT_TX_BUF_SIZE      256U /* serial buffer in bytes (power 2)  */
+/* No cap needed: a transfer can never exceed the ring itself */
+#define BT_TX_MAX_DMA_CHUNK BT_TX_BUF_SIZE
+#endif
+
 #define BT_TX_BUF_MASK                              (BT_TX_BUF_SIZE - 1UL)
 
 /* maximum number of arguments for any command sent (daughter card mem write) */
@@ -211,6 +228,28 @@
 #define RESET_BT_ERROR_COUNTS                         0xB6
 #define SET_FEATURE                                   0xB7
 
+/* SD-card file transfer over BT. Opcodes are reserved protocol-wide but the
+ * commands are currently only served on SHIMMER3R (older FW silently ignores
+ * unknown opcodes, so hosts gate on GET_FW_VERSION_COMMAND). See
+ * Comms/shimmer_sd_file_transfer.h for the payload formats.
+ *
+ * NOTE: command opcodes (the first byte the host sends) must avoid the
+ * EZ-Serial binary SOF bytes 0x80/0xC0/0xD0 - the CYW20820 UART RX demux
+ * (hal_CYW20820.c) routes those to the EZ-Serial parser, not the Shimmer
+ * command parser. Hence SD_LIST_DIR_COMMAND sits at 0xCC, not 0xC0. */
+#define SD_LIST_DIR_COMMAND                           0xCC
+#define SD_LIST_DIR_RESPONSE                          0xC1
+#define SD_FILE_STAT_COMMAND                          0xC2
+#define SD_FILE_STAT_RESPONSE                         0xC3
+#define SD_FILE_READ_COMMAND                          0xC4
+#define SD_FILE_DATA_RESPONSE                         0xC5
+#define SD_FILE_STATUS_RESPONSE                       0xC6
+#define SD_TRANSFER_ABORT_COMMAND                     0xC7
+#define SD_FREE_SPACE_COMMAND                         0xC8
+#define SD_FREE_SPACE_RESPONSE                        0xC9
+#define SD_DELETE_COMMAND                             0xCA
+#define SD_DELETE_RESPONSE                            0xCB
+
 #define SET_SD_SYNC_COMMAND                           0xE0
 #define SD_SYNC_RESPONSE                              0xE1
 
@@ -246,13 +285,20 @@ enum
 {
   PRESSURE_SENSOR_BMP180 = 0,
   PRESSURE_SENSOR_BMP280 = 1,
-  PRESSURE_SENSOR_BMP390 = 2
+  PRESSURE_SENSOR_BMP390 = 2,
+  PRESSURE_SENSOR_BMP581 = 3
 };
 
 enum
 {
   FEATURE_NONE = 0,
-  FEATURE_RN4678_ERROR_LEDS = 1
+  FEATURE_RN4678_ERROR_LEDS = 1,
+  /* Arm a soft reboot that fires once the host disconnects. Lets a host apply
+   * settings that are only picked up at boot (e.g. the EEPROM brand record's
+   * advertising names) without the user power-cycling the device by hand. The
+   * reboot cannot happen while the host is still connected, because the link
+   * has to drop for the Bluetooth module to re-read its name. */
+  FEATURE_REBOOT_ON_DISCONNECT = 2
 };
 
 typedef enum
@@ -343,13 +389,15 @@ void ShimBt_macIdVarsReset(void);
 void ShimBt_instreamStatusRespSendIfNotBtCmd(void);
 void ShimBt_instreamStatusRespSend(void);
 void ShimBt_handleBtRfCommStateChange(uint8_t isConnected);
+void ShimBt_setRebootOnDisconnect(uint8_t enable);
+uint8_t ShimBt_isRebootOnDisconnectArmed(void);
 volatile uint8_t *ShimBt_getBtActionPtr(void);
 uint8_t *ShimBt_getBtArgsPtr(void);
 
 void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain);
 uint8_t ShimBt_isBtTxBufEmpty(void);
 void ShimBt_pushByteToBtTxBuf(uint8_t b);
-uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint8_t len);
+uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint16_t len);
 uint8_t ShimBt_popBytefromBtTxBuf(void);
 uint16_t ShimBt_getUsedSpaceInBtTxBuf(void);
 uint16_t ShimBt_getSpaceInBtTxBuf(void);
@@ -365,7 +413,7 @@ void ShimBt_setDataRateTestState(uint8_t state);
 uint8_t ShimBt_getDataRateTestState(void);
 void ShimBt_loadTxBufForDataRateTest(void);
 #if defined(SHIMMER3R)
-uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint8_t len, btResponseType responseType);
+uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType responseType);
 #endif
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr);
 
@@ -377,6 +425,8 @@ uint32_t ShimBt_getBtBaudRateToUse(void);
 
 void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 __weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
+/* Abort an in-flight BT UART transmit (board-specific; no-op by default) */
+__weak void BtTransmitAbort(void);
 uint8_t ShimBt_isBleCurrentlyEnabled(void);
 uint8_t ShimBt_isBtClassicCurrentlyEnabled(void);
 #if defined(SHIMMER3)

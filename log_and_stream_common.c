@@ -365,6 +365,9 @@ static void LogAndStream_sdWaitAndAbort(void)
 /** Hand SD card to USB-C (USBX MSC + CDC).  SHIMMER3R only. */
 static void LogAndStream_assignSdToUsb(void)
 {
+  /* Close out any BT file transfer before the card changes hands */
+  ShimSdFileTransfer_abort(SD_FT_XFER_SD_LOST);
+
   /* Tear down dock if it had ownership */
   DockUart_deinit();
   Board_dockDetectN(DOCK_CARD_NOT_PRESENT);
@@ -397,6 +400,9 @@ static void LogAndStream_assignSdToUsb(void)
 void LogAndStream_assignSdToDock(void)
 {
 #if defined(SHIMMER3R)
+  /* Close out any BT file transfer before the card changes hands */
+  ShimSdFileTransfer_abort(SD_FT_XFER_SD_LOST);
+
   /* Tear down USB device first — must happen before touching SDMMC so that
    * the MSC class stops issuing SD commands. */
   USB_deinit();
@@ -558,6 +564,33 @@ uint8_t LogAndStream_checkSdInSlot(void)
   return shimmerStatus.sdInserted;
 }
 
+battReadAction_t LogAndStream_getBattReadAction(void)
+{
+  /* Prioritise ADC sensor data over an up-to-date battery value - never let a
+   * battery read disturb the ADC sensor stream:
+   *   1) sensing + VBatt streamed   -> use the latest streamed sample
+   *   2) sensing + another ADC chan -> Shimmer3 shares one ADC with the battery,
+   *        so a read would disturb the sensor data: keep the last value.
+   *        Shimmer3R has a dedicated battery ADC (no collision) so it falls
+   *        through and just takes a fresh measurement
+   *   3) sensing + no ADC channels  -> take a new measurement (nothing to disturb)
+   *   4) not sensing                -> take a new measurement */
+  if (shimmerStatus.sensing)
+  {
+    if (ShimConfig_getStoredConfig()->chEnVBattery)
+    {
+      return BATT_READ_USE_STREAM;
+    }
+#if defined(SHIMMER3)
+    if (sensing.nbrMcuAdcChans)
+    {
+      return BATT_READ_REPEAT_LAST;
+    }
+#endif
+  }
+  return BATT_READ_NEW;
+}
+
 void LogAndStream_processDaughterCardId(void)
 {
   /* Read all from EEPROM if present */
@@ -605,7 +638,8 @@ void LogAndStream_buildShimmerMacSuffix(char *outBuf, size_t outBufLen)
 
 void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
 {
-  /* prefix fits within SHIMMER_PREFIX_LEN (e.g. "Shimmer AAAA") */
+  /* e.g. "Shimmer AAAA"; worst case is a 16-char EEPROM brand + " AAAA" + NUL
+   * = 22 bytes, so callers must provide at least that much space */
   char suffix[8]; /* enough for "AAAA" + NUL */
 
   if ((outBuf == NULL) || (outBufLen == 0))
@@ -617,7 +651,8 @@ void LogAndStream_buildShimmerPrefix(char *outBuf, size_t outBufLen)
   outBuf[0] = '\0';
 
   LogAndStream_buildShimmerMacSuffix(suffix, sizeof(suffix));
-  snprintf(outBuf, outBufLen, "Shimmer %s", suffix);
+  /* USB product prefix; defaults to "Shimmer" unless a brand record is set */
+  snprintf(outBuf, outBufLen, "%s %s", ShimEeprom_getBrandUsbProduct(), suffix);
 }
 
 bool LogAndStream_allowDockComms(void)
