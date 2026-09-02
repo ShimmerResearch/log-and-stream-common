@@ -427,7 +427,60 @@ _TODO: what this protocol does not do — no length-prefixed framing, no flow co
 
 ## Appendix A. Firmware version gates
 
-_TODO: paste the generated version-gate table (host-side capability gates and the first firmware tag that satisfies each, or "predates firmware git history")._
+Host software gates optional protocol and layout features on the firmware
+version reported by `GET_FW_VERSION_COMMAND`. The **host gate** column is the
+normative answer for host authors: it names the Java driver predicate and the
+LogAndStream version threshold it applies.
+
+The final column is corroborating evidence only, obtained by locating the commit
+that changed the corresponding firmware symbol earliest (`git log -S`) and taking
+the earliest release tag per lineage that contains it. Read it with three
+caveats:
+
+- **`≤` means inconclusive.** The introducing commit predates that lineage's
+  first tag, so the tag shown is merely the earliest tag that exists — the
+  feature is at or before it. Old releases were tagged sparsely.
+- **A symbol's earliest commit can be a rename, not the feature's birth.** Where
+  the date is much later than the host threshold suggests, the symbol was
+  probably renamed or moved into the shared module at that commit.
+- **Tag lineages are separate product lines.** `LogAndStream_Shimmer3`,
+  `LogAndStream_Shimmer3_BLE`, `LogAndStream_Shimmer3R` and the legacy
+  unprefixed `LogAndStream` version numbers are not comparable with each other.
+
+Release provenance is taken from the two platform repositories. The shared
+module's own history begins when it was extracted, so its tags date the
+extraction rather than the feature; it is consulted only for features that
+exist nowhere else, which are exactly the ones added after the extraction.
+
+| Area | Feature | Host gate / threshold | Firmware symbol | Earliest release tag containing the introducing commit |
+|---|---|---|---|---|
+| Status response | status bit 7 carries the red-LED toggle state | `isSupportedRedLedStateInStatus`<br>LogAndStream 0.7.10 | `toggleLedRedCmd` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.011`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit c42e0f6, 2024-10-07)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 65aa6176, 2023-11-09) |
+| Status response | status bits 6 and 5 carry SD bad-file / SD-inserted | `isSupportedSdInfoInStatus`<br>LogAndStream 0.7.12 | `sdBadFile` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.012`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit ed662e8, 2024-11-05)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 42a86589, 2024-11-05) |
+| Status response | status bit 2 carries "real-world clock has been set" | `isSupportedRtcStateInStatus`<br>LogAndStream 0.7.14 | `RTC_isRwcTimeSet` | Shimmer3: `LogAndStream_Shimmer3_BLE_v1.00.000`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit e501346, 2025-06-30)<br>Shimmer3R: `LogAndStream_Shimmer3R_v1.00.027` (introducing commit b4964c95, 2025-06-30) |
+| Status response | a SECOND status byte carrying USB-plugged-in (STATUS_BYTE_COUNT 2) | `isSupportedUSBPluggedInStatus`<br>LogAndStream 1.0.24 (Shimmer3R) | `usbPluggedIn` | Shimmer3R: `LogAndStream_Shimmer3R_v1.00.019` (introducing commit d1f311cf, 2025-02-28) |
+| Commands | GET_BT_VERSION_STR_COMMAND (Bluetooth module firmware string) | `isSupportedBtFwVerRequest`<br>_no version threshold (hardware-keyed or unconditional)_ | `GET_BT_VERSION_STR_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000` (introducing commit 372a4de, 2023-02-08)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| Commands | GET_STATUS_COMMAND | `isSupportedBtStatusRequest`<br>LogAndStream 0.5.2 (Shimmer3) | `GET_STATUS_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 8b7e616, 2014-07-22)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| Commands | GET_VBATT_COMMAND | `isSupportedBtBatteryRequest`<br>LogAndStream 0.5.9 (Shimmer3) | `GET_VBATT_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 15dd04c, 2016-02-11)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| Commands | UPD_SDLOG_CFG_COMMAND (rewrite the SD config file after an InfoMem write) | `isBtMemoryUpdateCommandSupported`<br>_no version threshold (hardware-keyed or unconditional)_ | `UPD_SDLOG_CFG_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 5eae006, 2016-09-16)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| Calibration | GET/SET/UPD_CALIB_DUMP_COMMAND and the calibration-dump blob | `isSupportedCalibDump`<br>_no version threshold (hardware-keyed or unconditional)_ | `SET_CALIB_DUMP_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 5eae006, 2016-09-16)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| Commands | SD logging commands | `isSupportedSdCardAccess`<br>_no version threshold (hardware-keyed or unconditional)_ | `START_LOGGING_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 15dd04c, 2016-02-11)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| Dock | configuration over the dock UART | `isSupportedConfigViaUart`<br>_no version threshold (hardware-keyed or unconditional)_ | — | _no firmware symbol identified_ |
+| Dock | real-world clock set over the dock UART | `isSupportedRtcConfigViaUart`<br>_no version threshold (hardware-keyed or unconditional)_ | — | _no firmware symbol identified_ |
+| InfoMem | the MPL/9-DoF fusion calibration block | `isSupportedMpl`<br>_no version threshold (hardware-keyed or unconditional)_ | `NV_MPL_GYRO_CALIBRATION` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 00425d6, 2015-03-30)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| InfoMem | derived-channel bytes 3..7 at InfoMem 118-122 (8 bytes total, not 3) | `isSupportedEightByteDerivedSensors`<br>LogAndStream 0.7.1 | `NV_DERIVED_CHANNELS_3` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit d97bbd6, 2017-05-24)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| SD header | the expansion-board id in the SD file header | `isSupportedExpansionBrdIdInSdHeader`<br>LogAndStream 0.6.13 | — | _no firmware symbol identified_ |
+| Commands | SET_FEATURE (runtime feature toggles) | — | `SET_FEATURE` | Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 52bb8f0e, 2024-03-27) |
+| Commands | SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE | — | `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.001`, `LogAndStream_Shimmer3_v0.15.004` (introducing commit 25ae95d, 2023-02-17)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| Commands | SET_CRC_COMMAND (response CRC modes) | — | `SET_CRC_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 392f693, 2015-03-30)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| Calibration | GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND (sensor-agnostic pressure coefficients) | — | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.006`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit a5151db, 2024-07-08)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 707d1387, 2024-07-01) |
+| Calibration | alternative accel / alternative mag calibration commands | — | `SET_ALT_ACCEL_CALIBRATION_COMMAND` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.013`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit 6459f66, 2024-12-12)<br>Shimmer3R: `LogAndStream_Shimmer3R_v1.00.005` (introducing commit 15947690, 2024-11-28) |
+| SD transfer | SD file transfer over Bluetooth (Shimmer3R) | — | `SD_FILE_READ_COMMAND` | shared module: `LogAndStream_Shimmer3R_v1.01.009` (introducing commit 71d283f, 2026-08-18) |
+| InfoMem | configuration setup bytes 4-6 at InfoMem 130-132 | — | `NV_CONFIG_SETUP_BYTE4` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 00425d6, 2015-03-30)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| InfoMem | the Bluetooth PIN byte at InfoMem 231 | — | `NV_BT_SET_PIN` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, `LogAndStream_v0.9.0` (introducing commit 87ff27c, 2017-08-18)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
+| Commands | RESET_BT_ERROR_COUNTS | — | `RESET_BT_ERROR_COUNTS` | shared module: `LogAndStream_Shimmer3R_v1.00.049`, `LogAndStream_Shimmer3_v1.00.015` (introducing commit 039dbbd, 2025-11-27) |
+| Commands | SET_DATA_RATE_TEST / DATA_RATE_TEST_RESPONSE | — | `SET_DATA_RATE_TEST` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.002`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit 7e8558f, 2023-12-15)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit da26df24, 2023-12-15) |
+
+Repository history starts: common 2025-01-28; s3 2013-10-16; s3r 2023-10-17.
 
 ## Appendix B. Java-only and legacy opcodes
 
