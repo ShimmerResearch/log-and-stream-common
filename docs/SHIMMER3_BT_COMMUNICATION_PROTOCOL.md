@@ -2782,15 +2782,251 @@ involvement is enabling or disabling it in the configuration.
 
 ## 8. Connection session workflow
 
-_TODO: the recommended host sequence — connect, `GET_FW_VERSION_COMMAND` to establish capability, optional `SET_CRC_COMMAND`, read InfoMem and calibration, `INQUIRY_COMMAND`, start streaming — and what must be re-read after each configuration write. Source: `Extras/python_scripts/`, `bluetooth/ShimmerBluetooth.java` connect state machine._
+### 8.1 What a connect resets
+
+Several things are per-connection state, not configuration, and a host must
+re-establish them every time the link comes up.
+
+| Reset on connect | Reset on disconnect | Detail |
+|---|---|---|
+| Receive parser | — | `gAction` set to an unsupported value, `waitingForArgs` cleared (`ShimBt_resetBtRxVariablesOnConnect`, `Comms/shimmer_bt_uart.c:203-209`) |
+| — | CRC mode | Forced to `CRC_OFF` (`:2543`) |
+| — | ACK prefix for pushes | Back to on (`ShimBt_resetBtResponseVars`, `:2545`) |
+| — | Streaming | Stopped unconditionally (`:2534`) |
+| — | Data-rate test | Stopped (`:2536`) |
+| — | SD file transfer | Dropped silently (`:2539`) |
+| — | Transmit ring | Cleared (`:2541`) |
+
+Nothing in the configuration image is affected. Conversely, **no session setting
+survives a reconnection** — if the host wants a CRC, it must ask again.
+
+### 8.2 Recommended session sequence
+
+```
+connect
+  |
+  +-- GET_DEVICE_VERSION_COMMAND      0x3F   generation: fixes inquiry + channel vocabulary
+  +-- GET_FW_VERSION_COMMAND          0x2E   feature gates (Appendix A)
+  +-- SET_CRC_COMMAND                 0x8B   optional, and only after the version is known
+  |
+  +-- GET_INFOMEM_COMMAND × 3         0x8E   offsets 0, 128, 256 - the whole configuration
+  +-- GET_CALIB_DUMP_COMMAND × n      0x9A   from offset 0; length comes from the first 2 bytes
+  +-- GET_PRESSURE_CALIBRATION_...    0xA7   fitted barometer + its coefficients
+  +-- GET_DAUGHTER_CARD_ID_COMMAND    0x66   expansion board identity
+  |
+  +-- … configuration writes, if any …
+  |
+  +-- GET_INFOMEM_COMMAND × 3         0x8E   READ BACK - the firmware may have corrected you
+  +-- INQUIRY_COMMAND                 0x01   channel order and count, AFTER the last write
+  |
+  +-- START_STREAMING_COMMAND         0x07
+  +-- GET_STATUS_COMMAND              0x72   confirm bit 4 - the ACK did not mean "started"
+  |
+ data packets …
+```
+
+The ordering constraints, all of which have been established earlier in this
+document, are:
+
+1. **Device version before anything that depends on payload shape.** The inquiry
+   response's fixed part is 8 bytes on Shimmer3 and 11 on Shimmer3R, so a host
+   cannot even locate `numberOfChannels` without it ([§7.1](#71-inquiry)).
+2. **Firmware version before optional features.** An unrecognised command byte
+   produces no reply at all, so probing is not a viable substitute
+   ([§2.3](#23-framing-guarantees-per-transport)).
+3. **`SET_CRC_COMMAND` after the version read**, so the version exchange itself
+   is not subject to a CRC the host has not confirmed the firmware supports.
+4. **`INQUIRY_COMMAND` last, after every write** ([§6.2](#62-fixing-the-packet-layout)).
+5. **Read back after every write.** The whole-image correction pass runs on each
+   InfoMem chunk and each single-setting write, and every setter clamps silently
+   ([§7.5](#75-infomem), [§7.8](#78-sensor-settings)).
+6. **Confirm a start with the status bits**, because the start commands are
+   conditional ([§6.1](#61-the-six-startstop-commands)).
+
+For comparison, the Java driver's own connect state machine runs: a dummy
+sampling-rate read to flush the write buffer, a CRC-mode reset, then
+`readShimmerVersionNew()`; on the Shimmer3 path it reads the configuration bytes
+and pressure coefficients if `getFirmwareVersionCode() >= 6`, else falls back to
+reading each setting individually; then the LED command, and — each behind its
+version gate — the status, the battery and the Bluetooth version string; then the
+calibration dump; and finally either a fixed-configuration write or
+`inquiry()`.
+
+> `bluetooth/ShimmerBluetooth.java:2547-2561` (`initialize`) and `:2629-2751`
+> (`initializeShimmer3`).
+
+Note one hardware-driven exception the Java driver encodes: it skips the
+calibration-dump read on a **docked Shimmer3**, because that platform cannot
+reach its SD card while docked. Shimmer3R can, so the read proceeds there.
+
+> `bluetooth/ShimmerBluetooth.java:2723-2728`.
+
+### 8.3 What must be re-read after a write
+
+| After writing | Re-read |
+|---|---|
+| Any single setting (`0x05`, `0x08`, `0x09`, `0x0E`, `0x21`, `0x37`…) | The matching `GET`, because the value is clamped |
+| Any InfoMem chunk (`0x8C`) | All three InfoMem pages, because the correction pass is whole-image |
+| Anything that changes the enabled sensor set or a range | `INQUIRY_COMMAND` |
+| A calibration block (`0x11`…`0xB1`) or dump chunk (`0x98`) | `GET_CALIB_DUMP_COMMAND`, or the matching per-sensor `GET` |
+| `SET_CENTER_COMMAND` (`0x76`) | `GET_TRIAL_CONFIG_COMMAND`, **not** `GET_CENTER_COMMAND` ([§7.7](#77-sd-logging-and-trial-configuration)) |
+| `SET_SHIMMERNAME_COMMAND` (`0x79`) with a blank value | `GET_SHIMMERNAME_COMMAND` — the firmware substitutes a default |
+| Anything, before disconnecting | Consider `UPD_SDLOG_CFG_COMMAND` (`0x9C`) so the card is updated |
+
+### 8.4 Timeouts and error recovery
+
+- **Always use a response timeout**, even on a reliable transport. Two
+  situations produce no reply at all: an unknown command byte, and an
+  out-of-bounds `SET_INFOMEM_COMMAND` ([§5.2](#52-the-three-nack-preconditions)).
+- **On a suspected desynchronisation**, stop transmitting for well over the
+  firmware's 10 ms receive timeout
+  (`BT_RX_COMMS_TIMEOUT_TICKS`, [§2.3](#23-framing-guarantees-per-transport)),
+  discard everything received, then probe with `TEST_CONNECTION_COMMAND` (0x96).
+  Do not send filler bytes: on a Shimmer3 with module status strings enabled a
+  stray `0x25` puts the parser into status-string mode.
+- **Correlate replies by response opcode, not by counting ACKs.** Unsolicited
+  status pushes carry a leading `0xFF` by default
+  ([§5.4](#54-in-stream-responses)), and 0x5D on unsupported hardware emits a
+  spurious second `0xFF` ([§7.6](#76-calibration-dump-and-per-sensor-calibration)).
+- **A device that NACKs every command, including `GET_FW_VERSION_COMMAND`, is in
+  SD sync mode.** Clear `syncEnable` in the configuration
+  ([§7.14](#714-sd-sync)).
 
 ## 9. Host-side implementations
 
-_TODO: table of the four host implementations (Python in this repo, Java driver, TypeScript web SDK, C#) with what each covers and where its opcode registry lives. Source: as listed in Source references._
+Four host implementations of this protocol exist. All four speak the same bytes;
+they differ in coverage and in where their opcode vocabulary lives.
+
+| Implementation | Repository | Opcode registry | Coverage |
+|---|---|---|---|
+| **Python** (reference) | `Extras/python_scripts/` in this repository | `Shimmer_common/shimmer_comms_bluetooth.py` — the `BtCmds` class | Configuration and calibration paging, SD file transfer, dock link. Deliberately small and readable |
+| **Java / Android** | `Shimmer-Java-Android-API` | `bluetooth/ShimmerBluetooth.java` — a `BtCommandDetails` map keyed by opcode, carrying each command's expected response opcode and payload length | The most complete: full connect state machine, calibration maths, channel parsing, per-version feature gates |
+| **TypeScript (web)** | `shimmer-web-sdk` | `devices/shimmer3r/constants.ts`, `devices/shimmer3/protocol.ts`, `devices/shimmer3r/sdTransfer/protocol.ts` | Web Bluetooth and Web Serial. Covers 178 of the 197 named opcodes; the gaps are deliberate ([§4.1](#41-core), `SDK_MISSING`) |
+| **C# (.NET)** | separate Shimmer distribution | — | Windows desktop applications |
+
+**Where they disagree, the firmware wins.** This document records the
+disagreements as `⚠️` notes; they are:
+
+| Disagreement | Firmware behaviour | Section |
+|---|---|---|
+| `DERIVED_CHANNEL_BYTES_RESPONSE` 0x6E length | 8 payload bytes; the Java registry declares 3 | [§7.11](#711-derived-channels) |
+| Calibration-dump argument order | `[len][offsetLo][offsetHi]`; the firmware's *own comments* say otherwise | [§7.6](#76-calibration-dump-and-per-sensor-calibration) |
+| 27 opcodes with no Java constant | Served; the driver simply never named them | [§4](#4-opcode-table) (`FW_ONLY`) |
+| 13 opcodes named only by Java | Not defined by this firmware | [Appendix B](#appendix-b-java-only-and-legacy-opcodes) |
+| 45 opcodes with a different Java name | Same byte, legacy name | [§4](#4-opcode-table) |
+
+The 45 name aliases are almost entirely the pre-Shimmer3R vocabulary — the Java
+driver still calls the wide-range accelerometer's range `ACCEL_SENSITIVITY`, the
+configuration setup bytes `CONFIG_BYTE0`, and the generic `WR_*` commands
+`LSM303DLHC_*`. The [§4](#4-opcode-table) tables carry **both** names rather than
+treating either as canonical, because a host maintainer reading Java source and a
+host maintainer reading firmware source both need to find the row.
 
 ## 10. Important boundaries
 
-_TODO: what this protocol does not do — no length-prefixed framing, no flow control from the host, no negative acknowledgement of unknown opcodes, no atomic multi-byte configuration write, and the commands that are rejected while sensing. Source: `ShimBt_isCmdBlockedWhileSensing`, `ShimBt_dmaConversionDone` `default:` case._
+This document covers the **Shimmer3 / Shimmer3R LogAndStream command-and-control
+protocol** over classic Bluetooth SPP, BLE and the dock serial link.
+
+It does **not** define:
+
+- the streaming packet and channel encodings — see
+  [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md);
+- the configuration byte layout — see
+  [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md);
+- the calibration blob's internal structure or the calibration maths — see
+  [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md);
+- the SD card's file and header format;
+- the SD-sync timing algorithm (only its two opcodes,
+  [§7.14](#714-sd-sync));
+- the firmware update process;
+- BtStream and SDLog, which share opcode numbers but differ in behaviour
+  ([§1](#1-overview)).
+
+### 10.1 What the protocol does not provide
+
+These are absences by design, and a host implementation has to compensate for
+each of them.
+
+- **No framing.** No length prefix, no delimiter, no escape, no start-of-frame
+  byte, in either direction. Both sides must agree on every argument count and
+  every response length. [§2.3](#23-framing-guarantees-per-transport)
+- **No negative acknowledgement of an unknown opcode.** An unrecognised command
+  byte is silently discarded, so a host cannot discover capability by probing and
+  must gate on `GET_FW_VERSION_COMMAND`.
+  [§2.3](#23-framing-guarantees-per-transport)
+- **No error reporting for a clamped value.** Out-of-range arguments are replaced
+  with a hard-coded fallback and ACKed as if accepted.
+  [§5.2](#52-the-three-nack-preconditions)
+- **No atomic multi-byte configuration write.** The 512-byte configuration image
+  is written 128 bytes at a time, and the whole-image correction pass runs after
+  *each* chunk, so intermediate states are visible to the firmware's own
+  validation. There is no transaction and no rollback.
+  [§7.5](#75-infomem)
+- **No flow control from the host.** The host cannot ask the device to pause. If
+  it cannot keep up, the device's transmit ring fills and the firmware discards
+  what will not fit rather than stalling its sampling loop.
+  [§6.3](#63-interleaving)
+- **No retransmission.** CRC modes let a host *detect* corruption
+  ([§3.3](#33-crc-modes)); nothing in the protocol lets it request a resend. The
+  only recovery is to reissue the command. The SD file transfer is the exception
+  that proves the rule: it was given an explicit resume-by-offset design
+  precisely because no general mechanism exists.
+  [§7.13](#713-sd-file-transfer-shimmer3r)
+- **No notification when the packet layout changes.** `INQUIRY_COMMAND` returns a
+  snapshot, and a data packet does not describe its own contents.
+  [§6.2](#62-fixing-the-packet-layout)
+- **No sequence numbers or command identifiers.** Replies are correlated by
+  response opcode and by the fact that the firmware processes one command at a
+  time. A host must not pipeline commands whose replies it could not tell
+  apart.
+- **No authentication or encryption at the protocol layer.** Link security is
+  whatever the Bluetooth pairing provides.
+
+### 10.2 Commands rejected while sensing
+
+43 commands are NACKed whenever `shimmerStatus.sensing` is set — that is,
+whenever the device is streaming, logging, or both. The list is effectively
+"every write that could change what a sample means", which is exactly the
+property that makes a stream parseable: the layout a host fixed with
+`INQUIRY_COMMAND` cannot change under it.
+
+Grouped by what they would have changed:
+
+| Group | Opcodes |
+|---|---|
+| Sample rate and enabled sensors | `0x05`, `0x08` |
+| Configuration setup bytes | `0x0E` |
+| Wide-range accel | `0x09`, `0x40`, `0x43`, `0x46` |
+| Gyroscope | `0x49`, `0x4C` |
+| Magnetometer | `0x37`, `0x3A` |
+| Alternative accel / mag | `0x4F`, `0xAC`, `0xB2` |
+| Pressure, GSR, expansion power | `0x52`, `0x21`, `0x5E` |
+| ExG registers | `0x61` |
+| Daughter card | `0x64`, `0x67` |
+| Bluetooth baud (a no-op, but still blocked) | `0x6A` |
+| Derived channels | `0x6D` |
+| Trial configuration and identity | `0x73`, `0x76`, `0x79`, `0x7C`, `0x7F`, `0x82`, `0x85` |
+| Whole configuration image | `0x8C` |
+| Calibration writes | `0x11`, `0x14`, `0x17`, `0x1A`, `0xA9`, `0xAF`, `0x98`, `0x9B` |
+| Resets | `0x5A`, `0x5B` |
+| SD configuration file rewrite | `0x9C` |
+| Test modes | `0xA4`, `0xA8` |
+
+> `ShimBt_isCmdBlockedWhileSensing`, `Comms/shimmer_bt_uart.c:2939-2995`, which
+> carries the opcode number beside each `case` label. The **Blocked while
+> sensing** column of the [§4](#4-opcode-table) tables is extracted from the same
+> function and is the authoritative per-opcode answer.
+
+**Everything not on that list is permitted while sensing** — every `GET`, the
+start/stop commands, `SET_CRC_COMMAND`, `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE`,
+`SET_FEATURE`, `SET_CHARGE_STATUS_LED_COMMAND`, `RESET_BT_ERROR_COUNTS`,
+`TOGGLE_LED_COMMAND` and, notably, **`SET_RWC_COMMAND`**. The clock can be set
+mid-recording.
+
+The Shimmer3R SD file-transfer commands are not on the blocked list either, but
+they are gated separately and in band: their access check reports
+`SD_FT_STATUS_BUSY` (`0xF1`) while sensing, logging or streaming
+([§7.13](#713-sd-file-transfer-shimmer3r)).
 
 ## Appendix A. Firmware version gates
 
@@ -2851,8 +3087,176 @@ Repository history starts: common 2025-01-28; s3 2013-10-16; s3r 2023-10-17.
 
 ## Appendix B. Java-only and legacy opcodes
 
-_TODO: opcodes present in the Java driver's registry but not served by LogAndStream — BtStream/SDLog-era commands and Shimmer2r carry-overs — so host maintainers can tell "not implemented here" from "wrong opcode". Source: `driver/ShimmerObject.java`, `bluetooth/ShimmerBluetooth.java`._
+Thirteen byte values are named by the Java driver but **not defined by this
+firmware at all**. They are listed here so that a host maintainer looking at Java
+source can tell "this firmware does not implement it" from "I have the wrong
+opcode number" — and so that nobody reuses one of these numbers for something
+new. They are flagged `JAVA_ONLY` in
+[§4.6](#46-not-served-by-logandstream).
+
+| Opcode | Java name | Why it is not here |
+|---|---|---|
+| `0x0C` | `SET_5V_REGULATOR_COMMAND` | Shimmer2 only — annotated as such in the Java source |
+| `0x0D` | `SET_PMUX_COMMAND` | Shimmer2 only — annotated as such in the Java source |
+| `0x26` | `SET_EMG_CALIBRATION_COMMAND` | Superseded by the calibration dump |
+| `0x27` | `EMG_CALIBRATION_RESPONSE` | Superseded by the calibration dump |
+| `0x28` | `GET_EMG_CALIBRATION_COMMAND` | Superseded by the calibration dump |
+| `0x29` | `SET_ECG_CALIBRATION_COMMAND` | Superseded by the calibration dump |
+| `0x2A` | `ECG_CALIBRATION_RESPONSE` | Superseded by the calibration dump |
+| `0x2B` | `GET_ECG_CALIBRATION_COMMAND` | Superseded by the calibration dump |
+| `0x33` | `SET_GYRO_TEMP_VREF_COMMAND` | No handler in any current firmware |
+| `0x34` | `SET_BUFFER_SIZE_COMMAND` | Buffer size is fixed at 1; only the `GET` (0x36) survives |
+| `0x55` | `SET_BMP180_PRES_CALIBRATION_COMMAND` | Superseded by `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` (0xA7) |
+| `0x56` | `BMP180_PRES_CALIBRATION_RESPONSE` | Superseded by 0xA6 |
+| `0x57` | `GET_BMP180_PRES_CALIBRATION_COMMAND` | Superseded by 0xA7 |
+
+> The `// only Shimmer 2` annotations on 0x0C and 0x0D are in the driver's own
+> registry at `bluetooth/ShimmerBluetooth.java:390-391`. All thirteen also appear
+> in the generated `comms/radioProtocol/ShimmerLiteProtocolInstructionSet.java`
+> enumeration, which is a superset covering every Shimmer generation.
+
+Sending any of these to LogAndStream firmware produces **no reply at all** — the
+byte falls to the receive state machine's `default:` case and is discarded
+([§2.3](#23-framing-guarantees-per-transport)). Their arguments, if any, are then
+interpreted as fresh command bytes, so a host that sends one will likely
+desynchronise. This is the practical reason not to carry a legacy registry
+forward untrimmed.
+
+Two further categories are *not* in this appendix but are worth distinguishing
+from it:
+
+- **Served but useless.** `DEPRECATED_GET_DEVICE_VERSION_COMMAND` (0x24) and the
+  three baud-rate opcodes (0x6A, 0x6B, 0x6C) are defined and reach a handler; the
+  first works and is merely superseded, the others do nothing.
+  [§4.5](#45-deprecated--no-op)
+- **Reserved, never served.** `RSP_I2C_BATT_STATUS_COMMAND` (0x9D) and
+  `GET_I2C_BATT_STATUS_COMMAND` (0x9E) exist only under `SHIMMER4_SDK`, and 0x9C
+  is `SET_I2C_BATT_STATUS_FREQ_COMMAND` there rather than
+  `UPD_SDLOG_CFG_COMMAND`. No LogAndStream code on either supported platform
+  references them, and **hosts must not reuse the numbers**.
+  [§4.6](#46-not-served-by-logandstream)
+
+Conversely, 27 opcodes are served by this firmware but have **no named constant
+in the Java driver** (`FW_ONLY`). Twelve are the Shimmer3R SD file transfer
+(0xC1-0xCC), two are the Shimmer4 pair above, and `NACK_COMMAND_PROCESSED`
+(0xFE) is handled inline rather than through a constant. The remaining ones are
+genuinely usable commands a Java-based host has to send as raw bytes:
+
+| Opcode | Firmware name | Section |
+|---|---|---|
+| `0x3D` / `0x3E` | `UNIQUE_SERIAL_RESPONSE` / `GET_UNIQUE_SERIAL_COMMAND` | [§7.2](#72-version-information) |
+| `0x64` | `SET_DAUGHTER_CARD_ID_COMMAND` | [§7.10](#710-daughter-card) |
+| `0x67` / `0x68` / `0x69` | daughter-card memory set / response / get | [§7.10](#710-daughter-card) |
+| `0xA3` | `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE` | [§7.12](#712-control-and-test) |
+| `0xA4` / `0xA5` | `SET_DATA_RATE_TEST` / `DATA_RATE_TEST_RESPONSE` | [§7.12](#712-control-and-test) |
+| `0xB5` | `DUMMY_COMMAND` | [§7.12](#712-control-and-test) |
+| `0xB6` | `RESET_BT_ERROR_COUNTS` | [§7.12](#712-control-and-test) |
+| `0xE1` | `SD_SYNC_RESPONSE` | [§7.14](#714-sd-sync) |
 
 ## Still unverified / not found in code
 
-- _TODO: populate as the doc pass proceeds._
+Everything above is derived from source. The following statements are either
+absent from the code, or present in a form that only bench measurement can
+settle. They are listed so that a host author knows where the document stops
+being authoritative, and so that a later pass can close them.
+
+**Transport and framing**
+
+- **BLE GATT service and characteristic UUIDs, and the negotiated ATT MTU.**
+  Nothing in `log-and-stream-common` or either platform repository declares a
+  GATT service: the Bluetooth module terminates GATT itself and hands the
+  firmware a reassembled byte stream ([§2.2](#22-ble)). The one MTU figure in the
+  firmware is Shimmer3's `BLE_MTU_SIZE` 157
+  (`shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.h:242`), which is the RN4678's
+  working value and not necessarily what a given host negotiates. The Shimmer3R
+  equivalent is inside the CYW20820's EZ-Serial configuration. **Needs a
+  capture** from a host stack on each generation.
+- **Whether BLE ever coalesces two firmware messages into one notification.**
+  [§2.2](#22-ble) tells hosts to assume it can, which is the safe assumption, but
+  the firmware hands each response to the UART as a single write and the
+  coalescing decision belongs entirely to the module. Not observable from source.
+  **Needs a capture.**
+- **Whether the module's classic-Bluetooth status strings can reach a host.** The
+  firmware consumes them on the MCU-side UART
+  ([§2.1](#21-classic-bluetooth-spp)); whether a misconfigured module could also
+  emit them over RFCOMM has not been established.
+
+**Status and in-stream responses**
+
+- **The default state of the `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE` (0xA3)
+  prefix as observed by a host.** The firmware defaults
+  `useAckPrefixForInstreamResponses` to 1 and resets it on every disconnect
+  (`Comms/shimmer_bt_uart.c:196`, `:2545`), which is what
+  [§5.4](#54-in-stream-responses) states. What has **not** been verified is
+  whether any shipped host relies on the opposite, and whether the reset is
+  reliably observed across a BLE reconnection that the module handles without the
+  firmware seeing a disconnect event.
+- **Unsolicited-push timing.** The four triggers are known
+  ([§5.4](#54-in-stream-responses)); the latency between the physical event and
+  the push, and whether two pushes can be queued back to back (dock immediately
+  followed by a logging stop, say), are not derivable from source. **Needs bench
+  observation.**
+- **The Shimmer3R two-byte status over BLE.** The second byte is compiled in
+  under `#if defined(SHIMMER3R)` and carries `usbPluggedIn`. That it survives BLE
+  fragmentation intact — i.e. that no host stack truncates a 4- or 5-byte
+  notification — has not been confirmed on hardware.
+- **CRC behaviour on unsolicited in-stream pushes.** The code appends the session
+  CRC (`Comms/shimmer_bt_uart.c:2462-2466`), so [§3.3](#33-crc-modes) states that
+  it does. Whether every host implementation validates it on a *push* rather than
+  only on a solicited response is unverified, and a host that does not will see
+  spurious trailing bytes.
+- **NACK-while-sensing over BLE.** The NACK path is transport-independent in the
+  firmware, but a bare single-byte `0xFE` notification arriving among data-packet
+  notifications is exactly the case most likely to be mis-attributed by a host
+  reassembler. **Needs bench confirmation** on both generations.
+
+**Hardware-keyed values**
+
+- **The TCXO clock values.** `ShimConfig_checkAndCorrectConfig` force-clears the
+  `tcxo` configuration bit behind `#if !IS_SUPPORTED_TCXO`
+  (`Configuration/shimmer_config.c:518-524`), and `samplingClockFreqGet()`
+  returns a flat `32768.0f` on both platforms
+  (`shimmer3r-firmware` `Core/Src/main.c:829-832`). The sampling-rate divider in
+  [§7.1](#71-inquiry) and [§7.8](#78-sensor-settings) therefore assumes 32768 Hz
+  unconditionally, which is correct for every build in the available source:
+  `IS_SUPPORTED_TCXO` is defined (as `0`) only in Shimmer3's `main.c` and not at
+  all on Shimmer3R, so it is **not visible in `shimmer_config.c`'s translation
+  unit on either platform** and the guard is always taken. **What a
+  TCXO-equipped board would actually clock at, and whether the divider
+  arithmetic would change, is therefore not established by any code path that
+  currently compiles.**
+- **The ADS7028 external-ADC reference voltage and bit depth.** Needed to convert
+  the external ADC channels to volts; not present in this repository. See
+  [SHIMMER3_STREAMING_DATA_FORMAT.md §7.2](SHIMMER3_STREAMING_DATA_FORMAT.md#72-adc-and-battery).
+- **The battery ADC reference and divider ratio.** Same gap, for the
+  `GET_VBATT_COMMAND` payload ([§7.4](#74-battery)) and the `VBATT` streaming
+  channel.
+- **RN4678 baud codes 11 and 12.** `BAUD_1000000` is annotated "Only supported in
+  RN4678 v1.23 (issues with v1.13.5 & v1.22)" and `BAUD_2000000` "Only supported
+  on CYW20820" (`Comms/shimmer_bt_uart.h:321-322`). Those annotations are the
+  only evidence; the failure mode on v1.13.5/v1.22, and whether 12 is rejected or
+  silently ignored on a Shimmer3, have not been measured. Neither is
+  host-visible, so this matters only for firmware work.
+
+**SD sync**
+
+- **The SD-sync exchange as a whole.** [§7.14](#714-sd-sync) documents the two
+  opcodes, their byte layouts, the always-on 1-byte CRC and the exclusivity rule
+  — all from source. The **timing** — the centre's 12-second per-node connection
+  window, the 54-second minimum broadcast interval, the retry and resend
+  behaviour, and what a node does when a sync is missed — is in
+  `SDSync/shimmer_sd_sync.{h,c}` but has not been read out into a
+  specification, and the observable behaviour of a multi-unit group has not been
+  characterised. A host has no role in the exchange, so this is a gap in the
+  documentation rather than in the host contract.
+
+**Firmware provenance**
+
+- **The first firmware tag for several version gates.** Where
+  [Appendix A](#appendix-a-firmware-version-gates) shows a `≤` marker, the
+  introducing commit predates the earliest tag in that lineage, so the tag shown
+  is merely the earliest one that exists. For features that live only in the
+  shared module, the column could not be established at all: **the shared
+  repository's history begins in January 2025**, so its tags date the extraction
+  of the module rather than the introduction of the feature. Those gates predate
+  the available history.
