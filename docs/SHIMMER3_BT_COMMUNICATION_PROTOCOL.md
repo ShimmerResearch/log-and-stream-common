@@ -543,38 +543,6 @@ _The tables in this section are generated mechanically from the firmware header,
 the firmware command parser and response assembler, and the two host
 implementations. Do not hand-edit them._
 
-The firmware header declares **185** opcode `#define`s, of which 182 are
-reachable on each platform (three exist only under `SHIMMER4_SDK`). Joined
-against the Java driver's constants and the TypeScript SDK's registry, **197**
-distinct byte values are named by at least one of the three sources. **43**
-commands are refused while the device is sensing
-([§10](#10-important-boundaries)).
-
-The tables are split by function, not by number, so an opcode's section says what
-it is for: [§4.1](#41-core) core device and sensor control,
-[§4.2](#42-sd--trial-configuration) SD logging and trial setup,
-[§4.3](#43-calibration) calibration, [§4.4](#44-shimmer3r-served-extensions) the
-Shimmer3R-only SD file transfer, [§4.5](#45-deprecated--no-op) opcodes that are
-served but do nothing useful, and [§4.6](#46-not-served-by-logandstream) numbers
-that no LogAndStream code acts on.
-
-**How to read a row.** The **Args** column is the number of argument bytes the
-receive state machine waits for, taken from `ShimBt_dmaConversionDone`; where it
-reads `n + [args[k]] bytes` the opcode is variable-length in the sense of
-[§3.1](#31-command-frame). The **Response payload length** counts the bytes that
-follow the response opcode, excluding the ACK and any CRC. A symbolic entry such
-as `1 + infomemLength` or `ShimBt_replySingleSensorCalibCmd()` means the length
-is runtime-dependent and is given in the firmware's own terms; the corresponding
-[§7](#7-command-reference) subsection resolves it to a concrete number.
-
-> **Three length cells under-report the firmware.** The extractor cannot count
-> bytes written by a loop or by a call, so `GET_VBATT_COMMAND` (0x95),
-> `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` (0x5D) and, on Shimmer3 only,
-> `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` (0xA7) carry lengths that do
-> not match what the code emits. Each is corrected in a `⚠️` note in its
-> [§7](#7-command-reference) subsection, and those notes are normative. The
-> cells are left as generated so the tables stay reproducible.
-
 The **Notes** column carries comparison flags, all of which are statements about
 *named constants* rather than about behaviour:
 
@@ -585,6 +553,15 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `SDK_MISSING` | The TypeScript web SDK has no entry for this opcode. |
 | `LEN_MISMATCH` | The Java registry's expected response payload length disagrees with the length the firmware assembles. |
 | `no LogAndStream handler` | No code compiled for either platform references the opcode; the number is reserved only. |
+
+> **Response payload lengths.** The column counts the bytes the firmware writes
+> after the response opcode. Three commands write a byte inside a loop or in
+> mutually exclusive branches, which a static count of the source cannot
+> resolve; their lengths are curated from the firmware with a citation each
+> (`GET_VBATT` 0x95, `GET_MPU9150_MAG_SENS_ADJ_VALS` 0x5D and
+> `GET_PRESSURE_CALIBRATION_COEFFICIENTS` 0xA7) and the generator flags any
+> further case with that shape rather than reporting a number for it.
+
 
 ### 4.1 Core
 
@@ -669,7 +646,7 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `0x8D` | `INFOMEM_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
 | `0x8E` | `GET_INFOMEM_COMMAND` | GET | 3 | `INFOMEM_RESPONSE` | 1 + infomemLength | both |  |  |  |  |
 | `0x94` | `VBATT_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
-| `0x95` | `GET_VBATT_COMMAND` | GET | 0 | `INSTREAM_CMD_RESPONSE` | 2 | both |  |  |  |  |
+| `0x95` | `GET_VBATT_COMMAND` | GET | 0 | `INSTREAM_CMD_RESPONSE` | 4 | both |  |  |  |  |
 | `0x96` | `TEST_CONNECTION_COMMAND` | CTRL | 0 |  |  | both |  |  |  |  |
 | `0xA1` | `GET_BT_VERSION_STR_COMMAND` | GET | 0 | `BT_VERSION_STR_RESPONSE` | 1 + btVerStrLen | both |  | `GET_BT_FW_VERSION_STR_COMMAND` |  |  |
 | `0xA2` | `BT_VERSION_STR_RESPONSE` | RSP |  |  |  | both |  | `BT_FW_VERSION_STR_RESPONSE` |  |  |
@@ -751,7 +728,7 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `0x59` | `GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND` | GET | 0 | `S3 only: BMP180_CALIBRATION_COEFFICIENTS_RESPONSE` | S3: BMP180_CALIB_DATA_SIZE<br>S3R: 0 (NACK on unsupported hardware) | both |  |  |  |  |
 | `0x5B` | `RESET_CALIBRATION_VALUE_COMMAND` | CTRL | 0 |  |  | both | yes |  |  |  |
 | `0x5C` | `MPU9150_MAG_SENS_ADJ_VALS_RESPONSE` | RSP |  |  |  | S3 |  |  |  |  |
-| `0x5D` | `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` | GET | 0 | `S3: MPU9150_MAG_SENS_ADJ_VALS_RESPONSE<br>S3R: ACK_COMMAND_PROCESSED` | S3: 4<br>S3R: 0 | both |  |  |  |  |
+| `0x5D` | `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` | GET | 0 | `S3: MPU9150_MAG_SENS_ADJ_VALS_RESPONSE<br>S3R: ACK_COMMAND_PROCESSED` | S3: 3<br>S3R: 0 | both |  |  |  |  |
 | `0x98` | `SET_CALIB_DUMP_COMMAND` | SET | 3 + [args[2]] bytes |  |  | both | yes |  |  |  |
 | `0x99` | `RSP_CALIB_DUMP_COMMAND` | RSP |  |  |  | both |  |  |  |  |
 | `0x9A` | `GET_CALIB_DUMP_COMMAND` | GET | 3 | `RSP_CALIB_DUMP_COMMAND` | 3 + calibRamLength | both |  |  |  |  |
@@ -759,7 +736,7 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `0x9F` | `BMP280_CALIBRATION_COEFFICIENTS_RESPONSE` | RSP |  |  |  | S3 |  |  |  |  |
 | `0xA0` | `GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND` | GET | 0 | `S3 only: BMP280_CALIBRATION_COEFFICIENTS_RESPONSE` | S3: BMP280_CALIB_DATA_SIZE<br>S3R: 0 (NACK on unsupported hardware) | both |  |  |  |  |
 | `0xA6` | `PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
-| `0xA7` | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | GET | 0 | `PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE` | S3: 4 + bmpCalibByteLen<br>S3R: 2 + bmpCalibByteLen | both |  |  |  |  |
+| `0xA7` | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | GET | 0 | `PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE` | 2 + n | both |  |  |  |  |
 | `0xA9` | `SET_ALT_ACCEL_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes |  |  |  |
 | `0xAA` | `ALT_ACCEL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
 | `0xAB` | `GET_ALT_ACCEL_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  |  |  |  |
@@ -1379,13 +1356,9 @@ divider ratio, which are outside this document — see
 which describes the same conversion for the `VBATT` streaming channel. The
 firmware's own thresholds are in `Battery/shimmer_battery.h:17-26`.
 
-⚠️ **The generated length column under-reports this response.** [§4.1](#41-core)
-gives `GET_VBATT_COMMAND` a response payload length of 2; the firmware emits
-**4** bytes after the `0x8A` response opcode (`0x94`, then three status bytes).
-The three bytes are written in a `for` loop that the table's extractor could not
-count statically. Firmware is authoritative: expect
-`[ACK][0x8A][0x94][b0][b1][b2]`, i.e. 6 bytes with CRC off.
-`Comms/shimmer_bt_uart.c:1853-1858`.
+The three status bytes are written in a loop, so the full reply with CRC off is
+`[ACK][0x8A][0x94][b0][b1][b2]` — six bytes, four of them payload after the
+`0x8A` response opcode. `Comms/shimmer_bt_uart.c:1853-1858`.
 
 #### `GET_CHARGE_STATUS_LED_COMMAND` (0x32)
 
@@ -1726,13 +1699,10 @@ On Shimmer3 only BMP180 and BMP280 drivers exist, so `sensorId` is 0 or 1 in
 practice; the `PRESSURE_SENSOR_BMP390` fall-through is reachable but that
 platform has no BMP390 driver and would report `n = 0`.
 
-⚠️ **The generated length column over-reports this response on Shimmer3.**
-[§4.3](#43-calibration) gives `S3: 4 + bmpCalibByteLen`; the firmware emits
-`2 + bmpCalibByteLen` on **both** generations — one length byte and one
-sensor-ID byte. The extractor counted the three mutually exclusive branches that
-each write the single ID byte (`Comms/shimmer_bt_uart.c:2004-2016`) as three
-bytes. The Shimmer3R figure, `2 + bmpCalibByteLen`, is correct. Firmware is
-authoritative.
+The payload is `2 + bmpCalibByteLen` on **both** generations: one length byte and
+one sensor-ID byte ahead of the coefficients. Shimmer3 selects the ID from three
+mutually exclusive branches, only one of which runs
+(`Comms/shimmer_bt_uart.c:2004-2016`).
 
 **`GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND` (0x59)** and
 **`GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND` (0xA0)** — legacy, Shimmer3
