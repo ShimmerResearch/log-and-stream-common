@@ -26,10 +26,18 @@ BLE, and over the dock's serial link.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). The **Gen** column in the opcode tables says
-> which generation *serves* an opcode: `both` = the handler compiles on both
-> platforms, `S3` / `S3R` = the handler sits behind a `#if defined(SHIMMER3)` /
-> `#if defined(SHIMMER3R)` guard, and `—` = the opcode number is reserved in the
-> shared header but no LogAndStream handler exists.
+> which generation *serves* an opcode — that is, whether firmware compiled for
+> that platform actually acts on it: `both` = served on both, `S3` / `S3R` =
+> served only there (the code sits behind a `#if defined(SHIMMER3)` /
+> `#if defined(SHIMMER3R)` guard), and `— (reserved)` = the opcode number is
+> declared in the shared header but no LogAndStream code on either platform
+> references it. Note that nearly every opcode `#define` itself is
+> unconditional, so header visibility is not the same thing as being served.
+>
+> **Response payload length** counts the bytes that follow the response opcode,
+> excluding both the leading `ACK` byte and any CRC bytes — the same convention
+> the Java driver's `mExpectedResponseByteLength` uses. Lengths that depend on
+> runtime state are given as a formula in the firmware's own terms.
 >
 > This document describes **LogAndStream** only. It is the single firmware lineage
 > that both streams over Bluetooth and logs to SD. The historical **BtStream**
@@ -114,27 +122,230 @@ implementations. Do not hand-edit them._
 
 ### 4.1 Core
 
-_TODO: paste generated core opcode rows._
+| Opcode | FW name | Kind | Args | Response opcode | Response payload length | Gen | Blocked while sensing | Java name (if different) | SDK name (if different) | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `0x00` | `DATA_PACKET` | DATA | 0 |  |  | both |  |  |  |  |
+| `0x01` | `INQUIRY_COMMAND` | GET | 0 | `INQUIRY_RESPONSE` | S3: 8 + numberOfChannels<br>S3R: 11 + numberOfChannels | both |  |  |  |  |
+| `0x02` | `INQUIRY_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x03` | `GET_SAMPLING_RATE_COMMAND` | GET | 0 | `SAMPLING_RATE_RESPONSE` | 2 | both |  |  |  |  |
+| `0x04` | `SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  |  |  | SDK payload len 2 |
+| `0x05` | `SET_SAMPLING_RATE_COMMAND` | SET | 2 |  |  | both | yes |  |  |  |
+| `0x06` | `TOGGLE_LED_COMMAND` | CTRL | 0 |  |  | both |  |  |  |  |
+| `0x07` | `START_STREAMING_COMMAND` | CTRL | 0 |  |  | both |  |  |  |  |
+| `0x08` | `SET_SENSORS_COMMAND` | SET | 3 |  |  | both | yes |  |  |  |
+| `0x09` | `SET_WR_ACCEL_RANGE_COMMAND` | SET | 1 |  |  | both | yes | `SET_ACCEL_SENSITIVITY_COMMAND` |  |  |
+| `0x0A` | `WR_ACCEL_RANGE_RESPONSE` | RSP |  |  |  | both |  | `ACCEL_SENSITIVITY_RESPONSE` |  |  |
+| `0x0B` | `GET_WR_ACCEL_RANGE_COMMAND` | GET | 0 | `WR_ACCEL_RANGE_RESPONSE` | 1 | both |  | `GET_ACCEL_SENSITIVITY_COMMAND` |  |  |
+| `0x0E` | `SET_CONFIG_SETUP_BYTES_COMMAND` | SET | 4 |  |  | both | yes | `SET_CONFIG_BYTE0_COMMAND` |  |  |
+| `0x0F` | `CONFIG_SETUP_BYTES_RESPONSE` | RSP |  |  |  | both |  | `CONFIG_BYTE0_RESPONSE` |  |  |
+| `0x10` | `GET_CONFIG_SETUP_BYTES_COMMAND` | GET | 0 | `CONFIG_SETUP_BYTES_RESPONSE` | 4 | both |  | `GET_CONFIG_BYTE0_COMMAND` |  |  |
+| `0x20` | `STOP_STREAMING_COMMAND` | CTRL | 0 |  |  | both |  |  |  |  |
+| `0x21` | `SET_GSR_RANGE_COMMAND` | SET | 1 |  |  | both | yes |  |  |  |
+| `0x22` | `GSR_RANGE_RESPONSE` | RSP |  |  |  | both |  |  |  | SDK payload len 1 |
+| `0x23` | `GET_GSR_RANGE_COMMAND` | GET | 0 | `GSR_RANGE_RESPONSE` | 1 | both |  |  |  |  |
+| `0x25` | `DEVICE_VERSION_RESPONSE` | RSP |  |  |  | both |  | `GET_SHIMMER_VERSION_RESPONSE` |  | SDK payload len 1 |
+| `0x2E` | `GET_FW_VERSION_COMMAND` | GET | 0 | `FW_VERSION_RESPONSE` | 6 | both |  |  |  |  |
+| `0x2F` | `FW_VERSION_RESPONSE` | RSP |  |  |  | both |  |  |  | SDK payload len 6 |
+| `0x30` | `SET_CHARGE_STATUS_LED_COMMAND` | SET | 1 |  |  | both |  | `SET_BLINK_LED` |  |  |
+| `0x31` | `CHARGE_STATUS_LED_RESPONSE` | RSP |  |  |  | both |  | `BLINK_LED_RESPONSE` |  |  |
+| `0x32` | `GET_CHARGE_STATUS_LED_COMMAND` | GET | 0 | `CHARGE_STATUS_LED_RESPONSE` | 1 | both |  | `GET_BLINK_LED` |  |  |
+| `0x35` | `BUFFER_SIZE_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x36` | `GET_BUFFER_SIZE_COMMAND` | GET | 0 | `BUFFER_SIZE_RESPONSE` | 1 | both |  |  |  |  |
+| `0x37` | `SET_MAG_GAIN_COMMAND` | SET | 1 |  |  | both | yes |  |  |  |
+| `0x38` | `MAG_GAIN_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x39` | `GET_MAG_GAIN_COMMAND` | GET | 0 | `MAG_GAIN_RESPONSE` | 1 | both |  |  |  |  |
+| `0x3A` | `SET_MAG_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes |  |  |  |
+| `0x3B` | `MAG_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x3C` | `GET_MAG_SAMPLING_RATE_COMMAND` | GET | 0 | `MAG_SAMPLING_RATE_RESPONSE` | 1 | both |  |  |  |  |
+| `0x3D` | `UNIQUE_SERIAL_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
+| `0x3E` | `GET_UNIQUE_SERIAL_COMMAND` | GET | 0 | `UNIQUE_SERIAL_RESPONSE` | S3: 8<br>S3R: 12 | both |  |  |  | FW_ONLY |
+| `0x3F` | `GET_DEVICE_VERSION_COMMAND` | GET | 0 | `DEVICE_VERSION_RESPONSE` | 1 | both |  | `GET_SHIMMER_VERSION_COMMAND_NEW` |  |  |
+| `0x40` | `SET_WR_ACCEL_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes | `SET_ACCEL_SAMPLING_RATE_COMMAND` |  |  |
+| `0x41` | `WR_ACCEL_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  | `ACCEL_SAMPLING_RATE_RESPONSE` |  |  |
+| `0x42` | `GET_WR_ACCEL_SAMPLING_RATE_COMMAND` | GET | 0 | `WR_ACCEL_SAMPLING_RATE_RESPONSE` | 1 | both |  | `GET_ACCEL_SAMPLING_RATE_COMMAND` |  |  |
+| `0x43` | `SET_WR_ACCEL_LPMODE_COMMAND` | SET | 1 |  |  | both | yes | `SET_LSM303DLHC_ACCEL_LPMODE_COMMAND` |  |  |
+| `0x44` | `WR_ACCEL_LPMODE_RESPONSE` | RSP |  |  |  | both |  | `LSM303DLHC_ACCEL_LPMODE_RESPONSE` |  |  |
+| `0x45` | `GET_WR_ACCEL_LPMODE_COMMAND` | GET | 0 | `WR_ACCEL_LPMODE_RESPONSE` | 1 | both |  | `GET_LSM303DLHC_ACCEL_LPMODE_COMMAND` |  |  |
+| `0x46` | `SET_WR_ACCEL_HRMODE_COMMAND` | SET | 1 |  |  | both | yes | `SET_LSM303DLHC_ACCEL_HRMODE_COMMAND` |  |  |
+| `0x47` | `WR_ACCEL_HRMODE_RESPONSE` | RSP |  |  |  | both |  | `LSM303DLHC_ACCEL_HRMODE_RESPONSE` |  |  |
+| `0x48` | `GET_WR_ACCEL_HRMODE_COMMAND` | GET | 0 | `WR_ACCEL_HRMODE_RESPONSE` | 1 | both |  | `GET_LSM303DLHC_ACCEL_HRMODE_COMMAND` |  |  |
+| `0x49` | `SET_GYRO_RANGE_COMMAND` | SET | 1 |  |  | both | yes | `SET_MPU9150_GYRO_RANGE_COMMAND` |  |  |
+| `0x4A` | `GYRO_RANGE_RESPONSE` | RSP |  |  |  | both |  | `MPU9150_GYRO_RANGE_RESPONSE` |  |  |
+| `0x4B` | `GET_GYRO_RANGE_COMMAND` | GET | 0 | `GYRO_RANGE_RESPONSE` | 1 | both |  | `GET_MPU9150_GYRO_RANGE_COMMAND` |  |  |
+| `0x4C` | `SET_GYRO_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes | `SET_MPU9150_SAMPLING_RATE_COMMAND` |  |  |
+| `0x4D` | `GYRO_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  | `MPU9150_SAMPLING_RATE_RESPONSE` |  |  |
+| `0x4E` | `GET_GYRO_SAMPLING_RATE_COMMAND` | GET | 0 | `GYRO_SAMPLING_RATE_RESPONSE` | 1 | both |  | `GET_MPU9150_SAMPLING_RATE_COMMAND` |  |  |
+| `0x4F` | `SET_ALT_ACCEL_RANGE_COMMAND` | SET | 1 |  |  | both | yes |  |  | FW_ONLY |
+| `0x50` | `ALT_ACCEL_RANGE_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
+| `0x51` | `GET_ALT_ACCEL_RANGE_COMMAND` | GET | 0 | `ALT_ACCEL_RANGE_RESPONSE` | 1 | both |  |  |  | FW_ONLY |
+| `0x52` | `SET_PRESSURE_OVERSAMPLING_RATIO_COMMAND` | SET | 1 |  |  | both | yes | `SET_BMP180_PRES_RESOLUTION_COMMAND` |  | Java also:  |
+| `0x53` | `PRESSURE_OVERSAMPLING_RATIO_RESPONSE` | RSP |  |  |  | both |  | `BMP180_PRES_RESOLUTION_RESPONSE` |  | Java also:  |
+| `0x54` | `GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND` | GET | 0 | `PRESSURE_OVERSAMPLING_RATIO_RESPONSE` | 1 | both |  | `GET_BMP180_PRES_RESOLUTION_COMMAND` |  | Java also:  |
+| `0x5A` | `RESET_TO_DEFAULT_CONFIGURATION_COMMAND` | CTRL | 0 |  |  | both | yes |  |  |  |
+| `0x5E` | `SET_INTERNAL_EXP_POWER_ENABLE_COMMAND` | SET | 1 |  |  | both | yes |  |  |  |
+| `0x5F` | `INTERNAL_EXP_POWER_ENABLE_RESPONSE` | RSP |  |  |  | both |  |  |  | SDK payload len 1 |
+| `0x60` | `GET_INTERNAL_EXP_POWER_ENABLE_COMMAND` | GET | 0 | `INTERNAL_EXP_POWER_ENABLE_RESPONSE` | 1 | both |  |  |  |  |
+| `0x61` | `SET_EXG_REGS_COMMAND` | SET | 3 + [args[2]] bytes |  |  | both | yes |  |  |  |
+| `0x62` | `EXG_REGS_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x63` | `GET_EXG_REGS_COMMAND` | GET | 3 | `EXG_REGS_RESPONSE` | 1 + exgLength | both |  |  |  |  |
+| `0x64` | `SET_DAUGHTER_CARD_ID_COMMAND` | SET | 2 + [args[0]] bytes |  |  | both | yes |  |  | FW_ONLY |
+| `0x65` | `DAUGHTER_CARD_ID_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x66` | `GET_DAUGHTER_CARD_ID_COMMAND` | GET | 2 | `DAUGHTER_CARD_ID_RESPONSE` | 1 + dcMemLength | both |  |  |  |  |
+| `0x67` | `SET_DAUGHTER_CARD_MEM_COMMAND` | SET | 3 + [args[2]] bytes |  |  | both | yes |  |  | FW_ONLY |
+| `0x68` | `DAUGHTER_CARD_MEM_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
+| `0x69` | `GET_DAUGHTER_CARD_MEM_COMMAND` | GET | 3 | `DAUGHTER_CARD_MEM_RESPONSE` | 1 + dcMemLength | both |  |  |  | FW_ONLY |
+| `0x6D` | `SET_DERIVED_CHANNEL_BYTES` | SET | 8 |  |  | both | yes |  |  |  |
+| `0x6E` | `DERIVED_CHANNEL_BYTES_RESPONSE` | RSP |  |  |  | both |  |  |  | Java registry expects 3 payload bytes, FW emits 8 (S3); LEN_MISMATCH |
+| `0x6F` | `GET_DERIVED_CHANNEL_BYTES` | GET | 0 | `DERIVED_CHANNEL_BYTES_RESPONSE` | 8 | both |  |  |  |  |
+| `0x8A` | `INSTREAM_CMD_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x8B` | `SET_CRC_COMMAND` | SET | 1 |  |  | both |  |  |  |  |
+| `0x8C` | `SET_INFOMEM_COMMAND` | SET | 3 + [args[2]] bytes |  |  | both | yes |  |  |  |
+| `0x8D` | `INFOMEM_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x8E` | `GET_INFOMEM_COMMAND` | GET | 3 | `INFOMEM_RESPONSE` | 1 + infomemLength | both |  |  |  |  |
+| `0x94` | `VBATT_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x95` | `GET_VBATT_COMMAND` | GET | 0 | `INSTREAM_CMD_RESPONSE` | 2 | both |  |  |  |  |
+| `0x96` | `TEST_CONNECTION_COMMAND` | CTRL | 0 |  |  | both |  |  |  |  |
+| `0xA1` | `GET_BT_VERSION_STR_COMMAND` | GET | 0 | `BT_VERSION_STR_RESPONSE` | 1 + btVerStrLen | both |  | `GET_BT_FW_VERSION_STR_COMMAND` |  |  |
+| `0xA2` | `BT_VERSION_STR_RESPONSE` | RSP |  |  |  | both |  | `BT_FW_VERSION_STR_RESPONSE` |  |  |
+| `0xA3` | `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE` | SET | 1 |  |  | both |  |  |  | FW_ONLY |
+| `0xA4` | `SET_DATA_RATE_TEST` | SET | 1 |  | 0 | both | yes |  |  | FW_ONLY |
+| `0xA5` | `DATA_RATE_TEST_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
+| `0xA8` | `SET_FACTORY_TEST` | SET | 1 |  |  | both | yes | `SET_TEST` |  |  |
+| `0xAC` | `SET_ALT_ACCEL_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes |  |  | FW_ONLY |
+| `0xAD` | `ALT_ACCEL_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
+| `0xAE` | `GET_ALT_ACCEL_SAMPLING_RATE_COMMAND` | GET | 0 | `ALT_ACCEL_SAMPLING_RATE_RESPONSE` | 1 | both |  |  |  | FW_ONLY |
+| `0xB2` | `SET_ALT_MAG_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes |  |  | FW_ONLY |
+| `0xB3` | `ALT_MAG_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
+| `0xB4` | `GET_ALT_MAG_SAMPLING_RATE_COMMAND` | GET | 0 | `ALT_MAG_SAMPLING_RATE_RESPONSE` | 1 | both |  |  |  | FW_ONLY |
+| `0xB5` | `DUMMY_COMMAND` | CTRL | 0 |  |  | both |  |  |  | FW_ONLY |
+| `0xB6` | `RESET_BT_ERROR_COUNTS` | CTRL | 0 |  |  | both |  |  |  | FW_ONLY |
+| `0xB7` | `SET_FEATURE` | SET | 2 |  |  | both |  |  |  |  |
+| `0xFE` | `NACK_COMMAND_PROCESSED` | ACK | 0 |  |  | both |  |  |  | FW_ONLY |
+| `0xFF` | `ACK_COMMAND_PROCESSED` | ACK | 1 |  |  | both |  |  |  | permitted while SD syncing |
 
 ### 4.2 SD / trial configuration
 
-_TODO: paste generated SD/trial opcode rows._
+| Opcode | FW name | Kind | Args | Response opcode | Response payload length | Gen | Blocked while sensing | Java name (if different) | SDK name (if different) | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `0x70` | `START_SDBT_COMMAND` | CTRL | 0 |  |  | both |  |  |  |  |
+| `0x71` | `STATUS_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x72` | `GET_STATUS_COMMAND` | GET | 0 | `INSTREAM_CMD_RESPONSE` | 1 + ShimBt_assembleStatusBytes() | both |  |  |  |  |
+| `0x73` | `SET_TRIAL_CONFIG_COMMAND` | SET | 3 |  |  | both | yes |  |  |  |
+| `0x74` | `TRIAL_CONFIG_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x75` | `GET_TRIAL_CONFIG_COMMAND` | GET | 0 | `TRIAL_CONFIG_RESPONSE` | 3 | both |  |  |  |  |
+| `0x76` | `SET_CENTER_COMMAND` | SET | 1 + [args[0]] bytes |  |  | both | yes |  |  |  |
+| `0x77` | `CENTER_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x78` | `GET_CENTER_COMMAND` | GET | 0 | `CENTER_RESPONSE` | 1 | both |  |  |  |  |
+| `0x79` | `SET_SHIMMERNAME_COMMAND` | SET | 1 + [args[0]] bytes |  |  | both | yes |  |  |  |
+| `0x7A` | `SHIMMERNAME_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x7B` | `GET_SHIMMERNAME_COMMAND` | GET | 0 | `SHIMMERNAME_RESPONSE` | 1 + shimmer_name_len | both |  |  |  |  |
+| `0x7C` | `SET_EXPID_COMMAND` | SET | 1 + [args[0]] bytes |  |  | both | yes |  |  |  |
+| `0x7D` | `EXPID_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x7E` | `GET_EXPID_COMMAND` | GET | 0 | `EXPID_RESPONSE` | 1 + exp_id_name_len | both |  |  |  |  |
+| `0x7F` | `SET_MYID_COMMAND` | SET | 1 |  |  | both | yes |  |  |  |
+| `0x80` | `MYID_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x81` | `GET_MYID_COMMAND` | GET | 0 | `MYID_RESPONSE` | 1 | both |  |  |  |  |
+| `0x82` | `SET_NSHIMMER_COMMAND` | SET | 1 |  |  | both | yes |  |  |  |
+| `0x83` | `NSHIMMER_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x84` | `GET_NSHIMMER_COMMAND` | GET | 0 | `NSHIMMER_RESPONSE` | 1 | both |  |  |  |  |
+| `0x85` | `SET_CONFIGTIME_COMMAND` | SET | 1 + [args[0]] bytes |  |  | both | yes |  |  |  |
+| `0x86` | `CONFIGTIME_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x87` | `GET_CONFIGTIME_COMMAND` | GET | 0 | `CONFIGTIME_RESPONSE` | 1 + cfgtime_name_len | both |  |  |  |  |
+| `0x88` | `DIR_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x89` | `GET_DIR_COMMAND` | GET | 0 | `INSTREAM_CMD_RESPONSE` | 2 + dir_len | both |  |  |  |  |
+| `0x8F` | `SET_RWC_COMMAND` | SET | 8 |  |  | both |  |  |  |  |
+| `0x90` | `RWC_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x91` | `GET_RWC_COMMAND` | GET | 0 | `RWC_RESPONSE` | 8 | both |  |  |  |  |
+| `0x92` | `START_LOGGING_COMMAND` | CTRL | 0 |  |  | both |  | `START_LOGGING_ONLY_COMMAND` |  |  |
+| `0x93` | `STOP_LOGGING_COMMAND` | CTRL | 0 |  |  | both |  | `STOP_LOGGING_ONLY_COMMAND` |  |  |
+| `0x97` | `STOP_SDBT_COMMAND` | CTRL | 0 |  |  | both |  |  |  |  |
+| `0x9C` | `UPD_SDLOG_CFG_COMMAND` | CTRL | 0 |  |  | both | yes |  |  | FW aliases: SET_I2C_BATT_STATUS_FREQ_COMMAND, UPD_SDLOG_CFG_COMMAND |
+| `0xE0` | `SET_SD_SYNC_COMMAND` | SET | SYNC_PACKET_PAYLOAD_SIZE + BT_SD_SYNC_CRC_MODE |  |  | both |  | `ROUTINE_COMMUNICATION` |  | permitted while SD syncing |
+| `0xE1` | `SD_SYNC_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
 
 ### 4.3 Calibration
 
-_TODO: paste generated calibration opcode rows._
+| Opcode | FW name | Kind | Args | Response opcode | Response payload length | Gen | Blocked while sensing | Java name (if different) | SDK name (if different) | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `0x11` | `SET_LN_ACCEL_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes | `SET_ACCEL_CALIBRATION_COMMAND` |  |  |
+| `0x12` | `LN_ACCEL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  | `ACCEL_CALIBRATION_RESPONSE` |  |  |
+| `0x13` | `GET_LN_ACCEL_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  | `GET_ACCEL_CALIBRATION_COMMAND` |  |  |
+| `0x14` | `SET_GYRO_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes |  |  |  |
+| `0x15` | `GYRO_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x16` | `GET_GYRO_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  |  |  |  |
+| `0x17` | `SET_MAG_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes |  |  |  |
+| `0x18` | `MAG_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x19` | `GET_MAG_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  |  |  |  |
+| `0x1A` | `SET_WR_ACCEL_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes | `SET_LSM303DLHC_ACCEL_CALIBRATION_COMMAND` |  |  |
+| `0x1B` | `WR_ACCEL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  | `LSM303DLHC_ACCEL_CALIBRATION_RESPONSE` |  |  |
+| `0x1C` | `GET_WR_ACCEL_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  | `GET_LSM303DLHC_ACCEL_CALIBRATION_COMMAND` |  |  |
+| `0x2C` | `GET_ALL_CALIBRATION_COMMAND` | GET | 0 | `ALL_CALIBRATION_RESPONSE` | S3: ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd()<br>S3R: ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() | both |  |  |  |  |
+| `0x2D` | `ALL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x58` | `BMP180_CALIBRATION_COEFFICIENTS_RESPONSE` | RSP |  |  |  | S3 |  |  |  |  |
+| `0x59` | `GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND` | GET | 0 | `S3 only: BMP180_CALIBRATION_COEFFICIENTS_RESPONSE` | S3: BMP180_CALIB_DATA_SIZE<br>S3R: 0 (NACK on unsupported hardware) | both |  |  |  |  |
+| `0x5B` | `RESET_CALIBRATION_VALUE_COMMAND` | CTRL | 0 |  |  | both | yes |  |  |  |
+| `0x5C` | `MPU9150_MAG_SENS_ADJ_VALS_RESPONSE` | RSP |  |  |  | S3 |  |  |  |  |
+| `0x5D` | `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` | GET | 0 | `S3: MPU9150_MAG_SENS_ADJ_VALS_RESPONSE<br>S3R: ACK_COMMAND_PROCESSED` | S3: 4<br>S3R: 0 | both |  |  |  |  |
+| `0x98` | `SET_CALIB_DUMP_COMMAND` | SET | 3 + [args[2]] bytes |  |  | both | yes |  |  |  |
+| `0x99` | `RSP_CALIB_DUMP_COMMAND` | RSP |  |  |  | both |  |  |  |  |
+| `0x9A` | `GET_CALIB_DUMP_COMMAND` | GET | 3 | `RSP_CALIB_DUMP_COMMAND` | 3 + calibRamLength | both |  |  |  |  |
+| `0x9B` | `UPD_CALIB_DUMP_COMMAND` | CTRL | 0 |  |  | both | yes |  |  |  |
+| `0x9F` | `BMP280_CALIBRATION_COEFFICIENTS_RESPONSE` | RSP |  |  |  | S3 |  |  |  |  |
+| `0xA0` | `GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND` | GET | 0 | `S3 only: BMP280_CALIBRATION_COEFFICIENTS_RESPONSE` | S3: BMP280_CALIB_DATA_SIZE<br>S3R: 0 (NACK on unsupported hardware) | both |  |  |  |  |
+| `0xA6` | `PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0xA7` | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | GET | 0 | `PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE` | S3: 4 + bmpCalibByteLen<br>S3R: 2 + bmpCalibByteLen | both |  |  |  |  |
+| `0xA9` | `SET_ALT_ACCEL_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes |  |  | FW_ONLY |
+| `0xAA` | `ALT_ACCEL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
+| `0xAB` | `GET_ALT_ACCEL_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  |  |  | FW_ONLY |
+| `0xAF` | `SET_ALT_MAG_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes |  |  | FW_ONLY |
+| `0xB0` | `ALT_MAG_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
+| `0xB1` | `GET_ALT_MAG_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  |  |  | FW_ONLY |
 
 ### 4.4 Shimmer3R-served extensions
 
-_TODO: paste generated Shimmer3R-only opcode rows (SD file transfer, alt accel / alt mag, pressure coefficients)._
+| Opcode | FW name | Kind | Args | Response opcode | Response payload length | Gen | Blocked while sensing | Java name (if different) | SDK name (if different) | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `0xC1` | `SD_LIST_DIR_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
+| `0xC2` | `SD_FILE_STAT_COMMAND` | CTRL | 1 + path |  | ShimSdFileTransfer_buildStatRsp() | S3R |  |  |  | FW_ONLY |
+| `0xC3` | `SD_FILE_STAT_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
+| `0xC4` | `SD_FILE_READ_COMMAND` | CTRL | 11 + path |  |  | S3R |  |  |  | FW_ONLY |
+| `0xC5` | `SD_FILE_DATA_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
+| `0xC6` | `SD_FILE_STATUS_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
+| `0xC7` | `SD_TRANSFER_ABORT_COMMAND` | CTRL | 0 |  |  | S3R |  |  |  | FW_ONLY |
+| `0xC8` | `SD_FREE_SPACE_COMMAND` | CTRL | 0 |  | ShimSdFileTransfer_buildFreeSpaceRsp() | S3R |  |  |  | FW_ONLY |
+| `0xC9` | `SD_FREE_SPACE_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
+| `0xCA` | `SD_DELETE_COMMAND` | CTRL | 1 + path |  | ShimSdFileTransfer_buildDeleteRsp() | S3R |  |  |  | FW_ONLY |
+| `0xCB` | `SD_DELETE_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
+| `0xCC` | `SD_LIST_DIR_COMMAND` | CTRL | 4 + path |  | ShimSdFileTransfer_buildListDirRsp() | S3R |  |  |  | FW_ONLY |
 
 ### 4.5 Deprecated / no-op
 
-_TODO: paste generated rows for `DEPRECATED_GET_DEVICE_VERSION_COMMAND`, `SET_BT_COMMS_BAUD_RATE`, `RESET_BT_ERROR_COUNTS` on S3R, and the commented-out `UPD_FLASH_COMMAND`._
+| Opcode | FW name | Kind | Args | Response opcode | Response payload length | Gen | Blocked while sensing | Java name (if different) | SDK name (if different) | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `0x24` | `DEPRECATED_GET_DEVICE_VERSION_COMMAND` | CTRL | 0 | `DEVICE_VERSION_RESPONSE` | 1 | both |  | `GET_SHIMMER_VERSION_COMMAND` |  | SDK_MISSING |
+| `0x6A` | `SET_BT_COMMS_BAUD_RATE` | SET | 1 |  |  | both | yes | `SET_BAUD_RATE_COMMAND` |  | SDK_MISSING |
+| `0x6B` | `BT_COMMS_BAUD_RATE_RESPONSE` | RSP |  |  |  | both |  | `BAUD_RATE_RESPONSE` |  | SDK_MISSING |
+| `0x6C` | `GET_BT_COMMS_BAUD_RATE` | GET | 0 | `BT_COMMS_BAUD_RATE_RESPONSE` | 1 | both |  | `GET_BAUD_RATE_COMMAND` |  | SDK_MISSING |
 
 ### 4.6 Not served by LogAndStream
 
-_TODO: paste generated rows for opcodes defined in the shared header but unhandled here (`SHIMMER4_SDK` block, `SET_I2C_BATT_STATUS_*`), plus Java-only constants with no firmware handler._
+| Opcode | FW name | Kind | Args | Response opcode | Response payload length | Gen | Blocked while sensing | Java name (if different) | SDK name (if different) | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `0x0C` | — |  |  |  |  | — |  | `SET_5V_REGULATOR_COMMAND` |  | JAVA_ONLY |
+| `0x0D` | — |  |  |  |  | — |  | `SET_PMUX_COMMAND` |  | JAVA_ONLY |
+| `0x26` | — |  |  |  |  | — |  | `SET_EMG_CALIBRATION_COMMAND` |  | JAVA_ONLY |
+| `0x27` | — |  |  |  |  | — |  | `EMG_CALIBRATION_RESPONSE` |  | JAVA_ONLY |
+| `0x28` | — |  |  |  |  | — |  | `GET_EMG_CALIBRATION_COMMAND` |  | JAVA_ONLY |
+| `0x29` | — |  |  |  |  | — |  | `SET_ECG_CALIBRATION_COMMAND` |  | JAVA_ONLY |
+| `0x2A` | — |  |  |  |  | — |  | `ECG_CALIBRATION_RESPONSE` |  | JAVA_ONLY |
+| `0x2B` | — |  |  |  |  | — |  | `GET_ECG_CALIBRATION_COMMAND` |  | JAVA_ONLY |
+| `0x33` | — |  |  |  |  | — |  | `SET_GYRO_TEMP_VREF_COMMAND` |  | JAVA_ONLY |
+| `0x34` | — |  |  |  |  | — |  | `SET_BUFFER_SIZE_COMMAND` |  | JAVA_ONLY |
+| `0x55` | — |  |  |  |  | — |  | `SET_BMP180_PRES_CALIBRATION_COMMAND` |  | JAVA_ONLY |
+| `0x56` | — |  |  |  |  | — |  | `BMP180_PRES_CALIBRATION_RESPONSE` |  | JAVA_ONLY |
+| `0x57` | — |  |  |  |  | — |  | `GET_BMP180_PRES_CALIBRATION_COMMAND` |  | JAVA_ONLY |
+| `0x9D` | `RSP_I2C_BATT_STATUS_COMMAND` | RSP |  |  |  | S4 only |  |  |  | no LogAndStream handler; FW_ONLY, SDK_MISSING |
+| `0x9E` | `GET_I2C_BATT_STATUS_COMMAND` | GET |  |  |  | S4 only |  |  |  | no LogAndStream handler; FW_ONLY, SDK_MISSING |
 
 ## 5. Status, ACK/NACK and in-stream responses
 

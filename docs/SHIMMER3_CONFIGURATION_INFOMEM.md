@@ -66,7 +66,116 @@ _The table in this section is generated mechanically from the firmware `NV_*`
 offsets and a walk of the `gConfigBytes` struct, cross-checked against the Java
 `idx*` constants and the TypeScript layout resolver. Do not hand-edit it._
 
-_TODO: paste generated InfoMem byte map._
+Bit numbers are the real bitfield positions in the packed little-endian
+`gConfigBytes` struct: **bit 0 is the least-significant bit** of the byte, and
+bits are listed most-significant first for readability. Where the two
+generations give a byte different meanings both are shown.
+
+| Byte | FW field / bits | `NV_` constant | Java `idx` | SDK field | Gen | Notes |
+|---|---|---|---|---|---|---|
+| 0–1 | `samplingRateTicks` (uint16_t) | `NV_SAMPLING_RATE` | `idxShimmerSamplingRate` | `idxSamplingRate` | both |  |
+| 2 | `bufferSize` (uint8_t) | `NV_BUFFER_SIZE` | `idxBufferSize` | `idxBufferSize` | both |  |
+| 3 | **S3:** bit 7 `chEnLnAccel`; bit 6 `chEnGyro`; bit 5 `chEnMag`; bit 4 `chEnExg1_24Bit`; bit 3 `chEnExg2_24Bit`; bit 2 `chEnGsr`; bit 1 `chEnExtADC7`; bit 0 `chEnExtADC6`<br>**S3R:** bit 7 `chEnLnAccel`; bit 6 `chEnGyro`; bit 5 `chEnMag`; bit 4 `chEnExg1_24Bit`; bit 3 `chEnExg2_24Bit`; bit 2 `chEnGsr`; bit 1 `chEnExtADC0`; bit 0 `chEnExtADC1` | `NV_SENSORS0` | `idxSensors0` | `idxSensors0` | differs |  |
+| 4 | **S3:** bit 7 `chEnBridgeAmp`; bit 6 `unusedIdx4Bit6`; bit 5 `chEnVBattery`; bit 4 `chEnWrAccel`; bit 3 `chEnExtADC15`; bit 2 `chEnIntADC1`; bit 1 `chEnIntADC12`; bit 0 `chEnIntADC13`<br>**S3R:** bit 7 `chEnBridgeAmp`; bit 6 `chEnMicrophone`; bit 5 `chEnVBattery`; bit 4 `chEnWrAccel`; bit 3 `chEnExtADC2`; bit 2 `chEnIntADC3`; bit 1 `chEnIntADC0`; bit 0 `chEnIntADC1` | `NV_SENSORS1` | `idxSensors1` | `idxSensors1` | differs |  |
+| 5 | **S3:** bit 7 `chEnIntADC14`; bit 6 `chEnAltAccel`; bit 5 `chEnAltMag`; bit 4 `chEnExg1_16Bit`; bit 3 `chEnExg2_16Bit`; bit 2 `chEnPressureAndTemperature`; bit 1 `chEnMPU9x50temp`; bit 0 `unusedIdx5Bit0`<br>**S3R:** bit 7 `chEnIntADC2`; bit 6 `chEnAltAccel`; bit 5 `chEnAltMag`; bit 4 `chEnExg1_16Bit`; bit 3 `chEnExg2_16Bit`; bit 2 `chEnPressureAndTemperature`; bit 1 `unusedIdx5Bit1`; bit 0 `unusedIdx5Bit0` | `NV_SENSORS2` | `idxSensors2` | `idxSensors2` | differs |  |
+| 6 | bits 7-4 `wrAccelRate`; bits 3-2 `wrAccelRange`; bit 1 `wrAccelLpModeLsb`; bit 0 `wrAccelHrMode` | `NV_CONFIG_SETUP_BYTE0` | `idxConfigSetupByte0` | `idxConfigSetupByte0` | both |  |
+| 7 | `gyroRate` (uint8_t) | `NV_CONFIG_SETUP_BYTE1` | `idxConfigSetupByte1` |  | both |  |
+| 8 | **S3:** bits 7-5 `magRange`; bits 4-2 `magRate`; bits 1-0 `gyroRangeLsb`<br>**S3R:** bits 7-5 `altMagRange`; bits 4-2 `magRate`; bits 1-0 `gyroRangeLsb` | `NV_CONFIG_SETUP_BYTE2` | `idxConfigSetupByte2` |  | differs |  |
+| 9 | **S3:** bits 7-6 `altAccelRange`; bits 5-4 `pressureOversamplingRatioLsb`; bits 3-1 `gsrRange`; bit 0 `expansionBoardPower`<br>**S3R:** bits 7-6 `lnAccelRange`; bits 5-4 `pressureOversamplingRatioLsb`; bits 3-1 `gsrRange`; bit 0 `expansionBoardPower` | `NV_CONFIG_SETUP_BYTE3` | `idxConfigSetupByte3` | `idxConfigSetupByte3` | differs |  |
+| 10–19 | `exgADS1292rRegsCh1` (gExgADS1292rRegs) | `NV_EXG_ADS1292R_1_CONFIG1` | `idxEXGADS1292RChip1Config1` | `idxExg1` | both |  |
+| 20–29 | `exgADS1292rRegsCh2` (gExgADS1292rRegs) | `NV_EXG_ADS1292R_2_CONFIG1` | `idxEXGADS1292RChip2Config1` | `idxExg2` | both |  |
+| 30 | `btCommsBaudRate` (uint8_t) | `NV_BT_COMMS_BAUD_RATE` | `idxBtCommBaudRate` | `idxBtCommBaudRate` | both |  |
+| 31 | bit 7 `chEnPpgToHr2`; bit 6 `chEnPpgToHr1`; bit 5 `chEnPpgtoHr`; bit 4 `chEnPpg2`; bit 3 `chEnPpg1`; bit 2 `chEnPpg`; bit 1 `chEnSkinTemp`; bit 0 `chEnResAmp` | `NV_DERIVED_CHANNELS_0` | `idxDerivedSensors0` | `idxDerivedSensors0` | both |  |
+| 32 | bit 7 `chEnEcg2HrChp1Ch1`; bit 6 `chEnEcg2HrChp1Ch2`; bit 5 `chEnEcg2HrChp2Ch1`; bit 4 `chEnEcg2HrChp2Ch2`; bit 3 `chEnHrVTime`; bit 2 `chEnHrVFreq`; bit 1 `chEnActivity`; bit 0 `chEnGsrMetricsGeneral` | `NV_DERIVED_CHANNELS_1` | `idxDerivedSensors1` | `idxDerivedSensors1` | both |  |
+| 33 | bit 7 `chEnSixDofLnEuler`; bit 6 `chEnSixDofLnQuat`; bit 5 `chEnNineDofLnEuler`; bit 4 `chEnNineDofLnQuat`; bit 3 `chEnSixDofWrEuler`; bit 2 `chEnSixDofWrQuat`; bit 1 `chEnNineDofWrEuler`; bit 0 `chEnNineDofWrQuat` | `NV_DERIVED_CHANNELS_2` | `idxDerivedSensors2` | `idxDerivedSensors2` | both |  |
+| 34–54 | `lnAccelCalib` (gImuConfig) | `NV_LN_ACCEL_CALIBRATION` | `idxAnalogAccelCalibration` |  | both |  |
+| 55–75 | `gyroCalib` (gImuConfig) | `NV_GYRO_CALIBRATION` | `idxMPU9150GyroCalibration` |  | both |  |
+| 76–96 | `magCalib` (gImuConfig) | `NV_MAG_CALIBRATION` | `idxLSM303DLHCMagCalibration` |  | both |  |
+| 97–117 | `wrAccelCalib` (gImuConfig) | `NV_WR_ACCEL_CALIBRATION` | `idxLSM303DLHCAccelCalibration` |  | both |  |
+| 118 | bit 7 `unusedByte118Bit7`; bit 6 `unusedByte118Bit6`; bit 5 `chEnGyroOnTheFlyCalib`; bit 4 `chEnGaitModule`; bit 3 `chEnGsrMetricsTrendPeak`; bit 2 `chEnGsrBaseline`; bit 1 `chEnEmgProcessingCh1`; bit 0 `chEnEmgProcessingCh2` | `NV_DERIVED_CHANNELS_3` | `idxDerivedSensors3` | `idxDerivedSensors3` | both |  |
+| 119 | `derivedChannels4` (uint8_t) | `NV_DERIVED_CHANNELS_4` | `idxDerivedSensors4` | `idxDerivedSensors4` | both |  |
+| 120 | `derivedChannels5` (uint8_t) | `NV_DERIVED_CHANNELS_5` | `idxDerivedSensors5` | `idxDerivedSensors5` | both |  |
+| 121 | `derivedChannels6` (uint8_t) | `NV_DERIVED_CHANNELS_6` | `idxDerivedSensors6` | `idxDerivedSensors6` | both |  |
+| 122 | `derivedChannels7` (uint8_t) | `NV_DERIVED_CHANNELS_7` | `idxDerivedSensors7` | `idxDerivedSensors7` | both |  |
+| 123 | `unusedIdx123` (uint8_t) |  |  |  | both | reserved |
+| 124 | `unusedIdx124` (uint8_t) |  |  |  | both | reserved |
+| 125 | `unusedIdx125` (uint8_t) |  |  |  | both | reserved |
+| 126 | `unusedIdx126` (uint8_t) |  |  |  | both | reserved |
+| 127 | `unusedIdx127` (uint8_t) |  |  |  | both | reserved |
+| 128 | `unusedIdx128` (uint8_t) | `NV_SENSORS3` | `idxSensors3` | `idxSensors3` | both |  |
+| 129 | `unusedIdx129` (uint8_t) | `NV_SENSORS4` | `idxSensors4` | `idxSensors4` | both |  |
+| 130 | bits 7-6 `altAccelRate`; bit 5 `unusedByte130Bit6`; bit 4 `unusedByte130Bit5`; bit 3 `unusedByte130Bit4`; bit 2 `gyroRangeMsb`; bit 1 `wrAccelLpModeMsb`; bit 0 `pressureOversamplingRatioMsb` | `NV_CONFIG_SETUP_BYTE4` | `idxConfigSetupByte4` |  | both |  |
+| 131 | bit 7 `unusedByte131Bit7`; bit 6 `unusedByte131Bit6`; bits 5-0 `altMagRate` | `NV_CONFIG_SETUP_BYTE5` | `idxConfigSetupByte5` |  | both |  |
+| 132 | `unusedIdx132` (uint8_t) | `NV_CONFIG_SETUP_BYTE6` | `idxConfigSetupByte6` |  | both |  |
+| 133–153 | `altAccelCalib` (gImuConfig) | `NV_ALT_ACCEL_CALIBRATION` | `idxADXL371AltAccelCalibration`, `idxMPLAccelCalibration` |  | both |  |
+| 154–174 | `altMagCalib` (gImuConfig) | `NV_ALT_MAG_CALIBRATION` | `idxLIS3MDLAltMagCalibration`, `idxMPLMagCalibration` |  | both |  |
+| 175–186 | `unusedIdx175To186` (uint8_t[12]) | `NV_MPL_GYRO_CALIBRATION` | `idxMPLGyroCalibration` |  | both |  |
+| 187–198 | `shimmerName` (char[12]) | `NV_SD_SHIMMER_NAME` | `idxSDShimmerName` | `idxSDShimmerName` | both |  |
+| 199–210 | `expIdName` (char[12]) | `NV_SD_EXP_ID_NAME` | `idxSDEXPIDName` | `idxSDEXPIDName` | both |  |
+| 211 | `configTime0` (uint8_t) | `NV_SD_CONFIG_TIME` | `idxSDConfigTime0` | `idxSDConfigTime0` | both |  |
+| 212 | `configTime1` (uint8_t) |  | `idxSDConfigTime1` |  | both |  |
+| 213 | `configTime2` (uint8_t) |  | `idxSDConfigTime2` |  | both |  |
+| 214 | `configTime3` (uint8_t) |  | `idxSDConfigTime3` |  | both |  |
+| 215 | `myTrialID` (uint8_t) | `NV_SD_MYTRIAL_ID` | `idxSDMyTrialID` | `idxSDMyTrialID` | both |  |
+| 216 | `numberOfShimmers` (uint8_t) | `NV_SD_NSHIMMER` | `idxSDNumOfShimmers` | `idxSDNumOfShimmers` | both |  |
+| 217 | bit 7 `rtcSetByBt`; bit 6 `btPinSetup`; bit 5 `userButtonEnable`; bit 4 `rtcErrorEnable`; bit 3 `bluetoothDisable`; bit 2 `syncEnable`; bit 1 `masterEnable`; bit 0 `sdErrorEnable` | `NV_SD_TRIAL_CONFIG0` | `idxSDExperimentConfig0` | `idxSDExperimentConfig0` | both |  |
+| 218 | bit 7 `singleTouchStart`; bit 6 `unusedIdx218Bit6`; bit 5 `unusedIdx218Bit5`; bit 4 `tcxo`; bit 3 `unusedIdx218Bit3`; bit 2 `unusedIdx218Bit2`; bit 1 `unusedIdx218Bit1`; bit 0 `lowBatteryAutoStop` | `NV_SD_TRIAL_CONFIG1` | `idxSDExperimentConfig1` | `idxSDExperimentConfig1` | both |  |
+| 219 | `btIntervalSecs` (uint8_t) | `NV_SD_BT_INTERVAL` | `idxSDBTInterval` | `idxSDBTInterval` | both |  |
+| 220 | `experimentLengthEstimatedInSecMsb` (uint8_t) | `NV_EST_EXP_LEN_MSB` | `idxEstimatedExpLengthMsb` | `idxEstimatedExpLengthMsb` | both |  |
+| 221 | `experimentLengthEstimatedInSecLsb` (uint8_t) | `NV_EST_EXP_LEN_LSB` | `idxEstimatedExpLengthLsb` | `idxEstimatedExpLengthLsb` | both |  |
+| 222 | `experimentLengthMaxInMinutesMsb` (uint8_t) | `NV_MAX_EXP_LEN_MSB` | `idxMaxExpLengthMsb` | `idxMaxExpLengthMsb` | both |  |
+| 223 | `experimentLengthMaxInMinutesLsb` (uint8_t) | `NV_MAX_EXP_LEN_LSB` | `idxMaxExpLengthLsb` | `idxMaxExpLengthLsb` | both |  |
+| 224–229 | `macAddr` (uint8_t[6]) | `NV_MAC_ADDRESS` | `idxMacAddress` | `idxMacAddress` | both |  |
+| 230 | bit 7 `unusedIdx230Bit7`; bit 6 `unusedIdx230Bit6`; bit 5 `unusedIdx230Bit5`; bit 4 `unusedIdx230Bit4`; bit 3 `unusedIdx230Bit3`; bit 2 `unusedIdx230Bit2`; bit 1 `unusedIdx230Bit1`; bit 0 `flagWriteCfgToSd` | `NV_SD_CONFIG_DELAY_FLAG` | `idxSDConfigDelayFlag` | `idxSDConfigDelayFlag` | both |  |
+| 231 | `btSetPin` (uint8_t) | `NV_BT_SET_PIN` | `idxBtFactoryReset` | `idxBtFactoryReset` | both |  |
+| 232 | `unusedIdx232` (uint8_t) |  |  |  | both | reserved |
+| 233 | `unusedIdx233` (uint8_t) |  |  |  | both | reserved |
+| 234 | `unusedIdx234` (uint8_t) |  |  |  | both | reserved |
+| 235 | `unusedIdx235` (uint8_t) |  |  |  | both | reserved |
+| 236 | `unusedIdx236` (uint8_t) |  |  |  | both | reserved |
+| 237 | `unusedIdx237` (uint8_t) |  |  |  | both | reserved |
+| 238 | `unusedIdx238` (uint8_t) |  |  |  | both | reserved |
+| 239 | `unusedIdx239` (uint8_t) |  |  |  | both | reserved |
+| 240 | `unusedIdx240` (uint8_t) |  |  |  | both | reserved |
+| 241 | `unusedIdx241` (uint8_t) |  |  |  | both | reserved |
+| 242 | `unusedIdx242` (uint8_t) |  |  |  | both | reserved |
+| 243 | `unusedIdx243` (uint8_t) |  |  |  | both | reserved |
+| 244 | `unusedIdx244` (uint8_t) |  |  |  | both | reserved |
+| 245 | `unusedIdx245` (uint8_t) |  |  |  | both | reserved |
+| 246 | `unusedIdx246` (uint8_t) |  |  |  | both | reserved |
+| 247 | `unusedIdx247` (uint8_t) |  |  |  | both | reserved |
+| 248 | `unusedIdx248` (uint8_t) |  |  |  | both | reserved |
+| 249 | `unusedIdx249` (uint8_t) |  |  |  | both | reserved |
+| 250 | `unusedIdx250` (uint8_t) |  |  |  | both | reserved |
+| 251 | `unusedIdx251` (uint8_t) |  |  |  | both | reserved |
+| 252 | `unusedIdx252` (uint8_t) |  |  |  | both | reserved |
+| 253 | `unusedIdx253` (uint8_t) |  |  |  | both | reserved |
+| 254 | `unusedIdx254` (uint8_t) |  |  |  | both | reserved |
+| 255 | `unusedIdx255` (uint8_t) |  |  |  | both | reserved |
+| 256–261 | `syncNodeAddr1` (uint8_t[6]) | `NV_CENTER` | `idxNode0` | `idxNode0` | both | sync node table |
+| 262–267 | `syncNodeAddr2` (uint8_t[6]) | `NV_NODE0` |  |  | both | sync node table |
+| 268–273 | `syncNodeAddr3` (uint8_t[6]) |  |  |  | both | sync node table |
+| 274–279 | `syncNodeAddr4` (uint8_t[6]) |  |  |  | both | sync node table |
+| 280–285 | `syncNodeAddr5` (uint8_t[6]) |  |  |  | both | sync node table |
+| 286–291 | `syncNodeAddr6` (uint8_t[6]) |  |  |  | both | sync node table |
+| 292–297 | `syncNodeAddr7` (uint8_t[6]) |  |  |  | both | sync node table |
+| 298–303 | `syncNodeAddr8` (uint8_t[6]) |  |  |  | both | sync node table |
+| 304–309 | `syncNodeAddr9` (uint8_t[6]) |  |  |  | both | sync node table |
+| 310–315 | `syncNodeAddr` (uint8_t[6]) |  |  |  | both | sync node table |
+| 316–321 | `syncNodeAddr11` (uint8_t[6]) |  |  |  | both | sync node table |
+| 322–327 | `syncNodeAddr12` (uint8_t[6]) |  |  |  | both | sync node table |
+| 328–333 | `syncNodeAddr13` (uint8_t[6]) |  |  |  | both | sync node table |
+| 334–339 | `syncNodeAddr14` (uint8_t[6]) |  |  |  | both | sync node table |
+| 340–345 | `syncNodeAddr15` (uint8_t[6]) |  |  |  | both | sync node table |
+| 346–351 | `syncNodeAddr16` (uint8_t[6]) |  |  |  | both | sync node table |
+| 352–357 | `syncNodeAddr17` (uint8_t[6]) |  |  |  | both | sync node table |
+| 358–363 | `syncNodeAddr18` (uint8_t[6]) |  |  |  | both | sync node table |
+| 364–369 | `syncNodeAddr19` (uint8_t[6]) |  |  |  | both | sync node table |
+| 370–375 | `syncNodeAddr20` (uint8_t[6]) |  |  |  | both | sync node table |
+| 376–381 | `syncNodeAddr21` (uint8_t[6]) |  |  |  | both | sync node table |
+| 382 | `unusedIdx382` (uint8_t) |  |  |  | both | reserved |
+| 383 | `unusedIdx383` (uint8_t) |  |  |  | both | reserved |
+| 384–511 | `padding` (uint8_t[128]) |  |  |  | both | struct padding, not transferred |
 
 ## 3. Sampling rate, buffer size and sensor enables (bytes 0-5)
 
