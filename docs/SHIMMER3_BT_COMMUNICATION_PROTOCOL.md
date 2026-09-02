@@ -76,49 +76,504 @@ BLE, and over the dock's serial link.
 
 ## 1. Overview
 
-_TODO: What the protocol is, that it is host-initiated request/response with an ACK-then-response shape, that data packets flow unsolicited once streaming starts, and the LogAndStream lineage. Source: `Comms/shimmer_bt_uart.c` (`ShimBt_processCmd` / `ShimBt_sendRsp` pairing)._
+The protocol is a **host-initiated request/response protocol over an unframed
+byte stream**, with one asynchronous exception: once streaming or a bulk
+transfer has been started, the device emits packets of its own accord.
+
+Every exchange has the same shape. The host writes a command byte followed by
+that command's arguments; the firmware stages the command, executes it, and
+answers with an acknowledgement byte optionally followed by a response opcode
+and its payload — all in a single transmission.
+
+```
+Host                                       Shimmer
+  |                                           |
+  |--- [opcode] [args...] ------------------->|
+  |                                           |   ShimBt_processCmd()
+  |                                           |
+  |<-- [ACK] [rspOpcode] [payload] [crc?] ----|   ShimBt_sendRsp()
+```
+
+For a command with nothing to report the response is the bare acknowledgement:
+
+```
+  |--- [opcode] [args...] ------------------->|
+  |<-- [ACK] ---------------------------------|
+```
+
+And for a refused command it is a bare negative acknowledgement, with no
+response opcode and no payload:
+
+```
+  |--- [opcode] [args...] ------------------->|
+  |<-- [NACK] --------------------------------|
+```
+
+> The pairing is structural: `ShimBt_processCmd`
+> (`Comms/shimmer_bt_uart.c:822-1636`) decides what happens and sets exactly one
+> of `sendAck` / `sendNack` plus, for a read, `getCmdWaitingResponse`;
+> `ShimBt_sendRsp` (`:1753-2349`) then writes the acknowledgement byte first and
+> switches on `getCmdWaitingResponse` to append the payload.
+
+Once `START_STREAMING_COMMAND` or `START_SDBT_COMMAND` has been accepted, data
+packets flow unsolicited and interleave with command responses on the same
+stream ([§6](#6-streaming-data-flow)). Three other things also arrive
+unsolicited: in-stream status pushes when the device's own state changes
+([§5](#5-status-acknack-and-in-stream-responses)), data-rate test packets
+([§7.12](#712-control-and-test)), and SD file-transfer frames
+([§7.13](#713-sd-file-transfer-shimmer3r)). Everything else is a direct answer to
+something the host sent.
+
+**Lineage.** This document describes **LogAndStream**, the firmware that both
+streams over Bluetooth and logs to SD. It is the only lineage still developed for
+Shimmer3 and Shimmer3R, and the two platforms share the command implementation
+from a single module (`log-and-stream-common`), which is why the great majority
+of the protocol is identical between them. The differences that remain are almost
+all of two kinds: a field that is wider on Shimmer3R because the newer hardware
+has more of something, and an opcode whose *name* dates from a Shimmer3 part that
+Shimmer3R replaced with a different one. Both kinds are called out where they
+occur.
+
+The historical **BtStream** (stream-only) and **SDLog** (log-only) images share
+most of these opcode numbers but differ in which they serve and in some argument
+semantics. They are out of scope; see
+[Appendix B](#appendix-b-java-only-and-legacy-opcodes) for the opcodes that
+survive only in host software as a result.
 
 ## 2. Transport
 
+The same byte sequences travel over every transport. The firmware's command
+parser sits behind a single UART to the Bluetooth module and cannot tell which
+link a byte arrived on, so nothing in this document is transport-specific except
+the framing consequences in [§2.3](#23-framing-guarantees-per-transport).
+
 ### 2.1 Classic Bluetooth SPP
 
-_TODO: RN42 / RN4678 (S3) and Vela IF820 / CYW20820 (S3R) modules, SPP as a raw byte stream with no framing, module status strings and the `RN4678_STATUS_STRING_SEPARATOR` in-band escape. Source: `shimmer3-firmware` `RN4X/`, `shimmer3r-firmware` `hal_CYW20820.c`, `Comms/shimmer_bt_uart.c`._
+Classic Bluetooth uses the Serial Port Profile, which presents a **raw
+bidirectional byte stream with no framing, no message boundaries and no length
+field**. RFCOMM guarantees ordering and delivery; it guarantees nothing about how
+the bytes are grouped.
 
-### 2.2 BLE (Shimmer3R)
+| Platform | Module | Notes |
+|---|---|---|
+| Shimmer3 | Microchip RN41 / RN42 | Classic only, no BLE. Fitted to units without an EEPROM |
+| Shimmer3 | Microchip RN4678 | Dual-mode, classic + BLE |
+| Shimmer3R | Infineon CYW20820 (Vela IF820 module) running EZ-Serial | Dual-mode, classic + BLE |
 
-_TODO: Shimmer3R-only BLE path, GATT service/characteristics, MTU and the resulting fragmentation, and the EZ-Serial SOF byte collision that forced `SD_LIST_DIR_COMMAND` to 0xCC. Source: `Comms/shimmer_bt_uart.h` (comment above the SD opcodes), `shimmer3r-firmware` `hal_CYW20820.c`._
+> Module detection and version parsing are in
+> `Comms/shimmer_bt_uart.c:341-463`, which recognises RN41 v4.77, RN42 v4.77 and
+> v6.15, and RN4678 v1.00.5 / v1.11.0 / v1.13.5 / v1.22.0 / v1.23.0 / v1.24.0.
+> RN42 v6.30 is explicitly **not supported** and puts the device into its error
+> state (`:378-383`). The version string is readable with
+> `GET_BT_VERSION_STR_COMMAND` ([§7.2](#72-version-information)).
+
+**Module status strings (Shimmer3).** The RN41/RN42/RN4678 modules can be
+configured to announce link events in band — `%CONNECT,001BDC06A3D5%`,
+`%DISCONN%`, `%REBOOT%` and so on — delimited by
+`RN4678_STATUS_STRING_SEPARATOR`, the ASCII `%` character (0x25). These strings
+arrive on the *same* UART as host command bytes, so the firmware's receive state
+machine treats a leading `0x25` as the start of a status string and hands the
+following bytes to `RN4678_parseStatusString` rather than to the command parser.
+
+> `Comms/shimmer_bt_uart.c:534-539, 753-760`;
+> `shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.h:201-241` for the separator and
+> every status-string length.
+
+`0x25` is `DEVICE_VERSION_RESPONSE` — a *response* opcode, never a command — so
+no legitimate host command collides with it. It does, however, mean that on a
+Shimmer3 with status strings enabled, a host that transmits arbitrary bytes while
+trying to resynchronise can put the parser into status-string mode and stall it
+until the expected number of bytes arrives. Recover by waiting out the receive
+timeout rather than by sending more filler.
+
+### 2.2 BLE
+
+BLE is available on both generations, gated on the fitted module and on an EEPROM
+bit — not on the platform. Shimmer3 units with an RN4678 and Shimmer3R units with
+a CYW20820 both support it; Shimmer3 units with an RN41/RN42, and any unit
+without an EEPROM, are classic-only.
+
+> `ShimBt_startCommon`, `Comms/shimmer_bt_uart.c:161-175`, which enables
+> classic-only for sync mode or for a unit without an EEPROM and otherwise takes
+> both enables from `ShimEeprom_isBtClassicEnabled()` /
+> `ShimEeprom_isBleEnabled()`. The re-check on a configuration change is
+> `ShimConfig_checkBtModeFromConfig`
+> (`Configuration/shimmer_config.c:637-668`), keyed on
+> `ShimBrd_doesDeviceSupportBle()`.
+
+The BLE link is a **cable-replacement service provided by the Bluetooth module
+itself**, not by the firmware. The module terminates GATT and presents the
+reassembled byte stream to the MCU over the same UART that carries classic
+traffic; nothing in `log-and-stream-common` references a GATT service,
+characteristic or UUID. The consequence for a host is that the byte-level
+protocol is *identical* on BLE — but the packetisation is not.
+
+**MTU and fragmentation.** A BLE notification carries at most one ATT MTU worth
+of payload, so any response longer than that is split across notifications. The
+Shimmer3 firmware's own working figure is `BLE_MTU_SIZE` 157
+(`shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.h:242`). A host must therefore
+**reassemble across notifications** and must not assume that one notification is
+one protocol message. Conversely, it must not assume the opposite either: the
+module is free to coalesce, and a single notification may contain the tail of one
+message and the head of the next.
+
+Because the transmit ring is much deeper on Shimmer3R (4096 bytes versus 256) and
+a single hand-off to the UART is capped at 1024 bytes
+(`BT_TX_MAX_DMA_CHUNK`), a Shimmer3R response can be produced faster than the
+link drains it — which is the situation the SD file transfer's 256-byte reserve
+exists to protect.
+
+> `Comms/shimmer_bt_uart.h:25-41`.
+
+**Reserved first bytes on Shimmer3R.** The CYW20820's UART receive path is
+demultiplexed in firmware between EZ-Serial module traffic and Shimmer command
+traffic, keyed on the first byte. The EZ-Serial binary start-of-frame values are
+routed to the module's parser and never reach the command parser:
+
+| Byte | EZ-Serial meaning |
+|---|---|
+| `0x80` | `EZS_BINARY_TYPE_EVENT` |
+| `0xC0` | `EZS_BINARY_TYPE_CMDRSP` |
+| `0xD0` | `EZS_BINARY_TYPE_CMDRSP \| EZS_COMMAND_SCOPE_FLASH` |
+
+> `shimmer3r-firmware` `Shimmer_Driver/CYW20820/hal_CYW20820.c:271-276`;
+> the constants at `Shimmer_Driver/CYW20820/EZ-Serial/ezsapi.h:119-124`.
+
+**No command opcode may take any of those three values**, which is why
+`SD_LIST_DIR_COMMAND` was assigned `0xCC` rather than the `0xC0` its response
+number would suggest — see the note in
+[§7.13](#713-sd-file-transfer-shimmer3r). `0x80` is `MYID_RESPONSE`, a response
+opcode, so it never appears as a first byte from a host. The demultiplexer is
+bypassed whenever the parser is mid-command (`ShimBt_isWaitingForArgs()`), so
+these values are unrestricted **inside** an argument payload.
 
 ### 2.3 Framing guarantees per transport
 
-_TODO: There is no length field and no delimiter — the receiver is a state machine keyed on the opcode's fixed argument count; consequences for resynchronisation, and `DUMMY_COMMAND` as the no-op probe. Source: `Comms/shimmer_bt_uart.c` (`ShimBt_dmaConversionDone`), `BT_RX_COMMS_TIMEOUT_TICKS`._
+**There is no framing.** No length prefix, no delimiter, no escape, no
+start-of-frame byte. The receiver is a state machine that reads one command byte,
+looks up how many argument bytes that opcode takes, and waits for exactly that
+many.
+
+> `ShimBt_dmaConversionDone`, `Comms/shimmer_bt_uart.c:222-805`. The fixed
+> argument counts are the `switch (data)` at `:594-776`; the variable-length
+> cases are handled by the `waitingForArgs` block at `:468-588`.
+
+The implications are worth stating plainly, because they drive most of a host
+implementation's error handling.
+
+1. **Both sides must agree on every argument count.** An opcode the host thinks
+   takes two arguments and the firmware thinks takes three leaves the parser
+   consuming the next command byte as an argument, and every subsequent byte is
+   misinterpreted. The argument counts in [§4](#4-opcode-table) are extracted
+   from that switch and are the authority.
+2. **An unknown command byte is silently discarded.** The `default:` case
+   (`Comms/shimmer_bt_uart.c:773-775`) re-arms for the next command byte and
+   returns. There is no NACK, no error and no way for a host to tell that a
+   command was not understood. **Hosts must gate optional features on
+   `GET_FW_VERSION_COMMAND`, never on probing.**
+3. **Responses are not self-delimiting either.** A host must frame the *response*
+   stream by knowing each response opcode's payload length — which is why this
+   document gives an exact length or an exact formula for every one, and why an
+   unexpected extra byte from the device is not a harmless anomaly but a
+   permanent loss of synchronisation (see the
+   `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` warning in
+   [§5](#5-status-acknack-and-in-stream-responses)).
+4. **Resynchronisation is by silence, not by a marker.** There is no byte the
+   host can send to force a reset. A parser stuck mid-command clears when the
+   receive timeout expires: `BT_RX_COMMS_TIMEOUT_TICKS` is 328 ticks of a
+   32768 Hz clock, i.e. **10 ms** (`Comms/shimmer_bt_uart.h:255-256`). A host
+   that suspects desynchronisation should stop transmitting for well over that,
+   discard everything it receives, and then re-establish state with
+   `TEST_CONNECTION_COMMAND` or `GET_FW_VERSION_COMMAND`.
+5. **`DUMMY_COMMAND` (0xB5) is the only completely inert byte.** It is consumed
+   with no response and no side effect ([§7.12](#712-control-and-test)), which
+   makes it the safe choice for padding. It is not a resynchronisation marker —
+   if the parser is mid-command it will be consumed as an argument like any other
+   byte.
+
+A Bluetooth disconnect resets the parser and several session settings; see
+[§8](#8-connection-session-workflow).
 
 ### 2.4 Baud rates
 
-_TODO: `enum BT_BAUD_RATE` values and which module supports which, the default, and why `SET_BT_COMMS_BAUD_RATE` no longer changes anything. Source: `Comms/shimmer_bt_uart.h` (`enum BT_BAUD_RATE`), `ShimBt_setBtBaudRateToUse`._
+The `BT_BAUD_RATE` enumeration is stored in the configuration image at InfoMem 30
+(`NV_BT_COMMS_BAUD_RATE`) and describes the **MCU-to-module UART**, not anything
+the host can observe. Over Bluetooth the host never sees a baud rate at all;
+over a wired dock link the dock's own rate applies.
+
+| Value | Baud | Supported by |
+|---|---|---|
+| `0` | 115200 | all |
+| `1` | 1200 | RN42 only |
+| `2` | 2400 | all |
+| `3` | 4800 | all |
+| `4` | 9600 | all |
+| `5` | 19200 | all |
+| `6` | 38400 | all |
+| `7` | 57600 | all |
+| `8` | 230400 | RN42 only |
+| `9` | 460800 | RN42 only |
+| `10` | 921600 | RN42 only |
+| `11` | 1000000 | RN4678 v1.23 only — v1.13.5 and v1.22 have known problems |
+| `12` | 2000000 | CYW20820 only |
+| `0xFF` | `BAUD_INVALID` | sentinel; triggers the default below |
+
+> `Comms/shimmer_bt_uart.h:307-324`. The enumeration order is fixed because the
+> value is persisted to EEPROM.
+
+**Defaults.** On Shimmer3 the default is chosen at run time by
+`getDefaultBaudForBtVersion()`: `BAUD_115200` while in SD sync mode — higher
+rates lose module status-string bytes when logging and syncing at once — and
+otherwise 1000000 if the fitted module supports it, else 460800.
+
+> `shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.c:2430-2444`. The stored byte is replaced
+> with this value whenever it reads back as `0xFF`
+> (`Configuration/shimmer_config.c:206-209`).
+
+On Shimmer3R the default is `12` (2 Mbaud), and the link rate is negotiated at
+boot rather than read from configuration: the firmware tries `BAUD_TO_USE`
+(2000000, or 115200 on an SR48-6.0 board) and, on repeated initialisation
+failure, walks a fallback ladder of 115200 → 460800 → 2000000 → 500000.
+
+> `shimmer3r-firmware` `Core/Src/main.c:645-720, 834-837`;
+> `Shimmer_Driver/CYW20820/CYW20820.h:21-25`.
+
+Shimmer3 additionally overrides a stored `BAUD_1200` to `BAUD_2400` when the
+fitted module is an RN4678, which does not support 1200
+(`ShimBt_setBtBaudRateToUse`, `Comms/shimmer_bt_uart.c:2997-3015`).
+
+⚠️ **`SET_BT_COMMS_BAUD_RATE` (0x6A) no longer changes anything, and still
+ACKs.** The whole handler body is commented out behind
+`//TODO changing BAUD rate is not going to be supported`, leaving only `break;`
+(`Comms/shimmer_bt_uart.c:1352-1367`). Observed behaviour:
+
+- the command returns a normal ACK, so a host cannot tell it did nothing;
+- `storedConfig->btCommsBaudRate` is not updated, so an immediately following
+  `GET_BT_COMMS_BAUD_RATE` (0x6C) returns the **old** value
+  (`:2146-2151`) — a read-after-write check does detect it;
+- it is nonetheless listed in `ShimBt_isCmdBlockedWhileSensing` (`:2969`), so it
+  is NACKed while sensing despite doing nothing.
+
+The stored byte at InfoMem 30 is still read at startup and is still reachable
+through `SET_INFOMEM_COMMAND`, so the configuration field is live even though the
+dedicated command is not. The web SDK omits all three baud opcodes, which is the
+right call; the Java driver names them `SET_BAUD_RATE_COMMAND` /
+`BAUD_RATE_RESPONSE` / `GET_BAUD_RATE_COMMAND`
+([§4.5](#45-deprecated--no-op)).
 
 ## 3. Message structure
 
 ### 3.1 Command frame
 
-_TODO: `[opcode][fixed args...]` and the two variable-length shapes (in-band length byte at args[0], or at args[2] for ExG), `MAX_COMMAND_ARG_SIZE` = 131, and the oversize-payload clamp that NACKs rather than truncating. Source: `Comms/shimmer_bt_uart.c` (`ShimBt_dmaConversionDone` `waitingForArgsLength` block)._
+```
+[opcode] [fixed args ...] [in-band length] [payload ...]
+```
+
+An opcode takes a fixed number of argument bytes, and a small number of opcodes
+follow those with a variable payload whose length is one of the argument bytes.
+There are exactly two shapes:
+
+| Shape | Length byte | Opcodes |
+|---|---|---|
+| Length is the **first** argument | `args[0]` | `SET_INFOMEM_COMMAND` 0x8C, `SET_CALIB_DUMP_COMMAND` 0x98, `SET_DAUGHTER_CARD_MEM_COMMAND` 0x67, `SET_DAUGHTER_CARD_ID_COMMAND` 0x64, `SET_CENTER_COMMAND` 0x76, `SET_SHIMMERNAME_COMMAND` 0x79, `SET_EXPID_COMMAND` 0x7C, `SET_CONFIGTIME_COMMAND` 0x85 |
+| Length is the **third** argument | `args[2]` | `SET_EXG_REGS_COMMAND` 0x61 |
+
+> `Comms/shimmer_bt_uart.c:470-511`. The `SET_EXG_REGS_COMMAND` special case is
+> the `if (gAction == SET_EXG_REGS_COMMAND) waitingForArgsLength = args[2];`
+> at `:477-480`.
+
+The Shimmer3R SD file-transfer commands are a third shape — the path length is
+the **last** fixed argument byte, whichever position that is — described in
+[§7.13](#713-sd-file-transfer-shimmer3r).
+
+**`MAX_COMMAND_ARG_SIZE` is 131** (`Comms/shimmer_bt_uart.h:44-45`), sized for
+the largest command in the set: a 128-byte daughter-card memory write plus its
+three fixed argument bytes.
+
+> **An oversized payload is NACKed, not truncated.** If a host-supplied length
+> byte would overrun `args[]`, the copy is clamped to what fits and a
+> `argsPayloadTruncated` flag is raised; `ShimBt_processCmd` then rejects the
+> command outright rather than dispatching it. The in-band length byte is
+> deliberately left at the host's original value, because rewriting it to the
+> clamped length would turn a malformed oversized request into an **accepted
+> partial write** of configuration, calibration or EEPROM.
+> `Comms/shimmer_bt_uart.c:559-577` (the clamp, with its reasoning) and
+> `:843-846` (the rejection).
 
 ### 3.2 Response frame and ACK
 
-_TODO: ACK byte first, then the response opcode and payload in one transmission; NACK replaces the whole frame; `INSTREAM_CMD_RESPONSE` wrapping for responses that can arrive mid-stream; `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE`. Source: `Comms/shimmer_bt_uart.c` (`ShimBt_sendRsp` prologue and the switch-set-NACK override)._
+```
+[ACK] [rspOpcode] [payload ...] [crc ...]      success
+[NACK] [crc ...]                               refusal
+```
+
+- `ACK_COMMAND_PROCESSED` is `0xFF`; `NACK_COMMAND_PROCESSED` is `0xFE`.
+- The acknowledgement byte is written **first**, before the response payload, and
+  the whole frame is handed to the transmit path in one call — a host will never
+  see an ACK and its response separated by an unrelated command reply.
+- A NACK **replaces the entire frame**. There is no response opcode and no
+  payload, so a NACK is one byte (plus any CRC).
+
+> `ShimBt_sendRsp`, `Comms/shimmer_bt_uart.c:1766-1777` (prologue) and
+> `:2334-2339` (the override that collapses a frame to a single NACK when a
+> response case discovers the request cannot be served on the fitted hardware).
+> The single hand-off is the `ShimBt_writeToTxBufAndSend` call at `:2347`.
+
+**`INSTREAM_CMD_RESPONSE` (0x8A) wrapping.** Responses that the firmware may also
+need to emit *while data packets are flowing* are wrapped in an extra `0x8A`
+byte, so that a host parsing a stream can recognise "this is a command response,
+not a data packet" from the first byte after the ACK. The wrapped responses are:
+
+| Command | Framing |
+|---|---|
+| `GET_STATUS_COMMAND` 0x72 | `[ACK][0x8A][0x71][status…]` |
+| `GET_VBATT_COMMAND` 0x95 | `[ACK][0x8A][0x94][adc u16][chargerStatus]` |
+| `GET_DIR_COMMAND` 0x89 | `[ACK][0x8A][0x88][len][name…]` |
+| unsolicited status push | `[ACK?][0x8A][0x71][status…]` |
+| `SD_FILE_DATA_RESPONSE` 0xC5 | `[0x8A][0xC5]…` — **no ACK** |
+| `SD_FILE_STATUS_RESPONSE` 0xC6 | `[0x8A][0xC6]…` — **no ACK** |
+
+Note that `DATA_PACKET` is `0x00` and every response opcode is non-zero, so the
+first byte after an ACK already distinguishes the two; the `0x8A` wrapper exists
+so that the *nested* opcode can be reused between the solicited and unsolicited
+forms.
+
+The leading ACK on an **unsolicited** status push is controlled by
+`SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE` (0xA3) and is on by default; solicited
+responses always carry it. See
+[§5](#5-status-acknack-and-in-stream-responses).
 
 ### 3.3 CRC modes
 
-_TODO: `SET_CRC_COMMAND` and `COMMS_CRC_MODE` (off / 1 byte / 2 bytes), that the mode is a session setting appended to every response including in-stream ones and data packets, and the CRC algorithm. Source: `CRC/shimmer_crc.{h,c}`, `ShimBt_setCrcMode`, `calculateCrcAndInsert` call sites._
+`SET_CRC_COMMAND` (0x8B) selects one of three modes for the rest of the session:
+
+| `COMMS_CRC_MODE` | Value | Bytes appended |
+|---|---|---|
+| `CRC_OFF` | 0 | none |
+| `CRC_1BYTE_ENABLED` | 1 | 1 — the CRC's low byte |
+| `CRC_2BYTES_ENABLED` | 2 | 2 — low byte then high byte |
+
+> `CRC/shimmer_crc.h:12-18`; `ShimBt_setCrcMode` at
+> `Comms/shimmer_bt_uart.c:2372-2382`, which falls back to `CRC_OFF` for any
+> value of 3 or more rather than rejecting it.
+
+**The mode is a session setting and it resets to off on every connect.**
+`ShimBt_btCommsProtocolInit` sets `CRC_OFF` at startup (`:116`) and
+`ShimBt_handleBtRfCommStateChange` sets it again on every disconnect (`:2543`).
+A host must therefore re-issue `SET_CRC_COMMAND` after every reconnection; there
+is no way to make the setting sticky.
+
+**What the CRC covers.** When enabled it is appended to:
+
+- every command response and NACK assembled by `ShimBt_sendRsp` (`:2341-2346`);
+- every unsolicited in-stream status push (`:2462-2466`);
+- every streaming data packet (see
+  [SHIMMER3_STREAMING_DATA_FORMAT.md §2](SHIMMER3_STREAMING_DATA_FORMAT.md#2-packet-layout-and-timestamp)).
+
+It is **not** applied to data-rate test packets, and the SD file-transfer data
+and status frames carry their own unconditional CRC-16 instead — see
+[§7.12](#712-control-and-test) and
+[§7.13](#713-sd-file-transfer-shimmer3r).
+
+**Algorithm.** A CRC-16 seeded with `CRC_INIT` = `0xB0CA`, computed over the
+whole frame before the CRC bytes, with **an odd-length payload padded by one
+trailing `0x00` byte**. The padding is not transmitted; it exists because the
+implementation is the MSP430's hardware CRC unit, which is fed 16 bits at a
+time.
+
+The most readable statement of the algorithm is the host reference:
+
+> `Extras/python_scripts/Shimmer_common/shimmer_crc.py` — `crc_byte()` is the
+> per-byte step, `calc_crc()` seeds with `CRC_INIT` and appends the `0x00` pad
+> when `length % 2 == 1`. The firmware side is
+> `calculateCrcAndInsert` / `checkCrc` in `CRC/shimmer_crc.c`, over the
+> platform's `platform_crcData()`; the MSP430 implementation and its odd-length
+> special case are in `shimmer3-firmware`
+> `Shimmer_Driver/5xx_HAL/hal_CRC.c:12-35`.
+
+`CRC_MAX_SUPPORTED_BYTES` (3) is a validation sentinel and **must not** be sent
+as a mode.
 
 ### 3.4 Size limits and paging
 
-_TODO: `RESPONSE_PACKET_SIZE`, the 128-byte page limit on InfoMem / calibration / daughter-card reads and writes, and how hosts page a 512-byte InfoMem through it. Source: `Comms/shimmer_bt_uart.c` (`GET_INFOMEM_COMMAND` / `SET_INFOMEM_COMMAND` bounds checks), `log_and_stream_definitions.h`._
+| Limit | Shimmer3 | Shimmer3R | Constant |
+|---|---|---|---|
+| Maximum response frame | **133** bytes | **1024** bytes | `RESPONSE_PACKET_SIZE` |
+| Maximum command arguments | 131 | 131 | `MAX_COMMAND_ARG_SIZE` |
+| Bluetooth transmit ring | 256 bytes | 4096 bytes | `BT_TX_BUF_SIZE` |
+| Single UART hand-off | 256 bytes | 1024 bytes | `BT_TX_MAX_DMA_CHUNK` |
+
+> `log_and_stream_definitions.h:28-32`; `Comms/shimmer_bt_uart.h:25-45`. The
+> response buffer is declared as `RESPONSE_PACKET_SIZE + 2` to leave room for
+> two CRC bytes (`Comms/shimmer_bt_uart.c:1757`).
+
+**Every bulk read and write is capped at 128 bytes per command**, independently of
+the response-frame limit, so that a single page fits inside Shimmer3's 133-byte
+budget:
+
+| Region | Total size | Per-command cap | Commands |
+|---|---|---|---|
+| Configuration (InfoMem) | 384 modelled, 512 addressable | 128 | `0x8E` / `0x8C` |
+| Calibration RAM | 1024 | 128 | `0x9A` / `0x98` |
+| Daughter-card memory | 2032 | 128 | `0x69` / `0x67` |
+| Daughter-card identity page | 16 | 16 | `0x66` / `0x64` |
+
+A host therefore **pages**. To read the whole configuration image it issues three
+requests at offsets 0, 128 and 256, each for 128 bytes, and concatenates the
+payloads — which is exactly what the Python reference does
+(`Extras/python_scripts/Shimmer_common/shimmer_comms_bluetooth.py:318-339`).
+The addressable window is 512 bytes even though only 384 are modelled, so offsets
+384-511 are legal but describe nothing.
+
+Paging a *write* is not symmetric with paging a read, because the firmware runs
+its whole-image correction pass after each chunk and, for the calibration dump,
+accumulates chunks towards a declared total. Both are covered in
+[§7.5](#75-infomem) and
+[§7.6](#76-calibration-dump-and-per-sensor-calibration); the short version is
+**write ascending offsets, start at offset 0, and read back**.
+
+Shimmer3R's much larger response budget is what makes the SD file transfer
+possible, and its one-shot responses are nonetheless kept under about 250 bytes
+so the same wire format could later be served within Shimmer3's 133-byte limit
+(`Comms/shimmer_sd_file_transfer.c:30-35`).
 
 ## 4. Opcode table
 
 _The tables in this section are generated mechanically from the firmware header,
 the firmware command parser and response assembler, and the two host
 implementations. Do not hand-edit them._
+
+The firmware header declares **185** opcode `#define`s, of which 182 are
+reachable on each platform (three exist only under `SHIMMER4_SDK`). Joined
+against the Java driver's constants and the TypeScript SDK's registry, **197**
+distinct byte values are named by at least one of the three sources. **43**
+commands are refused while the device is sensing
+([§10](#10-important-boundaries)).
+
+The tables are split by function, not by number, so an opcode's section says what
+it is for: [§4.1](#41-core) core device and sensor control,
+[§4.2](#42-sd--trial-configuration) SD logging and trial setup,
+[§4.3](#43-calibration) calibration, [§4.4](#44-shimmer3r-served-extensions) the
+Shimmer3R-only SD file transfer, [§4.5](#45-deprecated--no-op) opcodes that are
+served but do nothing useful, and [§4.6](#46-not-served-by-logandstream) numbers
+that no LogAndStream code acts on.
+
+**How to read a row.** The **Args** column is the number of argument bytes the
+receive state machine waits for, taken from `ShimBt_dmaConversionDone`; where it
+reads `n + [args[k]] bytes` the opcode is variable-length in the sense of
+[§3.1](#31-command-frame). The **Response payload length** counts the bytes that
+follow the response opcode, excluding the ACK and any CRC. A symbolic entry such
+as `1 + infomemLength` or `ShimBt_replySingleSensorCalibCmd()` means the length
+is runtime-dependent and is given in the firmware's own terms; the corresponding
+[§7](#7-command-reference) subsection resolves it to a concrete number.
+
+> **Three length cells under-report the firmware.** The extractor cannot count
+> bytes written by a loop or by a call, so `GET_VBATT_COMMAND` (0x95),
+> `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` (0x5D) and, on Shimmer3 only,
+> `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` (0xA7) carry lengths that do
+> not match what the code emits. Each is corrected in a `⚠️` note in its
+> [§7](#7-command-reference) subsection, and those notes are normative. The
+> cells are left as generated so the tables stay reproducible.
 
 The **Notes** column carries comparison flags, all of which are statements about
 *named constants* rather than about behaviour:
@@ -942,6 +1397,117 @@ calibration** — there is no undo and no confirmation step. Blocked while
 sensing.
 
 > `Comms/shimmer_bt_uart.c:1301-1307`.
+
+#### Pressure-sensor coefficients
+
+The barometric sensor's calibration coefficients are read straight off the chip
+and are not part of the calibration dump. Three commands expose them: one modern
+sensor-agnostic command and two legacy per-part ones.
+
+**`GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` (0xA7)** — use this one.
+
+- **Request:** `[0xA7]`
+- **Response:** `[ACK][0xA6][1 + n][sensorId][coeffs × n]` — `2 + n` payload bytes
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | Length of what follows, i.e. `1 + n` |
+| 1 | 1 | `sensorId` |
+| 2..1+n | n | Raw coefficient bytes, exactly as read from the sensor |
+
+| `sensorId` | Sensor | `n` |
+|---|---|---|
+| `0` | BMP180 | 22 |
+| `1` | BMP280 | 24 |
+| `2` | BMP390 | 21 |
+| `3` | BMP581 | **0** |
+
+> `Comms/shimmer_bt_uart.c:1988-2024`; the `PRESSURE_SENSOR_*` enumeration at
+> `Comms/shimmer_bt_uart.h:280-286`. Lengths from
+> `shimmer3-firmware` `Shimmer_Driver/BMPX80/bmpX80.h:99-100` (22, 24) and
+> `shimmer3r-firmware` `Shimmer_Driver/BMP3/BMP3_SensorAPI/bmp3_defs.h:439`
+> (`BMP3_LEN_CALIB_DATA` 21).
+
+The BMP581 outputs pre-compensated data and therefore has no coefficients. The
+firmware answers with the sensor-ID byte and **zero** coefficient bytes rather
+than NACKing, deliberately: a NACK would be ambiguous with older firmware that
+does not implement 0xA7 at all, whereas an in-band ID lets a host positively
+identify the fitted part.
+
+> The reasoning is in the firmware's own comment at
+> `Comms/shimmer_bt_uart.c:1992-1996`.
+
+On Shimmer3 only BMP180 and BMP280 drivers exist, so `sensorId` is 0 or 1 in
+practice; the `PRESSURE_SENSOR_BMP390` fall-through is reachable but that
+platform has no BMP390 driver and would report `n = 0`.
+
+⚠️ **The generated length column over-reports this response on Shimmer3.**
+[§4.3](#43-calibration) gives `S3: 4 + bmpCalibByteLen`; the firmware emits
+`2 + bmpCalibByteLen` on **both** generations — one length byte and one
+sensor-ID byte. The extractor counted the three mutually exclusive branches that
+each write the single ID byte (`Comms/shimmer_bt_uart.c:2004-2016`) as three
+bytes. The Shimmer3R figure, `2 + bmpCalibByteLen`, is correct. Firmware is
+authoritative.
+
+**`GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND` (0x59)** and
+**`GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND` (0xA0)** — legacy, Shimmer3
+only.
+
+| Command | Response on Shimmer3 | Payload bytes | Response on Shimmer3R |
+|---|---|---|---|
+| `0x59` | `[ACK][0x58][coeffs]` | 22 | `[NACK]` |
+| `0xA0` | `[ACK][0x9F][coeffs]` | 24 | `[NACK]` |
+
+> `Comms/shimmer_bt_uart.c:1951-1968` (0x59), `:1969-1987` (0xA0). The Shimmer3R
+> `sendNack = 1` at `:1965` and `:1984` is collapsed to a single NACK byte by the
+> override at `:2334-2339`.
+
+> **Caution.** On Shimmer3 these commands answer even when the requested part is
+> **not** fitted: the payload is filled with the constant byte `0x01` repeated
+> for the full length rather than being NACKed
+> (`Comms/shimmer_bt_uart.c:1958-1962`, `:1977-1981`). A host cannot tell a
+> genuine coefficient block from that filler except by its implausibility. Use
+> `0xA7`, which reports the fitted sensor explicitly.
+
+#### `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` (0x5D)
+
+- **Request:** `[0x5D]`
+- **Response, MPU-9x50 fitted (Shimmer3 only):** `[ACK][0x5C][adjX][adjY][adjZ]`
+  — 3 payload bytes
+- **Response, otherwise:** `[ACK][ACK]` — see the warning below
+
+The three bytes are the AK8975 magnetometer's factory sensitivity-adjustment
+values, read out of the MPU-9x50's embedded compass. The handler power-cycles the
+MPU before reading them.
+
+> `Comms/shimmer_bt_uart.c:2055-2076`.
+
+⚠️ **On any board without an MPU-9x50 this command replies with a second ACK
+instead of a NACK.** The feature does not exist in the ICM-20948, so on every
+ICM-20948 Shimmer3 and on **every Shimmer3R** the `else` branch writes
+`ACK_COMMAND_PROCESSED` where the response opcode should be. Since `sendAck` has
+already written one ACK before the switch (`Comms/shimmer_bt_uart.c:1768-1772`),
+the host receives `FF FF`.
+
+Why this matters more than it looks:
+
+- It is neither a NACK (which would mean "unsupported") nor a well-formed
+  response, so a host waiting for `MPU9150_MAG_SENS_ADJ_VALS_RESPONSE` (0x5C)
+  times out with an unexplained `0xFF` sitting in its stream.
+- On an unframed transport the stray byte **desynchronises the parser
+  permanently**. A host that length-frames the byte stream sees a leading `0xFF`
+  as a 1-byte ACK, consumes the extra byte as a phantom ACK, and every subsequent
+  ACK and response is off by one command.
+
+The neighbouring `GET_BMP180`/`GET_BMP280_CALIBRATION_COEFFICIENTS` cases handle
+the same situation correctly, setting `sendNack = 1` so the frame collapses to a
+single NACK byte (`:1964-1966`, `:1983-1985`).
+
+**Host guidance:** do not send 0x5D unless
+`GET_DEVICE_VERSION_COMMAND` reported Shimmer3 **and** the daughter-card or
+board identity establishes an MPU-9x50. If you must send it speculatively, treat
+a second `0xFF` as "unsupported" and consume it, rather than letting it fall
+through to your ACK accounting.
 
 ### 7.7 SD logging and trial configuration
 
