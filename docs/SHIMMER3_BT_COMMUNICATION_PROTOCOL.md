@@ -815,11 +815,296 @@ The **Notes** column carries comparison flags, all of which are statements about
 
 ## 5. Status, ACK/NACK and in-stream responses
 
-_TODO: `ACK_COMMAND_PROCESSED` 0xFF / `NACK_COMMAND_PROCESSED` 0xFE, the three NACK preconditions (sync-mode XOR, blocked-while-sensing, truncated payload), the status bit field from `ShimBt_assembleStatusBytes` (1 byte on S3, 2 on S3R), and unsolicited status pushes on dock/undock/button/low battery. Source: `ShimBt_processCmd` prologue, `ShimBt_assembleStatusBytes`, `ShimBt_instreamStatusRespSendIfNotBtCmd`._
+### 5.1 ACK and NACK
+
+| Byte | Constant | Meaning |
+|---|---|---|
+| `0xFF` | `ACK_COMMAND_PROCESSED` | The command was staged, dispatched and executed |
+| `0xFE` | `NACK_COMMAND_PROCESSED` | The command was refused |
+
+`ACK` means "I ran this", not "this had the effect you wanted". Almost every
+out-of-range argument in this protocol is silently clamped and then ACKed, so a
+host that needs to know the resulting value must read it back. The exceptions —
+the handful of commands that genuinely NACK — are listed below.
+
+`ACK` is also the only reply for the majority of commands: a `SET` has nothing to
+report, so its whole response is one byte.
+
+### 5.2 The three NACK preconditions
+
+Three checks run at the top of `ShimBt_processCmd`, before the command's own
+handler, and any one of them replaces the response with a bare NACK.
+
+> `Comms/shimmer_bt_uart.c:830-846`.
+
+1. **Sync-mode exclusivity.** `storedConfig->syncEnable XOR
+   ShimBt_isCmdAllowedWhileSdSyncing(gAction)`. While SD sync is enabled the only
+   permitted commands are `SET_SD_SYNC_COMMAND` (0xE0) and
+   `ACK_COMMAND_PROCESSED` (0xFF); while it is disabled those two are the only
+   *forbidden* ones. See [§7.14](#714-sd-sync) — this is the usual explanation
+   for a device that connects and then NACKs everything.
+2. **Blocked while sensing.** `shimmerStatus.sensing &&
+   ShimBt_isCmdBlockedWhileSensing(gAction)`. **43** commands are on that list —
+   effectively every configuration and calibration write.
+   `ShimBt_isCmdBlockedWhileSensing` (`:2939-2995`) is the authoritative list,
+   and the **Blocked while sensing** column of the [§4](#4-opcode-table) tables
+   is extracted from it.
+3. **Truncated payload.** `argsPayloadTruncated` — the host declared an in-band
+   length that did not fit in `args[]` ([§3.1](#31-command-frame)).
+
+A handful of individual handlers also NACK on their own account, and those are
+the only per-command refusals in the protocol:
+
+| Command | NACKs when |
+|---|---|
+| `SET_DAUGHTER_CARD_MEM_COMMAND` 0x67 | The EEPROM write is out of bounds |
+| `RESET_BT_ERROR_COUNTS` 0xB6 | Shimmer3R always; Shimmer3 without an EEPROM |
+| `SET_FEATURE` 0xB7 | Unrecognised feature id |
+| `SET_SD_SYNC_COMMAND` 0xE0 | Not actually in a running sync session |
+| `ACK_COMMAND_PROCESSED` 0xFF | Received outside a running sync session |
+| `GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND` 0x59 | Shimmer3R (no such sensor) |
+| `GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND` 0xA0 | Shimmer3R (no such sensor) |
+
+The last two are set inside the *response* switch, after the ACK byte has
+already been staged; an override then rewrites the frame to a single NACK and
+discards the response bytes.
+
+> `Comms/shimmer_bt_uart.c:2328-2339`, whose comment states the mechanism.
+
+**Everything else that goes wrong produces no NACK.** Collected here because it
+is the single most important thing for a host implementer to internalise:
+
+| Situation | Observed reply |
+|---|---|
+| Unknown command byte | **nothing** — silently discarded ([§2.3](#23-framing-guarantees-per-transport)) |
+| `DUMMY_COMMAND` 0xB5 | **nothing**, by design |
+| `SET_INFOMEM_COMMAND` out of bounds | **nothing** — the handler returns before the ACK ([§7.5](#75-infomem)) |
+| `SET_DAUGHTER_CARD_ID_COMMAND` with `len = 0` | **nothing**, and the parser is left mid-command ([§7.10](#710-daughter-card)) |
+| `GET_INFOMEM_COMMAND` out of bounds | bare `ACK`, no `INFOMEM_RESPONSE` |
+| `GET_DAUGHTER_CARD_ID`/`MEM` out of bounds | bare `ACK`, no response opcode |
+| `GET_EXG_REGS_COMMAND` invalid arguments | `ACK`, `0x62`, `0x00` — a zero-length read |
+| `SET_CALIB_DUMP_COMMAND` out of order or out of range | normal `ACK`, data discarded ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
+| Any setter given an out-of-range value | normal `ACK`, value silently clamped ([§7.8](#78-sensor-settings)) |
+| `SET_BT_COMMS_BAUD_RATE` 0x6A | normal `ACK`, nothing happens ([§2.4](#24-baud-rates)) |
+| `SET_CHARGE_STATUS_LED_COMMAND` 0x30 | normal `ACK`, no handler exists ([§7.4](#74-battery)) |
+| `SET_FACTORY_TEST` 0xA8 with an out-of-range id | normal `ACK`, no test run |
+| `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` 0x5D without an MPU-9x50 | `ACK` **then a second ACK** — desynchronises the host ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
+
+### 5.3 The status bytes
+
+`ShimBt_assembleStatusBytes` produces the payload used by both
+`GET_STATUS_COMMAND` and the unsolicited push. **One byte on Shimmer3, two on
+Shimmer3R** (`STATUS_BYTE_COUNT`).
+
+**Byte 0** — bit field, both generations:
+
+| Bit | Mask | Field | Meaning |
+|---|---|---|---|
+| 7 | `0x80` | `toggleLedRedCmd` | Red-LED toggle state, as flipped by `TOGGLE_LED_COMMAND` |
+| 6 | `0x40` | `sdBadFile` | The SD card or its file is unusable |
+| 5 | `0x20` | `sdInserted` | A card is present in the slot |
+| 4 | `0x10` | `btStreaming` | Streaming over Bluetooth |
+| 3 | `0x08` | `sdLogging` | Logging to SD |
+| 2 | `0x04` | `RTC_isRwcTimeSet()` | The real-world clock has been set this power cycle |
+| 1 | `0x02` | `sensing` | Sensing (either or both of the two above) |
+| 0 | `0x01` | `docked` | Sitting in a dock |
+
+**Byte 1** — Shimmer3R only:
+
+| Bit | Field |
+|---|---|
+| 0 | `usbPluggedIn` |
+| 1-7 | zero |
+
+> `Comms/shimmer_bt_uart.c:2920-2932`. Byte 1 is written inside
+> `#if defined(SHIMMER3R)` at `:2927-2929`, so on Shimmer3 it is not merely zero
+> — it is **not transmitted**. `STATUS_BYTE_COUNT` at
+> `Comms/shimmer_bt_uart.h:260-264`. The underlying flags are the
+> `STATTypeDef` bitfields at `log_and_stream_definitions.h:79-133`.
+
+Bits 7, 6, 5 and 2, and the second byte, were added over time; the Java driver
+gates each on a firmware version
+(`isSupportedRedLedStateInStatus`, `isSupportedSdInfoInStatus`,
+`isSupportedRtcStateInStatus`, `isSupportedUSBPluggedInStatus`). See
+[Appendix A](#appendix-a-firmware-version-gates). On firmware older than a
+given threshold the bit reads as zero rather than being absent — the byte count
+does not change — so a host may read the bit unconditionally but must not treat
+a zero as authoritative unless the version gate is satisfied. The **second byte**
+is different: it is absent, not zero, on Shimmer3 and on Shimmer3R firmware
+before the threshold, so a host must take its expected length from the
+generation and version, not from the response.
+
+### 5.4 In-stream responses
+
+`INSTREAM_CMD_RESPONSE` (0x8A) is a wrapper, not a command. It marks a frame as
+"a command response, on a link that may also be carrying data packets", so the
+same nested response opcode can serve both the solicited and unsolicited forms of
+a message. The wrapped set is listed in
+[§3.2](#32-response-frame-and-ack).
+
+**Solicited** in-stream responses are ordinary replies and always carry the
+leading ACK:
+
+```
+[ACK] [0x8A] [0x71] [status ...] [crc ...]        GET_STATUS_COMMAND
+```
+
+**Unsolicited** status pushes have the same shape, but their leading ACK is
+optional and controlled by `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE` (0xA3):
+
+```
+[ACK] [0x8A] [0x71] [status ...] [crc ...]        prefix on  (default)
+      [0x8A] [0x71] [status ...] [crc ...]        prefix off
+```
+
+> `ShimBt_instreamStatusRespSend`, `Comms/shimmer_bt_uart.c:2445-2470`. The
+> prefix flag is `useAckPrefixForInstreamResponses`, defaulted to `1` by
+> `ShimBt_resetBtResponseVars` (`:191-201`) — which runs at startup and on every
+> disconnect (`:2545`), so **the prefix is on again after every reconnection**.
+
+An unsolicited push carries the session CRC if one is enabled, exactly like a
+solicited response (`:2462-2466`).
+
+**When a push happens.** The firmware pushes status whenever its own state
+changed for a reason the host did not cause:
+
+| Trigger | Call site |
+|---|---|
+| Sensing started | `TASK_STARTSENSING` — `TaskList/shimmer_taskList.c:129-131` |
+| Sensing stopped | `TASK_STOPSENSING` — `TaskList/shimmer_taskList.c:132-135` |
+| Docked | `LogAndStream_setupDock` — `log_and_stream_common.c:514` |
+| Undocked | `LogAndStream_setupUndock` — `log_and_stream_common.c:530-534` |
+
+The two sensing triggers go through
+`ShimBt_instreamStatusRespSendIfNotBtCmd`, which **suppresses the push when the
+state change was caused by a Bluetooth command** — the host already knows,
+because it got an ACK. A push therefore means "something happened that you did
+not ask for": a button press, a dock or undock, a trial-duration expiry, or a
+low-battery auto-stop.
+
+> `Comms/shimmer_bt_uart.c:2430-2443`, whose comment enumerates exactly those
+> hardware causes. The flag is `sensingStateChangeFromBtCmd`, set by each of the
+> six start/stop handlers (`:915-960`).
+
+The dock and undock pushes call `ShimBt_instreamStatusRespSend` **directly**, so
+they are not suppressed. Undock only pushes when the user button is enabled or no
+usable card is present; otherwise the push is deferred to the logging start that
+follows.
+
+**Normative rules for hosts.**
+
+1. A host must be able to receive `[0xFF] 0x8A 0x71 …` at **any** time while
+   connected — including between a command and its reply, and whether or not
+   streaming is active.
+2. Do not treat the leading `0xFF` of a push as the acknowledgement of an
+   outstanding command. This is the one place where a stray-looking ACK is
+   legitimate, and it is why command/response correlation must be by response
+   opcode, not by counting ACKs.
+3. Re-send `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE` after every reconnect if you
+   rely on the prefix being off.
 
 ## 6. Streaming data flow
 
-_TODO: `START_STREAMING_COMMAND` / `STOP_STREAMING_COMMAND` / `START_SDBT_COMMAND` / `STOP_SDBT_COMMAND` / `START_LOGGING_COMMAND` / `STOP_LOGGING_COMMAND`, that `INQUIRY_COMMAND` must be re-issued after a configuration change because it is what fixes the channel order, and the interleaving of command responses with 0x00 data packets. Cross-reference [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md). Source: `ShimBt_processCmd`, `ShimSens_configureChannels` call in `ShimBt_sendRsp`._
+### 6.1 The six start/stop commands
+
+Two independent activities — streaming over Bluetooth and logging to SD — are
+started and stopped by three pairs of commands. All six take no arguments and
+answer with a bare ACK.
+
+| Command | Opcode | Effect |
+|---|---|---|
+| `START_STREAMING_COMMAND` | `0x07` | Start Bluetooth streaming only |
+| `STOP_STREAMING_COMMAND` | `0x20` | Stop Bluetooth streaming; leave logging running |
+| `START_LOGGING_COMMAND` | `0x92` | Start SD logging only |
+| `STOP_LOGGING_COMMAND` | `0x93` | Stop SD logging; leave streaming running |
+| `START_SDBT_COMMAND` | `0x70` | Start **both** streaming and logging |
+| `STOP_SDBT_COMMAND` | `0x97` | Stop **all** sensing — both activities |
+
+> `Comms/shimmer_bt_uart.c:915-960`. Each handler sets
+> `sensingStateChangeFromBtCmd = 1` (so no unsolicited status push follows, see
+> [§5.4](#54-in-stream-responses)) and then queues the corresponding task.
+
+> **The start commands are conditional and the ACK does not mean "started".**
+> They queue `ShimTask_setStartStreamingIfReady()`,
+> `ShimTask_setStartLoggingIfReady()` or
+> `ShimTask_setStartStreamingAndLoggingIfReady()` — the *IfReady* is load-bearing.
+> A start that cannot proceed (no card, bad file, docked, already sensing) is
+> ACKed and then quietly does nothing. **Confirm with the status bits**: bit 4
+> for streaming, bit 3 for logging, bit 1 for sensing overall
+> ([§5.3](#53-the-status-bytes)). Because a command-initiated change suppresses
+> the unsolicited push, the host must poll `GET_STATUS_COMMAND` rather than wait
+> for one.
+
+The Java driver names 0x92 and 0x93 `START_LOGGING_ONLY_COMMAND` /
+`STOP_LOGGING_ONLY_COMMAND` ([§4.2](#42-sd--trial-configuration)), which is a
+clearer description of what they do.
+
+Not every stop is host-initiated: a trial-duration expiry, a low-battery
+auto-stop, a button press or a dock event can stop sensing on their own, and each
+of those *does* produce an unsolicited status push.
+
+### 6.2 Fixing the packet layout
+
+`INQUIRY_COMMAND` is what determines how a data packet is to be parsed, and the
+inquiry handler calls `ShimSens_configureChannels()` immediately before
+assembling its reply.
+
+> `Comms/shimmer_bt_uart.c:1785-1790`.
+
+**A host must therefore re-issue `INQUIRY_COMMAND` after any configuration
+change and before starting a stream.** The channel-ID list in the response is a
+snapshot of the layout at that instant; there is no notification when it changes,
+and a data packet carries no description of its own contents. Concretely, the
+sequence for every session is:
+
+```
+GET_DEVICE_VERSION_COMMAND      -> generation, so the inquiry payload can be parsed
+GET_FW_VERSION_COMMAND          -> feature gates
+… configuration writes …
+INQUIRY_COMMAND                 -> channel order and count
+START_STREAMING_COMMAND         -> data packets begin
+```
+
+Skipping the re-inquiry after a write is the most common cause of a stream that
+decodes into plausible-looking nonsense: the widths still sum, so nothing fails
+loudly, and every channel is simply attributed to the wrong signal.
+
+### 6.3 Interleaving
+
+Once streaming has started, the same byte stream carries data packets and command
+replies. A data packet begins with `DATA_PACKET` (`0x00`); every response opcode
+is non-zero, so the first byte after any frame boundary tells the host which it
+is looking at.
+
+```
+[0x00] [ts u24] [channel data ...] [crc ...]     data packet
+[0xFF] [rspOpcode] [payload ...]   [crc ...]     command response
+[0xFF] [0x8A] [0x71] [status ...]  [crc ...]     unsolicited status push
+```
+
+The packet layout, the 3-byte timestamp and its 512-second wrap at 32768 Hz, and
+every channel's encoding are in
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md).
+
+**A host must keep servicing command replies throughout a stream.** Commands
+remain accepted while sensing — all the `GET`s, and the 43-entry blocked list is
+only writes ([§10](#10-important-boundaries)) — and their replies are queued into
+the same transmit ring as data packets, so a reply appears at whatever packet
+boundary the ring reaches it. The same applies during an SD file transfer, whose
+data frames interleave with command replies by design
+([§7.13](#713-sd-file-transfer-shimmer3r)).
+
+There is **no host-side flow control**. If the host cannot keep up, the device's
+transmit ring fills and the firmware drops what will not fit rather than blocking
+its sampling loop: `ShimBt_pushBytesToBtTxBuf` returns a failure when the ring
+has insufficient space, and `ShimBt_writeToTxBufAndSend` returns without queueing
+anything.
+
+> `Comms/shimmer_bt_uart.c:2646-2691`, `:2905-2918`.
+
+A disconnect stops streaming unconditionally, whether or not the host asked
+(`ShimBt_handleBtRfCommStateChange`, `:2533-2534`), and on Shimmer3 records a
+`BT_ERROR_DISCONNECT_WHILE_STREAMING` error count (`:2527-2532`).
 
 ## 7. Command reference
 
