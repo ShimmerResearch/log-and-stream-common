@@ -994,8 +994,8 @@ case SET_CENTER_COMMAND:
 }
 ```
 
-> `Comms/shimmer_bt_uart.c:990-995`. `masterEnable` lives in the
-> `SDTrialConfig0` bitfield group (`Configuration/shimmer_config.h:384`), which
+> `Comms/shimmer_bt_uart.c:990-995`. `masterEnable` is bit 1 of the
+> `SDTrialConfig0` bitfield group (`Configuration/shimmer_config.h:381-383`), which
 > the struct layout places at InfoMem **217** (`NV_SD_TRIAL_CONFIG0`, i.e.
 > `128 + 89`). The flush is directed at InfoMem **130**
 > (`NV_CONFIG_SETUP_BYTE4`).
@@ -1151,31 +1151,783 @@ why [§4.2](#42-sd--trial-configuration) shows both names; on LogAndStream only
 
 ### 7.8 Sensor settings
 
-_TODO: the `SET_SENSORS_COMMAND` 3-byte enable bitmap and the per-sensor rate/range GET/SET triplets, each of which writes one config-setup byte and re-runs the correction pass. Source: `ShimBt_processCmd`._
+Every sensor setting is reachable two ways: through `SET_INFOMEM_COMMAND`, and
+through a dedicated command. The dedicated commands are narrower — each writes
+one field, clamps it, flushes one to four InfoMem bytes and mirrors them into the
+SD header — but they share the InfoMem path's behaviour, because they all funnel
+through `ShimBt_settingChangeCommon`, which runs the whole-image correction pass
+before flushing.
+
+> `ShimBt_settingChangeCommon`, `Comms/shimmer_bt_uart.c:1638-1647`.
+
+#### `SET_SENSORS_COMMAND` (0x08)
+
+- **Request:** `[0x08][sensors0][sensors1][sensors2]`
+- **Response:** `[ACK]`
+
+Three raw bitmap bytes copied to InfoMem 3-5 (`NV_SENSORS0..2`). There is no
+matching *get*: read the enabled set back from the inquiry response's channel
+list, which is what actually determines the packet layout, or from
+`GET_INFOMEM_COMMAND`. Bit assignments are in
+[SHIMMER3_CONFIGURATION_INFOMEM.md §3](SHIMMER3_CONFIGURATION_INFOMEM.md#3-sampling-rate-buffer-size-and-sensor-enables-bytes-0-5).
+
+> `Comms/shimmer_bt_uart.c:961-966`.
+
+Shimmer3R has two further enable bytes at InfoMem 128-129 (`NV_SENSORS3`,
+`NV_SENSORS4`) which this command **cannot reach** — they are writable only
+through `SET_INFOMEM_COMMAND` at offset 128.
+
+The correction pass resolves mutually exclusive channels rather than rejecting
+them: GSR wins over the internal ADC channel it shares a pin with, the bridge
+amplifier wins over its two ADC channels, a 24-bit ExG enable wins over the
+16-bit enable for the same chip, and skin temperature or the resistance
+amplifier force their shared ADC channel on. None of this is reported back.
+
+> `ShimConfig_checkAndCorrectConfig`, `Configuration/shimmer_config.c:432-504`.
+
+#### `SET_SAMPLING_RATE_COMMAND` (0x05) / `GET_SAMPLING_RATE_COMMAND` (0x03)
+
+- **SET request:** `[0x05][divLo][divHi]`
+- **GET response:** `[ACK][0x04][divLo][divHi]` — 2 payload bytes
+
+The value is a **divider**, not a frequency: sample rate in Hz =
+`32768 / divider`. Both platforms clock sampling from a nominal 32768 Hz source
+(`samplingClockFreqGet()` returns `32768.0f` on each).
+
+> `Comms/shimmer_bt_uart.c:1135-1141` (set), `:1812-1818` (get);
+> `Configuration/shimmer_config.c:306,632-635`.
+
+> **Caution.** The divider is stored with **no validation whatsoever** — the
+> handler is a bare `storedConfigPtr->samplingRateTicks = *(uint16_t *) args;`
+> and `ShimConfig_checkAndCorrectConfig` does not touch the field. A divider of
+> `0` is accepted and stored. Hosts must range-check before sending.
+
+#### `SET_CONFIG_SETUP_BYTES_COMMAND` (0x0E) / `GET_CONFIG_SETUP_BYTES_COMMAND` (0x10)
+
+- **SET request:** `[0x0E][b0][b1][b2][b3]`
+- **GET response:** `[ACK][0x0F][b0][b1][b2][b3]` — 4 payload bytes
+
+Bulk access to InfoMem 6-9. On both generations this is 4 bytes only; Shimmer3R's
+setup bytes 4-6 (InfoMem 130-132) are not covered — see the caution in
+[§7.1](#71-inquiry).
+
+> `Comms/shimmer_bt_uart.c:1129-1134`, `:2077-2084`.
+
+#### Per-setting triplets
+
+Each row is a `SET` / response-opcode / `GET` triple. All the `SET`s are blocked
+while sensing; none of the `GET`s are.
+
+| Setting | SET | RSP | GET | InfoMem byte(s) flushed | Shimmer3 target | Shimmer3R target |
+|---|---|---|---|---|---|---|
+| Wide-range accel range | `0x09` | `0x0A` | `0x0B` | 6 | LSM303 accel range | LIS2DW12 accel range |
+| Wide-range accel rate | `0x40` | `0x41` | `0x42` | 6 | LSM303DLHC ODR | LIS2DW12 ODR |
+| Wide-range accel low-power mode | `0x43` | `0x44` | `0x45` | 6 | LSM303DLHC LP | LIS2DW12 LP |
+| Wide-range accel high-resolution mode | `0x46` | `0x47` | `0x48` | 6 | LSM303DLHC HR | LIS2DW12 HR |
+| Gyroscope rate | `0x4C` | `0x4D` | `0x4E` | 7 | MPU9x50 sample-rate divider | LSM6DSV ODR |
+| Magnetometer gain / range | `0x37` | `0x38` | `0x39` | 8 | LSM303 mag range | **LIS3MDL alternative-mag range** |
+| Magnetometer rate | `0x3A` | `0x3B` | `0x3C` | 8 | LSM303DLHC mag ODR | LIS2MDL ODR |
+| Gyroscope range | `0x49` | `0x4A` | `0x4B` | 8 | MPU9x50 gyro range | LSM6DSV gyro range (3 bits) |
+| Alternative accel range | `0x4F` | `0x50` | `0x51` | 9 | MPU9x50 accel range | **LSM6DSV low-noise accel range** |
+| Pressure oversampling ratio | `0x52` | `0x53` | `0x54` | 9 | BMP180/BMP280 OSS | BMP390/BMP581 OSR (3 bits) |
+| GSR range | `0x21` | `0x22` | `0x23` | 9 | | |
+| Internal expansion power | `0x5E` | `0x5F` | `0x60` | 9 | | |
+| Alternative accel rate | `0xAC` | `0xAD` | `0xAE` | 130 | | ADXL371 rate |
+| Alternative mag rate | `0xB2` | `0xB3` | `0xB4` | 131 | *unused, forced to 0* | LIS3MDL ODR |
+
+- **SET request:** `[setOpcode][value]` → `[ACK]`
+- **GET response:** `[ACK][rspOpcode][value]` — 1 payload byte
+
+> Handlers at `Comms/shimmer_bt_uart.c:1032-1037, 1053-1128, 1233-1238,
+> 1480-1491`; responses at `:1819-1840, 1928-1945, 2025-2053, 2094-2099,
+> 2209-2220`.
+
+⚠️ **Two opcodes address a different sensor on Shimmer3R than their name
+suggests.** `SET`/`GET_MAG_GAIN_COMMAND` (0x37/0x39) writes and reads
+`altMagRange` — the LIS3MDL *alternative* magnetometer — not the primary LIS2MDL
+(`Comms/shimmer_bt_uart.c:1065-1075`, `:1825-1834`). `SET`/`GET_ALT_ACCEL_RANGE_COMMAND`
+(0x4F/0x51) writes and reads `lnAccelRange` — the LSM6DSV *low-noise* accel, the
+primary one — not an alternative part (`:1106-1116`, `:2031-2041`). Both are
+consistent between the set and the get, so a host that only round-trips values
+will not notice; a host that labels the value for a user will mislabel it. The
+Java driver preserves the legacy Shimmer3 names for these opcodes, which is why
+[§4.1](#41-core) shows aliases such as `SET_LSM6DSV_GYRO_RANGE_COMMAND` for
+0x49.
+
+> **Every setter clamps silently.** Out-of-range values are replaced with a
+> hard-coded fallback and then ACKed as if accepted — for example a
+> wide-range-accel rate above the sensor's maximum becomes 100 Hz, a GSR range
+> above 4 becomes auto-range, a gyro range above the maximum becomes 500 dps,
+> and a pressure oversampling ratio above the fitted sensor's maximum becomes
+> no-oversampling. There is no NACK and no indication in the ACK.
+> `Configuration/shimmer_config.c:309-427` (`ShimConfig_gyroRangeSet`,
+> `gyroRateSet`, `configBytePressureOversamplingRatioSet`,
+> `configByteMagRateSet`, `configByteAltMagRateSet`),
+> `Comms/shimmer_bt_uart.c:1034,1056-1060,1069-1071,1109-1112,1235`.
+> **Always read the value back.**
+
+#### `GET_BUFFER_SIZE_COMMAND` (0x36)
+
+- **Request:** `[0x36]`
+- **Response:** `[ACK][0x35][bufferSize]` — 1 payload byte
+
+Returns InfoMem 2, which current firmware fixes at `1` (one sample per data
+packet). There is no `SET` — the Java driver's `SET_BUFFER_SIZE_COMMAND` (0x34)
+is a legacy opcode this firmware does not define, see
+[Appendix B](#appendix-b-java-only-and-legacy-opcodes).
+
+> `Comms/shimmer_bt_uart.c:2124-2129`; `Configuration/shimmer_config.c:155`.
 
 ### 7.9 ExG registers
 
-_TODO: `GET_EXG_REGS_COMMAND` 0x63 `[chip][startAddr][len]` and `SET_EXG_REGS_COMMAND` 0x61 `[chip][startAddr][len][data...]`, the validation limits (chip < 2, addr < 10, len < 11), and the SR47-4+ CONFIG2 bit-3 forcing. Source: `ShimBt_processCmd`._
+Direct access to the two ADS1292R analogue front-end chips' register banks, ten
+registers each, mirrored in InfoMem at 10-19 (chip 0) and 20-29 (chip 1).
+
+#### `GET_EXG_REGS_COMMAND` (0x63)
+
+- **Request:** `[0x63][chip][startAddr][len]`
+- **Response:** `[ACK][0x62][len][data × len]` — `1 + len` payload bytes
+
+| Field | Valid range |
+|---|---|
+| `chip` | 0 or 1 |
+| `startAddr` | 0..9 |
+| `len` | 0..10 |
+
+The values are read from the InfoMem mirror, not from the chip over SPI, so they
+reflect what the firmware believes it configured.
+
+> `Comms/shimmer_bt_uart.c:1038-1052` (validation), `:2221-2240` (response).
+
+> **Caution.** On an invalid argument triple the firmware sets `len = 0` and
+> still answers, so the reply is `[ACK][0x62][0x00]` — a well-formed
+> zero-length read, not an error. A host cannot distinguish "you asked for zero
+> bytes" from "your arguments were rejected". Note also that `startAddr + len`
+> is **not** checked against 10; `startAddr = 9, len = 10` passes validation.
+
+#### `SET_EXG_REGS_COMMAND` (0x61)
+
+- **Request:** `[0x61][chip][startAddr][len][data × len]`
+- **Response:** `[ACK]`
+
+Note the length byte is the **third** argument here, not the first — this is the
+one variable-length command whose in-band length sits at `args[2]` rather than
+`args[0]` (`Comms/shimmer_bt_uart.c:477-480`). Same validation as the read; an
+invalid triple writes nothing and still ACKs.
+
+The handler writes the requested range into the InfoMem mirror, flushes exactly
+those bytes, mirrors them into the SD header, and queues the SD configuration
+file for rewrite.
+
+> `Comms/shimmer_bt_uart.c:1239-1273`.
+
+**The SR47-4 clock-line fix.** On an EXG-unified expansion board of major
+revision 4 or greater, bit 3 of chip 0's `CONFIG2` register is forced to 1 after
+the host's bytes are applied, because that revision ties the ADS1292R clock
+lines together and the bit is required for correct clocking.
+
+> `Comms/shimmer_bt_uart.c:1255-1263`; the same forcing is applied on every
+> correction pass by `ShimConfig_checkAndCorrectConfig`
+> (`Configuration/shimmer_config.c:541-547`), keyed on
+> `ShimBrd_areADS1292RClockLinesTied()`.
+
+> **Caution.** The forced bit is set in RAM, but the flush that follows writes
+> only the host's requested range (`InfoMem_write(exgConfigOffset + exgStartAddr,
+> …, exgLength)`, `Comms/shimmer_bt_uart.c:1265-1266`). A write to chip 0 that
+> does not include `CONFIG2` (InfoMem 11, i.e. `startAddr` 1) therefore leaves
+> the forced bit unpersisted until some later write or correction pass flushes
+> that byte. Hosts writing chip 0 should write the whole 10-byte bank in one
+> command — `[0x61][0x00][0x00][0x0A][…]` — and read it back.
 
 ### 7.10 Daughter card
 
-_TODO: `GET/SET_DAUGHTER_CARD_ID_COMMAND` (16-byte ID page) and `GET/SET_DAUGHTER_CARD_MEM_COMMAND` (the 2032-byte user area at EEPROM offset 16), with their bounds checks. Source: `ShimBt_processCmd`._
+Two windows onto the same 2048-byte CAT24C16 EEPROM on the expansion board.
+Page 0 (absolute bytes 0-15) is the daughter-card identity page; the *daughter
+card memory* commands address everything above it, with host offset 0 mapping to
+absolute byte 16.
+
+> `EEPROM/shimmer_eeprom.h:15-32`; `CAT24C16_TOTAL_SIZE` 2048 and
+> `CAT24C16_PAGE_SIZE` 16 from the platform `CAT24C16/CAT24C16.h`.
+> The `+ 16` offset is applied at `Comms/shimmer_bt_uart.c:2275` (read) and
+> inside `ShimEeprom_writeDaughterCardMem` (write).
+
+#### Identity page — `GET_DAUGHTER_CARD_ID_COMMAND` (0x66) / `SET_DAUGHTER_CARD_ID_COMMAND` (0x64)
+
+- **GET request:** `[0x66][len][offset]`
+- **GET response:** `[ACK][0x65][len][data × len]` — `1 + len` payload bytes
+- **SET request:** `[0x64][len][offset][data × len]`
+- **SET response:** `[ACK]`
+
+Note `offset` is a **single byte** here, not the little-endian pair the memory
+commands use. Validation is `len <= 16 && offset <= 15 && len + offset <= 16` on
+both directions. The read comes from the firmware's cached, parsed identity page
+rather than from the EEPROM, and a write updates both the EEPROM and that cache
+so a read-back immediately reflects it.
+
+> `Comms/shimmer_bt_uart.c:1308-1330` (both handlers), `:2261-2270` (response).
+
+The page holds the expansion-board ID, major and minor revision that the
+firmware keys hardware-dependent behaviour on — including the SR47-4 ExG fix in
+[§7.9](#79-exg-registers) — so writing it wrongly changes how the firmware
+drives the board. Board identities are catalogued in
+[SHIMMER3_BOARD_REVISIONS.md](SHIMMER3_BOARD_REVISIONS.md).
+
+> **Caution — never send `len = 0` to `SET_DAUGHTER_CARD_ID_COMMAND`.** The
+> argument-collection branch for this opcode reads the two fixed bytes, and if
+> `args[0]` is zero it returns without arming for more data **and without
+> dispatching the command** (`Comms/shimmer_bt_uart.c:488-499`). The result is
+> no response at all and a parser left mid-command, which will consume the next
+> two host bytes as a fresh length/offset pair. This is the only variable-length
+> command with that shape; the name/expId/configTime group falls through and
+> dispatches with a zero length instead (`:500-511`).
+
+#### User area — `GET_DAUGHTER_CARD_MEM_COMMAND` (0x69) / `SET_DAUGHTER_CARD_MEM_COMMAND` (0x67)
+
+- **GET request:** `[0x69][len][offsetLo][offsetHi]`
+- **GET response:** `[ACK][0x68][len][data × len]` — `1 + len` payload bytes
+- **SET request:** `[0x67][len][offsetLo][offsetHi][data × len]`
+- **SET response:** `[ACK]` on success, `[NACK]` on a rejected write
+
+Validation is `len <= 128 && offset <= 2031 && len + offset <= 2032`. The read
+path performs the check in the command handler; the write path performs the
+equivalent check inside `ShimEeprom_writeDaughterCardMem` and — unlike almost
+every other rejected write in this protocol — genuinely **NACKs** on failure.
+
+> `Comms/shimmer_bt_uart.c:1331-1351`, `:2271-2278`;
+> `EEPROM/shimmer_eeprom.c:393-403`.
+
+A rejected *read*, by contrast, follows the usual pattern: bare ACK, no
+`DAUGHTER_CARD_MEM_RESPONSE`.
+
+**Two regions inside the user area have side effects when written.** Writing a
+range that overlaps the radio-settings byte makes the firmware re-read its
+sensor-settings page (which is how the classic-Bluetooth / BLE enable bits are
+changed at runtime); writing a range that overlaps the 80-byte branding record at
+host offset 1936 makes it re-read the branding details. Neither is re-seeded
+mid-write, so a multi-chunk host write is safe, and new advertising names take
+effect at the next Bluetooth initialisation — which `SET_FEATURE`'s
+reboot-on-disconnect option ([§7.12](#712-control-and-test)) exists to trigger.
+
+> `EEPROM/shimmer_eeprom.c:405-418`.
+
+⚠️ **Java driver gap.** Three of these four opcodes (0x67, 0x68, 0x69) plus
+`SET_DAUGHTER_CARD_ID_COMMAND` (0x64) have no named constant in the Java driver
+— flagged `FW_ONLY` in [§4.1](#41-core). Only `GET_DAUGHTER_CARD_ID_COMMAND` and
+its response are named there.
 
 ### 7.11 Derived channels
 
-_TODO: `SET_DERIVED_CHANNEL_BYTES` 0x6D / `GET_DERIVED_CHANNEL_BYTES` 0x6F, the 8 bytes split 3 + 5 across two non-contiguous InfoMem regions, and that these are host-side algorithm flags the firmware only stores. Source: `ShimBt_processCmd`, `ShimBt_sendRsp`._
+- **SET request:** `[0x6D][b0][b1][b2][b3][b4][b5][b6][b7]` — 8 fixed argument bytes
+- **SET response:** `[ACK]`
+- **GET request:** `[0x6F]`
+- **GET response:** `[ACK][0x6E][b0..b7]` — **8** payload bytes
+
+The eight bytes are stored in **two non-contiguous InfoMem regions**: bytes 0-2
+go to InfoMem 31-33 (`NV_DERIVED_CHANNELS_0..2`) and bytes 3-7 to InfoMem 118-122
+(`NV_DERIVED_CHANNELS_3..7`). The split is historical — the original three bytes
+sat immediately below the calibration block, and the five later ones had to go
+above it. The command hides the split: a host always sees eight contiguous
+bytes.
+
+> `Comms/shimmer_bt_uart.c:1368-1382` (set — two `memcpy`s, two `InfoMem_write`s,
+> two SD-header writes), `:2152-2160` (get — two `ShimConfig_storedConfigGet`
+> calls); offsets at `Configuration/shimmer_config.h:99,107`.
+
+The firmware **only stores these bytes**. Nothing in LogAndStream reads them to
+change sampling, channel selection or packet content — they are flags describing
+which derived signals the *host's* processing chain should compute, carried in
+the device configuration so that the recipe travels with the unit and lands in
+the SD file header. Bit meanings are a host-software contract, not a firmware
+one; see
+[SHIMMER3_CONFIGURATION_INFOMEM.md §6](SHIMMER3_CONFIGURATION_INFOMEM.md#6-bluetooth-baud-and-derived-channels).
+
+⚠️ **The Java registry declares the wrong response length.** `BtCommandDetails`
+gives `DERIVED_CHANNEL_BYTES_RESPONSE` (0x6E) **3** payload bytes; the firmware
+emits **8**. The firmware is correct — `Comms/shimmer_bt_uart.c:2152-2160` writes
+3 bytes from `NV_DERIVED_CHANNELS_0` followed by 5 from `NV_DERIVED_CHANNELS_3`.
+The registry length is used only by the Java driver's blocking-read path, so the
+consequence is a host-side truncation that leaves five bytes in the receive
+buffer, not a firmware fault. This is the **only** length disagreement between
+the three sources ([§4.1](#41-core), `LEN_MISMATCH`). New hosts must expect 8.
+
+The Java driver gates the 5-byte extension on
+`isSupportedEightByteDerivedSensors` (LogAndStream 0.7.1,
+[Appendix A](#appendix-a-firmware-version-gates)), so on older firmware only the
+first three bytes are meaningful — but the firmware in this repository always
+sends eight.
 
 ### 7.12 Control and test
 
-_TODO: `SET_CRC_COMMAND`, `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE`, `SET_DATA_RATE_TEST` / `DATA_RATE_TEST_RESPONSE`, `SET_FACTORY_TEST`, `SET_FEATURE`, `RESET_BT_ERROR_COUNTS`, `RESET_TO_DEFAULT_CONFIGURATION_COMMAND`, `DUMMY_COMMAND`. Source: `ShimBt_processCmd`._
+#### `SET_CRC_COMMAND` (0x8B)
+
+- **Request:** `[0x8B][mode]`
+- **Response:** `[ACK]` — with the new CRC mode already applied
+
+Sets the session CRC mode: `0` off, `1` one byte, `2` two bytes. Any value of 3
+or more falls back to **off** rather than being rejected. See
+[§3.3](#33-crc-modes) for the algorithm and what the CRC covers. Not blocked
+while sensing.
+
+> `Comms/shimmer_bt_uart.c:933-937`; `ShimBt_setCrcMode` at `:2372-2382`.
+
+#### `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE` (0xA3)
+
+- **Request:** `[0xA3][state]`
+- **Response:** `[ACK]`
+
+Controls whether **unsolicited** in-stream status pushes carry a leading ACK
+byte. Non-zero (the default) prefixes them; zero does not. It does not affect
+solicited responses, which always carry an ACK. See
+[§5](#5-status-acknack-and-in-stream-responses).
+
+> `Comms/shimmer_bt_uart.c:938-942`; the flag is consumed at `:2454-2457` and
+> defaulted to 1 by `ShimBt_resetBtResponseVars` (`:191-201`), which runs on
+> every disconnect (`:2545`).
+
+⚠️ **No Java constant exists for 0x A3** (`FW_ONLY`, [§4.1](#41-core)); the Java
+driver's in-stream parser assumes the prefix is present. Hosts that disable the
+prefix must be sure their own parser expects that.
+
+#### `SET_DATA_RATE_TEST` (0xA4)
+
+- **Request:** `[0xA4][enable]`
+- **Response:** `[ACK]`, then a continuous stream of test packets while enabled
+
+Test packet: `[0xA5][counter u32 LE]` — 5 bytes
+(`DATA_RATE_TEST_PACKET_SIZE`), with a counter that increments once per
+transmitted packet.
+
+The ordering is deliberate and asymmetric: **stopping** takes effect *before* the
+ACK is sent (and flushes the transmit buffer, so queued test packets are
+discarded), while **starting** takes effect *after* the ACK has been queued, so
+the host reliably sees the ACK first.
+
+> `Comms/shimmer_bt_uart.c:1274-1284` (stop path), `:2251-2260` (start path),
+> `ShimBt_loadTxBufForDataRateTest` at `:2867-2902`;
+> `DATA_RATE_TEST_PACKET_SIZE` at `Comms/shimmer_bt_uart.h:258`.
+
+Test packets are **not** ACK-prefixed, are **not** wrapped in
+`INSTREAM_CMD_RESPONSE`, and carry **no CRC** regardless of the session CRC
+mode. They saturate the link deliberately: on Shimmer3R the packets are written
+straight to the UART, bypassing the transmit ring. Blocked while sensing. A
+Shimmer3-only watchdog declares a blockage if the counter has not advanced for
+more than 2 seconds (`ShimBt_checkForBtDataRateTestBlockage`, `:3070-3093`).
+
+Send `[0xA4][0x00]` to stop. A disconnect also stops it
+(`ShimBt_handleBtRfCommStateChange`, `:2536`).
+
+#### `SET_FACTORY_TEST` (0xA8)
+
+- **Request:** `[0xA8][testId]`
+- **Response:** `[ACK]`, then **free-form human-readable text**
+
+| `testId` | Test |
+|---|---|
+| `0` | `FACTORY_TEST_MAIN` |
+| `1` | `FACTORY_TEST_LEDS` |
+| `2` | `FACTORY_TEST_ICS` |
+| `3` | `FACTORY_TEST_LED_STATES` |
+
+> `Comms/shimmer_bt_uart.c:1285-1293`; the enum is `factory_test_t` in
+> `Test/shimmer_test.h:20-27`, and `FACTORY_TEST_COUNT` (4) is the bound.
+
+> **Caution.** The test's output is printed to the Bluetooth UART as plain text
+> (`PRINT_TO_BT_UART`), **not** as protocol frames. Everything a host's command
+> parser sees after the ACK is unframed diagnostic text of unpredictable length,
+> which will desynchronise a state machine keyed on opcodes. Treat the link as
+> text-mode until the device is reconnected. An out-of-range `testId` is
+> silently ACKed with no test run and no output. Blocked while sensing.
+
+#### `SET_FEATURE` (0xB7)
+
+- **Request:** `[0xB7][feature][value]`
+- **Response:** `[ACK]`, or `[NACK]` for an unrecognised `feature`
+
+| `feature` | Name | Platforms | Effect |
+|---|---|---|---|
+| `0` | `FEATURE_NONE` | both | Shimmer3: disables the RN4678 error LEDs. Shimmer3R: no effect. `value` ignored |
+| `1` | `FEATURE_RN4678_ERROR_LEDS` | Shimmer3 only | Enables/disables the RN4678 error LEDs per `value`; silently ignored if the fitted module is not an RN4678 |
+| `2` | `FEATURE_REBOOT_ON_DISCONNECT` | both | Arms (`value` non-zero) or disarms a one-shot soft reboot that fires when the host disconnects |
+
+> `Comms/shimmer_bt_uart.c:1526-1556`; the enum at
+> `Comms/shimmer_bt_uart.h:288-298`. On Shimmer3R, `feature = 1` reaches the
+> final `else` and is **NACKed**, because the RN4678 branch is inside
+> `#if defined(SHIMMER3)`.
+
+`FEATURE_REBOOT_ON_DISCONNECT` exists so that a host can apply settings the
+firmware only reads at boot — principally the EEPROM branding record's
+advertising names ([§7.10](#710-daughter-card)) — without asking a user to
+power-cycle the device by hand. The reboot cannot happen while the host is
+connected, because the link has to drop for the Bluetooth module to re-read its
+name. The request is strictly one-shot and is **skipped while sensing**, so an
+armed reboot can never truncate an active recording; the flag is cleared either
+way, so it never lingers into a later disconnect.
+
+> `ShimBt_handleBtRfCommStateChange`, `Comms/shimmer_bt_uart.c:2562-2577`.
+
+#### `RESET_BT_ERROR_COUNTS` (0xB6)
+
+- **Request:** `[0xB6]`
+- **Response:** `[ACK]` on Shimmer3 with an EEPROM fitted, `[NACK]` otherwise
+
+Clears the persistent Bluetooth error counters and writes the sensor-settings
+page back to EEPROM. **NACKed on all Shimmer3R units** — the handler body is
+`sendNack = 1` outside `#if defined(SHIMMER3)` — and on any Shimmer3 without an
+EEPROM. The counters themselves are the `BT_ERROR_*` bit set at
+`Comms/shimmer_bt_uart.h:326-336`.
+
+> `Comms/shimmer_bt_uart.c:1509-1525`.
+
+#### `RESET_TO_DEFAULT_CONFIGURATION_COMMAND` (0x5A)
+
+- **Request:** `[0x5A]`
+- **Response:** `[ACK]`
+
+Replaces the entire configuration image with the firmware's compiled-in
+defaults, flushes it to InfoMem, rebuilds the SD header and queues the SD
+configuration file for rewrite. Calibration is untouched — use
+`RESET_CALIBRATION_VALUE_COMMAND` ([§7.6](#76-calibration-dump-and-per-sensor-calibration))
+for that. Blocked while sensing.
+
+> `Comms/shimmer_bt_uart.c:1294-1300`; `ShimConfig_setDefaultConfig` at
+> `Configuration/shimmer_config.c:150-240`, whose own
+> `LogAndStream_infomemUpdate()` at `:239` is what persists the result.
+
+The Shimmer-name default is `Shimmer_XXXX` with the last four MAC hex digits
+substituted; the trial-ID default is `DefaultTrial`; the default sample rate is
+51.2 Hz. Full default values are in
+[SHIMMER3_CONFIGURATION_INFOMEM.md §11](SHIMMER3_CONFIGURATION_INFOMEM.md#11-defaults).
+
+#### `DUMMY_COMMAND` (0xB5)
+
+- **Request:** `[0xB5]`
+- **Response:** **none** — not even an ACK
+
+The receive state machine consumes the byte, re-arms for the next command byte,
+and returns without scheduling any processing. It is the only command handled
+entirely inside `ShimBt_dmaConversionDone`.
+
+> `Comms/shimmer_bt_uart.c:596-599`.
+
+Its purpose is to give a host a byte that is guaranteed to be swallowed without
+side effects — useful for flushing a transport's write buffer or for padding.
+Use `TEST_CONNECTION_COMMAND` ([§7.3](#73-device-status)) when you want an
+answer.
+
+⚠️ **No Java constant exists for 0xB5** (`FW_ONLY`, [§4.1](#41-core)).
 
 ### 7.13 SD file transfer (Shimmer3R)
 
-_TODO: the 0xC1–0xCC block — list dir, stat, read with a window, data/status frames, abort, free space, delete — payload layouts and the asynchronous data-frame flow. Source: `Comms/shimmer_sd_file_transfer.{h,c}`, `shimmer-web-sdk` `devices/shimmer3r/sdTransfer/protocol.ts`._
+Eleven opcodes let a host walk the SD card and pull file content over the same
+command channel. The design is deliberately **stateless on the host's behalf**:
+the host walks the tree with `SD_LIST_DIR` and `SD_FILE_STAT`, then asks for
+content one *window* at a time with `SD_FILE_READ`. Recovering from any
+interruption is a fresh `SD_FILE_READ` from the last byte offset the host is sure
+it holds. There is no session to re-establish.
+
+> `Comms/shimmer_sd_file_transfer.h:1-22` states the design intent;
+> `Comms/shimmer_sd_file_transfer.c` implements it. The host reference is
+> `Extras/python_scripts/Shimmer_common/shimmer_comms_bluetooth.py:391-576`
+> and `shimmer-web-sdk` `devices/shimmer3r/sdTransfer/protocol.ts`.
+
+**Served on Shimmer3R only.** The opcodes are reserved protocol-wide, but every
+handler sits behind `#if defined(SHIMMER3R)`. On Shimmer3 the command bytes fall
+to the receive state machine's `default:` and are silently ignored — no ACK, no
+NACK. Hosts must gate on `GET_FW_VERSION_COMMAND` and
+`GET_DEVICE_VERSION_COMMAND`, not on probing.
+
+> `Comms/shimmer_bt_uart.h:227-235`; the guarded arming cases at
+> `Comms/shimmer_bt_uart.c:662-665, 698-701, 726-738`.
+
+> **Opcode 0xCC is not a typo.** `SD_LIST_DIR_COMMAND` sits at `0xCC` while its
+> response is `0xC1`, breaking the otherwise consecutive block, because the
+> CYW20820's UART receive demultiplexer routes the EZ-Serial binary start-of-frame
+> bytes `0x80`, `0xC0` and `0xD0` to the module's own parser rather than to the
+> Shimmer command parser. `0xC0` would never have arrived. See
+> [§2.3](#23-framing-guarantees-per-transport).
+
+#### Access gate
+
+Every command in this block is checked against the same gate before it acts, and
+reports the verdict **in band** through a status byte rather than by timing out
+or NACKing:
+
+| Value | Constant | Meaning |
+|---|---|---|
+| `0x00` | `SD_FT_STATUS_OK` | Proceeding |
+| `0x01`-`0x13` | — | Raw FatFs `FRESULT` code, passed through |
+| `0xF0` | `SD_FT_STATUS_SD_UNAVAILABLE` | Docked, USB-C attached, the MCU does not own the card, no card, or a bad card |
+| `0xF1` | `SD_FT_STATUS_BUSY` | Sensing, logging or streaming |
+| `0xF2` | `SD_FT_STATUS_BAD_ARGS` | Path missing, empty, or longer than 96 bytes |
+
+> `Comms/shimmer_sd_file_transfer.h:29-46`; `sdFtAccessCheck` in
+> `Comms/shimmer_sd_file_transfer.c`.
+
+The v1 policy is idle-only: transfers are served only when the device is not
+sensing, logging or streaming, and the MCU owns the SD card (not docked, no
+USB-C). If the card was powered down when the last Bluetooth session ended, the
+gate performs a full card bring-up on first use, which costs a few hundred
+milliseconds — so the first command of a session can be noticeably slower than
+the rest.
+
+#### Path arguments
+
+Every path-bearing command carries the path length in its **last fixed argument
+byte**, followed by that many ASCII bytes. Valid lengths are 1..96
+(`SD_FT_MAX_PATH_LEN`). A zero or oversized length is not armed for: the command
+proceeds with whatever was received and the handler reports
+`SD_FT_STATUS_BAD_ARGS` in its response — never silence.
+
+> `Comms/shimmer_bt_uart.c:512-531`; `sdFtCopyPathArg` in
+> `Comms/shimmer_sd_file_transfer.c`.
+
+#### `SD_LIST_DIR_COMMAND` (0xCC)
+
+- **Request:** `[0xCC][startIdxLo][startIdxHi][maxEntries][pathLen][path × pathLen]`
+- **Response:** `[ACK][0xC1][status][startIdx u16][entriesLen u16][nEntries][flags][entries…]`
+
+`maxEntries` is clamped to 1..16 (`SD_FT_LIST_MAX_ENTRIES`); zero or oversized
+becomes 16. The response header is 8 bytes including the opcode, then
+`nEntries` variable-length entries:
+
+| Offset in entry | Size | Field |
+|---|---|---|
+| 0 | 1 | `attr` — bit 0 `SD_FT_ATTR_DIR`, bit 1 `SD_FT_ATTR_NAME_TRUNCATED` |
+| 1..4 | 4 | File size in bytes, `uint32_le` |
+| 5..6 | 2 | FAT date, `uint16_le` |
+| 7..8 | 2 | FAT time, `uint16_le` |
+| 9 | 1 | `nameLen` |
+| 10.. | `nameLen` | Name, ASCII, not null-terminated |
+
+`flags` bit 0 means **more entries exist**: either `maxEntries` was reached or
+the response hit its 240-byte budget. Page by re-issuing the command with
+`startIdx` advanced by the `nEntries` already received. Names longer than 64
+bytes (`SD_FT_LIST_NAME_MAX`) are truncated and flagged per entry. Dot entries
+are skipped.
+
+> `ShimSdFileTransfer_buildListDirRsp` and `ShimSdFileTransfer_stageListDir` in
+> `Comms/shimmer_sd_file_transfer.c`; the 240-byte budget and its rationale at
+> `:30-39`, chosen so that ACK + response + 2 CRC bytes stays under 253 and the
+> same wire format could later serve Shimmer3's 133-byte response budget.
+
+#### `SD_FILE_STAT_COMMAND` (0xC2)
+
+- **Request:** `[0xC2][pathLen][path × pathLen]`
+- **Response:** `[ACK][0xC3][status][size u32][fdate u16][ftime u16][attr]` — 11 payload bytes
+
+On any failure the size, date and time fields are zero-filled and `status`
+carries the reason.
+
+#### `SD_FREE_SPACE_COMMAND` (0xC8)
+
+- **Request:** `[0xC8]`
+- **Response:** `[ACK][0xC9][status][freeKb u32][totalKb u32]` — 9 payload bytes
+
+Both figures are in kilobytes, computed with 64-bit intermediates and saturated
+at `0xFFFFFFFF` so a large exFAT card cannot overflow them. This command mounts
+and interrogates the filesystem, so it can take seconds on a large card — the
+Python reference allows a 20-second timeout
+(`shimmer_comms_bluetooth.py:461`).
+
+#### `SD_DELETE_COMMAND` (0xCA)
+
+- **Request:** `[0xCA][pathLen][path × pathLen]`
+- **Response:** `[ACK][0xCB][status]` — 1 payload byte
+
+**Deletion is confined to the data directory.** The path must begin with
+`data/` or `/data/` (case-insensitive), must name something inside it, and must
+not contain `..`; anything else is `SD_FT_STATUS_BAD_ARGS`. Any cached read
+handle is closed first, because FatFs with file locking enabled refuses to
+unlink an open file (`FR_LOCKED`). `status` is otherwise the raw FatFs result —
+`FR_OK` is `0`, which is also `SD_FT_STATUS_OK`.
+
+> `sdFtIsDeletablePath` and `ShimSdFileTransfer_buildDeleteRsp` in
+> `Comms/shimmer_sd_file_transfer.c`.
+
+#### `SD_FILE_READ_COMMAND` (0xC4)
+
+- **Request:** `[0xC4][offset u32][windowLen u32][blockPayloadLen u16][pathLen][path × pathLen]`
+  — 11 fixed argument bytes, then the path
+- **Immediate response:** `[ACK]` only
+
+The window verdict then arrives **asynchronously**, as a run of data frames
+followed by exactly one status frame. Nothing else is returned synchronously.
+
+| Field | Meaning |
+|---|---|
+| `offset` | First byte of the file to send, `uint32_le` |
+| `windowLen` | How many bytes to send, `uint32_le`. Saturates at the 32-bit end of the file |
+| `blockPayloadLen` | Preferred payload bytes per data frame, `uint16_le` |
+| `pathLen` / `path` | File to read |
+
+`blockPayloadLen` is normalised: `0` becomes 512 (`SD_FT_BLOCK_PAYLOAD_DEFAULT`),
+values below 64 become 64 (`SD_FT_BLOCK_PAYLOAD_MIN`), values above 1024 become
+1024 (`SD_FT_BLOCK_PAYLOAD_MAX`), and the result is rounded **down to a multiple
+of 4** so successive blocks keep the payload buffer aligned for FatFs's
+whole-sector reads. The host reassembles from each frame's own length field, so
+it is indifferent to the rounding.
+
+> `ShimSdFileTransfer_startRead` in `Comms/shimmer_sd_file_transfer.c`; the
+> constants at `Comms/shimmer_sd_file_transfer.h:52-57`.
+
+Issuing a new `SD_FILE_READ_COMMAND` while a window is in flight **supersedes**
+it: the old window is abandoned and a status frame with `SD_FT_XFER_SUPERSEDED`
+is queued for the old session before the new one starts.
+
+**Data frame** — `SD_FILE_DATA_RESPONSE` (0xC5):
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | `0x8A` `INSTREAM_CMD_RESPONSE` |
+| 1 | 1 | `0xC5` |
+| 2 | 1 | `sessionId` |
+| 3..4 | 2 | `seq`, `uint16_le`, zero-based within the window |
+| 5..6 | 2 | `len`, `uint16_le`, payload bytes in this frame |
+| 7..7+len-1 | `len` | Payload |
+| 7+len | 2 | CRC-16, `uint16_le`, over bytes 0..6+len |
+
+**Status frame** — `SD_FILE_STATUS_RESPONSE` (0xC6), 10 bytes:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | `0x8A` |
+| 1 | 1 | `0xC6` |
+| 2 | 1 | `sessionId` |
+| 3 | 1 | `SD_FT_XFER_*` status |
+| 4..7 | 4 | `nextOffset`, `uint32_le` — the file offset to resume from |
+| 8..9 | 2 | CRC-16, `uint16_le`, over bytes 0..7 |
+
+| Status | Constant | Meaning |
+|---|---|---|
+| `0` | `SD_FT_XFER_WINDOW_COMPLETE` | The requested window was delivered in full |
+| `1` | `SD_FT_XFER_EOF` | End of file reached before the window was filled |
+| `2` | `SD_FT_XFER_HOST_ABORT` | `SD_TRANSFER_ABORT_COMMAND` was received |
+| `3` | `SD_FT_XFER_SD_LOST` | Card became unavailable |
+| `4` | `SD_FT_XFER_FS_ERROR` | Filesystem read error |
+| `5` | `SD_FT_XFER_SUPERSEDED` | A newer `SD_FILE_READ_COMMAND` replaced this window |
+| `6` | `SD_FT_XFER_DENIED` | Access gate refused, or the path was invalid |
+| `7` | `SD_FT_XFER_NOT_FOUND` | File not found |
+
+> `Comms/shimmer_sd_file_transfer.h:38-63` for the codes and frame lengths;
+> frame assembly at `Comms/shimmer_sd_file_transfer.c:305-311` (status) and
+> `:596-604` (data).
+
+> **These frames are framed differently from every other response.** They carry
+> **no leading ACK byte**, and their trailing CRC-16 is **always present and
+> independent of `SET_CRC_COMMAND`** — it is computed by the transfer module
+> itself, not by the response assembler, because a bulk transfer needs integrity
+> checking whether or not the session negotiated a CRC. A host must therefore
+> parse `0x8A 0xC5` and `0x8A 0xC6` as self-delimiting frames, using the
+> `len` field, and must not apply its session-CRC expectations to them.
+
+**Pacing and interleaving.** Data frames are pushed from a low-priority task
+that copies only what fits in the Bluetooth transmit ring per pass, keeping 256
+bytes (`SD_FT_TX_RESERVE`) free so command responses and status frames always
+have room. Pacing is inherited from the UART transmit-complete interrupt and the
+module's flow control; up to 4 blocks (`SD_FT_BLOCKS_PER_PASS`) are pushed per
+task invocation before yielding. **Command responses can therefore appear
+interleaved between data frames**, and a host must keep parsing command replies
+throughout a transfer.
+
+#### `SD_TRANSFER_ABORT_COMMAND` (0xC7)
+
+- **Request:** `[0xC7]`
+- **Response:** `[ACK]`, then a status frame with `SD_FT_XFER_HOST_ABORT`
+
+Tears down the active window and queues the status frame so the host learns the
+resume offset. Safe to send in any state — a no-op when no window is active,
+in which case no status frame follows.
+
+> `ShimSdFileTransfer_abort`, declared at
+> `Comms/shimmer_sd_file_transfer.h:76-79`.
+
+A Bluetooth disconnect drops the transfer **silently** — there is no link to
+report on — so a reconnecting host must resume from its own last-known offset
+rather than expecting a status frame
+(`Comms/shimmer_bt_uart.c:2538-2539`).
 
 ### 7.14 SD sync
 
-_TODO: `SET_SD_SYNC_COMMAND` 0xE0 / `SD_SYNC_RESPONSE` 0xE1, the centre/node roles, the ACK-carrying-a-command-byte shape, and that sync mode blocks all other commands. Source: `SDSync/shimmer_sd_sync.{h,c}`, `ShimBt_isCmdAllowedWhileSdSyncing`._
+SD sync distributes a common time base across a group of units logging
+autonomously to their own cards: one unit is the **centre**, the rest are
+**nodes**, and the centre connects to each node in turn over classic Bluetooth
+to hand it the centre's clock. The two opcodes below are that exchange. Full
+timing behaviour is in `SDSync/shimmer_sd_sync.{h,c}` and is outside this
+document's scope.
+
+**Sync mode is exclusive.** While `syncEnable` is set in the configuration, the
+firmware NACKs every command except `SET_SD_SYNC_COMMAND` and
+`ACK_COMMAND_PROCESSED` — and, symmetrically, NACKs those two when
+`syncEnable` is clear. The check is a single XOR at the top of
+`ShimBt_processCmd`:
+
+```c
+if (storedConfigPtr->syncEnable ^ ShimBt_isCmdAllowedWhileSdSyncing(gAction))
+{
+  sendNack = 1;
+}
+```
+
+> `Comms/shimmer_bt_uart.c:830-834`; `ShimBt_isCmdAllowedWhileSdSyncing` at
+> `:2934-2937`.
+
+A host connecting to a sync-enabled unit therefore cannot do anything at all —
+not even read the firmware version. To configure such a unit, clear `syncEnable`
+(InfoMem 217 bit 2) while it is not in sync mode. This is the single most
+common cause of a device that "connects but NACKs everything".
+
+#### Centre → node: `SET_SD_SYNC_COMMAND` (0xE0)
+
+- **Request:** `[0xE0][flag][time × 8][crc × 1]` — 10 argument bytes
+- **Response:** `[ACK][0xE1][flag]` from the node, assembled by the sync module
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | Status / flag byte (`SYNC_PACKET_FLG_IDX`) |
+| 1..8 | 8 | Centre's clock, 32768 Hz ticks, little-endian (`SYNC_PACKET_TIME_IDX`) |
+| 9 | 1 | CRC, 1 byte — **always present**, `BT_SD_SYNC_CRC_MODE` is fixed at `CRC_1BYTE_ENABLED` |
+
+The argument count the parser arms is
+`SYNC_PACKET_PAYLOAD_SIZE + BT_SD_SYNC_CRC_MODE` = 9 + 1 = 10, which is why
+[§4.2](#42-sd--trial-configuration) shows it symbolically. The sync CRC is
+independent of `SET_CRC_COMMAND` — this exchange is always CRC-protected.
+
+> `Comms/shimmer_bt_uart.c:766-772` (arming, with `ShimSdSync_saveLocalTime()`
+> called *before* anything else so the node's own clock is captured as close as
+> possible to the moment the bytes arrived), `:1492-1508` (handler);
+> `SDSync/shimmer_sd_sync.h:22,37-46`.
+
+The handler reassembles the full packet — putting the opcode back in front of
+the arguments — and hands it to the node routine. If the unit is not actually in
+sync mode with a sync session running, it NACKs.
+
+Two flag values are named: `SYNC_PACKET_RESEND` (`0x01`) and `SYNC_FINISHED`
+(`0xFF`) (`SDSync/shimmer_sd_sync.h:63-64`).
+
+Note that `SET_SD_SYNC_COMMAND` is **not** answered by the generic ACK path: the
+common tail at `Comms/shimmer_bt_uart.c:1618` excludes it, because the reply is
+built by the sync module instead.
+
+#### Node → centre: `ACK_COMMAND_PROCESSED` carrying a command byte
+
+The node's reply is an ACK **followed by a command byte and a flag** — the one
+place in this protocol where `0xFF` is not a bare acknowledgement:
+
+- **Node sends:** `[0xFF][0xE1][flag]`
+
+The centre's receive state machine handles this by arming one argument byte after
+an `0xFF`, and then, if that byte is `SD_SYNC_RESPONSE` (0xE1), arming one more
+for the flag.
+
+> `Comms/shimmer_bt_uart.c:541-557` (the two-stage arming) and `:1589-1606`
+> (the handler, which routes the flag to the centre routine). Outside sync mode
+> a bare `ACK_COMMAND_PROCESSED` from the peer is NACKed (`:1601-1604`).
+
+⚠️ **`SD_SYNC_RESPONSE` (0xE1) has no Java constant** (`FW_ONLY`,
+[§4.2](#42-sd--trial-configuration)); the Java driver names `SET_SD_SYNC_COMMAND`
+`ROUTINE_COMMUNICATION`, its original name. A host implementation does not
+normally need either — sync is a device-to-device exchange, and a host's only
+involvement is enabling or disabling it in the configuration.
 
 ## 8. Connection session workflow
 
