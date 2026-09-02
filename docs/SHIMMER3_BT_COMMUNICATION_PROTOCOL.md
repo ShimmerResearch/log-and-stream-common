@@ -120,6 +120,17 @@ _The tables in this section are generated mechanically from the firmware header,
 the firmware command parser and response assembler, and the two host
 implementations. Do not hand-edit them._
 
+The **Notes** column carries comparison flags, all of which are statements about
+*named constants* rather than about behaviour:
+
+| Flag | Meaning |
+|---|---|
+| `FW_ONLY` | No constant with this byte value exists in the Java driver. The driver may still handle the byte inline — this flags a missing *name*, not necessarily missing support. |
+| `JAVA_ONLY` | The Java driver defines a constant for this byte value but the firmware header does not. Almost all are Shimmer2r-era or BtStream/SDLog-era opcodes; see [Appendix B](#appendix-b-java-only-and-legacy-opcodes). |
+| `SDK_MISSING` | The TypeScript web SDK has no entry for this opcode. |
+| `LEN_MISMATCH` | The Java registry's expected response payload length disagrees with the length the firmware assembles. |
+| `no LogAndStream handler` | No code compiled for either platform references the opcode; the number is reserved only. |
+
 ### 4.1 Core
 
 | Opcode | FW name | Kind | Args | Response opcode | Response payload length | Gen | Blocked while sensing | Java name (if different) | SDK name (if different) | Notes |
@@ -133,9 +144,9 @@ implementations. Do not hand-edit them._
 | `0x06` | `TOGGLE_LED_COMMAND` | CTRL | 0 |  |  | both |  |  |  |  |
 | `0x07` | `START_STREAMING_COMMAND` | CTRL | 0 |  |  | both |  |  |  |  |
 | `0x08` | `SET_SENSORS_COMMAND` | SET | 3 |  |  | both | yes |  |  |  |
-| `0x09` | `SET_WR_ACCEL_RANGE_COMMAND` | SET | 1 |  |  | both | yes | `SET_ACCEL_SENSITIVITY_COMMAND` |  |  |
-| `0x0A` | `WR_ACCEL_RANGE_RESPONSE` | RSP |  |  |  | both |  | `ACCEL_SENSITIVITY_RESPONSE` |  |  |
-| `0x0B` | `GET_WR_ACCEL_RANGE_COMMAND` | GET | 0 | `WR_ACCEL_RANGE_RESPONSE` | 1 | both |  | `GET_ACCEL_SENSITIVITY_COMMAND` |  |  |
+| `0x09` | `SET_WR_ACCEL_RANGE_COMMAND` | SET | 1 |  |  | both | yes | `SET_ACCEL_SENSITIVITY_COMMAND` |  | Java also:  |
+| `0x0A` | `WR_ACCEL_RANGE_RESPONSE` | RSP |  |  |  | both |  | `ACCEL_SENSITIVITY_RESPONSE` |  | Java also:  |
+| `0x0B` | `GET_WR_ACCEL_RANGE_COMMAND` | GET | 0 | `WR_ACCEL_RANGE_RESPONSE` | 1 | both |  | `GET_ACCEL_SENSITIVITY_COMMAND` |  | Java also:  |
 | `0x0E` | `SET_CONFIG_SETUP_BYTES_COMMAND` | SET | 4 |  |  | both | yes | `SET_CONFIG_BYTE0_COMMAND` |  |  |
 | `0x0F` | `CONFIG_SETUP_BYTES_RESPONSE` | RSP |  |  |  | both |  | `CONFIG_BYTE0_RESPONSE` |  |  |
 | `0x10` | `GET_CONFIG_SETUP_BYTES_COMMAND` | GET | 0 | `CONFIG_SETUP_BYTES_RESPONSE` | 4 | both |  | `GET_CONFIG_BYTE0_COMMAND` |  |  |
@@ -160,24 +171,24 @@ implementations. Do not hand-edit them._
 | `0x3D` | `UNIQUE_SERIAL_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
 | `0x3E` | `GET_UNIQUE_SERIAL_COMMAND` | GET | 0 | `UNIQUE_SERIAL_RESPONSE` | S3: 8<br>S3R: 12 | both |  |  |  | FW_ONLY |
 | `0x3F` | `GET_DEVICE_VERSION_COMMAND` | GET | 0 | `DEVICE_VERSION_RESPONSE` | 1 | both |  | `GET_SHIMMER_VERSION_COMMAND_NEW` |  |  |
-| `0x40` | `SET_WR_ACCEL_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes | `SET_ACCEL_SAMPLING_RATE_COMMAND` |  |  |
-| `0x41` | `WR_ACCEL_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  | `ACCEL_SAMPLING_RATE_RESPONSE` |  |  |
-| `0x42` | `GET_WR_ACCEL_SAMPLING_RATE_COMMAND` | GET | 0 | `WR_ACCEL_SAMPLING_RATE_RESPONSE` | 1 | both |  | `GET_ACCEL_SAMPLING_RATE_COMMAND` |  |  |
-| `0x43` | `SET_WR_ACCEL_LPMODE_COMMAND` | SET | 1 |  |  | both | yes | `SET_LSM303DLHC_ACCEL_LPMODE_COMMAND` |  |  |
-| `0x44` | `WR_ACCEL_LPMODE_RESPONSE` | RSP |  |  |  | both |  | `LSM303DLHC_ACCEL_LPMODE_RESPONSE` |  |  |
-| `0x45` | `GET_WR_ACCEL_LPMODE_COMMAND` | GET | 0 | `WR_ACCEL_LPMODE_RESPONSE` | 1 | both |  | `GET_LSM303DLHC_ACCEL_LPMODE_COMMAND` |  |  |
-| `0x46` | `SET_WR_ACCEL_HRMODE_COMMAND` | SET | 1 |  |  | both | yes | `SET_LSM303DLHC_ACCEL_HRMODE_COMMAND` |  |  |
-| `0x47` | `WR_ACCEL_HRMODE_RESPONSE` | RSP |  |  |  | both |  | `LSM303DLHC_ACCEL_HRMODE_RESPONSE` |  |  |
-| `0x48` | `GET_WR_ACCEL_HRMODE_COMMAND` | GET | 0 | `WR_ACCEL_HRMODE_RESPONSE` | 1 | both |  | `GET_LSM303DLHC_ACCEL_HRMODE_COMMAND` |  |  |
-| `0x49` | `SET_GYRO_RANGE_COMMAND` | SET | 1 |  |  | both | yes | `SET_MPU9150_GYRO_RANGE_COMMAND` |  |  |
-| `0x4A` | `GYRO_RANGE_RESPONSE` | RSP |  |  |  | both |  | `MPU9150_GYRO_RANGE_RESPONSE` |  |  |
-| `0x4B` | `GET_GYRO_RANGE_COMMAND` | GET | 0 | `GYRO_RANGE_RESPONSE` | 1 | both |  | `GET_MPU9150_GYRO_RANGE_COMMAND` |  |  |
-| `0x4C` | `SET_GYRO_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes | `SET_MPU9150_SAMPLING_RATE_COMMAND` |  |  |
-| `0x4D` | `GYRO_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  | `MPU9150_SAMPLING_RATE_RESPONSE` |  |  |
-| `0x4E` | `GET_GYRO_SAMPLING_RATE_COMMAND` | GET | 0 | `GYRO_SAMPLING_RATE_RESPONSE` | 1 | both |  | `GET_MPU9150_SAMPLING_RATE_COMMAND` |  |  |
-| `0x4F` | `SET_ALT_ACCEL_RANGE_COMMAND` | SET | 1 |  |  | both | yes |  |  | FW_ONLY |
-| `0x50` | `ALT_ACCEL_RANGE_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
-| `0x51` | `GET_ALT_ACCEL_RANGE_COMMAND` | GET | 0 | `ALT_ACCEL_RANGE_RESPONSE` | 1 | both |  |  |  | FW_ONLY |
+| `0x40` | `SET_WR_ACCEL_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes | `SET_ACCEL_SAMPLING_RATE_COMMAND` |  | Java also:  |
+| `0x41` | `WR_ACCEL_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  | `ACCEL_SAMPLING_RATE_RESPONSE` |  | Java also:  |
+| `0x42` | `GET_WR_ACCEL_SAMPLING_RATE_COMMAND` | GET | 0 | `WR_ACCEL_SAMPLING_RATE_RESPONSE` | 1 | both |  | `GET_ACCEL_SAMPLING_RATE_COMMAND` |  | Java also:  |
+| `0x43` | `SET_WR_ACCEL_LPMODE_COMMAND` | SET | 1 |  |  | both | yes | `SET_LSM303DLHC_ACCEL_LPMODE_COMMAND` |  | Java also:  |
+| `0x44` | `WR_ACCEL_LPMODE_RESPONSE` | RSP |  |  |  | both |  | `LSM303DLHC_ACCEL_LPMODE_RESPONSE` |  | Java also:  |
+| `0x45` | `GET_WR_ACCEL_LPMODE_COMMAND` | GET | 0 | `WR_ACCEL_LPMODE_RESPONSE` | 1 | both |  | `GET_LSM303DLHC_ACCEL_LPMODE_COMMAND` |  | Java also:  |
+| `0x46` | `SET_WR_ACCEL_HRMODE_COMMAND` | SET | 1 |  |  | both | yes | `SET_LSM303DLHC_ACCEL_HRMODE_COMMAND` |  | Java also:  |
+| `0x47` | `WR_ACCEL_HRMODE_RESPONSE` | RSP |  |  |  | both |  | `LSM303DLHC_ACCEL_HRMODE_RESPONSE` |  | Java also:  |
+| `0x48` | `GET_WR_ACCEL_HRMODE_COMMAND` | GET | 0 | `WR_ACCEL_HRMODE_RESPONSE` | 1 | both |  | `GET_LSM303DLHC_ACCEL_HRMODE_COMMAND` |  | Java also:  |
+| `0x49` | `SET_GYRO_RANGE_COMMAND` | SET | 1 |  |  | both | yes | `SET_LSM6DSV_GYRO_RANGE_COMMAND` |  | Java also: SET_MPU9150_GYRO_RANGE_COMMAND |
+| `0x4A` | `GYRO_RANGE_RESPONSE` | RSP |  |  |  | both |  | `LSM6DSV_GYRO_RANGE_RESPONSE` |  | Java also: MPU9150_GYRO_RANGE_RESPONSE |
+| `0x4B` | `GET_GYRO_RANGE_COMMAND` | GET | 0 | `GYRO_RANGE_RESPONSE` | 1 | both |  | `GET_LSM6DSV_GYRO_RANGE_COMMAND` |  | Java also: GET_MPU9150_GYRO_RANGE_COMMAND |
+| `0x4C` | `SET_GYRO_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes | `SET_LSM6DSV_SAMPLING_RATE_COMMAND` |  | Java also: SET_MPU9150_SAMPLING_RATE_COMMAND |
+| `0x4D` | `GYRO_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  | `LSM6DSV_SAMPLING_RATE_RESPONSE` |  | Java also: MPU9150_SAMPLING_RATE_RESPONSE |
+| `0x4E` | `GET_GYRO_SAMPLING_RATE_COMMAND` | GET | 0 | `GYRO_SAMPLING_RATE_RESPONSE` | 1 | both |  | `GET_LSM6DSV_SAMPLING_RATE_COMMAND` |  | Java also: GET_MPU9150_SAMPLING_RATE_COMMAND |
+| `0x4F` | `SET_ALT_ACCEL_RANGE_COMMAND` | SET | 1 |  |  | both | yes |  |  |  |
+| `0x50` | `ALT_ACCEL_RANGE_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0x51` | `GET_ALT_ACCEL_RANGE_COMMAND` | GET | 0 | `ALT_ACCEL_RANGE_RESPONSE` | 1 | both |  |  |  |  |
 | `0x52` | `SET_PRESSURE_OVERSAMPLING_RATIO_COMMAND` | SET | 1 |  |  | both | yes | `SET_BMP180_PRES_RESOLUTION_COMMAND` |  | Java also:  |
 | `0x53` | `PRESSURE_OVERSAMPLING_RATIO_RESPONSE` | RSP |  |  |  | both |  | `BMP180_PRES_RESOLUTION_RESPONSE` |  | Java also:  |
 | `0x54` | `GET_PRESSURE_OVERSAMPLING_RATIO_COMMAND` | GET | 0 | `PRESSURE_OVERSAMPLING_RATIO_RESPONSE` | 1 | both |  | `GET_BMP180_PRES_RESOLUTION_COMMAND` |  | Java also:  |
@@ -211,12 +222,12 @@ implementations. Do not hand-edit them._
 | `0xA4` | `SET_DATA_RATE_TEST` | SET | 1 |  | 0 | both | yes |  |  | FW_ONLY |
 | `0xA5` | `DATA_RATE_TEST_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
 | `0xA8` | `SET_FACTORY_TEST` | SET | 1 |  |  | both | yes | `SET_TEST` |  |  |
-| `0xAC` | `SET_ALT_ACCEL_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes |  |  | FW_ONLY |
-| `0xAD` | `ALT_ACCEL_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
-| `0xAE` | `GET_ALT_ACCEL_SAMPLING_RATE_COMMAND` | GET | 0 | `ALT_ACCEL_SAMPLING_RATE_RESPONSE` | 1 | both |  |  |  | FW_ONLY |
-| `0xB2` | `SET_ALT_MAG_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes |  |  | FW_ONLY |
-| `0xB3` | `ALT_MAG_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
-| `0xB4` | `GET_ALT_MAG_SAMPLING_RATE_COMMAND` | GET | 0 | `ALT_MAG_SAMPLING_RATE_RESPONSE` | 1 | both |  |  |  | FW_ONLY |
+| `0xAC` | `SET_ALT_ACCEL_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes |  |  |  |
+| `0xAD` | `ALT_ACCEL_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0xAE` | `GET_ALT_ACCEL_SAMPLING_RATE_COMMAND` | GET | 0 | `ALT_ACCEL_SAMPLING_RATE_RESPONSE` | 1 | both |  |  |  |  |
+| `0xB2` | `SET_ALT_MAG_SAMPLING_RATE_COMMAND` | SET | 1 |  |  | both | yes |  |  |  |
+| `0xB3` | `ALT_MAG_SAMPLING_RATE_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0xB4` | `GET_ALT_MAG_SAMPLING_RATE_COMMAND` | GET | 0 | `ALT_MAG_SAMPLING_RATE_RESPONSE` | 1 | both |  |  |  |  |
 | `0xB5` | `DUMMY_COMMAND` | CTRL | 0 |  |  | both |  |  |  | FW_ONLY |
 | `0xB6` | `RESET_BT_ERROR_COUNTS` | CTRL | 0 |  |  | both |  |  |  | FW_ONLY |
 | `0xB7` | `SET_FEATURE` | SET | 2 |  |  | both |  |  |  |  |
@@ -267,18 +278,18 @@ implementations. Do not hand-edit them._
 
 | Opcode | FW name | Kind | Args | Response opcode | Response payload length | Gen | Blocked while sensing | Java name (if different) | SDK name (if different) | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `0x11` | `SET_LN_ACCEL_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes | `SET_ACCEL_CALIBRATION_COMMAND` |  |  |
-| `0x12` | `LN_ACCEL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  | `ACCEL_CALIBRATION_RESPONSE` |  |  |
-| `0x13` | `GET_LN_ACCEL_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  | `GET_ACCEL_CALIBRATION_COMMAND` |  |  |
+| `0x11` | `SET_LN_ACCEL_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes | `SET_ACCEL_CALIBRATION_COMMAND` |  | Java also:  |
+| `0x12` | `LN_ACCEL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  | `ACCEL_CALIBRATION_RESPONSE` |  | Java also:  |
+| `0x13` | `GET_LN_ACCEL_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  | `GET_ACCEL_CALIBRATION_COMMAND` |  | Java also:  |
 | `0x14` | `SET_GYRO_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes |  |  |  |
 | `0x15` | `GYRO_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
 | `0x16` | `GET_GYRO_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  |  |  |  |
 | `0x17` | `SET_MAG_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes |  |  |  |
 | `0x18` | `MAG_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
 | `0x19` | `GET_MAG_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  |  |  |  |
-| `0x1A` | `SET_WR_ACCEL_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes | `SET_LSM303DLHC_ACCEL_CALIBRATION_COMMAND` |  |  |
-| `0x1B` | `WR_ACCEL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  | `LSM303DLHC_ACCEL_CALIBRATION_RESPONSE` |  |  |
-| `0x1C` | `GET_WR_ACCEL_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  | `GET_LSM303DLHC_ACCEL_CALIBRATION_COMMAND` |  |  |
+| `0x1A` | `SET_WR_ACCEL_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes | `SET_LSM303DLHC_ACCEL_CALIBRATION_COMMAND` |  | Java also:  |
+| `0x1B` | `WR_ACCEL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  | `LSM303DLHC_ACCEL_CALIBRATION_RESPONSE` |  | Java also:  |
+| `0x1C` | `GET_WR_ACCEL_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  | `GET_LSM303DLHC_ACCEL_CALIBRATION_COMMAND` |  | Java also:  |
 | `0x2C` | `GET_ALL_CALIBRATION_COMMAND` | GET | 0 | `ALL_CALIBRATION_RESPONSE` | S3: ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd()<br>S3R: ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() + ShimBt_replySingleSensorCalibCmd() | both |  |  |  |  |
 | `0x2D` | `ALL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
 | `0x58` | `BMP180_CALIBRATION_COEFFICIENTS_RESPONSE` | RSP |  |  |  | S3 |  |  |  |  |
@@ -294,12 +305,12 @@ implementations. Do not hand-edit them._
 | `0xA0` | `GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND` | GET | 0 | `S3 only: BMP280_CALIBRATION_COEFFICIENTS_RESPONSE` | S3: BMP280_CALIB_DATA_SIZE<br>S3R: 0 (NACK on unsupported hardware) | both |  |  |  |  |
 | `0xA6` | `PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
 | `0xA7` | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | GET | 0 | `PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE` | S3: 4 + bmpCalibByteLen<br>S3R: 2 + bmpCalibByteLen | both |  |  |  |  |
-| `0xA9` | `SET_ALT_ACCEL_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes |  |  | FW_ONLY |
-| `0xAA` | `ALT_ACCEL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
-| `0xAB` | `GET_ALT_ACCEL_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  |  |  | FW_ONLY |
-| `0xAF` | `SET_ALT_MAG_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes |  |  | FW_ONLY |
-| `0xB0` | `ALT_MAG_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
-| `0xB1` | `GET_ALT_MAG_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  |  |  | FW_ONLY |
+| `0xA9` | `SET_ALT_ACCEL_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes |  |  |  |
+| `0xAA` | `ALT_ACCEL_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0xAB` | `GET_ALT_ACCEL_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  |  |  |  |
+| `0xAF` | `SET_ALT_MAG_CALIBRATION_COMMAND` | SET | SC_DATA_LEN_STD_IMU_CALIB |  |  | both | yes |  |  |  |
+| `0xB0` | `ALT_MAG_CALIBRATION_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
+| `0xB1` | `GET_ALT_MAG_CALIBRATION_COMMAND` | GET | 0 | `(dynamic: ShimBt_getExpectedRspForGetCmd())` | ShimBt_replySingleSensorCalibCmd() | both |  |  |  |  |
 
 ### 4.4 Shimmer3R-served extensions
 
