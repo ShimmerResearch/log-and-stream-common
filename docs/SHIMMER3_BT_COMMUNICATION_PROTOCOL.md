@@ -6,7 +6,12 @@ This document describes the byte-level command/response protocol spoken between 
 transport-agnostic: the same byte sequences travel over classic Bluetooth SPP, over
 BLE, and over the dock's serial link.
 
-> **Verified against:**
+> **Verified against** — the revisions these byte-level claims were read from.
+> A pinned commit is a citation, not a claim of currency: when the firmware
+> moves on, this document needs re-checking against it rather than the stamp
+> being wrong, and the `file:line` references throughout only resolve because
+> the revision is pinned here.
+>
 > - **Firmware (authority for bytes):** `log-and-stream-common` @ `c13cbde` —
 >   `Comms/shimmer_bt_uart.h` (opcode `#define`s), `Comms/shimmer_bt_uart.c`
 >   (`ShimBt_dmaConversionDone` argument counts, `ShimBt_processCmd` handlers,

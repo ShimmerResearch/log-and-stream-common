@@ -6,7 +6,12 @@ been started, and the rules a host must follow to turn those bytes back into
 per-channel physical values. The same channel encodings are used for SD-card
 logging, so a parser written from this document reads both.
 
-> **Verified against:**
+> **Verified against** — the revisions these byte-level claims were read from.
+> A pinned commit is a citation, not a claim of currency: when the firmware
+> moves on, this document needs re-checking against it rather than the stamp
+> being wrong, and the `file:line` references throughout only resolve because
+> the revision is pinned here.
+>
 > - **Firmware (authority for bytes):** `log-and-stream-common` @ `c13cbde` —
 >   `Sensing/shimmer_sensing.h` (packet layout `#define`s, channel-ID `#define`s
 >   per platform, `MAX_NUM_CHANNELS`), `Sensing/shimmer_sensing.c`

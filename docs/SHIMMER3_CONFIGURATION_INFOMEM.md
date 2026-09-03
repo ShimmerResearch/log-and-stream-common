@@ -6,7 +6,12 @@ memory it originally lived in. The same 512-byte image is exchanged over Bluetoo
 (`GET_INFOMEM_COMMAND` / `SET_INFOMEM_COMMAND`), persisted in non-volatile memory,
 and mirrored into the SD-card file header.
 
-> **Verified against:**
+> **Verified against** — the revisions these byte-level claims were read from.
+> A pinned commit is a citation, not a claim of currency: when the firmware
+> moves on, this document needs re-checking against it rather than the stamp
+> being wrong, and the `file:line` references throughout only resolve because
+> the revision is pinned here.
+>
 > - **Firmware (authority for bytes):** `log-and-stream-common` @ `c13cbde` —
 >   `Configuration/shimmer_config.h` (`NV_*` offset `#define`s, the `gConfigBytes`
 >   packed union with its `#if defined(SHIMMER3)` / `#if defined(SHIMMER3R)`

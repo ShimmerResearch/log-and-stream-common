@@ -9,7 +9,12 @@ be converted after the fact.
 This document is the byte-level specification of those blocks, shared by the
 firmware and the host SDKs.
 
-> **Verified against:**
+> **Verified against** — the revisions these byte-level claims were read from.
+> A pinned commit is a citation, not a claim of currency: when the firmware
+> moves on, this document needs re-checking against it rather than the stamp
+> being wrong, and the `file:line` references throughout only resolve because
+> the revision is pinned here.
+>
 > - **Firmware (authority for bytes):** `log-and-stream-common` @ `c13cbde` —
 >   `Calibration/shimmer_calibration.h` (`sc_t` / `sc_data_u` / `sc_default_t`,
 >   the `SC_OFFSET_*` blob offsets, `SC_SENSOR_*` sensor IDs, `SC_SENSOR_RANGE_*`
