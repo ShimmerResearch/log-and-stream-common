@@ -494,8 +494,11 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           {
             waitingForArgsLength = args[0];
             setDmaWaitingForResponse(waitingForArgsLength);
+            /* Only return while more payload is still expected. A zero length
+             * has to fall through to be dispatched, as in the name/expId
+             * group below, or the parser stops without dispatching anything. */
+            return 0;
           }
-          return 0;
         }
         else if ((!waitingForArgsLength) && (waitingForArgs == 1)
             && (gAction == SET_CENTER_COMMAND || gAction == SET_CONFIGTIME_COMMAND
@@ -990,7 +993,10 @@ void ShimBt_processCmd(void)
       case SET_CENTER_COMMAND:
       {
         storedConfigPtr->masterEnable = args[0] & 0x01;
-        ShimBt_settingChangeCommon(NV_CONFIG_SETUP_BYTE4, SDH_CONFIG_SETUP_BYTE4, 1);
+        /* masterEnable is a bit in SD trial config byte 0, not in config setup
+         * byte 4. Flushing byte 4 left the new setting in RAM only, so it was
+         * lost at the next reboot while the RAM read-back still reported it. */
+        ShimBt_settingChangeCommon(NV_SD_TRIAL_CONFIG0, SDH_TRIAL_CONFIG0, 1);
         break;
       }
       case SET_SHIMMERNAME_COMMAND:
@@ -1134,15 +1140,27 @@ void ShimBt_processCmd(void)
       }
       case SET_SAMPLING_RATE_COMMAND:
       {
-        storedConfigPtr->samplingRateTicks = *(uint16_t *) args;
-        //ShimConfig_storedConfigSet(&args[0], NV_SAMPLING_RATE, 2);
-        ShimBt_settingChangeCommon(NV_SAMPLING_RATE, SDH_SAMPLE_RATE_0, 2);
+        /* The value is a clock divider that is later divided by, so a zero
+         * would give a divide-by-zero in ShimConfig_getSamplingRateHz() and a
+         * zero sampling interval. Reject it instead of storing it - the boot
+         * path in ShimConfig_readRam() already treats zero as unconfigured. */
+        uint16_t samplingRateTicksNew = *(uint16_t *) args;
+        if (samplingRateTicksNew == 0)
+        {
+          sendNack = 1;
+        }
+        else
+        {
+          storedConfigPtr->samplingRateTicks = samplingRateTicksNew;
+          //ShimConfig_storedConfigSet(&args[0], NV_SAMPLING_RATE, 2);
+          ShimBt_settingChangeCommon(NV_SAMPLING_RATE, SDH_SAMPLE_RATE_0, 2);
+        }
         break;
       }
       case GET_CALIB_DUMP_COMMAND:
       {
         //usage:
-        //0x98, offset, offset, length
+        //0x9A, length, offsetLsb, offsetMsb
         calibRamLength = args[0];
         calibRamOffset = args[1] + (args[2] << 8);
         getCmdWaitingResponse = gAction;
@@ -1151,14 +1169,24 @@ void ShimBt_processCmd(void)
       case SET_CALIB_DUMP_COMMAND:
       {
         //usage:
-        //0x98, offset, offset, length, data[0:127]
+        //0x98, length, offsetLsb, offsetMsb, data[0:127]
         //max length of this command = 132
         calibRamLength = args[0];
         calibRamOffset = args[1] + (args[2] << 8);
-        if (ShimCalib_ramWrite((uint8_t *) &args[3], calibRamLength, calibRamOffset) == 1)
+        /* ShimCalib_ramWrite() range-checks length and offset itself and
+         * returns 0xFF without writing when either is out of range. Report
+         * that refusal as a NACK: an ACK would tell the host the calibration
+         * dump had been stored when nothing was written. */
+        uint8_t calibRamWriteRes
+            = ShimCalib_ramWrite((uint8_t *) &args[3], calibRamLength, calibRamOffset);
+        if (calibRamWriteRes == 1)
         {
           ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
           update_calib_dump_file = 1;
+        }
+        else if (calibRamWriteRes == 0xFF)
+        {
+          sendNack = 1;
         }
         break;
       }
@@ -1260,12 +1288,27 @@ void ShimBt_processCmd(void)
               && (ShimBrd_getDaughtCardId()->exp_brd_major >= 4))
           {
             storedConfigPtr->exgADS1292rRegsCh1.config2 |= 8;
+
+            /* CONFIG2 is register index 1. The writes below only cover the
+             * register window the host asked to write, so commit the forced
+             * bit on its own when CONFIG2 falls outside that window -
+             * otherwise the correction is lost at the next reboot. */
+            if (exgStartAddr > 1 || (uint16_t) (exgStartAddr + exgLength) <= 1)
+            {
+              InfoMem_write(NV_EXG_ADS1292R_1_CONFIG2,
+                  &storedConfigPtr->rawBytes[NV_EXG_ADS1292R_1_CONFIG2], 1);
+              ShimSdHead_sdHeadTextSetByte(SDH_EXG_ADS1292R_1_CONFIG2,
+                  storedConfigPtr->rawBytes[NV_EXG_ADS1292R_1_CONFIG2]);
+            }
           }
 
           InfoMem_write(exgConfigOffset + exgStartAddr,
               &storedConfigPtr->rawBytes[exgConfigOffset + exgStartAddr], exgLength);
-          ShimSdHead_sdHeadTextSet(&storedConfigPtr->rawBytes[exgConfigOffset],
-              exgSdHeadOffset, exgLength);
+          /* Mirror the same register window into the SD header. Without the
+           * start-address offset a partial write copied the wrong registers
+           * and left the requested ones stale in the header. */
+          ShimSdHead_sdHeadTextSet(&storedConfigPtr->rawBytes[exgConfigOffset + exgStartAddr],
+              exgSdHeadOffset + exgStartAddr, exgLength);
 
           update_sdconfig = 1;
         }
@@ -1349,8 +1392,23 @@ void ShimBt_processCmd(void)
         }
         break;
       }
+      case SET_CHARGE_STATUS_LED_COMMAND:
+      {
+        /* Armed in the argument dispatcher but never implemented - there is no
+         * charge-status-LED field in the stored configuration. NACK rather
+         * than fall through to default: and ACK an action that never happened.
+         * Note GET_CHARGE_STATUS_LED is not the inverse operation - it returns
+         * the firmware's computed battery-charge band. */
+        sendNack = 1;
+        break;
+      }
       case SET_BT_COMMS_BAUD_RATE:
       {
+        /* Not supported. NACK rather than ACK a no-op: the body below is
+         * commented out, so an ACK told the host a baud-rate change had taken
+         * effect when nothing changed. InfoMem byte NV_BT_COMMS_BAUD_RATE
+         * remains writable through SET_INFOMEM, which is the route to use. */
+        sendNack = 1;
         //TODO changing BAUD rate is not going to be supported
         //if (btArgs[0] != storedConfig->btCommsBaudRate)
         //{
@@ -1432,7 +1490,10 @@ void ShimBt_processCmd(void)
         }
         else
         {
-          return;
+          /* Out of range. NACK it: a bare return here exited before the
+           * ACK/NACK tail below, so the host got no reply at all and could
+           * not tell a refused write from a transport fault. */
+          sendNack = 1;
         }
         break;
       }
@@ -1948,23 +2009,25 @@ void ShimBt_sendRsp(void)
         *(resPacket + packet_length++) = GYRO_RANGE_RESPONSE;
         *(resPacket + packet_length++) = ShimConfig_gyroRangeGet();
         break;
-        case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
+      }
+      case GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND:
+      {
 #if defined(SHIMMER3)
-          *(resPacket + packet_length++) = BMP180_CALIBRATION_COEFFICIENTS_RESPONSE;
-          if (isBmp180InUse())
-          {
-            memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP180_CALIB_DATA_SIZE);
-          }
-          else
-          {
-            //Dummy bytes sent if incorrect calibration bytes requested.
-            memset(resPacket + packet_length, 0x01, BMP180_CALIB_DATA_SIZE);
-          }
-          packet_length += BMP180_CALIB_DATA_SIZE;
+        *(resPacket + packet_length++) = BMP180_CALIBRATION_COEFFICIENTS_RESPONSE;
+        if (isBmp180InUse())
+        {
+          memcpy(resPacket + packet_length, get_bmp_calib_data_bytes(), BMP180_CALIB_DATA_SIZE);
+        }
+        else
+        {
+          //Dummy bytes sent if incorrect calibration bytes requested.
+          memset(resPacket + packet_length, 0x01, BMP180_CALIB_DATA_SIZE);
+        }
+        packet_length += BMP180_CALIB_DATA_SIZE;
 #elif defined(SHIMMER3R)
-          sendNack = 1;
+        sendNack = 1;
 #endif
-          break;
+        break;
       }
       case GET_BMP280_CALIBRATION_COEFFICIENTS_COMMAND:
       {
@@ -2067,10 +2130,15 @@ void ShimBt_sendRsp(void)
         }
         else
         {
-          *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
+          /* No sensitivity-adjustment values exist on an ICM-20948. A second
+           * ACK in the response body desynchronises any host that has to
+           * length-frame the byte stream itself (RFCOMM or the dock UART),
+           * because the stray 0xFF is indistinguishable from a real ACK. */
+          sendNack = 1;
         }
 #else
-        *(resPacket + packet_length++) = ACK_COMMAND_PROCESSED;
+        /* Feature is MPU9x50-only, so never present on this platform. */
+        sendNack = 1;
 #endif
         break;
       }
