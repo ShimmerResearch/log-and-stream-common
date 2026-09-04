@@ -64,18 +64,24 @@ The library is conditionally compiled for the following targets using preprocess
 
 ## Documentation
 
-Reference documentation lives in [`docs/`](docs/). The protocol, configuration,
-streaming and calibration documents are written against the firmware in this
-repository and are the authority for the byte layouts that host software must
-match.
+Reference documentation lives in [`docs/`](docs/), written against the firmware
+in this repository — so where a section exists, it is the authority for the byte
+layouts host software must match, ahead of any host-side driver.
 
-| Document | Covers |
-|---|---|
-| [SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](docs/SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) | The host ↔ device command/response protocol: transports, framing, the full opcode table, ACK/NACK and status semantics, and a per-command reference. |
-| [SHIMMER3_CONFIGURATION_INFOMEM.md](docs/SHIMMER3_CONFIGURATION_INFOMEM.md) | The 512-byte InfoMem configuration block: byte-and-bit map, defaults, the firmware's validation and correction rules, and the SD-header mirror. |
-| [SHIMMER3_STREAMING_DATA_FORMAT.md](docs/SHIMMER3_STREAMING_DATA_FORMAT.md) | The streaming data packet: header and timestamp, the channel-ID registry, channel ordering rules, per-channel encodings, and raw-to-physical conversion. |
-| [SHIMMER3_CALIBRATION.md](docs/SHIMMER3_CALIBRATION.md) | Per-device kinematic calibration: the dump blob format, the 21-byte per-sensor block, default seeds, the calibration maths, and persistence precedence. |
-| [SHIMMER3_BOARD_REVISIONS.md](docs/SHIMMER3_BOARD_REVISIONS.md) | Shimmer3 and Shimmer3R board revisions, sensor generations, and the firmware-relevant revision gates. |
+**Three of them are still being written.** Only the Bluetooth protocol and board
+revisions documents are complete. The configuration, streaming and calibration
+documents have their reference tables and their headings, and the prose between
+those tables is marked `TODO` with the firmware source it will be written from.
+Take an unwritten section as unwritten rather than as "nothing to say": read the
+source it names. The table below says which is which.
+
+| Document | State | Covers |
+|---|---|---|
+| [SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](docs/SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) | Complete | The host ↔ device command/response protocol: transports, framing, the full opcode table, ACK/NACK and status semantics, and a per-command reference. |
+| [SHIMMER3_CONFIGURATION_INFOMEM.md](docs/SHIMMER3_CONFIGURATION_INFOMEM.md) | Tables done, prose `TODO` | The 512-byte InfoMem configuration block. The byte-and-bit map is written; defaults, the firmware's validation and correction rules and the SD-header mirror are outlined. |
+| [SHIMMER3_STREAMING_DATA_FORMAT.md](docs/SHIMMER3_STREAMING_DATA_FORMAT.md) | Tables done, prose `TODO` | The streaming data packet. The channel-ID registry is written; header and timestamp, channel ordering, per-channel encodings and raw-to-physical conversion are outlined. |
+| [SHIMMER3_CALIBRATION.md](docs/SHIMMER3_CALIBRATION.md) | Outline, prose `TODO` | Per-device kinematic calibration. An outline of the dump blob format, the 21-byte per-sensor block, default seeds, the calibration maths and persistence precedence. |
+| [SHIMMER3_BOARD_REVISIONS.md](docs/SHIMMER3_BOARD_REVISIONS.md) | Complete | Shimmer3 and Shimmer3R board revisions, sensor generations, and the firmware-relevant revision gates. |
 
 ## Integration
 
