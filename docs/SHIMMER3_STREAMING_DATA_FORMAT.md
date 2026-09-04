@@ -560,9 +560,11 @@ Note that enabling the bridge amplifier forces two internal ADC channels off
    `GET_RWC_COMMAND`; the offset between the free-running tick counter and the
    RWC is what converts one to the other.
 
-> On Shimmer3 the SD header carries that offset in `SDH_RTC_DIFF_*`. **On
-> Shimmer3R those eight bytes are written as zeros**, so a logged Shimmer3R file
-> cannot be placed on an absolute timeline from the header alone. See
+> On Shimmer3 the SD header carries that offset in `SDH_RTC_DIFF_*`. On
+> Shimmer3R the same eight bytes instead carry the top three bytes of the
+> file's 64-bit initial timestamp, so a logged file on either generation can be
+> placed on an absolute timeline — but by different arithmetic. See
+> [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.3 and
 > [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
 
 ## 8. Normative interpretation rules

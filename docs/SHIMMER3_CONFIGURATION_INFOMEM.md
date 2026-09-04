@@ -820,10 +820,14 @@ file-creation time:
 > In practice §10.5 keeps the two in step, but the header is the more
 > trustworthy of the two.
 
-> **`SDH_RTC_DIFF_*` is written as zero on Shimmer3R.** The Shimmer3 branch
-> copies `RTC_getRwcTimeDiffPtr()`; the Shimmer3R branch writes eight zero bytes
-> under a `TODO check is this is working` comment. A host must not use this
-> field to reconstruct absolute time from a Shimmer3R recording — see
+> **`SDH_RTC_DIFF_*` means different things on the two platforms.** The
+> Shimmer3 branch of `ShimSdHead_config2SdHead` copies
+> `RTC_getRwcTimeDiffPtr()`; the Shimmer3R branch writes eight zero bytes under
+> a `TODO check is this is working` comment. On Shimmer3R those bytes are then
+> **repurposed at file-creation time**: `ShimSdDataFile_writeSdHeaderToFile`
+> overwrites the top three with bits 40-63 of the 64-bit initial timestamp,
+> because the five-byte `SDH_INITIAL_TIMESTAMP_*` field cannot hold it. See
+> [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.3 and
 > [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
 
 > **`SDH_NUM_ENABLED_CHANNELS` and the channel-ID list are Shimmer3R-only.**
