@@ -1527,6 +1527,13 @@ void ShimBt_processCmd(void)
       {
         if (args[0] == FEATURE_NONE)
         {
+          /* "No features" means every feature this command can arm, not just
+           * the LEDs. A host that armed the reboot and then changed its mind
+           * would otherwise still be rebooted at disconnect, with nothing in
+           * the protocol to say so - the arm is one-shot and cannot be read
+           * back. Disarming through FEATURE_REBOOT_ON_DISCONNECT with a zero
+           * value still works; this makes the blanket form work too. */
+          ShimBt_setRebootOnDisconnect(0);
 #if defined(SHIMMER3)
           RN4678_setErrorLedsEnabled(0);
 #endif
