@@ -12,14 +12,14 @@ and mirrored into the SD-card file header.
 > being wrong, and the `file:line` references throughout only resolve because
 > the revision is pinned here.
 >
-> - **Firmware (authority for bytes):** `log-and-stream-common` @ `c13cbde` —
+> - **Firmware (authority for bytes):** `log-and-stream-common` @ `f3cf73e` —
 >   `Configuration/shimmer_config.h` (`NV_*` offset `#define`s, the `gConfigBytes`
 >   packed union with its `#if defined(SHIMMER3)` / `#if defined(SHIMMER3R)`
 >   variants), `Configuration/shimmer_config.c`
 >   (`ShimConfig_setDefaultConfig` defaults, `ShimConfig_checkAndCorrectConfig`
 >   validation), `SDCard/shimmer_sd_header.h` (the `SDH_*` mirror offsets),
 >   `Comms/shimmer_bt_uart.c` (paging and the per-setting write paths).
-> - **Platform firmware:** `shimmer3-firmware` @ `2765ff4` —
+> - **Platform firmware:** `shimmer3-firmware` @ `12a6dfc` —
 >   `LogAndStream_Shimmer3/Shimmer_Driver/5xx_HAL/hal_InfoMem.h`;
 >   `shimmer3r-firmware` @ `a8f105e5` —
 >   `LogAndStream_Shimmer3R/Shimmer_Driver/hal_Infomem.h`.
@@ -63,7 +63,79 @@ and mirrored into the SD-card file header.
 
 ## 1. Transport and size
 
-_TODO: `STOREDCONFIG_SIZE` 512 / `NV_NUM_RWMEM_BYTES`, the historical 384-byte `NV_TOTAL_NUM_CONFIG_BYTES` split into settings + calibration + SD bytes, the MSP430 segment structure that produced the 128-byte page boundaries, and the 128-byte cap per Bluetooth transfer. Source: `Configuration/shimmer_config.h`, `hal_InfoMem.h`._
+### 1.1 Sizes
+
+| Constant | Value | Meaning |
+|---|---:|---|
+| `STOREDCONFIG_SIZE` / `NV_NUM_RWMEM_BYTES` | 512 | Size of the `gConfigBytes` union — the in-RAM image |
+| `NV_TOTAL_NUM_CONFIG_BYTES` | 384 | Bytes actually carrying configuration |
+| `NV_NUM_SETTINGS_BYTES` | 34 | Historical split: sampling, sensors, setup bytes |
+| `NV_NUM_CALIBRATION_BYTES` | 84 | Historical split: four 21-byte kinematic blocks |
+| `NV_NUM_SD_BYTES` | 37 | Historical split: names, trial config, MAC |
+| `NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS` | 126 | Sync centre + node address table (§9) |
+
+The three historical split constants sum to 155, not 384. They date from a
+smaller layout and are no longer a partition of anything — treat 384 as the
+figure that matters and the other three as vestigial. Bytes **384-511** are the
+`padding` member of the struct: present in RAM so the union is a round 512
+bytes, never transferred and never persisted.
+
+### 1.2 The 128-byte page structure
+
+Every boundary in this layout is a multiple of 128 because the original MSP430
+information memory is four 128-byte segments:
+
+| Segment | MSP430 address | Config bytes |
+|---|---|---|
+| D | `0x1800` | 0-127 |
+| C | `0x1880` | 128-255 |
+| B | `0x1900` | 256-383 |
+| A | `0x1980` | 384-511 (padding) |
+
+The constants survive in the shared code as `INFOMEM_SEG_A_ADDR_MSP430` through
+`INFOMEM_SEG_D_ADDR_MSP430` with `INFOMEM_OFFSET_MSP430 = 0x1800`, and they are
+described in the header as "definitions used within the Shimmer3 comms
+protocol" — that is, they are part of the *wire* contract, not just an MSP430
+implementation detail.
+
+This is why the Shimmer3R additions could not simply extend byte 132 onwards:
+the second page (128-255) was the first free segment, which is why
+`NV_ALT_ACCEL_CALIBRATION` is at 133 rather than adjacent to the other
+calibration blocks at 34-117, and why the calibration sync code splits into
+`ShimCalib_configBytes0To127ToCalibDumpBytes` and
+`ShimCalib_configBytes128To255ToCalibDumpBytes`.
+
+> **Two addressing conventions exist for the same bytes.** Some host code
+> addresses InfoMem by the absolute MSP430 address (`0x1800 + offset`), and some
+> by a flat offset from 0. The Bluetooth commands documented here use **flat
+> offsets from 0**. A host that sends `0x1800`-based offsets will be rejected by
+> the bounds check rather than silently misplacing data, but the failure mode is
+> a NACK with no explanation.
+
+### 1.3 Non-volatile backing
+
+| Platform | Backing | Notes |
+|---|---|---|
+| Shimmer3 | MSP430 information memory, `0x1800` | Four 128-byte segments, erase granularity one segment |
+| Shimmer3R | STM32U5 flash bank 2, `0x083F8000` | `INFOMEM_CONFIG_SIZE = 0x200` (512 B) at the base, followed by `INFOMEM_CALIB_SIZE = 0x400` (1024 B) for the calibration dump and `INFOMEM_TEST_SIZE = 0x200` (512 B) for factory-test data. Flash page size is 8 KB and `INFOMEM_NUM_OF_PAGES` is 4, so a write costs an 8 KB page erase. |
+
+On Shimmer3R the configuration block, the calibration dump and the factory-test
+block are three distinct regions of one 32 KB reservation, addressed through the
+`INFOMEM_MASK_RAM` / `INFOMEM_MASK_CALIB` masks. Only the first 512 bytes are
+the subject of this document.
+
+### 1.4 Bluetooth transfer
+
+`GET_INFOMEM_COMMAND` and `SET_INFOMEM_COMMAND` are **paged, with a hard cap of
+128 bytes per transfer** — the same figure as a page, though the cap is a
+protocol limit rather than a segment requirement, and a transfer may start at
+any offset. A full 384-byte read is therefore three commands minimum.
+
+Writes take effect in RAM immediately and are flushed to non-volatile memory by
+the firmware; see
+[SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md)
+§7.5 for the exact framing, the bounds-check behaviour, and the rule that `SET`
+commands are NACKed while the device is sensing.
 
 ## 2. Byte map
 
@@ -184,48 +256,595 @@ generations give a byte different meanings both are shown.
 
 ## 3. Sampling rate, buffer size and sensor enables (bytes 0-5)
 
-_TODO: `samplingRateTicks` as a 32768 Hz clock divider rather than a frequency, `bufferSize`, and the three (S3) / five (S3R) sensor-enable bytes with their per-platform bit meanings. Source: `gConfigBytes` idx 0-5, `ShimConfig_getShimmerSamplingFreq`._
+### 3.1 Sampling rate (bytes 0-1)
+
+`samplingRateTicks` is a **clock divider, not a frequency**. The stored `uint16`
+is the number of 32768 Hz ticks between samples:
+
+```
+frequency_Hz = 32768.0 / samplingRateTicks
+samplingRateTicks = round(32768.0 / frequency_Hz)
+```
+
+`ShimConfig_getShimmerSamplingFreq` performs the first; `ShimConfig_freqDiv`
+performs the second, via `samplingClockFreqGet()`.
+
+Two consequences for hosts:
+
+- **Not every frequency is representable.** The default of 51.2 Hz stores 640
+  ticks, which is exactly 51.2 Hz. A request for 100 Hz stores 328 ticks and
+  yields 99.902 Hz. Round-tripping a requested rate through the device will
+  usually return a slightly different number.
+- **The field is little-endian**, unlike most multi-byte fields in this layout
+  (see §8 for the big-endian exceptions).
+
+### 3.2 Buffer size (byte 2)
+
+`bufferSize` is the number of samples the firmware accumulates before emitting
+a Bluetooth packet. The default is **1** — one sample per packet. Values above 1
+reduce radio overhead at the cost of latency.
+
+### 3.3 Sensor enable bitmaps (bytes 3-5, plus 128-129)
+
+Three bytes on Shimmer3, and the same three plus two nominally reserved bytes on
+Shimmer3R. Every bit is one channel; the full per-bit meaning is in the §2 byte
+map, which shows both platforms where they differ.
+
+> **The bitmap is LSB-first, and it is the same order in `SET_SENSORS` and in
+> InfoMem.** `idxSensors0` holds bits 0-7, `idxSensors1` bits 8-15, and so on.
+> Neither is big-endian, and neither is reversed relative to the other. Getting
+> this backwards makes an InfoMem parse and an inquiry response disagree about
+> which sensors are enabled — a failure that looks like a firmware bug and is
+> not.
+
+The bits are **not independent**. Several combinations are illegal because the
+channels share an ADC input, and the firmware silently disables one side rather
+than rejecting the write. §10 lists every such rule.
+
+> **Do not derive channel order from this bitmap.** The order in which channels
+> appear in a data packet is set by the inquiry response, not by bit position,
+> and the two differ. Shimmer3 emits temperature before pressure while Shimmer3R
+> emits pressure before temperature, to take the clearest example. See
+> [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §4.
+
+Bytes 128 (`NV_SENSORS3`) and 129 (`NV_SENSORS4`) have `NV_` constants and
+Java/SDK index names but are declared `unusedIdx128` / `unusedIdx129` in the
+current firmware struct on both platforms. They are copied to the SD header as
+`SDH_SENSORS3` / `SDH_SENSORS4`. Treat them as reserved-but-transferred.
 
 ## 4. Configuration setup bytes (6-9 and 130-132)
 
-_TODO: the four legacy setup bytes and the three Shimmer3R additions, including the fields that are split across a legacy LSB and a new MSB bit (`gyroRange`, `wrAccelLpMode`, `pressureOversamplingRatio`) and why. Source: `gConfigBytes` idx 6-9 and 130-132, `ShimConfig_gyroRangeGet` / `Set` and siblings._
+Four setup bytes date from Shimmer3; three more were added for Shimmer3R at
+130-132. The complete bit assignment is in the §2 byte map. This section covers
+the part that catches people out.
+
+### 4.1 Fields split across a legacy LSB and a new MSB bit
+
+Shimmer3R needed more range codes than the original bit allocations could hold,
+and the legacy bit positions could not move without breaking every existing
+host. Three fields were therefore extended by borrowing a bit in byte 130,
+leaving the low bits where they were:
+
+| Field | Low bits | High bit | Combined getter |
+|---|---|---|---|
+| `gyroRange` | byte 8, bits 1-0 | byte 130, bit 2 | `ShimConfig_gyroRangeGet` |
+| `wrAccelLpMode` | byte 6, bit 1 | byte 130, bit 1 | `ShimConfig_wrAccelLpModeGet` |
+| `pressureOversamplingRatio` | byte 9, bits 5-4 | byte 130, bit 0 | `ShimConfig_configBytePressureOversamplingRatioGet` |
+
+Each getter reassembles the value as `(msb << n) | lsb`. On Shimmer3 the MSB
+bits do not exist and the getters return the LSB field alone.
+
+> **A host that reads only the legacy bits will silently mis-report every
+> Shimmer3R value above the legacy maximum.** A gyro range of ±4000 dps
+> (code 5) reads back as code 1 (±250 dps) if byte 130 bit 2 is ignored. There
+> is no error; the number is just wrong by a factor of sixteen.
+
+> **`wrAccelLpModeMsb` is firmware-only.** The Java driver has no field for it.
+> The Shimmer3R LIS2DW12 mode is actually three bits —
+> `ShimConfig_wrAccelModeSet` packs `wrAccelHrMode` (byte 6 bit 0) above the
+> two-bit low-power mode — so the complete mode is
+> `(wrAccelHrMode << 2) | (wrAccelLpModeMsb << 1) | wrAccelLpModeLsb`.
+
+### 4.2 Fields that changed meaning between generations
+
+Two bytes carry different fields on the two platforms at the same bit
+positions:
+
+| Byte | Bits | Shimmer3 | Shimmer3R |
+|---:|---|---|---|
+| 8 | 7-5 | `magRange` (LSM303) | `altMagRange` (LIS3MDL) |
+| 9 | 7-6 | `altAccelRange` (MPU9x50) | `lnAccelRange` (LSM6DSV) |
+
+Byte 131 bits 5-0 hold `altMagRate` and exist only on Shimmer3R; the setter
+forces the value to 0 on Shimmer3. Byte 132 (`NV_CONFIG_SETUP_BYTE6`) is
+declared, transferred and mirrored to the SD header, but no firmware field uses
+it on either platform.
+
+> **The alt-mag rate is in byte 131, not byte 130.** The Java driver declares
+> the shift under a comment naming a different byte. In byte 130 a 6-bit mask
+> would collide with `altAccelRate` (bits 7-6) and `gyroRangeMsb` (bit 2).
+
+> **`magRate` is not a composite field.** Only the three fields in §4.1 are
+> split. A `bitShiftLIS2MDLMagRateMSB` exists in the Java source but is
+> commented out in both parse and generate, and there is no corresponding
+> firmware field.
+
+### 4.3 Clamping in the setters
+
+Every setter clamps out-of-range input **to a default, not to the nearest legal
+value**:
+
+| Setter | Out-of-range behaviour |
+|---|---|
+| `ShimConfig_gyroRangeSet` | S3: falls back to ±500 dps. S3R: falls back to ±500 dps |
+| `ShimConfig_gyroRateSet` | S3R: falls back to the 60 Hz ODR |
+| `ShimConfig_wrAccelLpModeSet` | S3: coerced to 0 or 1. S3R: falls back to 0 |
+| `ShimConfig_configBytePressureOversamplingRatioSet` | Falls back to no oversampling / OSS 1 |
+| `ShimConfig_configByteMagRateSet` | Falls back to 75 Hz (S3) or 100 Hz (S3R) |
+| `ShimConfig_configByteAltMagRateSet` | Falls back to 80 Hz (S3R); forced to 0 on S3 |
+
+So writing an invalid range does not produce an error and does not produce a
+neighbouring value — it produces the factory default. A host must read back
+after writing if it needs to know what actually took effect.
+
+The pressure oversampling maximum is **part-dependent on Shimmer3R**: a BMP581
+accepts up to 128x while a BMP390 stops at 32x, and the setter consults
+`isBmp581InUse()` at write time.
 
 ## 5. ExG register banks (10-29)
 
-_TODO: the two 10-byte ADS1292R register images, their register names, and that they are written verbatim to the chip. Source: `gExgADS1292rRegs`, `NV_EXG_ADS1292R_1_CONFIG1`.._
+Two 10-byte images of the TI ADS1292R register file, one per chip:
+
+| Bytes | Chip | `NV_` base |
+|---|---|---|
+| 10-19 | ExG chip 1 | `NV_EXG_ADS1292R_1_CONFIG1` |
+| 20-29 | ExG chip 2 | `NV_EXG_ADS1292R_2_CONFIG1` |
+
+Each bank is the `gExgADS1292rRegs` struct, in register order:
+
+| Offset in bank | Register |
+|---:|---|
+| 0 | `config1` |
+| 1 | `config2` |
+| 2 | `loff` |
+| 3 | `ch1set` |
+| 4 | `ch2set` |
+| 5 | `rldSens` |
+| 6 | `loffSens` |
+| 7 | `loffStat` |
+| 8 | `resp1` |
+| 9 | `resp2` |
+
+These bytes are **written verbatim to the chip** — the firmware does not
+interpret them beyond the one correction below. Their meaning is the ADS1292R
+datasheet's, not Shimmer's, and a host configuring ExG needs that datasheet.
+
+> **One byte is silently rewritten.** On boards where the ADS1292R clock lines
+> are tied (`ShimBrd_areADS1292RClockLinesTied()`),
+> `ShimConfig_checkAndCorrectConfig` forces bit 3 of chip 1's `config2` to 1 and
+> reports a correction. A host that writes that bit as 0 on such a board will
+> read back a 1.
+
+The firmware ships two canned register sets, applied by
+`ShimConfig_setExgConfigForEcg` (the default) and
+`ShimConfig_setExgConfigForTestSignal`. The ECG default is
+`config1 = 0x02`, `config2 = 0x80`, `loff = 0x10`, `resp2 = 0x02`, all other
+registers `0x00`, identically on both chips.
 
 ## 6. Bluetooth baud and derived channels
 
-_TODO: byte 30 `btCommsBaudRate` (stored but no longer applied), and the 8 derived-channel bytes split 31-33 + 118-122 with the algorithm flags they carry. Source: `gConfigBytes` idx 30-33 and 118-122._
+### 6.1 Byte 30 — `btCommsBaudRate`
+
+Stored, transferred, mirrored to the SD header at `SDH_BT_COMMS_BAUD_RATE`, and
+**never applied**. `SET_BT_COMMS_BAUD_RATE` is NACKed and its implementation is
+commented out; the field is only defaulted, by `getDefaultBaudForBtVersion()`
+when the stored value is `0xFF`.
+
+The byte remains writable through `SET_INFOMEM`, so a host can change what is
+stored — it will simply have no effect on the link.
+
+> Until recently the command ACKed without doing anything, telling hosts a baud
+> change had taken effect when nothing had. It now NACKs. A host that treats a
+> NACK here as a fatal error will regress against current firmware; treat it as
+> "not supported".
+
+### 6.2 Derived channels — bytes 31-33 and 118-122
+
+Eight bytes of flags for host-side derived signals, split across two
+non-contiguous runs because the layout ran out of room in the first block:
+
+| Bytes | `NV_` constants |
+|---|---|
+| 31-33 | `NV_DERIVED_CHANNELS_0` .. `_2` |
+| 118-122 | `NV_DERIVED_CHANNELS_3` .. `_7` |
+
+The per-bit meanings are in the §2 byte map. They cover PPG-to-heart-rate,
+ECG-to-heart-rate per chip and channel, heart-rate variability in time and
+frequency domains, activity, GSR metrics, EMG processing, gait, gyro
+on-the-fly calibration, and the 6-DoF/9-DoF orientation quaternion and Euler
+outputs for both the low-noise and wide-range accelerometers.
+
+**The firmware does not compute any of these.** They are a configuration
+record: the device stores which derived signals the host application should
+produce, so that the setting survives in the SD header and travels with a
+trial. Bytes 119-122 have no bitfield names at all in the firmware struct —
+they are plain `uint8_t` passthrough.
+
+Two flags in byte 31 do have a firmware consequence, indirectly:
+`chEnSkinTemp` and `chEnResAmp` force an internal ADC channel on (§10).
 
 ## 7. Calibration blocks
 
-_TODO: the four 21-byte kinematic blocks at 34/55/76/97 and the two Shimmer3R blocks at 133/154, and their relationship to the calibration dump. Cross-reference [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md). Source: `gImuConfig`, `NV_LN_ACCEL_CALIBRATION`.._
+Six 21-byte kinematic calibration blocks:
+
+| Bytes | Field | `NV_` constant | Gen |
+|---|---|---|:--:|
+| 34-54 | `lnAccelCalib` | `NV_LN_ACCEL_CALIBRATION` | both |
+| 55-75 | `gyroCalib` | `NV_GYRO_CALIBRATION` | both |
+| 76-96 | `magCalib` | `NV_MAG_CALIBRATION` | both |
+| 97-117 | `wrAccelCalib` | `NV_WR_ACCEL_CALIBRATION` | both |
+| 133-153 | `altAccelCalib` | `NV_ALT_ACCEL_CALIBRATION` | S3R |
+| 154-174 | `altMagCalib` | `NV_ALT_MAG_CALIBRATION` | S3R |
+
+Bytes 175-186 are `NV_MPL_GYRO_CALIBRATION`, a 12-byte legacy MPL block, now
+`unusedIdx175To186`.
+
+The internal layout of a 21-byte block — three big-endian `int16` biases, three
+big-endian `int16` sensitivities, nine `int8` alignment values scaled by 100 —
+and the relationship between these blocks and the self-describing calibration
+dump are specified in [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §3
+and §8.
+
+Three things matter when writing configuration bytes directly:
+
+1. **A block of all `0xFF` means "no calibration".**
+   `ShimConfig_createBlankConfigBytes` deliberately fills all six with `0xFF`
+   rather than zero, because zero is a legal-looking but useless calibration.
+2. **These blocks are overwritten from the calibration dump.** Any path that
+   calls `ShimCalib_calibDumpToConfigBytesAndSdHeaderAll` — including the
+   completion of a `SET_CALIB_DUMP` — replaces them. Writing a calibration block
+   through `SET_INFOMEM` and then completing a calibration-dump upload loses the
+   former.
+3. **The block written is the one for the currently selected range.** Changing
+   a sensor's range swaps in a different set from the dump.
 
 ## 8. SD logging and trial configuration
 
-_TODO: shimmer name, experiment ID, config time, trial ID, shimmer count, the two trial-config bit bytes, BT interval, estimated and maximum experiment length, MAC address, and the SD-config delay flag. Source: `gConfigBytes` idx 187-231._
+| Bytes | Field | Notes |
+|---|---|---|
+| 187-198 | `shimmerName` | 12 chars, not NUL-terminated. Default `Shimmer_XXXX` with the last four characters replaced by the MAC suffix |
+| 199-210 | `expIdName` | 12 chars, not NUL-terminated. Default `DefaultTrial` |
+| 211-214 | `configTime0..3` | **Big-endian** `uint32`, seconds. Default 0 |
+| 215 | `myTrialID` | Default 0 |
+| 216 | `numberOfShimmers` | Default 0 |
+| 217 | `NV_SD_TRIAL_CONFIG0` | Bit flags, see below |
+| 218 | `NV_SD_TRIAL_CONFIG1` | Bit flags, see below |
+| 219 | `btIntervalSecs` | Sync broadcast interval. Default 54 |
+| 220-221 | `experimentLengthEstimatedInSec` | **Big-endian** (MSB at 220) |
+| 222-223 | `experimentLengthMaxInMinutes` | **Big-endian** (MSB at 222). 0 = auto-stop disabled |
+| 224-229 | `macAddr` | 6 bytes |
+| 230 | `flagWriteCfgToSd` | Bit 0 only |
+| 231 | `btSetPin` | Legacy |
+
+> **Three multi-byte fields here are big-endian, while the sampling rate at
+> bytes 0-1 is little-endian.** `configTime`, `experimentLengthEstimatedInSec`
+> and `experimentLengthMaxInMinutes` all store most-significant byte first
+> (`ShimConfig_configTimeSet` shifts down from 24). There is no rule to infer;
+> the endianness is per-field.
+
+### 8.1 Trial config byte 217
+
+| Bit | Field | Meaning |
+|---:|---|---|
+| 7 | `rtcSetByBt` | The real-world clock was set over Bluetooth this session |
+| 6 | `btPinSetup` | Legacy. Always forced to 0 (§10) |
+| 5 | `userButtonEnable` | Button starts/stops logging. Default 1 |
+| 4 | `rtcErrorEnable` | Signal an unset clock through the LEDs |
+| 3 | `bluetoothDisable` | Default 0 |
+| 2 | `syncEnable` | Multi-device SD sync |
+| 1 | `masterEnable` | This device is the sync centre |
+| 0 | `sdErrorEnable` | Signal SD errors through the LEDs. Default 1 |
+
+> **`masterEnable` is byte 217, not byte 130.** `SET_CENTER` used to flush byte
+> 130 after changing it, so the new value lived in RAM but was never persisted:
+> a read-back succeeded and a reboot lost the setting. Fixed, but a host that
+> works around the old behaviour should stop.
+
+### 8.2 Trial config byte 218
+
+| Bit | Field | Meaning |
+|---:|---|---|
+| 7 | `singleTouchStart` | One button press starts a synchronised trial |
+| 4 | `tcxo` | Use the temperature-compensated oscillator |
+| 0 | `lowBatteryAutoStop` | Stop logging on low battery |
+
+Bits 6, 5, 3, 2 and 1 are unused. Both `tcxo` and `singleTouchStart` are forced
+off at validation on hardware that does not support them (§10).
+
+### 8.3 Defaults for the string fields
+
+`ShimConfig_parseShimmerNameFromConfigBytes` scans for printable characters and,
+finding none at index 0, resets the name to the default. A name is therefore
+never empty; an all-`0xFF` field yields `Shimmer_<mac4>`.
 
 ## 9. Sync node table
 
-_TODO: the centre address plus 21 node addresses of 6 bytes each from byte 256, `NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS`, and how the node count relates to `numberOfShimmers`. Source: `gConfigBytes` `syncNodeAddr*`, `NV_CENTER` / `NV_NODE0`._
+Bytes **256-381**, `NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS = 126` bytes: twenty-one
+six-byte Bluetooth addresses.
+
+| Bytes | Field | `NV_` constant |
+|---|---|---|
+| 256-261 | `syncNodeAddr1` — the **centre** address | `NV_CENTER` |
+| 262-267 | `syncNodeAddr2` — first node | `NV_NODE0` |
+| 268-381 | `syncNodeAddr3` .. `syncNodeAddr21` | — |
+
+`NV_CENTER` is `(128 + 128 + 0)` and `NV_NODE0` is `(128 + 128 + 6)`, making the
+page arithmetic explicit: the table starts at the third 128-byte page.
+
+The naming is off by one against its own semantics — the first entry is the
+centre, so `syncNodeAddr2` is node 0 — and the tenth entry is named
+`syncNodeAddr` with no numeric suffix, an apparent typo in the struct. Address
+by offset, not by field name.
+
+`numberOfShimmers` (byte 216) is the count the trial expects; it is not
+enforced against the number of non-`0xFF` entries in this table. An unused slot
+is all-`0xFF`, which is what `ShimConfig_createBlankConfigBytes` writes across
+the whole 128-byte page.
+
+Bytes 382-383 are reserved and complete the page.
 
 ## 10. Firmware validation and correction rules
 
-_TODO: every clamp and coercion `ShimConfig_checkAndCorrectConfig` applies, so a host knows which written values will silently come back different. Source: `Configuration/shimmer_config.c` — `ShimConfig_checkAndCorrectConfig`._
+`ShimConfig_checkAndCorrectConfig` runs on load, after
+`ShimConfig_setDefaultConfig`, and whenever configuration changes. It returns a
+flag saying whether it changed anything; when it did, the firmware writes the
+corrected image back to non-volatile memory.
+
+**Every rule below is silent.** A host that writes a rejected combination gets
+an ACK and different bytes on read-back.
+
+### 10.1 Mutually exclusive channels
+
+| Rule | Effect | Reason |
+|---|---|---|
+| GSR + internal ADC | S3: clears `chEnIntADC1`. S3R: clears `chEnIntADC3` | Shared ADC input |
+| Bridge amp + internal ADCs | S3: clears `chEnIntADC13` and `chEnIntADC14`. S3R: clears `chEnIntADC1` and `chEnIntADC2` | Shared inputs |
+| ExG 24-bit + 16-bit, same chip | Clears the 16-bit flag | One chip, one width |
+| Any ExG + internal ADCs | S3: clears `chEnIntADC1` and `chEnIntADC14`. S3R: clears `chEnIntADC3` and `chEnIntADC2` | Shared inputs |
+
+In every case **the ADC channel loses**, except the ExG width rule where 24-bit
+wins over 16-bit.
+
+### 10.2 Forced-on channels
+
+`chEnSkinTemp` or `chEnResAmp` set forces `chEnIntADC1` (S3) /
+`chEnIntADC3` (S3R) **on**. This is the one rule that enables rather than
+disables, and it does not set the corrected flag, so it is applied without the
+image being written back on that account alone.
+
+### 10.3 Value clamps
+
+| Field | Rule |
+|---|---|
+| `gsrRange` | Greater than 4 becomes `GSR_AUTORANGE` |
+| `btIntervalSecs` | If `syncEnable`, anything below 54 (`SYNC_INT_C`) becomes 54 |
+| `magRange` (S3) | Forced to 0 unless the wide-range accel is an LSM303DLHC |
+
+### 10.4 Capability gates
+
+| Field | Rule |
+|---|---|
+| `tcxo` | Forced to 0 where `IS_SUPPORTED_TCXO` is false |
+| `singleTouchStart` | Forced to 0 where `IS_SUPPORTED_SINGLE_TOUCH` is false. Where supported, setting it also forces `userButtonEnable` and `syncEnable` on — single-touch needs both |
+| `exgADS1292rRegsCh1.config2` bit 3 | Forced to 1 where the ADS1292R clock lines are tied |
+| `btPinSetup` | Always forced to 0 — the Bluetooth driver no longer needs it |
+
+### 10.5 MAC address
+
+The stored `macAddr` is compared against the address read from the Bluetooth
+module and **overwritten from the module** on any mismatch. A host cannot set
+this field; writing it is a no-op that will be silently reverted.
+
+`ShimSdSync_checkSyncCenterName` also runs here and may adjust the sync
+configuration.
 
 ## 11. Defaults
 
-_TODO: the values `ShimConfig_setDefaultConfig` writes, including the default shimmer name / trial ID / config time and what an erased (all-`0xFF`) InfoMem is corrected to. Source: `Configuration/shimmer_config.c` — `ShimConfig_setDefaultConfig`, `ShimConfig_areConfigBytesValid`._
+`ShimConfig_setDefaultConfig` starts from `ShimConfig_createBlankConfigBytes`
+— all zeros, then all six calibration blocks to `0xFF`, the MAC copied from the
+Bluetooth module, bytes 232-255 to `0xFF`, and the whole 128-byte sync page to
+`0xFF` — and then applies:
+
+| Setting | Default |
+|---|---|
+| Sampling rate | 51.2 Hz (640 ticks) |
+| Buffer size | 1 |
+| Enabled channels | Low-noise accel, gyro, mag, battery |
+| Wide-range accel | 100 Hz, ±2 g, high-performance / HR and LP modes off |
+| Gyro rate | S3: `0x9B` (8 kHz / 156 = 51.282 Hz). S3R: the 60 Hz ODR |
+| Gyro range | ±500 dps |
+| Mag | S3: ±1.3 Ga at 75 Hz. S3R: LIS2MDL at 100 Hz; LIS3MDL ±4 Ga at 80 Hz |
+| Low-noise / alt accel range | ±2 g |
+| Pressure oversampling | S3: OSS 1. S3R: none |
+| GSR range | Auto-range |
+| Expansion board power | Off |
+| ExG registers | The ECG set (§5) |
+| Bluetooth baud | `getDefaultBaudForBtVersion()`, only if currently `0xFF` |
+| Shimmer name | `Shimmer_<mac4>` |
+| Experiment ID | `DefaultTrial` |
+| Config time | 0 |
+| Trial ID, shimmer count | 0 |
+| Button, RTC error, SD error | Enabled |
+| Bluetooth | Enabled |
+| Sync broadcast interval | 54 s |
+| Max experiment length | 0 (auto-stop disabled) |
+| Estimated experiment length | 1 s |
+
+It finishes by running `ShimConfig_checkAndCorrectConfig`, setting
+`flagWriteCfgToSd`, refreshing the calibration blocks from the dump, and
+flushing to non-volatile memory.
+
+### 11.1 What counts as an erased InfoMem
+
+`ShimConfig_areConfigBytesValid` returns false only when **all six MAC address
+bytes at 224-229 are `0xFF`**. Nothing else is examined. A block whose entire
+first page is erased but whose MAC bytes are intact is treated as valid and used
+as-is.
+
+> The function's own commented-out predecessor compared the first six bytes
+> instead. The live check is the MAC, which is why a partially erased
+> configuration can survive validation.
 
 ## 12. Layout version gates
 
-_TODO: the host-side version gates that select a layout variant, and the note that for current LogAndStream and for all Shimmer3R every gate in the Java `ConfigByteLayoutShimmer3` constructor evaluates true, so only the newest layout is live. Source: `driver/shimmer2r3/ConfigByteLayoutShimmer3.java` constructor, `driverUtilities/ShimmerVerObject.java`._
+The firmware has no layout versioning: the running build's `gConfigBytes` is the
+layout, and there is exactly one. Version gating is entirely a **host-side**
+concern, needed because a host must parse configuration from devices running
+older firmware.
 
-## Appendix A. InfoMem ↔ SD-header pairs
+Both host SDKs express this the same way, as predicates over a
+`(hardwareVersion, firmwareIdentifier, major, minor, internal)` tuple compared
+with the Java `UtilShimmer.compareVersions` semantics, where a wildcard
+(`ANY_VERSION`, -1) in any field makes that field's test pass.
 
-_TODO: the mapping from each `NV_*` offset to its `SDH_*` counterpart in the SD-card file header, since the two are written together by `ShimBt_settingChangeCommon` but are not at the same offsets. Source: `SDCard/shimmer_sd_header.h`, `ShimSdHead_config2SdHead`._
+The gates that select layout variants cover: the MPL (MPU9150 DMP) block, which
+is Shimmer3 with SDLog firmware in a bounded version window; the eight-byte
+derived-sensor extension, which requires SDLog 0.13.1 or later; and the
+Shimmer3R-only fields, gated on the hardware identifier alone.
+
+> **For current LogAndStream on Shimmer3, and for all Shimmer3R, every gate
+> evaluates true.** Only the newest layout is live. The gates matter when
+> reading a device that has not been updated, or a stored configuration
+> captured from one — not when talking to current firmware.
+
+Because the MPL gate is SDLog-only, the MPL calibration bytes at 133-174 are
+free for reuse on Shimmer3R, which is exactly what
+`NV_ALT_ACCEL_CALIBRATION` and `NV_ALT_MAG_CALIBRATION` do. A host must
+therefore resolve those bytes by hardware generation, not by offset alone: the
+same addresses mean MPL accelerometer/magnetometer calibration on an
+SDLog Shimmer3 and ADXL371/LIS3MDL calibration on a Shimmer3R. The Java driver
+reflects this by declaring two index names for each — `idxMPLAccelCalibration`
+alongside `idxADXL371AltAccelCalibration`, and `idxMPLMagCalibration` alongside
+`idxLIS3MDLAltMagCalibration`.
+
+## Appendix A. InfoMem to SD-header pairs
+
+`ShimSdHead_config2SdHead` copies configuration into the SD-card data-file
+header. The two layouts are **not parallel** — it is a field-by-field copy to
+different offsets, which is the whole reason this table exists.
+
+The header is filled with `0xFF` first, so any offset not listed below is `0xFF`
+in a written file.
+
+### A.1 Direct byte copies
+
+| Config byte(s) | `NV_` constant | SD header | `SDH_` constant |
+|---:|---|---:|---|
+| 0-1 | `NV_SAMPLING_RATE` | 0-1 | `SDH_SAMPLE_RATE_0/1` |
+| 2 | `NV_BUFFER_SIZE` | 2 | `SDH_BUFFER_SIZE` |
+| 3 | `NV_SENSORS0` | 3 | `SDH_SENSORS0` |
+| 4 | `NV_SENSORS1` | 4 | `SDH_SENSORS1` |
+| 5 | `NV_SENSORS2` | 5 | `SDH_SENSORS2` |
+| 128 | `NV_SENSORS3` | 6 | `SDH_SENSORS3` |
+| 129 | `NV_SENSORS4` | 7 | `SDH_SENSORS4` |
+| 6 | `NV_CONFIG_SETUP_BYTE0` | 8 | `SDH_CONFIG_SETUP_BYTE0` |
+| 7 | `NV_CONFIG_SETUP_BYTE1` | 9 | `SDH_CONFIG_SETUP_BYTE1` |
+| 8 | `NV_CONFIG_SETUP_BYTE2` | 10 | `SDH_CONFIG_SETUP_BYTE2` |
+| 9 | `NV_CONFIG_SETUP_BYTE3` | 11 | `SDH_CONFIG_SETUP_BYTE3` |
+| 130 | `NV_CONFIG_SETUP_BYTE4` | 12 | `SDH_CONFIG_SETUP_BYTE4` |
+| 131 | `NV_CONFIG_SETUP_BYTE5` | 13 | `SDH_CONFIG_SETUP_BYTE5` |
+| 132 | `NV_CONFIG_SETUP_BYTE6` | 14 | `SDH_CONFIG_SETUP_BYTE6` |
+| 217 | `NV_SD_TRIAL_CONFIG0` | 16 | `SDH_TRIAL_CONFIG0` |
+| 218 | `NV_SD_TRIAL_CONFIG1` | 17 | `SDH_TRIAL_CONFIG1` |
+| 219 | `NV_SD_BT_INTERVAL` | 18 | `SDH_BROADCAST_INTERVAL` |
+| 30 | `NV_BT_COMMS_BAUD_RATE` | 19 | `SDH_BT_COMMS_BAUD_RATE` |
+| 220 | `NV_EST_EXP_LEN_MSB` | 20 | `SDH_EST_EXP_LEN_MSB` |
+| 221 | `NV_EST_EXP_LEN_LSB` | 21 | `SDH_EST_EXP_LEN_LSB` |
+| 222 | `NV_MAX_EXP_LEN_MSB` | 22 | `SDH_MAX_EXP_LEN_MSB` |
+| 223 | `NV_MAX_EXP_LEN_LSB` | 23 | `SDH_MAX_EXP_LEN_LSB` |
+| 215 | `NV_SD_MYTRIAL_ID` | 32 | `SDH_MYTRIAL_ID` |
+| 216 | `NV_SD_NSHIMMER` | 33 | `SDH_NSHIMMER` |
+| 31 | `NV_DERIVED_CHANNELS_0` | 40 | `SDH_DERIVED_CHANNELS_0` |
+| 32 | `NV_DERIVED_CHANNELS_1` | 41 | `SDH_DERIVED_CHANNELS_1` |
+| 33 | `NV_DERIVED_CHANNELS_2` | 42 | `SDH_DERIVED_CHANNELS_2` |
+| 211-214 | `NV_SD_CONFIG_TIME` | 52-55 | `SDH_CONFIG_TIME_0..3` |
+| 10-19 | `NV_EXG_ADS1292R_1_*` | 56-65 | `SDH_EXG_ADS1292R_1_*` |
+| 20-29 | `NV_EXG_ADS1292R_2_*` | 66-75 | `SDH_EXG_ADS1292R_2_*` |
+| 118 | `NV_DERIVED_CHANNELS_3` | 217 | `SDH_DERIVED_CHANNELS_3` |
+| 119 | `NV_DERIVED_CHANNELS_4` | 218 | `SDH_DERIVED_CHANNELS_4` |
+| 120 | `NV_DERIVED_CHANNELS_5` | 219 | `SDH_DERIVED_CHANNELS_5` |
+| 121 | `NV_DERIVED_CHANNELS_6` | 220 | `SDH_DERIVED_CHANNELS_6` |
+| 122 | `NV_DERIVED_CHANNELS_7` | 221 | `SDH_DERIVED_CHANNELS_7` |
+
+> Note the reordering: the two ExG banks are contiguous in both layouts but the
+> derived-channel bytes are split 40-42 / 217-221 in the header against
+> 31-33 / 118-122 in the configuration, and the four setup bytes 6-9 land at
+> 8-11 with the Shimmer3R additions 130-132 following at 12-14 rather than
+> staying in their own page.
+
+### A.2 Calibration blocks
+
+Covered in [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §4.2. The
+important point is that **the order differs**: InfoMem runs
+LN-accel (34), gyro (55), mag (76), WR-accel (97); the header runs
+WR-accel (76), gyro (97), mag (118), LN-accel (139).
+
+The header additionally carries an 8-byte calibration timestamp per sensor,
+which has no InfoMem counterpart, and the copy is performed by
+`ShimCalib_calibDumpToConfigBytesAndSdHeaderAll` rather than by
+`ShimSdHead_config2SdHead` directly.
+
+### A.3 Header-only fields
+
+These have no configuration-byte source; they are stamped from the device at
+file-creation time:
+
+| SD header | `SDH_` constant | Source |
+|---:|---|---|
+| 24-29 | `SDH_MAC_ADDR` | Read from the Bluetooth module, **not** from `NV_MAC_ADDRESS` |
+| 30-31 | `SDH_SHIMMERVERSION_BYTE_0/1` | `DEVICE_VER`, big-endian |
+| 34-35 | `SDH_FW_VERSION_TYPE_0/1` | `FW_IDENTIFIER`, big-endian |
+| 36-37 | `SDH_FW_VERSION_MAJOR_0/1` | Big-endian |
+| 38 | `SDH_FW_VERSION_MINOR` | |
+| 39 | `SDH_FW_VERSION_INTERNAL` | Patch version |
+| 44-51 | `SDH_RTC_DIFF_0..7` | RWC offset, MSB order |
+| 160-181 | `SDH_TEMP_PRES_CALIBRATION` | Pressure coefficients read from the part |
+| 222-223 | `SDH_TEMP_PRES_EXTRA_CALIB_BYTES` | BMP280 only — its 24 bytes do not fit the 22-byte field |
+| 214-216 | `SDH_DAUGHTER_CARD_ID_BYTE0` +3 | Expansion board ID |
+| 251-255 | `SDH_INITIAL_TIMESTAMP_*` | Written when logging starts |
+| 314 | `SDH_NUM_ENABLED_CHANNELS` | S3R only |
+| 315+ | `SDH_CHANNEL_ID_BYTE_0` +50 | S3R only — the resolved channel order |
+
+> **The MAC in the header is not the MAC in the configuration.**
+> `ShimSdHead_config2SdHead` takes it "direct from BT and not configuration".
+> In practice §10.5 keeps the two in step, but the header is the more
+> trustworthy of the two.
+
+> **`SDH_RTC_DIFF_*` is written as zero on Shimmer3R.** The Shimmer3 branch
+> copies `RTC_getRwcTimeDiffPtr()`; the Shimmer3R branch writes eight zero bytes
+> under a `TODO check is this is working` comment. A host must not use this
+> field to reconstruct absolute time from a Shimmer3R recording — see
+> [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
+
+> **`SDH_NUM_ENABLED_CHANNELS` and the channel-ID list are Shimmer3R-only.**
+> On Shimmer3 those offsets stay `0xFF`, and channel order must be obtained from
+> the inquiry response instead.
 
 ## Still unverified / not found in code
 
-- _TODO: populate as the doc pass proceeds._
+- **Bytes 232-255.** `ShimConfig_createBlankConfigBytes` fills them with `0xFF`
+  via `memset(&rawBytes[NV_BT_SET_PIN + 1], 0xFF, 24)`, and the struct names
+  them `unusedIdx232` through `unusedIdx255`. Whether any historical firmware
+  used them is not determinable from the current source.
+- **Byte 132 / `NV_CONFIG_SETUP_BYTE6`.** Allocated, transferred, and mirrored
+  to the SD header, but no field on either platform reads or writes it.
+- **The three historical size constants.** `NV_NUM_SETTINGS_BYTES` (34),
+  `NV_NUM_CALIBRATION_BYTES` (84) and `NV_NUM_SD_BYTES` (37) sum to 155 while
+  `NV_TOTAL_NUM_CONFIG_BYTES` is 384, and the comment beside the latter claims
+  it is their sum. Which layout they described was not established.
+- **`syncNodeAddr` (the tenth entry, bytes 310-315).** Missing the numeric
+  suffix its nineteen siblings carry. Almost certainly a typo, but nothing in
+  the source confirms that it is not deliberate.
+- **Whether `numberOfShimmers` is ever validated against the node table.** No
+  code was found that compares the two, but the sync subsystem was not read in
+  full for this document; see [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md).
