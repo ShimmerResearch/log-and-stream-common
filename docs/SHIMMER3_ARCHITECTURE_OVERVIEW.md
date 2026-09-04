@@ -112,8 +112,16 @@ Grouped by what they cover:
 | Platform-specific sensors | `MPU9150_startMagMeasurement`, `BMPX80_startMeasurement` (Shimmer3 only) |
 | Fault handling | `triggerShimmerErrorState` |
 
-`Platform/platform_api.c` adds a thin layer over the parts that need a uniform
-shape — `platform_getTick`, `platform_sleepWhenNoTask`.
+`Platform/platform_api.h` adds a second, softer boundary: eleven
+`PLATFORM_WEAK` functions with default implementations in `platform_api.c`, so
+a platform overrides only what it needs. `PLATFORM_WEAK` resolves to the right
+attribute for GCC/Clang, IAR and ARMCC.
+
+> **The two boundaries fail differently.** A missing `extern` from
+> `log_and_stream_externs.h` is a link error. A missing `platform_*` override
+> links fine and silently uses the default — `platform_sleepWhenNoTask` does
+> nothing, `platform_isUsbUartInitialised` returns false. Prefer the extern
+> list for anything whose absence must be caught.
 
 > **The boundary is a flat list of `extern` functions, not a struct of
 > pointers.** Adding a platform means providing every symbol; the linker is the
@@ -359,11 +367,16 @@ Channel order and encodings are in
 
 ## Still unverified / not found in code
 
-- **`Platform/platform_api.c` contents.** The file exists and
-  `platform_getTick` / `platform_sleepWhenNoTask` are referenced from the task
-  list, but the file itself yielded no top-level definitions to the symbol
-  scan used here — its bodies may be macros or inline. The platform boundary as
-  described comes from `log_and_stream_externs.h`.
+- **Which platforms override which `platform_*` weak defaults.**
+  `Platform/platform_api.h` declares eleven functions — `platform_reset`,
+  `platform_delayMs`, `platform_getTick`, `platform_processHwRevision`,
+  `platform_initGpioForRevision`, `platform_gatherData`, `platform_crcData`,
+  `platform_crcData16`, `platform_isDockUartInitialised`,
+  `platform_isUsbUartInitialised` and `platform_sleepWhenNoTask` — each
+  `PLATFORM_WEAK` with a no-op or false-returning default in
+  `platform_api.c`. Which of them each platform actually overrides was not
+  enumerated, and an un-overridden one fails silently rather than at link
+  time.
 - **Where the sample timer ISR queues `TASK_GATHER_DATA`.** The task exists and
   `ShimSens_gatherData` is its handler, but the ISR is in the platform
   repositories and was not read.
