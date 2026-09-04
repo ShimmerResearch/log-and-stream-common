@@ -25,7 +25,7 @@ firmware and the host SDKs.
 >   offsets), `Comms/shimmer_bt_uart.c`
 >   (`ShimBt_replySingleSensorCalibCmd`, `ShimBt_calibrationChangeCommon`,
 >   the `GET`/`SET_CALIB_DUMP` handlers).
-> - **Platform firmware:** `shimmer3-firmware` @ `12a6dfc`,
+> - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`,
 >   `shimmer3r-firmware` @ `a8f105e5`.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — the `sensors/` calibration classes

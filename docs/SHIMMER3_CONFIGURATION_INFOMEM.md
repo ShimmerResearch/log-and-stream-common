@@ -19,7 +19,7 @@ and mirrored into the SD-card file header.
 >   (`ShimConfig_setDefaultConfig` defaults, `ShimConfig_checkAndCorrectConfig`
 >   validation), `SDCard/shimmer_sd_header.h` (the `SDH_*` mirror offsets),
 >   `Comms/shimmer_bt_uart.c` (paging and the per-setting write paths).
-> - **Platform firmware:** `shimmer3-firmware` @ `12a6dfc` —
+> - **Platform firmware:** `shimmer3-firmware` @ `2765ff4` —
 >   `LogAndStream_Shimmer3/Shimmer_Driver/5xx_HAL/hal_InfoMem.h`;
 >   `shimmer3r-firmware` @ `a8f105e5` —
 >   `LogAndStream_Shimmer3R/Shimmer_Driver/hal_Infomem.h`.
