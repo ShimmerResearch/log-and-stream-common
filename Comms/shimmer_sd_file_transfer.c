@@ -80,10 +80,16 @@ static volatile uint8_t waitingForTxSpace;
 
 /* Set once this module has requested SD power so ShimSdFileTransfer_reset()
  * knows to release it again when the device is otherwise idle. volatile because
- * the release runs in ISR context (BT disconnect, via the CYW20820 UART DMA
- * RX-complete callback) while the acquire runs in task context - as with
- * the waitingForTxSpace flag in this file, the compiler must not cache it
- * across the two. */
+ * the release CAN run in ISR context - a BT disconnect reaches
+ * ShimSdFileTransfer_reset() from the CYW20820 UART DMA RX-complete callback -
+ * while the acquire always runs in task context, and the compiler must not
+ * cache the flag across the two. Same reasoning as waitingForTxSpace below.
+ *
+ * The release is not ISR-only. ShimSdFileTransfer_run() also resets, from the
+ * task loop, whenever it is scheduled with the link already gone. Only the ISR
+ * caller constrains what the release may do, so the comments on the release
+ * path are written for that case; they describe the tightest caller, not the
+ * only one. */
 static volatile uint8_t sdPowerRequested;
 
 /* Worst case two frames are owed at once: SUPERSEDED for an in-flight
@@ -203,9 +209,10 @@ static uint8_t sdFtAccessCheck(void)
      * cost several hundred ms for nothing.
      *
      * Task context only (Board_sd2Mcu blocks for a few hundred ms of
-     * HAL_Delay), which is why the release path stays a bare
-     * Board_setSdPower(0) in ISR context - see the comment there, and DEV-966
-     * for hoisting the release out of the ISR.
+     * HAL_Delay). The acquire has only this one caller, so that holds; the
+     * release does not, which is why it stays a bare Board_setSdPower(0) -
+     * see the comment there, and DEV-966 for hoisting the release out of the
+     * ISR path entirely.
      *
      * LANDMINE, safe only because _VOLUMES == 1: Board_sd2Mcu() calls
      * MX_FATFS_Init() -> FATFS_LinkDriver(), whose body is guarded by
@@ -221,6 +228,29 @@ static uint8_t sdFtAccessCheck(void)
     {
       Board_sd2Mcu();
 
+      /* We own the rail from here, whatever the bring-up returned - so the
+       * release on disconnect has to know about it before anything below can
+       * bail out.
+       *
+       * Set after Board_sd2Mcu() and not before, deliberately: with the flag
+       * already up, a disconnect ISR landing mid-bring-up would call
+       * Board_setSdPower(0) and cut power to a card the task loop is still
+       * initialising. */
+      sdPowerRequested = 1;
+
+      /* Board_sd2Mcu() blocks for a few hundred ms, so a disconnect can land
+       * in the middle of it - and that disconnect's ShimSdFileTransfer_reset()
+       * saw the flag still 0 and left the rail alone. If this command now
+       * returns a status instead of scheduling TASK_SD_FILE_TRANSFER, nothing
+       * comes back for the rail and the card stays powered until the next BT
+       * session ends. Release it here, in task context, where doing so is
+       * unambiguously safe. */
+      if (!shimmerStatus.btConnected)
+      {
+        ShimSdFileTransfer_reset();
+        return SD_FT_STATUS_SD_UNAVAILABLE;
+      }
+
       /* Board_sd2Mcu() returns void, so its success has to be read out of the
        * status flags MX_SDMMC1_SD_Init() sets: it clears sdBadFile and sets
        * sdPeripheralInit together on success, and on failure leaves sdBadFile
@@ -231,7 +261,6 @@ static uint8_t sdFtAccessCheck(void)
        * that cannot succeed. */
       if (shimmerStatus.sdBadFile || !shimmerStatus.sdPeripheralInit)
       {
-        sdPowerRequested = 1; /* we own the rail either way - release it on disconnect */
         return SD_FT_STATUS_SD_UNAVAILABLE;
       }
     }
@@ -364,19 +393,22 @@ void ShimSdFileTransfer_reset(void)
     if (!shimmerStatus.sensing && !shimmerStatus.docked
         && !shimmerStatus.usbPluggedIn && shimmerStatus.sdOwner == SD_OWNER_MCU)
     {
-      /* Deliberately no unmount and no settle delay here: this runs in ISR
-       * context (BT disconnect arrives via the CYW20820 UART DMA RX-complete
-       * callback), where a blocking delay could stall or deadlock against
-       * SysTick. Bringing the card back up on the next acquire is what makes
-       * the stale mount harmless, and FatFs syncs the volume itself after the
-       * read/delete operations this module performs, so there is no dirty state
-       * to flush.
+      /* Deliberately no unmount and no settle delay here. This function has
+       * two callers and one of them is an ISR: a BT disconnect arrives via the
+       * CYW20820 UART DMA RX-complete callback, where a blocking delay could
+       * stall or deadlock against SysTick. The other caller,
+       * ShimSdFileTransfer_run() finding the link already gone, is the task
+       * loop and could afford one - but the code here has to hold for the
+       * tighter of the two, so it is written for the ISR. Bringing the card
+       * back up on the next acquire is what makes the stale mount harmless, and
+       * FatFs syncs the volume itself after the read/delete operations this
+       * module performs, so there is no dirty state to flush.
        *
-       * Note this function ALREADY calls FatFs from the ISR, via
-       * sdFtCloseXferFil() -> f_close() at the top of this function - pre-existing,
-       * not introduced
-       * here, and left alone to keep this fix minimal. Hoisting the whole
-       * release into task context (which fixes that too) is DEV-966. */
+       * Note this function ALREADY calls FatFs from the ISR path, via
+       * sdFtCloseXferFil() -> f_close() at the top of this function -
+       * pre-existing, not introduced here, and left alone to keep this fix
+       * minimal. Hoisting the whole release into task context (which fixes
+       * that too) is DEV-966. */
       Board_setSdPower(0);
     }
   }

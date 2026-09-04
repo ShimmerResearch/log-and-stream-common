@@ -398,7 +398,13 @@ uint8_t ShimEeprom_writeDaughterCardMem(uint16_t memOffset, uint8_t memLength, u
   uint16_t brandStart = EEPROM_ADDRESS_BRAND_DETAILS - CAT24C16_PAGE_SIZE;
   uint16_t brandEnd = brandStart + EEPROM_BRAND_DETAILS_SIZE - 1;
 
-  if ((memLength <= 128) && (writeEnd < EEPROM_AVAILABLE_SIZE))
+  /* memLength == 0 has to be rejected before writeEnd is used: it makes
+   * writeEnd = memOffset - 1, an inverted range that underflows to 0xFFFF at
+   * offset 0 and, anywhere inside the brand record, satisfies the overlap test
+   * below and forces a re-read for a write that never happened. It also hands
+   * the platform's eepromWrite() a zero-length transfer. A write of nothing
+   * has no meaning in this command, so NACK it rather than define one. */
+  if ((memLength > 0) && (memLength <= 128) && (writeEnd < EEPROM_AVAILABLE_SIZE))
   {
     eepromWrite(memOffset + CAT24C16_PAGE_SIZE, (uint16_t) memLength, buf);
 
