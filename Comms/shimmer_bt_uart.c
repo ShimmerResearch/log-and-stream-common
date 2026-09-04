@@ -69,12 +69,10 @@ volatile uint8_t btDataRateTestState;
 /* One-shot: armed by SET_FEATURE/FEATURE_REBOOT_ON_DISCONNECT, consumed by
  * ShimBt_handleBtRfCommStateChange() when the host disconnects. */
 static uint8_t rebootOnDisconnect = 0;
-#if defined(SHIMMER3)
 volatile uint32_t btDataRateTestCounter;
+#if defined(SHIMMER3)
 volatile uint32_t btDataRateTestCounterSaved;
 volatile uint8_t dataRateTestBlockageCounter;
-#else
-uint8_t dataRateTestTxPacket[] = { DATA_RATE_TEST_RESPONSE, 0, 0, 0, 0 };
 #endif
 
 volatile uint8_t btTxInProgress;
@@ -186,6 +184,12 @@ void ShimBt_stopCommon(uint8_t isCalledFromMain)
   shimmerStatus.btConnected = 0;
   shimmerStatus.btIsInitialised = 0;
   shimmerStatus.btInSyncMode = 0;
+#if defined(SHIMMER3R)
+  /* Not gated on TRANSPARANT_MODE: that macro lives in the platform BT driver
+   * header, which this file cannot see, so a mode-gated guard here silently
+   * compiles out. Clearing the flag is correct in both modes. */
+  shimmerStatus.btFirstConnectionEstablished = 0;
+#endif
 }
 
 void ShimBt_resetBtResponseVars(void)
@@ -2722,6 +2726,15 @@ void ShimBt_TxCpltCallback(void)
   ShimSdFileTransfer_txSpaceAvailableEvent();
 #endif
 
+#if defined(SHIMMER3)
+  /* On SHIMMER3R the next transfer is triggered by the firmware once the BT
+   * module has acknowledged the previous one, not from this callback. */
+  ShimBt_triggerNextTransfer();
+#endif
+}
+
+void ShimBt_triggerNextTransfer(void)
+{
   if (shimmerStatus.btConnected
 #if defined(SHIMMER3)
       || areBtSetupCommandsRunning())
@@ -2746,7 +2759,11 @@ void ShimBt_TxCpltCallback(void)
 
 void ShimBt_sendNextCharIfNotInProgress(void)
 {
+#if defined(SHIMMER3)
   if (!ShimBt_btTxInProgressGet())
+#else
+  if (!ShimBt_btTxInProgressGet() && !isPendingResponseFromBtModule())
+#endif
   {
     ShimBt_sendNextChar();
   }
@@ -2850,12 +2867,10 @@ uint8_t ShimBt_btTxInProgressGet(void)
 void ShimBt_setDataRateTestState(uint8_t state)
 {
   btDataRateTestState = state;
-#if defined(SHIMMER3)
   btDataRateTestCounter = 0;
+#if defined(SHIMMER3)
   btDataRateTestCounterSaved = 0;
   dataRateTestBlockageCounter = 0;
-#else
-  *((uint32_t *) &dataRateTestTxPacket[1]) = 0;
 #endif
 }
 
@@ -2877,8 +2892,22 @@ void ShimBt_loadTxBufForDataRateTest(void)
   }
   ShimBt_sendNextChar();
 #else
-  HAL_StatusTypeDefShimmer ret_val
-      = BtTransmit(&dataRateTestTxPacket[0], sizeof(dataRateTestTxPacket));
+  /* Batch as many whole test packets as one transfer carries. Each packet is
+   * still DATA_RATE_TEST_RESPONSE + incrementing uint32 counter, so the byte
+   * stream the host sees is identical to single-packet sends. */
+  static uint8_t dataRateTestTxBuf[DATA_RATE_TEST_BATCH_BYTES];
+  uint32_t counter = btDataRateTestCounter;
+  uint16_t offset = 0;
+
+  while (offset < sizeof(dataRateTestTxBuf))
+  {
+    dataRateTestTxBuf[offset] = DATA_RATE_TEST_RESPONSE;
+    memcpy(&dataRateTestTxBuf[offset + 1U], &counter, sizeof(counter));
+    counter++;
+    offset += DATA_RATE_TEST_PACKET_SIZE;
+  }
+
+  HAL_StatusTypeDefShimmer ret_val = BtTransmit(&dataRateTestTxBuf[0], offset);
   if (ret_val != HAL_SHIM_OK)
   {
     /* This path transmits straight to the UART, bypassing the ring, and the only
@@ -2895,9 +2924,9 @@ void ShimBt_loadTxBufForDataRateTest(void)
     ShimBt_btTxInProgressSet(0);
     return;
   }
-  /* Only advance for a packet that actually went out, so the host does not see
+  /* Only advance for a batch that actually went out, so the host does not see
    * a phantom gap in the counter sequence. */
-  (*((uint32_t *) &dataRateTestTxPacket[1]))++;
+  btDataRateTestCounter = counter;
 #endif
 }
 

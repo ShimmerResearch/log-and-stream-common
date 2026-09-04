@@ -25,20 +25,28 @@
 #if defined(SHIMMER3R)
 /* Sized for SD file transfer: deep enough to keep the radio fed with
  * ~1 KB data frames while preserving headroom for command responses.
- * Must remain a power of 2. */
+ * Must remain a power of 2.
+ * Note, the CYW20820 PUART features a 256 byte FIFO on both RX/TX which is
+ * normally ready byte-by-byte, so the ring depth here is about keeping bulk
+ * transfers queued rather than about matching the module's FIFO. */
 #define BT_TX_BUF_SIZE      4096U /* serial buffer in bytes (power 2)  */
-/* Upper bound on a single transfer handed to the BT UART, independent of the
- * ring depth. The deep ring keeps bulk transfers from stalling; this cap
- * bounds how long an already-committed transfer delays anything queued behind
- * it (a command response, or sensor data if a future policy permits transfers
- * while streaming). At 2 Mbaud 1024 bytes is ~5 ms, versus ~20 ms for a full
- * 4 KB ring. Must not exceed BT_TX_BUF_SIZE. */
-#define BT_TX_MAX_DMA_CHUNK 1024U
+/* Upper bound on a single transfer handed to the BT driver, independent of
+ * the ring depth. In non-transparent SPP mode every chunk is one EZ-Serial
+ * SPP_SEND command/response round trip, so throughput is chunk_size / RTT
+ * and bigger chunks amortize the fixed per-command cost. 252 is the module's
+ * real ceiling: IF820 FW v1.4.18.18 parses only the 8-bit length field on
+ * inbound commands (bench-tested 2026-08-25 - a 1020-byte SPP_SEND raised
+ * EVT_SYSTEM_ERROR 0x0209/0x0207 and wedged TX), so the largest payload is
+ * 255 = conn_handle + 2-byte length prefix + 252 data. Cross-checked against
+ * EZS_SPP_SEND_MAX_DATA_BYTES by a static assert in hal_CYW20820.c. Must not
+ * exceed BT_TX_BUF_SIZE. */
+#define BT_TX_MAX_DMA_CHUNK 252U
 #else
 #define BT_TX_BUF_SIZE      256U /* serial buffer in bytes (power 2)  */
 /* No cap needed: a transfer can never exceed the ring itself */
 #define BT_TX_MAX_DMA_CHUNK BT_TX_BUF_SIZE
 #endif
+
 #define BT_TX_BUF_MASK                              (BT_TX_BUF_SIZE - 1UL)
 
 /* maximum number of arguments for any command sent (daughter card mem write) */
@@ -256,6 +264,13 @@
 #define BT_RX_COMMS_TIMEOUT_TICKS                     328U /* 32768*0.01s = 327.68  */
 
 #define DATA_RATE_TEST_PACKET_SIZE                    5U //1 header byte + uint32_t counter value
+/* Whole test packets per transfer. On the Shimmer3R non-transparent EZ-Serial
+ * path every BtTransmit() costs one SPP_SEND command/response round trip, so
+ * single-packet sends cap the measured rate at 5 bytes per RTT no matter the
+ * baud rate; batching amortizes the round trip so the test measures the link
+ * again instead of the command overhead. */
+#define DATA_RATE_TEST_BATCH_BYTES \
+  ((BT_TX_MAX_DMA_CHUNK / DATA_RATE_TEST_PACKET_SIZE) * DATA_RATE_TEST_PACKET_SIZE)
 
 #if defined(SHIMMER3)
 #define STATUS_BYTE_COUNT 1U
@@ -399,6 +414,7 @@ uint16_t ShimBt_getUsedSpaceInBtTxBuf(void);
 uint16_t ShimBt_getSpaceInBtTxBuf(void);
 
 void ShimBt_TxCpltCallback(void);
+void ShimBt_triggerNextTransfer(void);
 void ShimBt_sendNextCharIfNotInProgress(void);
 void ShimBt_sendNextChar(void);
 
