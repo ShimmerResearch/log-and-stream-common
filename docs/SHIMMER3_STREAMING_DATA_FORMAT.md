@@ -81,6 +81,11 @@ _The table in this section is generated mechanically from the firmware channel-I
 `#define`s, the per-platform packers' byte-width accumulation, the Java channel
 enum and type strings, and the TypeScript channel formats. Do not hand-edit it._
 
+_One cell has been corrected by hand since: the alternate-accelerometer rows
+carried a Java type string of `i12*>`, where the trailing character is an
+artefact of the extractor rather than anything in the driver. Fix it in the
+generator before the next run, or it will come back._
+
 Channel IDs are shared numbers whose *meaning* can differ between the two
 generations (the ADC block `0x0D`–`0x13` in particular). Byte widths are derived
 from the `sensing.dataLen +=` accumulation that follows each run of channel-ID
@@ -109,9 +114,9 @@ emits. `Encoding` and `SDK name` come from the web SDK's channel-format table.
 | `0x11` | `INTERNAL_ADC_12 / INTERNAL_ADC_0` | `INTERNAL_ADC_12` | `INTERNAL_ADC_0` | 2 |  | u14, u12 | `IntAdc12`, `IntAdc10` |  | SDK_MISSING, MEANING_DIFFERS |
 | `0x12` | `INTERNAL_ADC_13 / INTERNAL_ADC_1` | `INTERNAL_ADC_13` | `INTERNAL_ADC_1` | 2 | i16 le | u14, u12, u8, u16 | `IntAdc13`, `IntAdc15` | `PPG` | MEANING_DIFFERS |
 | `0x13` | `INTERNAL_ADC_14 / INTERNAL_ADC_2` | `INTERNAL_ADC_14` | `INTERNAL_ADC_2` | 2 |  | u14, u12 | `IntAdc14`, `IntAdc16` |  | SDK_MISSING, MEANING_DIFFERS |
-| `0x14` | `X_ALT_ACCEL` | `X_ALT_ACCEL` | `X_ALT_ACCEL` | 2 | i12* le | i12*> | `XAlterAccel` | `HG_ACCEL_X` |  |
-| `0x15` | `Y_ALT_ACCEL` | `Y_ALT_ACCEL` | `Y_ALT_ACCEL` | 2 | i12* le | i12*> | `YAlterAccel` | `HG_ACCEL_Y` |  |
-| `0x16` | `Z_ALT_ACCEL` | `Z_ALT_ACCEL` | `Z_ALT_ACCEL` | 2 | i12* le | i12*> | `ZAlterAccel` | `HG_ACCEL_Z` |  |
+| `0x14` | `X_ALT_ACCEL` | `X_ALT_ACCEL` | `X_ALT_ACCEL` | 2 | i12* le | i12* | `XAlterAccel` | `HG_ACCEL_X` |  |
+| `0x15` | `Y_ALT_ACCEL` | `Y_ALT_ACCEL` | `Y_ALT_ACCEL` | 2 | i12* le | i12* | `YAlterAccel` | `HG_ACCEL_Y` |  |
+| `0x16` | `Z_ALT_ACCEL` | `Z_ALT_ACCEL` | `Z_ALT_ACCEL` | 2 | i12* le | i12* | `ZAlterAccel` | `HG_ACCEL_Z` |  |
 | `0x17` | `X_ALT_MAG` | `X_ALT_MAG` | `X_ALT_MAG` | 2 |  | i16 | `XAlterMag` |  | SDK_MISSING |
 | `0x18` | `Y_ALT_MAG` | `Y_ALT_MAG` | `Y_ALT_MAG` | 2 |  | i16 | `YAlterMag` |  | SDK_MISSING |
 | `0x19` | `Z_ALT_MAG` | `Z_ALT_MAG` | `Z_ALT_MAG` | 2 |  | i16 | `ZAlterMag` |  | SDK_MISSING |
