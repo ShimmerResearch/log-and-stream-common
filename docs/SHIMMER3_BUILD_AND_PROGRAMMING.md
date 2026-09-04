@@ -140,7 +140,7 @@ the highest-priority indication there is
 
 Confirm `fw_version_struct` survives `--gc-sections`; the `.version` section
 needs an explicit `KEEP`. See
-[SHIMMER3_RELEASE_AND_VERSIONING.md](SHIMMER3_RELEASE_AND_VERSIONING.md) §4.
+[SHIMMER3_RELEASE_AND_VERSIONING.md](SHIMMER3_RELEASE_AND_VERSIONING.md) §3.
 
 ## 6. Formatting
 

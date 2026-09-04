@@ -225,7 +225,7 @@ diagnostic code:
 > **This test exists because a real drift problem was traced to under-specified
 > load capacitors**, and the report names the capacitor revision so a marginal
 > result can be attributed to the board build rather than the crystal. See
-> [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md) §7.
+> [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md) §8.
 
 > **"Not measurable" is not the same as "out of tolerance".** The four error
 > codes distinguish a crystal that is running badly from one that is not

@@ -80,7 +80,7 @@ From the `Core/Src` initialisers:
 > channel goes through the external ADS7028 on SPI1. This is why
 > `ShimBrd_areMcuAdcsUsedForSensing()` gates whether `ADC_configureChannels`
 > contributes any channels at all
-> ([SHIMMER3_ARCHITECTURE_OVERVIEW.md](SHIMMER3_ARCHITECTURE_OVERVIEW.md) §7).
+> ([SHIMMER3_ARCHITECTURE_OVERVIEW.md](SHIMMER3_ARCHITECTURE_OVERVIEW.md) §6).
 
 ## 3. Timers
 

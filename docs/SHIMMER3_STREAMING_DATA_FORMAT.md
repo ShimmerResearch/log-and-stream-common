@@ -453,9 +453,18 @@ battery voltage is the converted ADC voltage multiplied by the divider ratio.
 The Java driver applies a two-point calibration to ADC channels where one has
 been stored, falling back to the nominal reference otherwise.
 
-> The exact reference voltage, resolution and divider ratio are per-board and
-> live in the platform firmware and the Java sensor classes rather than in
-> `log-and-stream-common`. They are not restated here — see *Still unverified*.
+On **Shimmer3** the MSP430 ADC12 is used at 12 bits against a 3.0 V reference,
+and the battery input has a ×2 divider, so from `adc.c`:
+
+```c
+battValMV = (((uint32_t) raw * 3000) >> 12) * 2;
+```
+
+The other ADC channels convert with the same 3.0 V / 4095 scale and no divider.
+
+On **Shimmer3R** the sensor analog channels come through the external
+ADS7028 on SPI1 and the MCU's own battery channel is *internally divided by 4*
+(`hal_adc.c`). The ADS7028 reference was not found — see *Still unverified*.
 
 ### 7.3 GSR
 
@@ -489,8 +498,8 @@ counts with hysteresis:
 
 | Current resistor | Switch down (to a larger resistor) below | Switch up (to a smaller resistor) above |
 |---|---:|---:|
-| `HW_RES_40K` | 1490 | — |
-| `HW_RES_287K` | 1490 | `HW_RES_287K_MAX_ADC_VAL` |
+| `HW_RES_40K` | 1120 | — |
+| `HW_RES_287K` | 1490 | 3960 |
 | `HW_RES_1M` | 1630 | 3700 |
 | `HW_RES_3M3` | 1125 | 3930 |
 
@@ -596,20 +605,13 @@ A conforming parser must:
 
 ## Still unverified / not found in code
 
-- **ADC reference voltages, resolutions and the battery divider ratio.** These
-  are per-board and live in the platform firmware and the Java sensor classes,
-  not in `log-and-stream-common`. The Java type strings imply 12-bit and 14-bit
-  converters depending on channel, but the numeric reference values were not
-  read for this document, so no formula with concrete constants is given in
-  §7.2.
-- **`HW_RES_40K_MIN_ADC_VAL` and `HW_RES_287K_MAX_ADC_VAL`.** Both are defined
-  as multi-line expressions rather than literals, so §7.3's table gives the
-  literal thresholds only where the source states one. The two derived values
-  were not evaluated.
-- **`BMPX80_PACKET_SIZE` on Shimmer3.** The I2C configurator accumulates this
-  symbol rather than a literal, and it resolves in the platform repo. The
-  registry's 2-byte temperature and 3-byte pressure for Shimmer3 come from the
-  generated table, not from expanding this constant.
+- **The Shimmer3R ADS7028 reference voltage and resolution.** The driver lives
+  in `Shimmer_Driver/ADS7028_38/` and exposes per-channel max-value registers
+  but no reference constant was found in it; the Java `u14` type string suggests
+  a 14-bit path. Shimmer3's conversion is now in §7.2; Shimmer3R's is not.
+- ~~`BMPX80_PACKET_SIZE` on Shimmer3~~ — resolved: `BMPX80_TEMP_BUFF_SIZE`
+  (`0x02`) + `BMPX80_PRESS_BUFF_SIZE` (`0x03`) = 5, confirming the registry's
+  2-byte temperature and 3-byte pressure.
 - **Channels declared but never emitted.** `X_ALT_MAG` through `Z_ALT_MAG` and
   several ADC channels appear in the ID registry with a Java channel name but no
   SDK entry (`SDK_MISSING` in §3). Whether every one is reachable on shipping

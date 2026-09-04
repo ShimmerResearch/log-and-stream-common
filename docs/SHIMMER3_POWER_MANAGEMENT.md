@@ -31,53 +31,7 @@ document is about consumption.
 
 ---
 
-## 1. Switched rails
-
-| Function | Controls |
-|---|---|
-| `Board_setSdPower(state)` | SD card rail |
-| `Board_setExpansionBrdPower(state)` | Expansion board rail |
-| `Board_enableSensingPower(SENSE_PWR_SENSING, state)` | Sensor rails (Shimmer3R) |
-
-### 1.1 SD card
-
-Powered on demand rather than continuously:
-
-| Call site | Action |
-|---|---|
-| `ShimSdDataFile_fileInit` | On, if not already |
-| `ShimConfig_loadSensorConfigAndCalib` | On, to read configuration |
-| `ShimSdCfgFile_generate` / `_readSdConfiguration` | On, then off after |
-| `LogAndStream_setupDock` path | Off |
-| SD file transfer release | Off |
-
-> **The card being powered down is a state the file-transfer path has to
-> recover from explicitly.** A bare rail restore is not enough — the SDMMC
-> peripheral retains state from before the card lost power, so a full bring-up
-> is needed. See
-> [SHIMMER3_SD_FILE_TRANSFER.md](SHIMMER3_SD_FILE_TRANSFER.md) §2.1. This is the
-> mechanism behind a device that appeared dead after a second connection.
-
-### 1.2 Expansion board
-
-Gated by the `expansionBoardPower` configuration bit (byte 9 bit 0), applied at
-the start of sensing:
-
-```c
-if (ShimConfig_isExpansionBoardPwrEnabled())
-    Board_setExpansionBrdPower(1);
-```
-
-**Default is off.** A trial using an expansion board that needs power must set
-the bit; the symptom of forgetting is a board that reads as absent or returns
-zeros.
-
-### 1.3 Sensor rails (Shimmer3R)
-
-`Board_enableSensingPower(SENSE_PWR_SENSING, 1)` is called when sensing starts,
-so the sensor supplies are only up while a trial runs.
-
-## 2. Sleeping
+## 1. Sleeping
 
 `ShimTask_NORM_manage` sleeps whenever the task bitmask is empty:
 
@@ -110,7 +64,7 @@ and the queued task would not run until something else woke the part.
 > queued** (`!taskList && !executingTask`). That return value is how a caller
 > can tell it has just woken the device, and it is easy to discard by accident.
 
-## 3. What keeps a device awake
+## 2. What wakes the device
 
 Anything that keeps queuing tasks:
 
@@ -131,7 +85,7 @@ Anything that keeps queuing tasks:
 > is deliberate — the charging display needs to be responsive — but it means
 > docked idle behaviour is not representative of undocked idle behaviour.
 
-## 4. Radio power
+## 3. Radio power
 
 `ShimConfig_checkBtModeFromConfig` decides whether the radio should be on,
 from three inputs: the `bluetoothDisable` configuration bit, the `syncEnable`
@@ -156,7 +110,53 @@ mode is enabled and the radio is off.
 > The EEPROM enables select *which* radio, not whether one runs. See
 > [SHIMMER3_EEPROM_MEMORY_MAP.md](SHIMMER3_EEPROM_MEMORY_MAP.md) §4.2.
 
-## 5. Low-battery auto-stop
+## 4. Switched rails and peripherals
+
+| Function | Controls |
+|---|---|
+| `Board_setSdPower(state)` | SD card rail |
+| `Board_setExpansionBrdPower(state)` | Expansion board rail |
+| `Board_enableSensingPower(SENSE_PWR_SENSING, state)` | Sensor rails (Shimmer3R) |
+
+### 4.1 SD card
+
+Powered on demand rather than continuously:
+
+| Call site | Action |
+|---|---|
+| `ShimSdDataFile_fileInit` | On, if not already |
+| `ShimConfig_loadSensorConfigAndCalib` | On, to read configuration |
+| `ShimSdCfgFile_generate` / `_readSdConfiguration` | On, then off after |
+| `LogAndStream_setupDock` path | Off |
+| SD file transfer release | Off |
+
+> **The card being powered down is a state the file-transfer path has to
+> recover from explicitly.** A bare rail restore is not enough — the SDMMC
+> peripheral retains state from before the card lost power, so a full bring-up
+> is needed. See
+> [SHIMMER3_SD_FILE_TRANSFER.md](SHIMMER3_SD_FILE_TRANSFER.md) §2.1. This is the
+> mechanism behind a device that appeared dead after a second connection.
+
+### 4.2 Expansion board
+
+Gated by the `expansionBoardPower` configuration bit (byte 9 bit 0), applied at
+the start of sensing:
+
+```c
+if (ShimConfig_isExpansionBoardPwrEnabled())
+    Board_setExpansionBrdPower(1);
+```
+
+**Default is off.** A trial using an expansion board that needs power must set
+the bit; the symptom of forgetting is a board that reads as absent or returns
+zeros.
+
+### 4.3 Sensor rails (Shimmer3R)
+
+`Board_enableSensingPower(SENSE_PWR_SENSING, 1)` is called when sensing starts,
+so the sensor supplies are only up while a trial runs.
+
+## 5. Low-battery protection
 
 Gated on `lowBatteryAutoStop` (byte 218 bit 0), which is **off by default**.
 Three low readings — not necessarily consecutive — below
@@ -166,7 +166,7 @@ At the undocked 60 s battery interval that takes at least two minutes to
 trigger. Full detail in
 [SHIMMER3_BATTERY_AND_CHARGING.md](SHIMMER3_BATTERY_AND_CHARGING.md) §4.
 
-## 6. Sampling rate and consumption
+## 6. Consumption levers
 
 The rate is a divider of 32768 Hz
 ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §3.1),
@@ -207,14 +207,12 @@ A caution from experience rather than from the source:
   select was not read. Nothing in `common` constrains the choice.
 - **Current consumption figures.** No numbers appear in the firmware. Nothing
   in this document quantifies consumption, only what drives it.
-- **`SENSE_PWR_SENSING` and its siblings.** The enum is referenced from
-  `ShimSens_startSensing` but its definition was not located in
-  `log_and_stream_definitions.h`; it is presumably Shimmer3R platform code, and
-  whether other `SENSE_PWR_*` domains exist is unknown.
+- **The other `SENSE_PWR_*` domains.** `SENSE_PWR_SENSING` is `(0x01 << 1)` in
+  `shimmer3r-firmware` `Shimmer_Driver/hal_Board.h` — one bit of a power-domain
+  mask, so bit 0 and any higher bits name other domains. They were not
+  enumerated.
 - **Whether sensor rails are dropped when sensing stops.** The enable call at
   start was found; a matching disable was not traced.
-- **Dock and undock debounce intervals.** `g_dock_usb_last_tick` and
-  `time_newUnDockEvent` implement them; the thresholds were not extracted.
 - **Whether the independent watchdog (`hiwdg`) affects sleep depth** on
   Shimmer3R. It is initialised; its interaction with low-power modes was not
   examined.

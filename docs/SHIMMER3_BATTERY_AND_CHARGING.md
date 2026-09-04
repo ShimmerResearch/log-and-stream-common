@@ -55,7 +55,18 @@ rules below itself, or read the derived LED colour.
 > against a millivolt reading will be wrong by whatever the divider and
 > reference happen to be.
 
-## 2. Charge band, undocked
+On Shimmer3 the platform conversion is, from `adc.c`:
+
+```c
+battValMV = (((uint32_t) raw * 3000) >> 12) * 2;   /* 3.0 V ref, 12-bit, x2 divider */
+```
+
+so counts convert at about 1.465 mV each, and the millivolt column in the
+tables below is derived with that integer arithmetic. On Shimmer3R the MCU's
+battery channel is *internally divided by 4* (`hal_adc.c`), so the same count
+does not mean the same voltage on the two generations.
+
+## 2. State of charge
 
 Three bands, reported through `battStat`:
 
@@ -70,12 +81,12 @@ Three bands, reported through `battStat`:
 `ShimBatt_rankBattUndockedVoltage` uses **different thresholds depending on the
 band it is currently in**, which is what gives the display its hysteresis:
 
-| Constant | Counts |
-|---|---:|
-| `BATT_LOW_MAX` | 2618 |
-| `BATT_MID_MIN` | 2568 |
-| `BATT_MID_MAX` | 2767 |
-| `BATT_HIGH_MIN` | 2717 |
+| Constant | Counts | ≈ mV (Shimmer3) |
+|---|---:|---:|
+| `BATT_LOW_MAX` | 2618 | 3834 |
+| `BATT_MID_MIN` | 2568 | 3760 |
+| `BATT_MID_MAX` | 2767 | 4052 |
+| `BATT_HIGH_MIN` | 2717 | 3978 |
 
 Currently `BATT_MID`:
 
@@ -123,7 +134,7 @@ band that stops the indication flickering at a boundary.
 recomputes the LED. Starting mid-band means the first reading resolves cleanly
 in either direction rather than being biased by an arbitrary starting point.
 
-## 3. Charging state, docked
+## 3. Charging state
 
 `ShimBatt_rankBattChargingStatus` maps the two charger-chip status pins to a
 `chargingStatus_t`.
@@ -183,7 +194,7 @@ same as charging.
 `CHRG_CHIP_STATUS_BAD_BATTERY` before ranking, so the transmitted raw byte
 reflects that judgement rather than only the pins.
 
-## 4. Low-battery auto-stop
+## 4. Low-battery protection
 
 Independent of the band display, and gated on the `lowBatteryAutoStop`
 configuration bit (byte 218, bit 0).
@@ -198,7 +209,7 @@ if (lowBatteryAutoStop && adcBattVal < BATT_CUTOFF_3_65VOLTS)   // 2500 counts
 ```
 
 `BATT_CUTOFF_3_65VOLTS` is **2500 counts**, commented as approximately 3.65 V
-and roughly 10 % remaining.
+and roughly 10 % remaining — the Shimmer3 formula gives 3662 mV.
 
 `ShimBatt_checkIfBatteryCritical` latches:
 
@@ -244,7 +255,7 @@ the seconds values directly.
 > The auto-stop cannot react faster than that — 60 s between samples and three
 > samples needed. A trial does not stop the instant the cell crosses 3.65 V.
 
-## 5. LED display
+## 5. Indication and reporting
 
 The lower LED shows battery and charging state whenever nothing of higher
 priority is displayed. The colour mapping, the flash behaviour, and the full
@@ -258,7 +269,7 @@ charge band as a 0.1 s pulse every 5 seconds.
 `CHARGING_STATUS_ERROR`, and is cleared at the top of
 `ShimBatt_determineChargingLedState` on every call.
 
-## 6. Reporting to a host
+### 5.1 Reporting to a host
 
 The three `BattStatusRaw` bytes are what travel over Bluetooth and the dock.
 See
@@ -274,13 +285,30 @@ the device's own LED near a boundary.
 > `chargingStatus_t`.** The mapping in §3 has to be reimplemented host-side
 > from the raw byte.
 
+## 6. Diagnosing a suspicious reading
+
+In the order to check:
+
+1. **Solid red undocked, with no 5-second pulse** — almost always the host
+   `TOGGLE_LED` override, not the battery. It hides the battery indication
+   entirely and is reported in status-byte bit 7
+   ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §4.2).
+2. **The band disagrees with a voltage you measured** — the thresholds are raw
+   counts, not millivolts, and the band depends on the previous band (§2.1).
+   Convert with `mV = raw × 3000 / 4096 × 2` before comparing.
+3. **Logging stops on a battery that reads fine** — the auto-stop latch (§4). It
+   trips on any three low readings across a trial, not three consecutive, and
+   only a dock cycle clears it.
+4. **Steady red on the dock** — charging, not a fault. *Flashing* red is the fault.
+5. **Nothing lit on the dock** — charger status unknown, deliberately shown as
+   nothing rather than guessed.
+
 ## Still unverified / not found in code
 
-- **The ADC-count to millivolt relationship.** `battValMV` is computed in the
-  platform layer from the divider and reference, neither of which is in
-  `log-and-stream-common`. The claim that 2500 counts is about 3.65 V is the
-  source's own comment, not something derived here, and the same count will
-  mean a different voltage on a board with a different divider.
+- **The Shimmer3R count-to-millivolt conversion.** Only the `/4` internal
+  divider on the MCU battery channel was found (`hal_adc.c` comment); the
+  reference and resolution used for that channel were not read, so no
+  millivolt column is given for Shimmer3R.
 - **Which charger part is fitted on which board.** The status-pin naming
   (`lm3658sdStat1` / `Stat2`) points at the LM3658SD, but board-to-charger
   mapping lives in the platform repositories and the hardware documentation.

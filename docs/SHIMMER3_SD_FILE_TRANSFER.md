@@ -299,16 +299,18 @@ described in [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md).
   `...buildFreeSpaceRsp` and `...buildDeleteRsp` exist and their bounds are
   documented above, but the byte-level response layouts were not enumerated for
   this document.
-- **The pending-status queue depth.** `pendingStatus[]` is a fixed array and
-  `sdFtQueueStatus` overwrites the **last** slot when full rather than
-  dropping the new entry or growing. The array size was not read, so how many
-  statuses can be outstanding is unknown.
+- **Behaviour when three statuses are pending at once.** `pendingStatus[]` is
+  **two** deep, and `sdFtQueueStatus` overwrites the last slot when full rather
+  than dropping the new entry. Two outstanding statuses is the supersede case
+  (old window's `SUPERSEDED` plus the new window's terminal status); a third
+  would overwrite the second. Whether that is reachable was not established.
 - **Whether transfer during logging will be permitted.** The idle-only
   restriction is a deliberate current constraint, not an inherent one; a
   concurrent-transfer change would depend on the SD write path tolerating an
   interleaved reader.
 - **The CRC used by `sdFtCalcCrc`.** Whether it shares `CRC_INIT = 0xB0CA` with
   the rest of the comms code was not confirmed.
-- **`SD_FT_STATUS_BAD_ARGS` (`0xF2`).** Defined, but no path was found that
-  returns it — argument faults observed in the read path produce
-  `SD_FT_XFER_DENIED` instead.
+- **`SD_FT_STATUS_BAD_ARGS` (`0xF2`).** Defined and never returned — a full
+  search of `shimmer_sd_file_transfer.c` finds only the definition. Argument
+  faults in the read path produce `SD_FT_XFER_DENIED` instead. A host should
+  not wait for `0xF2`.

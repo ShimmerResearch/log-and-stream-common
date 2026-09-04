@@ -27,7 +27,7 @@ makes a range change visible in the data.
 
 ---
 
-## 1. The four ranges
+## 1. The ranges and feedback resistors
 
 | Code | Constant | Feedback resistor |
 |---:|---|---:|
@@ -49,7 +49,7 @@ Auto-range is the factory default.
 `HW_RES_40K` for anything else — including `GSR_AUTORANGE`, which is where
 auto-ranging starts from.
 
-## 2. Resistor selection hardware
+## 2. Resistor selection and enable
 
 Two GPIO lines, driven by `GSR_setA0` and `GSR_setA1`, select the resistor.
 
@@ -235,10 +235,10 @@ says so explicitly. See
 
 ## Still unverified / not found in code
 
-- **Whether `GSR_smoothSample` is ever called.** It is a public function with
-  a full implementation and its own constants, but no caller was found in
-  `log-and-stream-common`. It may be dead, or called from a platform
-  repository.
+- ~~Whether `GSR_smoothSample` is ever called~~ — **it is not.** No caller in
+  `log-and-stream-common`, `shimmer3-firmware` or `shimmer3r-firmware`. The
+  resistance-domain smoothing of §5.2 is dead code; only `GSR_smoothTransition`
+  runs.
 - **`got_first_sample` and `last_resistance`.** Set by `GSR_initSmoothing` and
   used by `GSR_smoothSample`; their behaviour was not traced beyond that.
 - **The ADC reference and resolution.** Needed to turn counts into millivolts

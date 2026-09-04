@@ -63,7 +63,9 @@ Combinations are produced by lighting more than one physical LED at once.
 
 **Shimmer3R** has two RGB LEDs, driven by PWM through
 `Board_ledUprSetColourRgb(r, g, b)` and `Board_ledLwrSetColourRgb(r, g, b)`
-with `LED_PWM_OFF` / `LED_PWM_ON` per channel.
+with `LED_PWM_OFF` (0) / `LED_PWM_ON` (255) per channel. The battery code uses
+named 24-bit colours from `hal_Board.h` — `LED_RGB_RED` `0xFF0000`,
+`LED_RGB_GREEN` `0x00FF00`, `LED_RGB_YELLOW` `0xFFFF00`, `LED_RGB_ALL_OFF` `0`.
 
 > **The same firmware state can look different on the two generations.** The
 > "RTC not set" state lights green **and** blue together on Shimmer3, which the
@@ -78,7 +80,8 @@ with `LED_PWM_OFF` / `LED_PWM_ON` per channel.
 ## 2. Blink timing
 
 All blinking is derived from one periodic tick,
-`SHIMMER_BLINK_TIMER_PERIOD_MS`, driving `ShimLeds_incrementCounters`. Two
+`SHIMMER_BLINK_TIMER_PERIOD_MS` (100 ms, `LEDs/shimmer_leds.h`), driving
+`ShimLeds_incrementCounters`. Two
 free-running counters advance **once every 0.1 s**:
 
 | Counter | Wraps at | Period |
@@ -309,9 +312,9 @@ over:
 
 | Boot stage | Pattern | Meaning |
 |---|---|---|
-| `BOOT_STAGE_I2C` past `BOOT_STAGE_TIMEOUT_MS_I2C` | Alternating red / yellow at 5 Hz | Sensor bus fault |
+| `BOOT_STAGE_I2C` past `BOOT_STAGE_TIMEOUT_MS_I2C` (1000 ms) | Alternating red / yellow at 5 Hz | Sensor bus fault |
 | `BOOT_STAGE_BLUETOOTH_FAILURE` | Yellow flashing at 5 Hz | Bluetooth fault |
-| `BOOT_STAGE_CONFIGURATION` past `BOOT_STAGE_TIMEOUT_MS_CONFIGURATION` | Green flashing at 5 Hz | SD card fault |
+| `BOOT_STAGE_CONFIGURATION` past `BOOT_STAGE_TIMEOUT_MS_CONFIGURATION` (2000 ms) | Green flashing at 5 Hz | SD card fault |
 
 > **The Bluetooth error has no timeout condition.** It triggers on the stage
 > value alone, whereas the other two require both the stage *and* an elapsed
@@ -380,19 +383,6 @@ confirm each LED and colour works. See
 
 ## Still unverified / not found in code
 
-- **`SHIMMER_BLINK_TIMER_PERIOD_MS`.** The counters are documented in the
-  source as advancing every 0.1 s and every derived period in this document
-  follows from that, but the constant itself is defined in the platform
-  repositories and was not read. If a platform defines a different period,
-  every interval here scales with it.
-- **Exact Shimmer3R PWM values for the named colours.** Only the BSL purple
-  (`128, 0, 128`) is a literal in the shared code; the rest use `LED_PWM_ON` /
-  `LED_PWM_OFF`, whose numeric values are platform-defined.
-- **`LED_RGB_*` constants.** `LED_RGB_RED`, `LED_RGB_YELLOW`, `LED_RGB_GREEN`
-  and `LED_RGB_ALL_OFF` are used by the battery code but defined in the
-  Shimmer3R platform repository, so the precise colours were not confirmed.
 - **Whether the commented-out SD-sync blink logic is still intended to
   return.** The source carries a `TODO` about keeping the simplified version;
   no decision is recorded.
-- **`BOOT_STAGE_TIMEOUT_MS_I2C` and `BOOT_STAGE_TIMEOUT_MS_CONFIGURATION`
-  values.** Referenced in the shared code, defined per platform.

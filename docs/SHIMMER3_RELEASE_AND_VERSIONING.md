@@ -15,7 +15,7 @@ it, and the linker requirement that has broken it before.
 >   `Shimmer_Driver/shimmer_definitions.h` (`DEVICE_VER` 3,
 >   `FW_IDENTIFIER` 3); `shimmer3r-firmware` @ `a8f105e5` —
 >   `Shimmer_Driver/version.h` (`v1.01.012`),
->   `Shimmer_Driver/shimmer_definitions.h` (`DEVICE_VER` 10 / 58),
+>   `Shimmer_Driver/shimmer_definitions.h` (`DEVICE_VER` 10),
 >   `Core/Src/main.c` (`fw_version_struct`).
 
 **Source references:**
@@ -59,13 +59,13 @@ it, and the linker requirement that has broken it before.
 > same shared-module content — see
 > [SHIMMER3_ARCHITECTURE_OVERVIEW.md](SHIMMER3_ARCHITECTURE_OVERVIEW.md) §1.
 
-## 2. Identifiers
+## 2. Identifiers and other versioned artefacts
 
 `shimmer_definitions.h`:
 
 | Constant | Shimmer3 | Shimmer3R |
 |---|---:|---:|
-| `DEVICE_VER` | 3 | 10, or 58 depending on the variant |
+| `DEVICE_VER` | 3 | 10 |
 | `FW_IDENTIFIER` | 3 | 3 |
 
 `DEVICE_VER` identifies the hardware generation — historically 0-3 for Shimmer1
@@ -76,32 +76,12 @@ through Shimmer3. `FW_IDENTIFIER` identifies the application: **3 = LogAndStream
 > application, not the hardware. A host distinguishes generations by
 > `DEVICE_VER`, and applications by `FW_IDENTIFIER`. It needs both.
 
-> **Shimmer3R has two `DEVICE_VER` values** under different conditionals in the
-> same header. Which applies depends on the build variant; see
-> [SHIMMER3_BOARD_REVISIONS.md](SHIMMER3_BOARD_REVISIONS.md).
+> **The same header also defines `DEVICE_VER` 58 and `FW_IDENTIFIER` 12 — but
+> under `SHIMMER4_SDK`, not `SHIMMER3R`.** That is a different platform sharing
+> the source tree. Shimmer3R is 10 / 3. A reader grepping the file for
+> `DEVICE_VER` sees both and should check the `#if`.
 
-## 3. Where the version surfaces
-
-| Surface | Fields | Encoding |
-|---|---|---|
-| Bluetooth version response | major, minor, patch | See the protocol document |
-| Dock `UART_PROP_VER` | as above | [SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) §4.2 |
-| SD file header, offsets 34-39 | `FW_IDENTIFIER`, major, minor, patch | **Big-endian** for the 16-bit fields |
-| SD file header, offsets 30-31 | `DEVICE_VER` | Big-endian |
-| Calibration dump header, bytes 2-9 | `DEVICE_VER`, `FW_IDENTIFIER`, major, minor, patch | **Little-endian** |
-| Factory test report, first line | `FW_VERSION_STRING` | Text |
-
-> **The SD header stores these big-endian and the calibration blob stores them
-> little-endian.** The SD header code carries the comment "*little endian in fw,
-> but they want big endian in sw*". Same values, opposite byte order, in two
-> artefacts a host may read in the same session.
-
-> **The calibration blob's version bytes are re-stamped by the device.** After a
-> `SET_CALIB_DUMP`, `ShimCalib_ramWrite` calls `ShimCalib_initVer`, overwriting
-> whatever the host uploaded. See
-> [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §2.1.
-
-## 4. The linkable version record (Shimmer3R)
+## 3. The linkable version record
 
 ```c
 __attribute__((section(".version"), used))
@@ -129,6 +109,27 @@ the version out of a binary without running it or parsing symbols.
 > **Anything that changes the linker script, the toolchain, or the optimisation
 > flags should be checked against the built binary**, not just against a
 > successful compile. The failure is invisible at build time.
+
+## 4. Where the version surfaces
+
+| Surface | Fields | Encoding |
+|---|---|---|
+| Bluetooth version response | major, minor, patch | See the protocol document |
+| Dock `UART_PROP_VER` | as above | [SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) §4.2 |
+| SD file header, offsets 34-39 | `FW_IDENTIFIER`, major, minor, patch | **Big-endian** for the 16-bit fields |
+| SD file header, offsets 30-31 | `DEVICE_VER` | Big-endian |
+| Calibration dump header, bytes 2-9 | `DEVICE_VER`, `FW_IDENTIFIER`, major, minor, patch | **Little-endian** |
+| Factory test report, first line | `FW_VERSION_STRING` | Text |
+
+> **The SD header stores these big-endian and the calibration blob stores them
+> little-endian.** The SD header code carries the comment "*little endian in fw,
+> but they want big endian in sw*". Same values, opposite byte order, in two
+> artefacts a host may read in the same session.
+
+> **The calibration blob's version bytes are re-stamped by the device.** After a
+> `SET_CALIB_DUMP`, `ShimCalib_ramWrite` calls `ShimCalib_initVer`, overwriting
+> whatever the host uploaded. See
+> [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §2.1.
 
 ## 5. What bumps when
 
@@ -174,7 +175,7 @@ the TypeScript SDK. Details and the current gates are in
 2. Confirm the submodule pin is the intended `log-and-stream-common` revision.
 3. Build **both** platforms if `common` changed — see
    [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md).
-4. Confirm `fw_version_struct` survives into the binary (§4).
+4. Confirm `fw_version_struct` survives into the binary (§3).
 5. Run the factory self-test and check the version line in the report matches.
 6. Tag the platform repository.
 
@@ -188,9 +189,6 @@ the TypeScript SDK. Details and the current gates are in
 - **The `.version` section's address.** Deliberately placed for external
   tooling to find, but the linker-script placement was not read, so the offset
   a tool should look at is not given here.
-- **Which `DEVICE_VER` (10 or 58) applies to which Shimmer3R variant.** Both
-  appear in `shimmer_definitions.h` under different conditionals; the
-  conditional was not traced.
 - **Whether a release process document exists elsewhere.** The checklist in §7
   is assembled from the constraints found in the source, not transcribed from
   an existing procedure.

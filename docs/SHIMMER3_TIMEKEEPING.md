@@ -38,7 +38,7 @@ has to be right for a recording to be placeable on a real timeline.
 
 ---
 
-## 1. Three clocks
+## 1. The clocks
 
 | Clock | Width | Rate | Purpose |
 |---|---:|---|---|
@@ -53,7 +53,7 @@ ticks since the Unix epoch; dividing by 32768 gives Unix seconds.
 > power-of-two rate means seconds convert exactly; sub-second fractions are
 > exact multiples of 1/32768 and do not round.
 
-## 2. Generational difference
+## 2. How the real-world clock is kept
 
 This is the root of almost every timekeeping surprise in this codebase.
 
@@ -119,7 +119,30 @@ groups a multi-device trial's files together. Two devices in one trial must be
 configured with the **same** configuration time or their directories will not
 match.
 
-## 4. Conversions
+## 4. The timebase contract
+
+The Shimmer3 / Shimmer3R real-world clock is **UTC**. The firmware never applies a
+timezone — it treats the RWC as a tick count since the Unix epoch — and nothing in
+a file or a stream records which convention the host used, so a host that writes
+local civil time produces a recording whose timestamps are silently offset by the
+local UTC offset. The most visible consequence is where files split.
+
+Data files roll over every `BIN_FILE_SPLIT_TIME_TICKS` = 32768 × 3600 — one
+hour **of sample time**, measured from when logging started.
+
+> **Files do not split at wall-clock hour boundaries, and nothing splits at
+> midnight.** A trial started at 09:17 produces files beginning at 09:17, 10:17,
+> 11:17 and so on. Any host expectation of midnight-aligned files is a host-side
+> convention imposed after the fact, and it is that convention which makes the
+> UTC-versus-local-time question visible: a UTC-based split falls at a different
+> wall-clock moment than a local-time one, by exactly the local offset.
+
+That is the mechanism behind the class of bug this document opens with. The
+firmware is consistent — it uses UTC throughout — and the failure comes from a
+host writing local civil time into the RWC and then interpreting the result as
+UTC, or vice versa.
+
+## 5. Time-of-day arithmetic and scheduling
 
 Four helpers, all operating on `SHIM_RTC_t`:
 
@@ -162,7 +185,7 @@ Four helpers, all operating on `SHIM_RTC_t`:
 Leap years use the full proleptic Gregorian rule
 (`RTC_LEAP_YEAR`): divisible by 4, except centuries, except multiples of 400.
 
-## 5. Error indication
+## 6. Error indication
 
 `ShimRtc_rwcErrorCheck`:
 
@@ -185,9 +208,9 @@ The upper LED then flashes cyan (Shimmer3R) or green-plus-blue (Shimmer3) at
 > starts logging with an unset clock shows the warning right up to the moment
 > it starts producing files with wrong timestamps, and then stops warning.
 
-## 6. Timestamps a host has to reconcile
+## 7. Placing a recording on an absolute timeline
 
-### 6.1 Streamed data
+### 7.1 Streamed data
 
 Three bytes per packet, little-endian, wrapping every 512 s. Unwrapping and
 its failure mode are in
@@ -196,7 +219,7 @@ its failure mode are in
 To place a stream on an absolute timeline, read the RWC at session start and
 anchor the first packet against it.
 
-### 6.2 Logged data
+### 7.2 Logged data
 
 The file header carries a 64-bit initial timestamp — assembled differently per
 generation ([SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.2 and
@@ -207,12 +230,12 @@ absoluteTicks(n) = initialTimestamp + unwrap(recordTick(n) - recordTick(0))
 absoluteUnixSeconds = absoluteTicks / 32768
 ```
 
-### 6.3 Multi-device
+### 7.3 Multi-device
 
 SD sync records each node's offset from the centre without adjusting any clock.
 Apply it after the above. See [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md) §7.
 
-## 7. Accuracy and drift
+## 8. Accuracy and drift
 
 The 32768 Hz timebase comes from a watch crystal. Two things follow.
 
@@ -239,23 +262,6 @@ Neither generation compensates for drift in firmware. The `tcxo` configuration
 bit (byte 218 bit 4) selects a temperature-compensated oscillator on hardware
 that has one, and is forced off elsewhere
 ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.4).
-
-## 8. File splitting and the midnight question
-
-Data files roll over every `BIN_FILE_SPLIT_TIME_TICKS` = 32768 × 3600 — one
-hour **of sample time**, measured from when logging started.
-
-> **Files do not split at wall-clock hour boundaries, and nothing splits at
-> midnight.** A trial started at 09:17 produces files beginning at 09:17, 10:17,
-> 11:17 and so on. Any host expectation of midnight-aligned files is a host-side
-> convention imposed after the fact, and it is that convention which makes the
-> UTC-versus-local-time question visible: a UTC-based split falls at a different
-> wall-clock moment than a local-time one, by exactly the local offset.
-
-That is the mechanism behind the class of bug this document opens with. The
-firmware is consistent — it uses UTC throughout — and the failure comes from a
-host writing local civil time into the RWC and then interpreting the result as
-UTC, or vice versa.
 
 ## 9. Rules for a host
 
@@ -285,7 +291,7 @@ UTC, or vice versa.
 - **`RTC_SYNC_PREDIV`.** Referenced in the `subseconds` comment as `0x3FF` but
   defined in the Shimmer3R platform repository; the Shimmer3 equivalent, if
   any, was not found.
-- **Crystal specification and the resulting ppm figure.** The 20 ppm used in §7
+- **Crystal specification and the resulting ppm figure.** The 20 ppm used in §8
   is a worked illustration, not a specification read from this hardware's part.
 - **`ShimRtc_isTimeSet`.** Declared in the header; its body was not located in
   `shimmer_rtc.c`, so it may be platform-provided. `RTC_isRwcTimeSet` is what

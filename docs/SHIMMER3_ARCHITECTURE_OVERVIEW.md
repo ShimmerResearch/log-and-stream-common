@@ -93,7 +93,7 @@ Both are `extern` in `log_and_stream_externs.h` and both are declared
 > `LogAndStream_init` clears the whole structure with `memset` after every
 > module's own init has run.
 
-## 3. The platform boundary
+## 3. Hardware and platform abstraction
 
 `log_and_stream_externs.h` declares **62 `extern` symbols** the shared code
 requires each platform to provide. That header *is* the platform contract.
@@ -305,7 +305,31 @@ ShimBtn_init, ShimRtc_init
 > module that sets a status flag in its own init has that flag erased. Set
 > status only from `LogAndStream_init` onwards.
 
-## 6. Dock and USB ownership of the SD card
+## 6. The data path
+
+1. A hardware timer fires at the configured rate.
+2. The ISR queues `TASK_GATHER_DATA`.
+3. `ShimSens_gatherData` collects the enabled channels into the packet buffer,
+   in the fixed order `ShimSens_configureChannels` established.
+4. If logging, `ShimSdDataFile_writeToBuff` takes the record from
+   `PACKET_TIMESTAMP_IDX` for `dataLen - 1` bytes.
+5. If streaming, the CRC is appended per the session mode and the packet is
+   handed to the Bluetooth writer.
+6. When an SD buffer fills, `TASK_SDWRITE` flushes it.
+
+Channel order and encodings are in
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §4-5.
+
+> **Sampling above 4096 Hz is refused.** `ShimSens_startSensing` bails out with
+> a comment — "*Please don't go too fast, Thx, Best Regards.*" — leaving
+> `sensing` clear. A host requesting a higher rate gets no error, just a device
+> that does not start.
+
+> **Zero enabled channels is also refused**, silently, in the same way.
+
+## 7. Runtime coordination
+
+On this platform the runtime-coordination problem is **who owns the SD card**.
 
 The most intricate state machine outside sync, in `log_and_stream_common.c`:
 
@@ -329,29 +353,9 @@ which is what `LogAndStream_sdWaitAndAbort` does.
 
 An undock event is deliberately delayed — `undockEvent` and
 `time_newUnDockEvent` implement a settling period so a bouncing connector does
-not start and stop logging repeatedly.
-
-## 7. The sample path
-
-1. A hardware timer fires at the configured rate.
-2. The ISR queues `TASK_GATHER_DATA`.
-3. `ShimSens_gatherData` collects the enabled channels into the packet buffer,
-   in the fixed order `ShimSens_configureChannels` established.
-4. If logging, `ShimSdDataFile_writeToBuff` takes the record from
-   `PACKET_TIMESTAMP_IDX` for `dataLen - 1` bytes.
-5. If streaming, the CRC is appended per the session mode and the packet is
-   handed to the Bluetooth writer.
-6. When an SD buffer fills, `TASK_SDWRITE` flushes it.
-
-Channel order and encodings are in
-[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §4-5.
-
-> **Sampling above 4096 Hz is refused.** `ShimSens_startSensing` bails out with
-> a comment — "*Please don't go too fast, Thx, Best Regards.*" — leaving
-> `sensing` clear. A host requesting a higher rate gets no error, just a device
-> that does not start.
-
-> **Zero enabled channels is also refused**, silently, in the same way.
+not start and stop logging repeatedly. Dock/USB state changes are debounced at
+`DOCK_USB_DEBOUNCE_MS` = 50 ms, and the undock-start path waits `TIMEOUT_100_MS`
+(3277 ticks, 100 ms) after a new undock event before acting.
 
 ## 8. Adding a subsystem
 
@@ -386,6 +390,3 @@ Channel order and encodings are in
   gates the stuck-task watchdog; its definition is per-platform.
 - **The `USE_FREERTOS` path.** Aliased throughout but not built by either
   generation; the `S4_RTOS_*` implementations were not examined.
-- **Debounce intervals for dock and undock.** `g_dock_usb_last_tick` and
-  `time_newUnDockEvent` implement them; the numeric thresholds were not
-  extracted.
