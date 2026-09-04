@@ -258,23 +258,54 @@ A host must:
 > **Do not parse by fixed line count or fixed offsets.** Lines are conditional
 > on the model, on rig presence, and on which suite was run.
 
+## Appendix A. Acceptance limits (Shimmer3R)
+
+Constants from `Shimmer_Driver/hal_FactoryTest.h` at the pinned revision. The
+report prints the limit next to each measurement, so a captured report is
+self-describing; this table is for reading the source or planning a change.
+
+| Measurement | Lower | Upper | Notes |
+|---|---|---|---|
+| ADC reference (`VREF`) | `VREF_EXTERNAL_SUPPLY_MV − 80` | `+ 80` | 3000 mV on product hardware, 3300 mV on the Nucleo build (`hal_Board.h`) |
+| MCU core voltage (`VCORE`) | 900 mV | 1800 mV | measured on ADC4's `VCORE` channel |
+| `VBATT` pin (1.8 V regulator boards) | 1750 mV | 1850 mV | |
+| `VBATT` pin (SR48-6-0, 1.9 V regulator) | 1850 mV | 1950 mV | |
+| MCU die temperature | 10 °C | 40 °C | |
+| Battery voltage | 2980 mV | 4750 mV | |
+| IMU temperature | 10.0 °C | 40.0 °C | `−1.0` is the invalid marker |
+| LSE (32.768 kHz) error, HSE-cap-fixed boards | | 35.0 ppm | stored ×10 (`350`) |
+| LSE error, deployed-fleet boards | | 100.0 ppm | stored ×10 (`1000`); applies below the HSE-cap-fix revision |
+| GSR test-rig resistors | ±7 % / ±8 % | | two tolerance bands selected per range |
+| Bluetooth module firmware | `"v01.04.18.18"` | | exact string match |
+| LED step delay | 2000 ms | | visual check pacing, not a limit |
+
+The GSR and alternate-EEPROM tests talk to the test rig over `I2C4`
+(`hi2c4`), which is otherwise unused by the application.
+
 ## Still unverified / not found in code
 
 - **Tests 1, 2, 4, 5 and 6.** Not defined in the current firmware. Whether they
   existed historically, and what they covered, is not determinable from the
   present source — which matters when reading an archived report whose mask has
   those bits set.
-- **The Shimmer3 test registry.** This document covers Shimmer3R. Shimmer3 runs
-  the same harness but its test bodies and IDs are in `shimmer3-firmware` and
-  were not read.
-- **Per-test acceptance limits.** The report prints each limit alongside the
-  measurement, so limits are discoverable from any captured report, but they
-  are not tabulated here — they live in `hal_FactoryTest.c` and vary by model.
+- ~~The Shimmer3 test registry~~ — resolved: Shimmer3 has **no numbered
+  registry and no pass/fail mask**. `hal_run_factory_test`
+  (`Shimmer_Driver/5xx_HAL/hal_FactoryTest.c`) runs a fixed free-text sequence:
+  model, MCU details, SD card, Bluetooth module, I2C, SPI (for `MAIN` and
+  `ICS`), then the LED sequence (for `MAIN` and `LEDS`). A Shimmer3 report is
+  parsed by reading the text, not by decoding bits.
+- ~~Per-test acceptance limits~~ — resolved: tabulated in the appendix below
+  from `Shimmer_Driver/hal_FactoryTest.h`.
 - **Whether `FACTORY_TEST_LEDS` and `FACTORY_TEST_ICS` are used in production**
   or only `FACTORY_TEST_MAIN`. The suites exist; which the production script
   invokes was not established.
-- **How the test is triggered in production.** `TASK_FACTORY_TEST` runs it, and
-  a Bluetooth command and the dock protocol's `UART_COMP_TEST` component both
-  reach it, but the production sequence was not traced.
-- **`micTestResult_t`.** A per-message structure for the microphone test whose
-  handling was not examined.
+- **Which suite the production script invokes.** The *mechanism* is resolved:
+  over the dock, `UART_SET` with component `UART_COMP_TEST` (`0x0B`) and the
+  property byte equal to the suite index (`< FACTORY_TEST_COUNT`) calls
+  `ShimFactoryTest_setup(PRINT_TO_DOCK_UART, suite)`, queues
+  `TASK_FACTORY_TEST` and ACKs; the Bluetooth opcode does the same with the
+  Bluetooth target. Which suite index the production fixture sends is a
+  process fact, not a code fact.
+- ~~`micTestResult_t`~~ — resolved: `{ const char *message; uint8_t
+  selfTestResult; }` — the microphone self-test result byte paired with the
+  report line to print for it. A formatting helper, not a data path.

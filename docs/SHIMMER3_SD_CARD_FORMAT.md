@@ -500,21 +500,28 @@ before taking the card for logging.
 
 ## Still unverified / not found in code
 
-- **`BMPX80_PACKET_SIZE` on Shimmer3.** The I2C configurator accumulates this
-  symbol for the temperature-plus-pressure pair rather than two literals. The
-  2-byte temperature and 3-byte pressure widths given in the streaming document
-  come from the generated channel registry, not from expanding this constant in
-  the platform repo.
+- ~~`BMPX80_PACKET_SIZE` on Shimmer3~~ — resolved: `BMPX80_TEMP_BUFF_SIZE`
+  (`0x02`) + `BMPX80_PRESS_BUFF_SIZE` (`0x03`) = 5, matching the 2-byte
+  temperature and 3-byte pressure widths.
 - **Header offset 15 and offset 43.** Both fall between populated fields and
   are never written, so they remain `0xFF`. Whether they were once used is not
   determinable from the current source.
-- **Behaviour past data file `999`.** The `%03d` format widens rather than
-  wrapping, so the sequence should continue, but no code was found that caps
-  `fileNum` and this was not tested.
-- **`sdlog.cfg` maximum line length.** The parse buffer is a fixed-size local;
-  a longer line's handling was not traced. The generator's buffer is 66 bytes,
-  which bounds what the firmware itself writes but not what a human may put
-  there.
-- **Whether `ShimSdCfgFile_generate` is triggered on every configuration change
-  or only some.** The write path is guarded by `flagWriteCfgToSd`
-  (configuration byte 230), but the full set of callers was not enumerated.
+- ~~Behaviour past data file `999`~~ — resolved from the types: `fileNum` is a
+  `uint16_t`, formatted with `"/%03d"` into a 7-byte buffer, so the name
+  simply widens — `/1000` … `/65535` (six characters plus NUL exactly fills the
+  buffer). Nothing caps it; the only wrap is the integer's, at 65536 files.
+- ~~`sdlog.cfg` maximum line length~~ — resolved: the parser reads with
+  `f_gets(buffer, 64, …)` into a 66-byte local, so a line longer than **63
+  characters** is delivered in two pieces; the tail is parsed as a line of its
+  own, matches no key and is ignored. Values are therefore truncated, not
+  rejected.
+- ~~Whether `ShimSdCfgFile_generate` is triggered on every configuration
+  change~~ — resolved: five call sites, and none is "on every change". The
+  flag is set whenever a host writes configuration (`ShimConfig_setFlagWriteCfgToSd(1, …)`)
+  and the file is rewritten later, when the card is usable: (1) on undock
+  (`shimmer_config.c`) if the flag is set; (2) `LogAndStream_syncConfigAndCalibOnSd`
+  if the flag is set; (3) the `TASK` path (`shimmer_taskList.c`) when undocked,
+  not sensing, card present and flag set; (4) on reading the card if
+  `sdlog.cfg` is missing; (5) after parsing, if
+  `ShimConfig_checkAndCorrectConfig` altered anything. Cases 4 and 5 ignore
+  the flag.

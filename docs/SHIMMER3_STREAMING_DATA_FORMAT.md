@@ -614,11 +614,16 @@ A conforming parser must:
   2-byte temperature and 3-byte pressure.
 - **Channels declared but never emitted.** `X_ALT_MAG` through `Z_ALT_MAG` and
   several ADC channels appear in the ID registry with a Java channel name but no
-  SDK entry (`SDK_MISSING` in §3). Whether every one is reachable on shipping
-  hardware was not established.
-- **The `i12*` encoding marker** in §3's alternate-accelerometer rows. The
-  registry note records that the trailing character is an extractor artefact;
-  the underlying encoding is 12-bit signed data in a 16-bit field, but the exact
-  alignment within the field was not confirmed against a captured packet.
+  SDK entry (`SDK_MISSING` in §3). The alternate magnetometer is real hardware
+  on Shimmer3R — the LIS3MDL on the sensing SPI bus (`CS_LIS3MDL` `PE6`,
+  `LIS3MDL_DRDY` `PE2`), with `altMagRange` / `altMagRate` configuration and
+  calibration commands in `common` — so the gap is on the SDK side, not the
+  firmware's. Whether the ADC channels are reachable on every shipping board
+  was not established.
+- ~~The `i12*` encoding marker~~ — resolved from the Java reference decoder
+  (`UtilParseData.java`, type `i12>`): read the 16-bit little-endian word,
+  take its two's complement as a 16-bit value, then **shift right by 4**. The
+  12 significant bits are therefore left-justified in the word and the low
+  nibble is discarded.
 - **Bridge-amplifier offset and gain constants.** Held in the Java driver's
   per-board configuration; not present in the firmware and not restated here.

@@ -305,15 +305,22 @@ In the order to check:
 
 ## Still unverified / not found in code
 
-- **The Shimmer3R count-to-millivolt conversion.** Only the `/4` internal
-  divider on the MCU battery channel was found (`hal_adc.c` comment); the
-  reference and resolution used for that channel were not read, so no
-  millivolt column is given for Shimmer3R.
+- ~~The Shimmer3R count-to-millivolt conversion~~ — resolved
+  (`saveBatteryVoltageAndUpdateStatus`, `hal_adc.c`):
+  `mV = raw × VREF_EXTERNAL_SUPPLY_MV / 4095 × 2`, 12-bit, with
+  `VREF_EXTERNAL_SUPPLY_MV` = **3000** on product hardware (3300 only under
+  `S3R_NUCLEO`). That is within 0.03 % of the Shimmer3 formula
+  (`raw × 3000 / 4096 × 2`), so the millivolt column in §2 applies to both
+  platforms: 2500 counts ≈ 3663 mV. The `/4` divider belongs to the *MCU*
+  `VBAT` debug channel, not to the battery measurement.
 - **Which charger part is fitted on which board.** The status-pin naming
   (`lm3658sdStat1` / `Stat2`) points at the LM3658SD, but board-to-charger
   mapping lives in the platform repositories and the hardware documentation.
-- **`BATTERY_ERROR_VOLTAGE_MIN`.** Defined as 3200 mV and never referenced in
-  the shared module. Whether a platform uses it, or whether it is dead, was not
-  established.
-- **Whether `battStat` is transmitted anywhere.** Only `battStatusRaw` was found
-  on the reporting paths; the derived band appears to be display-only.
+- ~~`BATTERY_ERROR_VOLTAGE_MIN`~~ — resolved: it is used, in
+  `ShimBatt_updateStatus` (`Battery/shimmer_battery.c`). When the charger
+  reports `SUSPENDED` and the measured voltage is at or below 3200 mV, the raw
+  status byte is overridden to `BAD_BATTERY` before the ranking runs.
+- ~~Whether `battStat` is transmitted anywhere~~ — resolved: yes, once.
+  `GET_CHARGE_STATUS_LED_COMMAND` answers `CHARGE_STATUS_LED_RESPONSE` followed
+  by the single `batteryStatus.battStat` byte (`Comms/shimmer_bt_uart.c`). The
+  richer reports carry `battStatusRaw`.

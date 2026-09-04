@@ -202,17 +202,35 @@ A caution from experience rather than from the source:
 
 ## Still unverified / not found in code
 
-- **The actual low-power modes used.** `platform_sleepWhenNoTask` is a weak
-  hook; which STM32U5 mode (Sleep, Stop 0/1/2) or MSP430 LPM the platforms
-  select was not read. Nothing in `common` constrains the choice.
+- ~~The actual low-power modes used~~ — resolved. **Shimmer3**:
+  `__bis_SR_register(LPM3_bits + GIE)` — LPM3, ACLK (32 kHz) running, so the
+  sample timer and RTC keep counting (`main.c`). **Shimmer3R**
+  (`platform_sleepWhenNoTask`, `main.c`): if the USB stack is initialised, a
+  bare `__WFI()` (Sleep, SysTick running, for SOF and CDC traffic); otherwise
+  `HAL_PWR_EnableSleepOnExit()` followed by `Power_SleepUntilInterrupt()` =
+  `HAL_SuspendTick` + `HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,
+  PWR_SLEEPENTRY_WFI)` + `HAL_ResumeTick`. That is **Sleep mode with the main
+  regulator on — never Stop**. `Power_StopUntilInterrupt()` exists in
+  `hal_Power.c` but has no callers, and its deeper options are commented out.
+  Sleep-on-exit means the core returns to sleep after any ISR that does not
+  queue a task (`ShimTask_set` clears the bit).
 - **Current consumption figures.** No numbers appear in the firmware. Nothing
   in this document quantifies consumption, only what drives it.
-- **The other `SENSE_PWR_*` domains.** `SENSE_PWR_SENSING` is `(0x01 << 1)` in
-  `shimmer3r-firmware` `Shimmer_Driver/hal_Board.h` — one bit of a power-domain
-  mask, so bit 0 and any higher bits name other domains. They were not
-  enumerated.
-- **Whether sensor rails are dropped when sensing stops.** The enable call at
-  start was found; a matching disable was not traced.
-- **Whether the independent watchdog (`hiwdg`) affects sleep depth** on
-  Shimmer3R. It is initialised; its interaction with low-power modes was not
-  examined.
+- ~~The other `SENSE_PWR_*` domains~~ — resolved (`sense_pwr_flg_t`,
+  `hal_Board.h`): `SENSE_PWR_VBATT` bit 0, `SENSE_PWR_SENSING` bit 1,
+  `SENSE_PWR_EEPROM` bit 2, `SENSE_PWR_FACTORY_TEST` bit 3. They are
+  **requesters of one rail**, not four rails: `Board_enableSensingPower` sets
+  or clears the caller's bit and switches the sensing supply only when the mask
+  goes from zero to non-zero or back.
+- ~~Whether sensor rails are dropped when sensing stops~~ — resolved: yes.
+  `ShimSens_stopSensing` calls `Board_enableSensingPower(SENSE_PWR_SENSING, 0)`
+  (`Sensing/shimmer_sensing.c`), releasing the sensing bit; the rail drops if
+  no other requester holds it. Both calls are under `#if defined(SHIMMER3R)` —
+  Shimmer3 has no switched sensing rail at this layer.
+- **Whether the independent watchdog (`hiwdg`) constrains idle** on Shimmer3R
+  — partly resolved. `iwdg.c` runs the IWDG from LSI with prescaler 8 and
+  reload 4095, a timeout of about **1.0 s**; the IWDG is not stopped by Sleep
+  mode, so while it is enabled something must wake the core and refresh it
+  (`iwdg.c` wraps `HAL_IWDG_Refresh`) at least once a second. Which periodic
+  wake source guarantees that in the idle state was not traced, and it bounds
+  how long the core can stay asleep.

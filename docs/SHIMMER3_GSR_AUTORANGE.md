@@ -239,11 +239,15 @@ says so explicitly. See
   `log-and-stream-common`, `shimmer3-firmware` or `shimmer3r-firmware`. The
   resistance-domain smoothing of §5.2 is dead code; only `GSR_smoothTransition`
   runs.
-- **`got_first_sample` and `last_resistance`.** Set by `GSR_initSmoothing` and
-  used by `GSR_smoothSample`; their behaviour was not traced beyond that.
-- **The ADC reference and resolution.** Needed to turn counts into millivolts
-  in §6, and defined per platform. The 14-bit field width implies at most
-  16383 counts full scale, but the reference voltage is not in this module.
+- ~~`got_first_sample` and `last_resistance`~~ — resolved: they are state for
+  `GSR_smoothSample` only, so they are dead with it — reset by
+  `GSR_initSmoothing`, never read by any live path.
+- **The ADC reference and resolution — Shimmer3R only.** Shimmer3 is resolved:
+  the MSP430 `ADC12` runs from a 3.0 V reference at 12 bits, so §6's counts
+  are `mV = counts × 3000 / 4095` (the battery path in `shimmer_battery.c` uses
+  the same constants). Shimmer3R's GSR channel is on the external ADS7028,
+  whose reference is not stated in the driver; see the battery and streaming
+  documents for the same open item.
 - **The 0.5 V reference in `GSR_calcResistance`.** A literal in the formula
   with no named constant and no comment explaining its origin beyond "*uses op
   amp equation*".

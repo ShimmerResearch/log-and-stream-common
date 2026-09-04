@@ -181,17 +181,22 @@ the TypeScript SDK. Details and the current gates are in
 
 ## Still unverified / not found in code
 
-- **Whether Shimmer3 has an equivalent of `fw_version_struct`.** The
-  `firmware_version_t` typedef and the `extern` declaration are in both
-  platforms' `version.h`, but the definition was only located in the Shimmer3R
-  `main.c`. Whether the Shimmer3 build defines it, and whether its CCS linker
-  command file keeps it, was not checked.
-- **The `.version` section's address.** Deliberately placed for external
-  tooling to find, but the linker-script placement was not read, so the offset
-  a tool should look at is not given here.
+- ~~Whether Shimmer3 has an equivalent of `fw_version_struct`~~ — resolved:
+  yes. `main.c` defines
+  `__attribute__((section(".version"), used)) const firmware_version_t fw_version_struct`,
+  and `lnk_msp430f5437a.cmd` both retains it (`--retain="*(.version)"`, with a
+  comment that TI's unused-section elimination would otherwise drop it) and
+  places it (`.version : {} > FLASH`).
+- **The `.version` section's address.** Now read on both platforms and it is
+  **not fixed**: Shimmer3 allocates `.version` into `FLASH` wherever the
+  linker puts it, and Shimmer3R uses `INSERT AFTER .text`. A tool must take
+  the address from the `.map` file of the specific build, or search the image
+  for the record; no constant offset exists to document.
 - **Whether a release process document exists elsewhere.** The checklist in §7
   is assembled from the constraints found in the source, not transcribed from
   an existing procedure.
-- **Anti-rollback or version-downgrade protection.** Nothing was found in
-  `log-and-stream-common`. Whether the Shimmer3R bootloader enforces anything
-  is a platform question.
+- ~~Anti-rollback or version-downgrade protection~~ — resolved: **none**.
+  Shimmer3R boots into ST's system-memory bootloader (see
+  [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md)),
+  which has no version awareness, and Shimmer3's BSL likewise; the application
+  adds none. Any image that programs is accepted.

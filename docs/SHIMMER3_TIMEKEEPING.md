@@ -288,13 +288,16 @@ that has one, and is forced off elsewhere
   the clock does not survive a power cycle follows from `ShimRtc_init` setting
   the configuration time to zero and from `RTC_isRwcTimeSet` existing at all,
   but the hardware question was not checked.
-- **`RTC_SYNC_PREDIV`.** Referenced in the `subseconds` comment as `0x3FF` but
-  defined in the Shimmer3R platform repository; the Shimmer3 equivalent, if
-  any, was not found.
+- ~~`RTC_SYNC_PREDIV`~~ — resolved: the symbol exists on neither platform and
+  the `0x3FF` in the comment is stale. Shimmer3R `rtc.c` configures
+  `AsynchPrediv = 0`, `SynchPrediv = 32767`, so the sub-second register counts
+  32767 → 0 once per second at **1/32768 s** resolution. Shimmer3 has no
+  prescaler at all — its RTC is the 32 kHz tick counter itself.
 - **Crystal specification and the resulting ppm figure.** The 20 ppm used in §8
   is a worked illustration, not a specification read from this hardware's part.
-- **`ShimRtc_isTimeSet`.** Declared in the header; its body was not located in
-  `shimmer_rtc.c`, so it may be platform-provided. `RTC_isRwcTimeSet` is what
-  `ShimRtc_rwcErrorCheck` actually calls.
+- ~~`ShimRtc_isTimeSet`~~ — resolved: a dead prototype. It is declared in
+  `shimmer_rtc.h` and defined nowhere — not in `common`, not in either
+  platform. Any caller would fail to link; `RTC_isRwcTimeSet` is the live
+  check.
 - **Leap seconds.** Unix time ignores them and so does this firmware. Whether
   that matters for a given application is the application's problem.

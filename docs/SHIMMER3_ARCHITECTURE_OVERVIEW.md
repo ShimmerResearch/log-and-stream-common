@@ -371,22 +371,49 @@ not start and stop logging repeatedly. Dock/USB state changes are debounced at
 
 ## Still unverified / not found in code
 
-- **Which platforms override which `platform_*` weak defaults.**
-  `Platform/platform_api.h` declares eleven functions — `platform_reset`,
-  `platform_delayMs`, `platform_getTick`, `platform_processHwRevision`,
-  `platform_initGpioForRevision`, `platform_gatherData`, `platform_crcData`,
-  `platform_crcData16`, `platform_isDockUartInitialised`,
-  `platform_isUsbUartInitialised` and `platform_sleepWhenNoTask` — each
-  `PLATFORM_WEAK` with a no-op or false-returning default in
-  `platform_api.c`. Which of them each platform actually overrides was not
-  enumerated, and an un-overridden one fails silently rather than at link
-  time.
-- **Where the sample timer ISR queues `TASK_GATHER_DATA`.** The task exists and
-  `ShimSens_gatherData` is its handler, but the ISR is in the platform
-  repositories and was not read.
-- **`TASK_CFGCH`.** Shimmer3-only, and no handler for it was found in the
-  `ShimTask_NORM_manage` switch as read.
-- **Whether `TEST_TASK_MONITOR` is enabled in shipping builds.** The constant
-  gates the stuck-task watchdog; its definition is per-platform.
+- ~~Which platforms override which `platform_*` weak defaults~~ — resolved by
+  grepping definitions outside the submodule (`PLATFORM_WEAK` defaults
+  excluded):
+
+  | Hook | Shimmer3 | Shimmer3R | Default if not overridden |
+  |---|---|---|---|
+  | `platform_reset` | yes | yes | no-op |
+  | `platform_delayMs` | yes | yes | no-op |
+  | `platform_getTick` | yes | yes | 0 |
+  | `platform_processHwRevision` | yes | **no** | no-op |
+  | `platform_initGpioForRevision` | yes | yes | no-op |
+  | `platform_gatherData` | yes (starts the ADC DMA, or queues `TASK_GATHER_DATA`) | **no** | calls `ShimSens_gatherData()` directly |
+  | `platform_crcData` | yes (MSP430 hardware CRC16) | **no** | software CRC (`ShimSwCrc_calc`) |
+  | `platform_crcData16` | **no** | **no** | software CRC, 16-bit length |
+  | `platform_isDockUartInitialised` | yes | yes | false |
+  | `platform_isUsbUartInitialised` | **no** (no USB) | yes | false |
+  | `platform_sleepWhenNoTask` | yes (LPM3) | yes (Sleep / WFI) | no-op (busy loop) |
+
+  Two consequences worth knowing. First, **Shimmer3R runs the software CRC**
+  for every Bluetooth, dock and SD-transfer checksum: `Shimmer_Driver/hal_CRC.c`
+  defines `platform_CrcData` — capital *C* — which does not match the weak
+  symbol, is never called, and leaves the configured CRC peripheral (`crc.c`,
+  polynomial `0x1021`, init `0xB0CA`) idle. The results are identical, so
+  nothing is wrong on the wire, but the hardware path is dead. Second,
+  **Shimmer3R samples in interrupt context**: with `platform_gatherData` not
+  overridden, the RTC wake-up-timer callback runs `ShimSens_gatherData()`
+  inline and `TASK_GATHER_DATA` is never queued on that platform.
+- ~~Where the sample timer ISR queues `TASK_GATHER_DATA`~~ — resolved. Both
+  platforms enter through `ShimSens_sampleTimerTriggered()` (`Sensing/`), which
+  stamps the packet and calls `platform_gatherData()`. **Shimmer3**:
+  `TIMER0_B0_ISR` (`main.c`) → if any MCU ADC channel is enabled,
+  `Dma0ConversionStart()` and the ADC-complete path in `adc.c` runs
+  `GSR_range()` and then `ShimTask_set(TASK_GATHER_DATA)`; with no ADC channels
+  the ISR queues the task immediately. **Shimmer3R**:
+  `HAL_RTCEx_WakeUpTimerEventCallback` (`rtc.c`) → the weak default →
+  `ShimSens_gatherData()` directly; the task is only ever *cleared* on
+  Shimmer3R.
+- ~~`TASK_CFGCH`~~ — resolved: dead. No `ShimTask_set(TASK_CFGCH)` and no
+  `case` for it anywhere in `log-and-stream-common` or either platform; it
+  survives only as an enum member (and therefore a reserved bit).
+- ~~Whether `TEST_TASK_MONITOR` is enabled in shipping builds~~ — resolved: it
+  is not per-platform. `log_and_stream_definitions.h` defines it `0`, so the
+  stuck-task monitor is compiled out on both platforms.
 - **The `USE_FREERTOS` path.** Aliased throughout but not built by either
-  generation; the `S4_RTOS_*` implementations were not examined.
+  generation; the `S4_RTOS_*` implementations belong to the `SHIMMER4_SDK`
+  target and were not examined.

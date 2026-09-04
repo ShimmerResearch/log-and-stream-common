@@ -199,13 +199,32 @@ and IC. See
   and §3 depends on knowing the number, but the counts move with toolchain
   version and are not recorded in either repository. Capture your own before
   relying on the comparison.
-- **Whether CI builds both platforms on a `common` change.** The formatter bots
-  are confirmed; whether a cross-platform build gate exists was not
-  established.
-- **The Shimmer3 Release configuration failure.** Known and parked; the actual
-  error was not reproduced for this document.
-- **STM32 bootloader specifics.** Entry conditions, the DFU protocol variant,
-  and whether any anti-rollback applies are platform-repository and
-  ST-documentation questions.
-- **Which build-time symbols shipping builds define.** The table in §7 lists
-  what `common` reacts to, not what any particular release sets.
+- ~~Whether CI builds both platforms on a `common` change~~ — resolved: **no**.
+  `log-and-stream-common/.github/workflows` holds only `clang-format-check.yml`.
+  Each platform repository has a `build-release-firmware.yml`, but both are
+  `workflow_dispatch` only (manual: pick the version part to bump and the
+  build mode) — Shimmer3R via `xanderhendriks/action-build-stm32cubeide`,
+  Shimmer3 via a cached CCS install under `/opt/ti/ccs`. Nothing builds on push
+  or pull request, so a `common` change is compile-checked only when someone
+  runs those workflows or builds locally.
+- **The Shimmer3 Release configuration failure.** Known and parked; not
+  reproduced for this document, but the `.cproject` offers a likely cause: the
+  `Debug` configuration defines `__MSP430F5437A__ SHIMMER3`, the `Release`
+  configuration defines only `__MSP430F5437A__`. Without `SHIMMER3` the shared
+  module's platform selection has no target.
+- ~~STM32 bootloader specifics~~ — resolved as far as the firmware goes. Two
+  entry paths, both into ST's **system-memory bootloader at `0x0BF90000`**
+  (`Shimmer_Driver/hal_bootloader.c`): (1) at boot, `JumpToBootloaderIfRequired`
+  polls the user button every 100 ms and jumps once it has been held for
+  `BOOTLOADER_ENTRY_THRESHOLD_MS`; (2) over the dock, `UART_PROP_ENTER_BOOTLOADER`
+  (`0x09`) arms an RTC alarm that reboots into the bootloader after the given
+  number of seconds (`0` cancels). `checknBoot0OptionByte` keeps the `nBOOT0`
+  option byte in the state the board revision needs. The protocol is whatever
+  ST's bootloader speaks on the enumerated interface (USB DFU, or UART on
+  `PA2`/`PA3` `BSL_TX`/`BSL_RX`); there is **no anti-rollback** — the system
+  bootloader has none and the application adds none.
+- ~~Which build-time symbols shipping builds define~~ — resolved from the two
+  `.cproject` files: Shimmer3 (`Debug`, the configuration that ships)
+  `__MSP430F5437A__ SHIMMER3`; Shimmer3R `SHIMMER3R USE_HAL_DRIVER
+  UX_INCLUDE_USER_DEFINE_FILE DEBUG` plus the CubeMX device symbol. Everything
+  else in §7 is at its header default in both.

@@ -626,13 +626,14 @@ Two divergences are worth knowing about:
   never seeded and never given a length. Whether these were ever populated by an
   older firmware, and therefore whether a legacy blob might contain them, is not
   determinable from the current source.
-- **Shimmer3 `SC_SENSOR_BMP180_PRESSURE` (36) with `SC_DATA_LEN_BMP180 = 22`.**
-  A length exists and `ShimCalib_findLength` returns it, but nothing in
-  `ShimCalib_defaultAll` or the config-byte sync ever creates such a record, and
-  the pressure coefficients reach the host by the separate command in §5.
-  Whether a record with this ID can legitimately appear in a blob is unclear.
+- ~~Shimmer3 `SC_SENSOR_BMP180_PRESSURE` (36)~~ — resolved: the firmware never
+  creates one. The only reference in `Calibration/shimmer_calibration.c` is the
+  `case` label that returns its length; there is no writer. A record with this
+  ID in a blob came from a host, and the firmware would store and echo it
+  without using it.
 - **Shimmer3 magnetometer range code 0.** `SC_SENSOR_RANGE_MAX_LSM303_MAG` is 7
   and the seed loop runs `range < 7`, i.e. codes 0-6, but the value assignments
   are keyed to codes 1-7. Code 0 therefore receives the final `else` branch
   (the ±8.1 Ga sensitivities) and code 7 is never seeded at all. Whether the
-  off-by-one is in the loop bound or in the constants was not resolved.
+  off-by-one is in the loop bound or in the constants was not resolved; it has
+  been raised as a firmware defect.

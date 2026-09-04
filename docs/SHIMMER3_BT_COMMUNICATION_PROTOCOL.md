@@ -3248,13 +3248,11 @@ being authoritative, and so that a later pass can close them.
 
 - **The SD-sync exchange as a whole.** [§7.14](#714-sd-sync) documents the two
   opcodes, their byte layouts, the always-on 1-byte CRC and the exclusivity rule
-  — all from source. The **timing** — the centre's 12-second per-node connection
-  window, the 54-second minimum broadcast interval, the retry and resend
-  behaviour, and what a node does when a sync is missed — is in
-  `SDSync/shimmer_sd_sync.{h,c}` but has not been read out into a
-  specification, and the observable behaviour of a multi-unit group has not been
-  characterised. A host has no role in the exchange, so this is a gap in the
-  documentation rather than in the host contract.
+  — all from source. The timing, windows, retry and reschedule behaviour are now
+  specified in [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md). What remains
+  unverified is the **observable behaviour of a multi-unit group** — the
+  achieved accuracy and the real-world failure modes — which needs a bench run.
+  A host has no role in the exchange.
 
 **Firmware provenance**
 

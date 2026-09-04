@@ -292,13 +292,71 @@ Entry attribute flags:
 The retrieved bytes are exactly the on-card file — header plus records as
 described in [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md).
 
+## Appendix A. Response payload layouts
+
+From the four builders in `Comms/shimmer_sd_file_transfer.c`. Offsets are into
+the response *payload* (after the framing described in §3); multi-byte integers
+are little-endian. `status` is `SD_FT_STATUS_OK` (`0`) or a FatFs `FRESULT`
+code, except where noted.
+
+### `SD_LIST_DIR_RESPONSE`
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | `SD_LIST_DIR_RESPONSE` |
+| 1 | 1 | status — `SD_FT_STATUS_BAD_ARGS` if no path was staged, else the access check, else the `f_opendir`/`f_readdir` result |
+| 2 | 2 | `startIdx` echoed from the request |
+| 4 | 2 | `entriesLen` — total bytes of entries that follow |
+| 6 | 1 | `nEntries` |
+| 7 | 1 | flags — bit 0 `hasMore` (stopped at `maxEntries` or at the response budget) |
+| 8 | … | `nEntries` entries |
+
+Each entry: `attr` (1 byte: bit 0 `SD_FT_ATTR_DIR`, bit 1
+`SD_FT_ATTR_NAME_TRUNCATED`), `fsize` u32, `fdate` u16, `ftime` u16 (FatFs
+packed date/time), `nameLen` u8, then `nameLen` bytes of name (no NUL, capped at
+`SD_FT_LIST_NAME_MAX` = 64). Dot entries are skipped; entries before `startIdx`
+are counted but not emitted.
+
+### `SD_FILE_STAT_RESPONSE`
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | `SD_FILE_STAT_RESPONSE` |
+| 1 | 1 | status |
+| 2 | 4 | `fsize` (zero on error) |
+| 6 | 2 | `fdate` |
+| 8 | 2 | `ftime` |
+| 10 | 1 | `attr` — bit 0 `SD_FT_ATTR_DIR` |
+
+### `SD_FREE_SPACE_RESPONSE`
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | `SD_FREE_SPACE_RESPONSE` |
+| 1 | 1 | status |
+| 2 | 4 | free space in **KiB** (`clusters × sectors-per-cluster / 2`, saturating at `0xFFFFFFFF`) |
+| 6 | 4 | total space in KiB (`(n_fatent − 2) × csize / 2`, saturating) |
+
+Both figures are computed in 64-bit so large exFAT cards do not overflow, then
+clamped.
+
+### `SD_DELETE_RESPONSE`
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | `SD_DELETE_RESPONSE` |
+| 1 | 1 | status — `SD_FT_STATUS_BAD_ARGS` if no path was staged **or the path is not deletable** (`sdFtIsDeletablePath`), else the `f_unlink` result |
+
+Delete first closes the cached transfer handle, because with `_FS_LOCK` FatFs
+refuses to unlink an open file (`FR_LOCKED`). Note that `BAD_ARGS` *is*
+reachable from this builder and from list/stat when no path was staged; the
+statement elsewhere in this document that it is never returned applies to the
+read path.
+
 ## Still unverified / not found in code
 
-- **Payload layouts of the list, stat, free-space and delete responses.** The
-  builders `ShimSdFileTransfer_buildListDirRsp`, `...buildStatRsp`,
-  `...buildFreeSpaceRsp` and `...buildDeleteRsp` exist and their bounds are
-  documented above, but the byte-level response layouts were not enumerated for
-  this document.
+- ~~Payload layouts of the list, stat, free-space and delete responses~~ —
+  resolved: see the appendix below.
 - **Behaviour when three statuses are pending at once.** `pendingStatus[]` is
   **two** deep, and `sdFtQueueStatus` overwrites the last slot when full rather
   than dropping the new entry. Two outstanding statuses is the supersede case
@@ -308,8 +366,10 @@ described in [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md).
   restriction is a deliberate current constraint, not an inherent one; a
   concurrent-transfer change would depend on the SD write path tolerating an
   interleaved reader.
-- **The CRC used by `sdFtCalcCrc`.** Whether it shares `CRC_INIT = 0xB0CA` with
-  the rest of the comms code was not confirmed.
+- ~~The CRC used by `sdFtCalcCrc`~~ — resolved: it is `platform_crcData16`,
+  the 16-bit-length variant of the comms CRC — same `CRC_INIT` `0xB0CA`, same
+  odd-length zero pad. Neither platform overrides `platform_crcData16`, so it
+  is the software implementation in `CRC/shimmer_crc.c` on both.
 - **`SD_FT_STATUS_BAD_ARGS` (`0xF2`).** Defined and never returned — a full
   search of `shimmer_sd_file_transfer.c` finds only the definition. Argument
   faults in the read path produce `SD_FT_XFER_DENIED` instead. A host should

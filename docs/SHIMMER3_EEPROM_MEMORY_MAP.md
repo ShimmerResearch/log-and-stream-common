@@ -325,19 +325,29 @@ Two protections exist, and neither is complete:
 
 ## Still unverified / not found in code
 
-- **What occupies bytes 16-1951.** Described here as general expansion-board
-  storage because the host commands address it, but no firmware structure
-  claims it and no default content was found.
+- **What occupies bytes 16-1951.** Confirmed: no firmware structure claims
+  the range and no default content is written. What *is* now established is
+  the host access rule: `CARD_MEM` reads address `offset + 16` with
+  `offset ≤ 2031`, so the host window is bytes 16-2047, and writes go through
+  `ShimEeprom_writeDaughterCardMem`, which rejects zero-length and
+  out-of-range writes and re-validates the brand record if a write overlaps
+  it. The range is expansion-board storage by convention, not by declaration.
 - **`EEPROM_BRAND_FLAG_RESERVED0`.** Defined as `0x01`, never read or written.
-- **The exact form of the appended device identifier** in the advertised name.
-  The fields are documented as prefixes in the source comments, but the code
-  that concatenates the suffix is in the Bluetooth layer and was not read for
-  this document.
+- ~~The exact form of the appended device identifier~~ — resolved
+  (`log_and_stream_common.c`): `LogAndStream_buildShimmerMacSuffix` takes
+  characters 8-11 of the 12-character MAC string — the **last four hex digits**
+  — and substitutes `XXXX` if the MAC is not yet known.
+  `LogAndStream_buildShimmerPrefix` produces `"<USB product> <SUFFIX>"`, e.g.
+  `Shimmer AAAA`, where the product string is the brand record's USB product
+  field (default `Shimmer`); the caller must provide 22 bytes (16-character
+  brand + space + 4 + NUL).
 - **Why commas are rejected in name fields.** The check is explicit; no comment
   explains it.
-- **Whether `usbHighSpeed` is honoured.** Declared as Shimmer3R-only in the
-  struct comment, but the consumer is in the platform USB stack and was not
-  traced.
+- ~~Whether `usbHighSpeed` is honoured~~ — resolved: yes, on Shimmer3R.
+  `Core/Src/usb_otg.c` calls
+  `USB_setSpeed(ShimEeprom_getSensorSettingsPage()->usbHighSpeed ? USB_SPEED_HIGH : USB_SPEED_FULL)`
+  when the USB stack is brought up, so the bit selects the descriptor set and
+  PHY speed at the next USB initialisation.
 - **The layout-version-1 brand record.** `EEPROM_BRAND_LAYOUT_VER` is 2 and a
   version-1 record would fail validation and be re-seeded, so its layout is
   irrecoverable from the current source. If fielded units carry v1 records,

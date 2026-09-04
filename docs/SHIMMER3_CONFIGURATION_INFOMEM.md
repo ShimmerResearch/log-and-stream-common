@@ -840,15 +840,20 @@ file-creation time:
   via `memset(&rawBytes[NV_BT_SET_PIN + 1], 0xFF, 24)`, and the struct names
   them `unusedIdx232` through `unusedIdx255`. Whether any historical firmware
   used them is not determinable from the current source.
-- **Byte 132 / `NV_CONFIG_SETUP_BYTE6`.** Allocated, transferred, and mirrored
-  to the SD header, but no field on either platform reads or writes it.
+- ~~Byte 132 / `NV_CONFIG_SETUP_BYTE6`~~ — confirmed unused: allocated,
+  transferred and mirrored to the SD header, but no field on either platform
+  reads or writes it. Treat it as reserved.
 - **The three historical size constants.** `NV_NUM_SETTINGS_BYTES` (34),
   `NV_NUM_CALIBRATION_BYTES` (84) and `NV_NUM_SD_BYTES` (37) sum to 155 while
   `NV_TOTAL_NUM_CONFIG_BYTES` is 384, and the comment beside the latter claims
   it is their sum. Which layout they described was not established.
-- **`syncNodeAddr` (the tenth entry, bytes 310-315).** Missing the numeric
-  suffix its nineteen siblings carry. Almost certainly a typo, but nothing in
-  the source confirms that it is not deliberate.
-- **Whether `numberOfShimmers` is ever validated against the node table.** No
-  code was found that compares the two, but the sync subsystem was not read in
-  full for this document; see [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md).
+- ~~`syncNodeAddr` (the tenth entry, bytes 310-315)~~ — resolved: a typo with
+  no consequence. The only reference to the name is its declaration in
+  `shimmer_config.h`; no code accesses any node slot by field name, so the
+  missing suffix changes nothing.
+- ~~Whether `numberOfShimmers` is ever validated against the node table~~ —
+  resolved: it is **never consumed**. It is written by `SET_TRIAL_CONFIG`
+  (`args[0]`) and by the `sdlog.cfg` `NSHIMMER` key, echoed in the
+  corresponding responses and file, and never read by `SDSync/`; the sync code
+  counts populated node entries into its own `syncNodeNum`. See
+  [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md).

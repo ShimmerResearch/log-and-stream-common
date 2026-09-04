@@ -349,18 +349,31 @@ The blue upper LED reflects `rcFirstOffsetRxed` while sensing — see
 - **What happens after `syncThis > 3`.** The branch is empty apart from the
   comment "*can stop syncing after certain #*"; the `else` increments
   `syncThis`. The intended behaviour is not implemented or not obvious.
-- **`SYNC_NEXT2MATCH` (2).** Defined, never referenced.
+- ~~`SYNC_NEXT2MATCH` (2)~~ — **correction**: it is referenced once, in the
+  node's reschedule after a successful, non-outlier sync in a normal-length
+  experiment: `syncCnt = (SYNC_CD × rcNodeReboot + SYNC_WINDOW_N ×
+  (SYNC_NEXT2MATCH − 1)) × SYNC_FACTOR`. With the value 2 it adds exactly one
+  node-window length to the centre's reboot spacing, i.e. the node aims to
+  listen one window later than the earliest the centre could return.
 - **The commented-out original parameters** at the top of the header
   (`RC_AHD`, `RC_WINDOW_N`, `RC_WINDOW_C`, `RC_INT_N`, `RC_CLK_N`, `RC_CLK_C`,
   `RC_FACTOR_N`, `RC_FACTOR_C`) and the note "*all node time must \*2 in use,
   all center time must \*4 in use*". Whether those multipliers still apply to
   the current constants was not established, and no code applies them.
-- **How `syncSuccC` and `syncSuccN` are consumed.** Both are maintained and
-  exposed, but the LED code uses `rcFirstOffsetRxed` instead, and the original
-  blink logic that used them is commented out in `shimmer_leds.c`.
-- **Whether a node ever reboots its radio in practice.** `rcNodeReboot` and
-  `nReboot` / `cReboot` are maintained, but the reboot path was not traced end
-  to end.
-- **Recovery when the centre itself has no valid real-world clock.** The centre
-  transmits whatever `RTC_get64()` returns; nothing checks that the clock was
-  ever set.
+- ~~How `syncSuccC` and `syncSuccN` are consumed~~ — resolved: they are not.
+  The sync code sets them (`syncSuccN = 1` on a good node sync) and the only
+  readers, `getSyncSuccC()` / `getSyncSuccN()`, appear solely inside the
+  commented-out LED logic in `shimmer_leds.c`. They are write-only diagnostics
+  at this revision.
+- ~~Whether a node ever reboots its radio in practice~~ — resolved: "reboot"
+  here is a **scheduling term, not a radio reset**. `nReboot` is set to 1 when
+  a node's window expires with `firstOutlier` set and cleared on success; its
+  only effect is the next `syncCnt` (`(SYNC_CD × nReboot + SYNC_WINDOW_N ×
+  nReboot) × SYNC_FACTOR`), i.e. how many window-lengths to skip before
+  listening again. The radio is stopped with the ordinary `btStopCb(0)`; no
+  module reset is issued by `SDSync/`.
+- ~~Recovery when the centre itself has no valid real-world clock~~ —
+  confirmed: there is none. `shimmer_sd_sync.c` never calls
+  `RTC_isRwcTimeSet` or reads `rtcSetByBt`; the centre broadcasts whatever
+  `RTC_get64()` holds, and nodes align to it. An unset centre synchronises the
+  group to a clock that is consistent but meaningless.
