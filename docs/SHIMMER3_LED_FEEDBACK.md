@@ -231,6 +231,10 @@ yellow are explicitly cleared.
 
 Solid red. Green and yellow cleared.
 
+The override is toggled by `TOGGLE_LED` (`toggleLedRedCmd ^= 1`) and is the
+only thing that changes it. It is reported back in the status byte, **bit 7**,
+so a host can detect that it left the override armed.
+
 ### 4.3 SD card error
 
 Green flashing at 5 Hz — on during `...200ms`, off otherwise.

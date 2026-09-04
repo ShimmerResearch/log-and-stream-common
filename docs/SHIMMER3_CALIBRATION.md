@@ -553,6 +553,9 @@ timestamp into the SD header only. With `writeToFlash = 1` it also calls
 > dump holds no record therefore writes an all-zero calibration block into
 > InfoMem and the SD header — which hosts correctly read as "no calibration"
 > (§3.3), but which has also overwritten whatever was previously stored there.
+> Whether that is a defect or a deliberate invalidation of a block that belonged
+> to the previous range is arguable; the effect on InfoMem is the same either
+> way, and a host should not expect a range change to preserve the old block.
 
 ### 8.3 Precedence
 

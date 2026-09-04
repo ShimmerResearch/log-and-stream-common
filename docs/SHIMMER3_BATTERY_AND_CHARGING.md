@@ -211,10 +211,14 @@ return battCritical;
 So it takes **three** consecutive low readings to trip — the count must exceed
 2, and each call to the update path increments it once.
 
-> **`battCritical` latches and is only cleared by
-> `ShimBatt_setBattCritical(0)` or `ShimBatt_resetBatteryCriticalCount`.** Once
-> tripped, `checkIfBatteryCritical` keeps returning 1 regardless of the current
-> voltage, so a recovering battery does not un-trip the condition on its own.
+> **`battCritical` latches; the voltage recovering does not clear it, docking
+> does.** Once tripped, `checkIfBatteryCritical` keeps returning 1 regardless of
+> the current voltage. The latch is cleared in two places in
+> `log_and_stream_common.c`: the count is reset when the device is docked
+> (`LogAndStream_setupDock`, commented "to allow logging to begin again if
+> auto-stop on low-power is enabled"), and `battCritical` itself is cleared on a
+> new undock event. A dock cycle therefore resets the protection; nothing else
+> does.
 
 > **The count is never decremented on a good reading.** It only increments,
 > inside the `< 2500` branch. Three low readings spread across an entire trial
@@ -283,10 +287,5 @@ the device's own LED near a boundary.
 - **`BATTERY_ERROR_VOLTAGE_MIN`.** Defined as 3200 mV and never referenced in
   the shared module. Whether a platform uses it, or whether it is dead, was not
   established.
-- **Where `ShimBatt_resetBatteryCriticalCount` is called from.** The function
-  exists and is the only way to clear the latch besides
-  `ShimBatt_setBattCritical(0)`, but its callers are outside this module and
-  were not traced. If nothing calls it during a session, the latch persists
-  until reboot.
 - **Whether `battStat` is transmitted anywhere.** Only `battStatusRaw` was found
   on the reporting paths; the derived band appears to be display-only.
