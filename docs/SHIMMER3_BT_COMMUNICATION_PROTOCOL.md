@@ -12,7 +12,10 @@ BLE, and over the dock's serial link.
 > being wrong, and the `file:line` references throughout only resolve because
 > the revision is pinned here.
 >
-> - **Firmware (authority for bytes):** `log-and-stream-common` @ `c13cbde` —
+> - **Firmware (authority for bytes):** `log-and-stream-common` @ `f3cf73e` —
+>   which includes the Bluetooth command-handler fixes merged in PR #120; the
+>   §5.2 deviations table and the per-command warnings below describe that
+>   revision, and note the earlier behaviour where a fielded unit may differ —
 >   `Comms/shimmer_bt_uart.h` (opcode `#define`s), `Comms/shimmer_bt_uart.c`
 >   (`ShimBt_dmaConversionDone` argument counts, `ShimBt_processCmd` handlers,
 >   `ShimBt_sendRsp` response assembly, `ShimBt_assembleStatusBytes`,
@@ -347,12 +350,15 @@ Shimmer3 additionally overrides a stored `BAUD_1200` to `BAUD_2400` when the
 fitted module is an RN4678, which does not support 1200
 (`ShimBt_setBtBaudRateToUse`, `Comms/shimmer_bt_uart.c:2997-3015`).
 
-⚠️ **`SET_BT_COMMS_BAUD_RATE` (0x6A) no longer changes anything, and still
-ACKs.** The whole handler body is commented out behind
+⚠️ **`SET_BT_COMMS_BAUD_RATE` (0x6A) no longer changes anything, and now
+NACKs.** Firmware before the command-handler fixes ACKed it, telling the host a
+baud change had taken effect when nothing had; treat the NACK as "not
+supported", not as a transport fault. The whole handler body is commented out behind
 `//TODO changing BAUD rate is not going to be supported`, leaving only `break;`
 (`Comms/shimmer_bt_uart.c:1352-1367`). Observed behaviour:
 
-- the command returns a normal ACK, so a host cannot tell it did nothing;
+- the command returns a NACK (a normal ACK on earlier firmware, which could
+  not be told from success);
 - `storedConfig->btCommsBaudRate` is not updated, so an immediately following
   `GET_BT_COMMS_BAUD_RATE` (0x6C) returns the **old** value
   (`:2146-2151`) — a read-after-write check does detect it;
@@ -860,17 +866,21 @@ is the single most important thing for a host implementer to internalise:
 |---|---|
 | Unknown command byte | **nothing** — silently discarded ([§2.3](#23-framing-guarantees-per-transport)) |
 | `DUMMY_COMMAND` 0xB5 | **nothing**, by design |
-| `SET_INFOMEM_COMMAND` out of bounds | **nothing** — the handler returns before the ACK ([§7.5](#75-infomem)) |
-| `SET_DAUGHTER_CARD_ID_COMMAND` with `len = 0` | **nothing**, and the parser is left mid-command ([§7.10](#710-daughter-card)) |
+| `SET_INFOMEM_COMMAND` out of bounds | `NACK` — earlier firmware returned before the ACK tail and sent **nothing** ([§7.5](#75-infomem)) |
+| `SET_DAUGHTER_CARD_ID_COMMAND` with `len = 0` | normal `ACK`, nothing written — earlier firmware sent **nothing** and left the parser mid-command ([§7.10](#710-daughter-card)) |
 | `GET_INFOMEM_COMMAND` out of bounds | bare `ACK`, no `INFOMEM_RESPONSE` |
 | `GET_DAUGHTER_CARD_ID`/`MEM` out of bounds | bare `ACK`, no response opcode |
 | `GET_EXG_REGS_COMMAND` invalid arguments | `ACK`, `0x62`, `0x00` — a zero-length read |
-| `SET_CALIB_DUMP_COMMAND` out of order or out of range | normal `ACK`, data discarded ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
+| `SET_CALIB_DUMP_COMMAND` out of range | `NACK` — earlier firmware ACKed and discarded the data ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
 | Any setter given an out-of-range value | normal `ACK`, value silently clamped ([§7.8](#78-sensor-settings)) |
-| `SET_BT_COMMS_BAUD_RATE` 0x6A | normal `ACK`, nothing happens ([§2.4](#24-baud-rates)) |
-| `SET_CHARGE_STATUS_LED_COMMAND` 0x30 | normal `ACK`, no handler exists ([§7.4](#74-battery)) |
+| `SET_BT_COMMS_BAUD_RATE` 0x6A | `NACK` — earlier firmware ACKed a no-op ([§2.4](#24-baud-rates)) |
+| `SET_CHARGE_STATUS_LED_COMMAND` 0x30 | `NACK` — earlier firmware fell to `default:` and ACKed ([§7.4](#74-battery)) |
 | `SET_FACTORY_TEST` 0xA8 with an out-of-range id | normal `ACK`, no test run |
-| `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` 0x5D without an MPU-9x50 | `ACK` **then a second ACK** — desynchronises the host ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
+| `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` 0x5D without an MPU-9x50 | `NACK` — earlier firmware sent `ACK` **then a second ACK**, desynchronising unframed hosts ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
+| `SET_SAMPLING_RATE_COMMAND` with a zero divider | `NACK` — a zero would divide by zero later |
+| `SET_DAUGHTER_CARD_MEM_COMMAND` when the EEPROM write fails | `NACK` |
+| `SET_FEATURE` with an unknown or unsupported feature id | `NACK` |
+| `RESET_BT_ERROR_COUNTS` on Shimmer3R, or on Shimmer3 without an EEPROM | `NACK` |
 
 ### 5.3 The status bytes
 
@@ -1385,12 +1395,13 @@ with hysteresis, not a raw reading:
 #### `SET_CHARGE_STATUS_LED_COMMAND` (0x30)
 
 - **Request:** `[0x30][value]`
-- **Response:** `[ACK]`
+- **Response:** `[NACK]`
 
-⚠️ **This command has no handler.** 0x30 is armed for one argument byte
-(`Comms/shimmer_bt_uart.c:675`) and reaches `ShimBt_processCmd`, but there is no
-`case SET_CHARGE_STATUS_LED_COMMAND` in the switch, so it falls to `default:`
-(`:1607-1610`) and is ACKed without effect. The following
+⚠️ **This command is NACKed — there is nothing for it to set.** 0x30 is armed
+for one argument byte and reaches `ShimBt_processCmd`, where an explicit `case`
+now NACKs it because the stored configuration has no charge-status-LED field.
+Firmware before the command-handler fixes had no `case` at all, fell to
+`default:` and ACKed without effect. The following
 `GET_CHARGE_STATUS_LED_COMMAND` returns the firmware's own computed band,
 unchanged. The Java driver names the pair `SET_BLINK_LED` / `GET_BLINK_LED`,
 which reflects its historical Shimmer2 meaning; on LogAndStream the *get* is a
@@ -1435,9 +1446,14 @@ Validation is `len <= 128 && offset <= 511 && len + offset <= 512`.
 #### `SET_INFOMEM_COMMAND` (0x8C)
 
 - **Request:** `[0x8C][len][offsetLo][offsetHi][data × len]`
-- **Response:** `[ACK]`
+- **Response:** `[ACK]`, or `[NACK]` when `len` / `offset` fail the bounds check
 
-Same field layout and the same 128-byte / 512-byte validation as the read.
+Same field layout and the same 128-byte / 512-byte validation as the read —
+but **the failure reply differs**: a rejected read gives a bare ACK with no
+`INFOMEM_RESPONSE`, while a rejected write NACKs. Firmware before the
+command-handler fixes returned from the write handler *before* the ACK/NACK
+tail, so an out-of-range write got no reply at all and could not be told from a
+transport fault.
 
 > `Comms/shimmer_bt_uart.c:1394-1438`.
 
@@ -1563,10 +1579,10 @@ Writes are **accumulated**, not applied per chunk:
 1. **Start at offset 0 and write strictly forward.** A transfer that begins at
    any offset ≥ 2 never establishes a total length, so it never completes.
 2. **Do not expect a NACK for a malformed transfer.** The handler acts only on
-   the `1` return (transfer complete) and ignores both the "still accumulating"
-   `0` and the out-of-range `0xFF`
-   (`Comms/shimmer_bt_uart.c:1158-1162`). An out-of-order or oversized write is
-   discarded silently, after a normal ACK.
+   the `1` return (transfer complete) and the out-of-range `0xFF`, which it
+   turns into a NACK; the "still accumulating" `0` gets a normal ACK. Firmware
+   before the command-handler fixes ignored the `0xFF` too, so an oversized or
+   misaligned write was discarded silently after a normal ACK.
 3. Chunk at 128 bytes, as the Python reference does
    (`shimmer_comms_bluetooth.py:240-258`).
 4. Read the blob back with `GET_CALIB_DUMP_COMMAND` to confirm.
@@ -1746,9 +1762,14 @@ MPU before reading them.
 
 > `Comms/shimmer_bt_uart.c:2055-2076`.
 
-⚠️ **On any board without an MPU-9x50 this command replies with a second ACK
-instead of a NACK.** The feature does not exist in the ICM-20948, so on every
-ICM-20948 Shimmer3 and on **every Shimmer3R** the `else` branch writes
+✅ **Fixed in the command-handler fixes: on a board without an MPU-9x50 this
+command now NACKs.** The rest of this note describes the earlier behaviour,
+which fielded units may still have and which an unframed host must still guard
+against.
+
+⚠️ **On earlier firmware, any board without an MPU-9x50 replied with a second
+ACK instead of a NACK.** The feature does not exist in the ICM-20948, so on
+every ICM-20948 Shimmer3 and on **every Shimmer3R** the `else` branch wrote
 `ACK_COMMAND_PROCESSED` where the response opcode should be. Since `sendAck` has
 already written one ACK before the switch (`Comms/shimmer_bt_uart.c:1768-1772`),
 the host receives `FF FF`.
@@ -1811,9 +1832,14 @@ length, and then collects that many more
 (`Comms/shimmer_bt_uart.c:500-511`) — but the handler reads only
 `args[0] & 0x01`, the master-enable bit. Send `[0x76][0x01][0x00 or 0x01]`.
 
-⚠️ **`SET_CENTER_COMMAND` does not survive a reboot.** The handler writes
-`masterEnable` into the RAM image correctly, but then asks for the wrong InfoMem
-byte to be flushed:
+✅ **Fixed in the command-handler fixes: `SET_CENTER_COMMAND` now flushes
+`NV_SD_TRIAL_CONFIG0` (InfoMem 217) and survives a reboot.** Hosts that adopted
+the workaround below can drop it on current firmware. The rest of this note
+describes the earlier behaviour, which fielded units may still have.
+
+⚠️ **On earlier firmware `SET_CENTER_COMMAND` did not survive a reboot.** The
+handler wrote `masterEnable` into the RAM image correctly, but then asked for
+the wrong InfoMem byte to be flushed:
 
 ```c
 case SET_CENTER_COMMAND:
@@ -2202,12 +2228,13 @@ firmware keys hardware-dependent behaviour on — including the SR47-4 ExG fix i
 drives the board. Board identities are catalogued in
 [SHIMMER3_BOARD_REVISIONS.md](SHIMMER3_BOARD_REVISIONS.md).
 
-> **Caution — never send `len = 0` to `SET_DAUGHTER_CARD_ID_COMMAND`.** The
-> argument-collection branch for this opcode reads the two fixed bytes, and if
-> `args[0]` is zero it returns without arming for more data **and without
-> dispatching the command** (`Comms/shimmer_bt_uart.c:488-499`). The result is
-> no response at all and a parser left mid-command, which will consume the next
-> two host bytes as a fresh length/offset pair. This is the only variable-length
+> **`len = 0` is now safe, but was not.** On current firmware the
+> argument-collection branch falls through and dispatches a zero-length write,
+> which the handler treats as in range: normal ACK, nothing written. On firmware
+> before the command-handler fixes the branch returned without arming for more
+> data **and without dispatching the command** — no response at all and a parser
+> left mid-command, which consumed the next two host bytes as a fresh
+> length/offset pair. A host supporting fielded units should still avoid it. This is the only variable-length
 > command with that shape; the name/expId/configTime group falls through and
 > dispatches with a zero length instead (`:500-511`).
 
@@ -2982,7 +3009,7 @@ Grouped by what they would have changed:
 | Pressure, GSR, expansion power | `0x52`, `0x21`, `0x5E` |
 | ExG registers | `0x61` |
 | Daughter card | `0x64`, `0x67` |
-| Bluetooth baud (a no-op, but still blocked) | `0x6A` |
+| Bluetooth baud (NACKs regardless, and is also blocked here) | `0x6A` |
 | Derived channels | `0x6D` |
 | Trial configuration and identity | `0x73`, `0x76`, `0x79`, `0x7C`, `0x7F`, `0x82`, `0x85` |
 | Whole configuration image | `0x8C` |
@@ -3221,13 +3248,11 @@ being authoritative, and so that a later pass can close them.
 
 - **The SD-sync exchange as a whole.** [§7.14](#714-sd-sync) documents the two
   opcodes, their byte layouts, the always-on 1-byte CRC and the exclusivity rule
-  — all from source. The **timing** — the centre's 12-second per-node connection
-  window, the 54-second minimum broadcast interval, the retry and resend
-  behaviour, and what a node does when a sync is missed — is in
-  `SDSync/shimmer_sd_sync.{h,c}` but has not been read out into a
-  specification, and the observable behaviour of a multi-unit group has not been
-  characterised. A host has no role in the exchange, so this is a gap in the
-  documentation rather than in the host contract.
+  — all from source. The timing, windows, retry and reschedule behaviour are now
+  specified in [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md). What remains
+  unverified is the **observable behaviour of a multi-unit group** — the
+  achieved accuracy and the real-world failure modes — which needs a bench run.
+  A host has no role in the exchange.
 
 **Firmware provenance**
 

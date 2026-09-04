@@ -12,7 +12,7 @@ logging, so a parser written from this document reads both.
 > being wrong, and the `file:line` references throughout only resolve because
 > the revision is pinned here.
 >
-> - **Firmware (authority for bytes):** `log-and-stream-common` @ `c13cbde` —
+> - **Firmware (authority for bytes):** `log-and-stream-common` @ `f3cf73e` —
 >   `Sensing/shimmer_sensing.h` (packet layout `#define`s, channel-ID `#define`s
 >   per platform, `MAX_NUM_CHANNELS`), `Sensing/shimmer_sensing.c`
 >   (`ShimSens_configureChannels` — channel order and `dataLen` accumulation),
@@ -69,11 +69,99 @@ logging, so a parser written from this document reads both.
 
 ## 1. Overview
 
-_TODO: one data packet per sample period, pushed unsolicited between command responses; the host learns the layout from `INQUIRY_RESPONSE`; identical channel encodings on SD. Source: `Sensing/shimmer_sensing.c`._
+While streaming, the device emits **one data packet per sample period**,
+unsolicited, interleaved with command responses on the same link. There is no
+request-response cycle for data: the host enables streaming and packets arrive
+until it stops them.
+
+A packet is **not self-describing**. It carries a header byte, a timestamp and
+then a bare concatenation of channel samples with no channel identifiers, no
+lengths and no delimiters. The host learns the layout exactly once, from the
+`INQUIRY_RESPONSE`, and must apply that layout to every subsequent packet. Get
+the layout wrong by a single byte and every channel after the error decodes as
+garbage — silently, because there is nothing in the packet to detect it
+against.
+
+The same channel encodings are used for data logged to the SD card, so a parser
+written for one works for the other; only the framing around them differs. See
+[SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md).
+
+Sampling is driven by `ShimSens_configureChannels`, which walks the enabled
+sensors in a fixed order and builds both the channel list reported by the
+inquiry and the byte offsets the packers write into. Because one function
+produces both, the inquiry list and the packet layout cannot disagree — which
+is precisely why the inquiry is authoritative and any host-side assumption
+about ordering is not.
 
 ## 2. Packet layout and timestamp
 
-_TODO: `[0x00][timestamp 3 bytes LE][channel data...][CRC 0-2 bytes]`, the 32768 Hz tick base, 24-bit wraparound every ~512 s and how a host unwraps it, and that the CRC length follows the session's `SET_CRC_COMMAND` mode. Source: `Sensing/shimmer_sensing.h` packet `#define`s, `CRC/shimmer_crc.h`._
+```
++--------+---------------+------------------------+-----------+
+| 0x00   | timestamp     | channel data           | CRC       |
+| 1 byte | 3 bytes, LE   | sum of channel widths  | 0-2 bytes |
++--------+---------------+------------------------+-----------+
+```
+
+| Field | Offset | Constant | Size |
+|---|---:|---|---:|
+| Header / data-packet marker | 0 | `PACKET_HEADER_IDX`, `PACKET_HEADER_LEN` | 1 |
+| Timestamp | 1 | `PACKET_TIMESTAMP_IDX`, `PACKET_TIMESTAMP_LEN` | 3 |
+| First channel byte | 4 | `FIRST_CH_BYTE_IDX` | — |
+| CRC | last | session CRC mode | 0, 1 or 2 |
+
+The header byte is `0x00` (`DATA_PACKET`), which is what distinguishes a data
+packet from a command response on the same stream.
+
+### 2.1 The timestamp
+
+Three bytes, **little-endian**, counting ticks of the 32768 Hz clock. It is a
+free-running counter, not a time of day.
+
+- **Resolution** is 1/32768 s, about 30.5 µs.
+- **Range** is 2^24 ticks = 16,777,216 ticks = **512 seconds exactly**, after
+  which it wraps to zero.
+
+A host must unwrap it. The standard approach is to track the previous raw value
+and increment a rollover count whenever the new value is lower:
+
+```
+if (rawNow < rawPrev) rolloverCount++;
+totalTicks = rawNow + rolloverCount * 16777216
+seconds    = totalTicks / 32768.0
+```
+
+> **Unwrapping fails if the host misses more than 512 seconds of packets.** The
+> counter gives no absolute reference, so a gap longer than one wrap period is
+> indistinguishable from a short one. A host that reconnects mid-trial cannot
+> recover absolute time from the stream alone; it must re-anchor against the
+> real-world clock. See [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
+
+> **The timestamp is the *sampling* instant, not the transmission instant.**
+> Bluetooth buffering and retransmission mean packets can arrive late, in
+> bursts, and with jitter that the timestamp does not show. Always plot against
+> the timestamp, never against arrival time.
+
+### 2.2 CRC
+
+The trailing CRC is 0, 1 or 2 bytes according to the mode selected for the
+session with `SET_CRC_COMMAND`:
+
+| `COMMS_CRC_MODE` | Value | Trailing bytes |
+|---|---:|---:|
+| `CRC_OFF` | 0 | 0 |
+| `CRC_1BYTE_ENABLED` | 1 | 1 |
+| `CRC_2BYTES_ENABLED` | 2 | 2 |
+
+(`CRC_MAX_SUPPORTED_BYTES` is a bounds-check sentinel, not a selectable mode.)
+
+The algorithm is CRC-16 with initial value `CRC_INIT = 0xB0CA`; in 1-byte mode
+only the low byte is transmitted. `calculateCrcAndInsert` appends it and
+`checkCrc` verifies.
+
+> **The CRC length is session state, not packet state.** Nothing in the packet
+> says whether a CRC is present or how long it is. A host that loses track of
+> the mode it negotiated will mis-frame every packet. Default is off; set the
+> mode explicitly at session start rather than assuming.
 
 ## 3. Channel ID registry
 
@@ -138,50 +226,404 @@ emits. `Encoding` and `SDK name` come from the web SDK's channel-format table.
 
 ## 4. Channel order rules
 
-_TODO: that channel order is not the numeric ID order but the order `ShimSens_configureChannels` appends them, the fixed sensor-block sequence it walks, and that `INQUIRY_RESPONSE` reports exactly this order. Source: `Sensing/shimmer_sensing.c` — `ShimSens_configureChannels`._
+**Channel order is not numeric channel-ID order.** It is the order in which
+`ShimSens_configureChannels` appends entries to `sensing.cc`, which is a fixed
+walk over the sensor blocks — and the two orders are genuinely different: on
+Shimmer3R the magnetometer (IDs `0x07`-`0x09`) is emitted *before* the gyroscope
+(`0x0A`-`0x0C`), and the low-noise accelerometer (`0x00`-`0x02`) after both.
+
+`ShimSens_configureChannels` calls three per-bus configurators in this order:
+
+1. `ADC_configureChannels()` — only when `ShimBrd_areMcuAdcsUsedForSensing()`
+2. `I2C_configureChannels()`
+3. `SPI_configureChannels()`
+
+Each appends the channels for the sensors it owns, in its own fixed sequence,
+and accumulates `sensing.dataLen`. The `INQUIRY_RESPONSE` reports exactly the
+resulting list.
+
+### 4.1 Shimmer3 order
+
+MCU ADC channels come first on Shimmer3, because the MSP430's own ADC carries
+most of the analog sensors:
+
+| Order | Bus | Channels | Bytes |
+|---:|---|---|---:|
+| 1 | ADC | `X_LN_ACCEL`, `Y_LN_ACCEL`, `Z_LN_ACCEL` | 6 |
+| 2 | ADC | `VBATT` | 2 |
+| 3 | ADC | `EXTERNAL_ADC_7` | 2 |
+| 4 | ADC | `EXTERNAL_ADC_6` | 2 |
+| 5 | ADC | `EXTERNAL_ADC_15` | 2 |
+| 6 | ADC | `INTERNAL_ADC_12` | 2 |
+| 7 | ADC | `STRAIN_HIGH`, `STRAIN_LOW` | 4 |
+| 8 | ADC | `INTERNAL_ADC_13` | 2 |
+| 9 | ADC | `INTERNAL_ADC_14` | 2 |
+| 10 | ADC | `GSR_RAW` **or** `INTERNAL_ADC_1` | 2 |
+| 11 | I2C | `X_GYRO`, `Y_GYRO`, `Z_GYRO` | 6 |
+| 12 | I2C | `X_WR_ACCEL`, `Y_WR_ACCEL`, `Z_WR_ACCEL` | 6 |
+| 13 | I2C | `X_MAG`, then **`Z_MAG`, `Y_MAG`** on LSM303DLHC, else `Y_MAG`, `Z_MAG` | 6 |
+| 14 | I2C | `X_ALT_ACCEL`, `Y_ALT_ACCEL`, `Z_ALT_ACCEL` | 6 |
+| 15 | I2C | `X_ALT_MAG`, `Y_ALT_MAG`, `Z_ALT_MAG` | 6 |
+| 16 | I2C | `BMP_TEMPERATURE`, `BMP_PRESSURE` | `BMPX80_PACKET_SIZE` |
+| 17 | SPI | ExG chip 1: status, CH1, CH2 | 7 (24-bit) or 5 (16-bit) |
+| 18 | SPI | ExG chip 2: status, CH1, CH2 | 7 (24-bit) or 5 (16-bit) |
+
+> **The Shimmer3 magnetometer axis order is board-dependent.** With an
+> LSM303DLHC the order is **X, Z, Y**; with the LSM303AH it is X, Y, Z. The
+> firmware branches on `ShimBrd_isWrAccelInUseLsm303dlhc()`. A host that assumes
+> XYZ will silently swap the Y and Z magnetometer axes on older boards. This is
+> visible in the inquiry channel list — another reason to read it rather than
+> assume.
+
+> **GSR must be the last analog channel.** The source comment says so
+> explicitly. `GSR_RAW` and `INTERNAL_ADC_1` are alternatives on the same input,
+> which is why §10 of the InfoMem document has the firmware silently disable one
+> when both are requested.
+
+### 4.2 Shimmer3R order
+
+Almost everything moved to SPI on Shimmer3R; only the LIS2MDL magnetometer is
+on I2C, and the external ADS7028 ADC provides the analog channels at the end of
+the SPI block.
+
+| Order | Bus | Channels | Bytes |
+|---:|---|---|---:|
+| 1 | I2C | `X_MAG`, `Y_MAG`, `Z_MAG` (LIS2MDL) | 6 |
+| 2 | SPI | `X_GYRO`, `Y_GYRO`, `Z_GYRO` | 6 |
+| 3 | SPI | `X_LN_ACCEL`, `Y_LN_ACCEL`, `Z_LN_ACCEL` | 6 |
+| 4 | SPI | **`BMP_PRESSURE`, `BMP_TEMPERATURE`** | 3 + 3 |
+| 5 | SPI | `X_ALT_ACCEL`, `Y_ALT_ACCEL`, `Z_ALT_ACCEL` | 6 |
+| 6 | SPI | `X_WR_ACCEL`, `Y_WR_ACCEL`, `Z_WR_ACCEL` | 6 |
+| 7 | SPI | `X_ALT_MAG`, `Y_ALT_MAG`, `Z_ALT_MAG` | 6 |
+| 8 | SPI | ExG chip 1: status, CH1, CH2 | 7 (24-bit) or 5 (16-bit) |
+| 9 | SPI | ExG chip 2: status, CH1, CH2 | 7 (24-bit) or 5 (16-bit) |
+| 10 | SPI (ADS7028) | `INTERNAL_ADC_0` | 2 |
+| 11 | SPI (ADS7028) | `STRAIN_HIGH`, `STRAIN_LOW` | 4 |
+| 12 | SPI (ADS7028) | `INTERNAL_ADC_1` | 2 |
+| 13 | SPI (ADS7028) | `INTERNAL_ADC_2` | 2 |
+| 14 | SPI (ADS7028) | `GSR_RAW` **or** `INTERNAL_ADC_3` | 2 |
+| 15 | SPI (ADS7028) | `EXTERNAL_ADC_0` | 2 |
+| 16 | SPI (ADS7028) | `EXTERNAL_ADC_1` | 2 |
+| 17 | SPI (ADS7028) | `EXTERNAL_ADC_2` | 2 |
+| 18 | SPI (ADS7028) | `VBATT` | 2 |
+
+### 4.3 The differences that bite
+
+| | Shimmer3 | Shimmer3R |
+|---|---|---|
+| Pressure / temperature order | **temperature, then pressure** | **pressure, then temperature** |
+| Temperature width | 2 bytes | 3 bytes |
+| Pressure width | 3 bytes | 3 bytes |
+| First channel block | Low-noise accel (ADC) | Magnetometer (I2C) |
+| `VBATT` position | Second | Last |
+| Magnetometer axis order | X, Z, Y on LSM303DLHC | X, Y, Z |
+
+> **The pressure/temperature reversal is the single most damaging difference.**
+> The two channels are enabled and disabled together by one configuration bit,
+> so a host that hard-codes the Shimmer3 order and widths against a Shimmer3R
+> mis-reads six bytes and shifts every channel after them. There is no error
+> indication.
+
+`MAX_NUM_CHANNELS` is 45 on Shimmer3 and 50 on Shimmer3R — the upper bound on
+the inquiry channel list.
 
 ## 5. Per-channel encodings
 
-_TODO: the encoding families — 12-bit ADC right-aligned in 2 bytes, 16-bit signed/unsigned little- and big-endian IMU words, 24-bit signed ExG samples, the 1-byte ExG status byte, the packed GSR range-plus-value word, and the pressure/temperature widths per sensor. Source: the five packer files plus `UtilParseData.java`._
+Widths and encodings are in the §3 registry. The families are:
+
+### 5.1 ADC channels — 2 bytes, unsigned, right-aligned
+
+`VBATT`, all `EXTERNAL_ADC_*` and `INTERNAL_ADC_*`, and the bridge-amplifier
+pair. Two bytes little-endian holding an unsigned value whose significant width
+is the converter's, not 16 bits: the Java driver's type strings are `u12` and
+`u14` for these channels. Mask before use — the unused high bits are not
+guaranteed.
+
+### 5.2 IMU channels — 2 bytes, signed
+
+Accelerometer, gyroscope and magnetometer axes: `int16`, little-endian on both
+platforms.
+
+The alternate accelerometer (`0x14`-`0x16`) is 12-bit data in a 16-bit field on
+Shimmer3 (`i12`), and needs sign extension from bit 11 rather than bit 15.
+
+### 5.3 ExG — status byte plus 24-bit or 16-bit big-endian samples
+
+| Channel | Width | Encoding |
+|---|---:|---|
+| `EXG_ADS1292R_n_STATUS` | 1 | `uint8` bit flags |
+| `EXG_ADS1292R_n_CHm_24BIT` | 3 | `int24`, **big-endian** |
+| `EXG_ADS1292R_n_CHm_16BIT` | 2 | `int16`, **big-endian** |
+
+ExG is the only sensor whose samples are big-endian, because the bytes come
+straight off the ADS1292R in its own order. Sign-extend from bit 23 or bit 15.
+
+A chip contributes 7 bytes in 24-bit mode (1 + 3 + 3) or 5 bytes in 16-bit mode
+(1 + 2 + 2). The two chips are independent — one may be 24-bit while the other
+is 16-bit.
+
+### 5.4 GSR — packed range and value
+
+`GSR_RAW` is one 16-bit little-endian word carrying **two fields**:
+
+| Bits | Field |
+|---|---|
+| 15-14 | Active feedback resistor (0-3) |
+| 13-0 | ADC value |
+
+`GSR_range()` packs it as `ADC_val | (current_active_resistor << 14)`. A host
+must mask with `0x3FFF` before treating the low field as a measurement, and
+must read the range bits **per sample**: under auto-range the firmware changes
+resistor mid-stream, so the range is not a constant for the trial.
+
+### 5.5 Pressure and temperature
+
+| Platform | Temperature | Pressure |
+|---|---:|---:|
+| Shimmer3 | 2 bytes | 3 bytes |
+| Shimmer3R | 3 bytes | 3 bytes |
+
+Both are unsigned and raw — the compensation formula and the part's coefficient
+block turn them into physical units (§7.4).
+
+### 5.6 The width problem
+
+**Widths are not derivable from the channel ID alone.** ID `0x1A`
+(`BMP_TEMPERATURE`) is 2 bytes on Shimmer3 and 3 on Shimmer3R; the ADC block
+`0x0D`-`0x13` means different physical inputs on each platform. A parser must
+resolve widths against the hardware generation, which it learns from the
+inquiry response, not from the channel list in isolation.
+
+> A decoder that defaults unknown channel IDs to 2 bytes will appear to work and
+> produce wrong data. Pressure at 3 bytes is the common case that exposes it:
+> every channel after pressure shifts by one byte. Treat an unrecognised ID as
+> fatal (§8).
 
 ## 6. Configuration snapshot needed for conversion
 
-_TODO: the minimum set a host must hold to convert a packet — sampling rate, sensor enables, each sensor's range/rate, GSR range, pressure oversampling, ExG gain and reference settings, and the calibration blocks — and where each comes from. Source: `Configuration/shimmer_config.h`, `driver/ShimmerObject.java`._
+Raw counts alone are not interpretable. To convert a packet a host must hold:
+
+| Item | Source | Needed for |
+|---|---|---|
+| Hardware generation | `GET_DEVICE_VERSION` / inquiry | Channel meanings and widths |
+| Channel list, in order | `INQUIRY_RESPONSE` | Slicing the packet at all |
+| Sampling rate | InfoMem bytes 0-1 | Time base, filter design |
+| Accel / gyro / mag ranges | InfoMem bytes 6, 8, 9, 130 (with MSB bits) | Selecting the right calibration set |
+| Calibration blocks | InfoMem, or `GET_CALIB_DUMP` | Bias, sensitivity, alignment |
+| GSR range | InfoMem byte 9 bits 3-1, **and the per-sample range bits** | Feedback resistor |
+| Pressure oversampling | InfoMem bytes 9 and 130 | Sample timing |
+| Pressure coefficients | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | Compensation |
+| ExG registers | InfoMem bytes 10-29 | Gain, reference, lead-off |
+| CRC mode | Session state | Packet framing |
+
+> **Re-read after every configuration write.** Changing a range changes which
+> calibration set applies; changing an enable bit changes the packet layout
+> entirely. The firmware also silently corrects illegal combinations
+> ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10),
+> so what the host asked for and what is in force may differ.
 
 ## 7. Raw-to-physical conversion
 
 ### 7.1 Inertial
 
-_TODO: the bias / sensitivity / alignment triple applied as `(R^-1)(K^-1)(raw - b)`, the per-range default sensitivities for each accel, gyro and mag part on both platforms, and the units. Cross-reference [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §7. Source: `Calibration/shimmer_calibration.c` defaults, `driver/ShimmerObject.java`._
+Apply the three-parameter kinematic model:
+
+```
+C = inv(R) * inv(K) * (U - B)
+```
+
+with `B` bias, `K` the diagonal sensitivity matrix and `R` the alignment matrix.
+The parameter block layout, the big-endian trap in bias and sensitivity, the
+gyro sensitivity scale factor of 100, the degenerate-matrix fallback, and the
+complete per-range default tables for every part on both platforms are in
+[SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §3, §6 and §7.
+
+Units: accelerometers m/s², gyroscopes deg/s.
+
+The set that applies is the one matching the sensor's **currently configured
+range**. Reading calibration without also reading the range gives the wrong
+scale.
 
 ### 7.2 ADC and battery
 
-_TODO: the 12-bit ADC reference and the two-point calibration the Java driver applies, and the battery-voltage divider. Source: `sensors/SensorBattVoltage.java`, `adc.c`._
+ADC channels are converted with the converter's reference and resolution.
+`VBATT` additionally passes through a resistive divider on the board, so the
+battery voltage is the converted ADC voltage multiplied by the divider ratio.
+
+The Java driver applies a two-point calibration to ADC channels where one has
+been stored, falling back to the nominal reference otherwise.
+
+On **Shimmer3** the MSP430 ADC12 is used at 12 bits against a 3.0 V reference,
+and the battery input has a ×2 divider, so from `adc.c`:
+
+```c
+battValMV = (((uint32_t) raw * 3000) >> 12) * 2;
+```
+
+The other ADC channels convert with the same 3.0 V / 4095 scale and no divider.
+
+On **Shimmer3R** the sensor analog channels come through the external
+ADS7028 on SPI1 and the MCU's own battery channel is *internally divided by 4*
+(`hal_adc.c`). The ADS7028 reference was not found — see *Still unverified*.
 
 ### 7.3 GSR
 
-_TODO: the four resistor ranges plus autorange, extracting the range bits from the sample word, the per-range resistance polynomial, and conversion to conductance. Source: `GSR/shimmer_gsr.{h,c}`, `driver/ShimmerObject.java`._
+1. Split the 16-bit word: `range = w >> 14`, `adc = w & 0x3FFF` (§5.4).
+2. Convert `adc` to millivolts at the converter's reference.
+3. Apply the op-amp equation the firmware itself uses in `GSR_calcResistance`:
+
+```
+resistance_ohms = R_feedback[range] / (((mV / 1000) / 0.5) - 1.0)
+```
+
+4. Conductance in microsiemens is `1e6 / resistance_ohms`.
+
+Feedback resistors, from `GSR_FEEDBACK_RESISTORS_OHMS`:
+
+| Range code | Constant | Resistance |
+|---:|---|---:|
+| 0 | `HW_RES_40K` | 40,200 Ω |
+| 1 | `HW_RES_287K` | 287,000 Ω |
+| 2 | `HW_RES_1M` | 1,000,000 Ω |
+| 3 | `HW_RES_3M3` | 3,300,000 Ω |
+| 4 | `GSR_AUTORANGE` | Not a resistor — configuration only |
+
+> **Range code 4 never appears in a sample.** `GSR_AUTORANGE` is a configuration
+> value meaning "switch automatically"; the two bits in the sample always carry
+> the *actual* resistor, 0-3. A host that sees 4 in the packed field has
+> mis-parsed something.
+
+Auto-range switching thresholds, applied by `GSR_controlRange`, are in raw ADC
+counts with hysteresis:
+
+| Current resistor | Switch down (to a larger resistor) below | Switch up (to a smaller resistor) above |
+|---|---:|---:|
+| `HW_RES_40K` | 1120 | — |
+| `HW_RES_287K` | 1490 | 3960 |
+| `HW_RES_1M` | 1630 | 3700 |
+| `HW_RES_3M3` | 1125 | 3930 |
+
+> **Auto-range transitions produce a discontinuity.** The firmware runs
+> `GSR_smoothTransition` and repeats the last ADC value during the settling
+> window, so consecutive identical samples around a range change are expected
+> and are not a dropped-sample artefact.
 
 ### 7.4 Pressure and temperature
 
-_TODO: the four supported pressure parts (BMP180, BMP280, BMP390, BMP581), which raw widths each emits, and that BMP180/BMP280/BMP390 need the coefficient block while BMP581 outputs pre-compensated data. Cross-reference [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §5. Source: `sensors/bmpX80/`, `ShimBt_sendRsp` `case GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND`._
+Four parts are supported, and the host needs the coefficient block for three of
+them:
+
+| Part | ID | Coefficient bytes | Notes |
+|---|---:|---:|---|
+| BMP180 | 0 | 22 | Shimmer3 |
+| BMP280 | 1 | 24 | Shimmer3. Header splits them 22 + 2 |
+| BMP390 | 2 | 21 | Both |
+| BMP581 | 3 | **0** | Shimmer3R. Outputs pre-compensated data |
+
+Fetch with `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND`, whose reply carries
+the sensor ID so the host knows which compensation formula to apply — see
+[SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §5. The formulae themselves
+are Bosch's and are in each part's datasheet; the firmware does not implement
+them.
+
+For the BMP581 the raw values are already compensated: scale and use directly.
 
 ### 7.5 ExG
 
-_TODO: the 24-bit and 16-bit modes, the gain table from the CH1SET/CH2SET register fields, the reference voltage, conversion to millivolts, and decoding the status byte's lead-off bits. Source: `Configuration/shimmer_config.h` `gExgADS1292rRegs`, `driver/ShimmerObject.java`._
+**24-bit mode.** Sign-extend the big-endian `int24`, then:
+
+```
+millivolts = sample * (V_REF * 1000) / (gain * (2^23 - 1))
+```
+
+**16-bit mode.** As above, sign-extending from bit 15 and with `2^15 - 1`.
+
+Gain comes from the `CH1SET` / `CH2SET` registers in the configuration bytes
+(InfoMem 10-29, see
+[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §5) — the
+PGA gain field of each. The reference voltage is set by the `CONFIG2` register's
+internal-reference selection. Both are ADS1292R fields; the datasheet is the
+authority for the bit encodings.
+
+**Status byte.** One byte per chip, preceding its channel samples, carrying the
+lead-off detection bits. The ADS1292R datasheet defines the bit positions; the
+firmware passes the register through untouched.
 
 ### 7.6 Bridge amplifier
 
-_TODO: the `STRAIN_HIGH` / `STRAIN_LOW` pair, the offset and gain applied, and the SR49 board dependency. Source: `driver/Configuration.java`, `driver/ShimmerObject.java`._
+`STRAIN_HIGH` and `STRAIN_LOW` are a pair of ADC channels, always enabled and
+disabled together, 4 bytes total. They are the two outputs of the bridge
+amplifier on the SR49 expansion board; conversion is an offset and gain applied
+per board revision, held in the Java driver's board configuration rather than
+in the firmware.
+
+Note that enabling the bridge amplifier forces two internal ADC channels off
+(InfoMem §10.1), because they share inputs.
 
 ### 7.7 Timestamps
 
-_TODO: converting ticks to seconds, unwrapping the 24-bit counter, and reconciling stream timestamps with the real-world clock set by `SET_RWC_COMMAND`. Source: `RTC/shimmer_rtc.{h,c}`, `driver/ShimmerObject.java`._
+1. Unwrap the 24-bit counter (§2.1).
+2. Divide by 32768 for seconds since streaming started.
+3. To place samples on an absolute timeline, anchor against the real-world
+   clock. The device's RWC is set by `SET_RWC_COMMAND` and read by
+   `GET_RWC_COMMAND`; the offset between the free-running tick counter and the
+   RWC is what converts one to the other.
+
+> On Shimmer3 the SD header carries that offset in `SDH_RTC_DIFF_*`. On
+> Shimmer3R the same eight bytes instead carry the top three bytes of the
+> file's 64-bit initial timestamp, so a logged file on either generation can be
+> placed on an absolute timeline — but by different arithmetic. See
+> [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.3 and
+> [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
 
 ## 8. Normative interpretation rules
 
-_TODO: the short list a conforming parser must obey — trust the inquiry channel list over any assumed order, re-inquire after configuration writes, treat unknown channel IDs as fatal rather than skippable because widths are not self-describing, and honour the session CRC mode. Source: as above._
+A conforming parser must:
+
+1. **Take the channel list and its order from `INQUIRY_RESPONSE`.** Never from
+   the sensor-enable bitmap, never from numeric channel-ID order, never from a
+   hard-coded table.
+2. **Re-inquire after any configuration write.** The firmware silently corrects
+   illegal combinations, so the layout after a write may not be the one
+   requested.
+3. **Resolve channel widths against the hardware generation.** IDs `0x0D`-`0x13`
+   and `0x1A` mean different things and have different widths on the two
+   platforms.
+4. **Treat an unknown channel ID as fatal.** Widths are not self-describing, so
+   an unrecognised ID makes every subsequent byte offset in the packet unsound.
+   Do not skip it and continue; stop, or mark the whole packet untrusted. A
+   decoder that guesses two bytes will produce plausible, wrong numbers.
+5. **Validate the total.** The sum of the resolved channel widths plus 4 plus
+   the CRC length must equal the received packet length. This is the only
+   integrity check available on the layout, and it catches most width errors
+   immediately.
+6. **Honour the session CRC mode** — the trailing byte count is session state,
+   not something the packet declares.
+7. **Read the GSR range bits per sample**, not once per trial.
+8. **Unwrap the timestamp**, and do not assume the host's arrival time bears any
+   relation to it.
 
 ## Still unverified / not found in code
 
-- _TODO: populate as the doc pass proceeds._
+- **The Shimmer3R ADS7028 reference voltage and resolution.** The driver lives
+  in `Shimmer_Driver/ADS7028_38/` and exposes per-channel max-value registers
+  but no reference constant was found in it; the Java `u14` type string suggests
+  a 14-bit path. Shimmer3's conversion is now in §7.2; Shimmer3R's is not.
+- ~~`BMPX80_PACKET_SIZE` on Shimmer3~~ — resolved: `BMPX80_TEMP_BUFF_SIZE`
+  (`0x02`) + `BMPX80_PRESS_BUFF_SIZE` (`0x03`) = 5, confirming the registry's
+  2-byte temperature and 3-byte pressure.
+- **Channels declared but never emitted.** `X_ALT_MAG` through `Z_ALT_MAG` and
+  several ADC channels appear in the ID registry with a Java channel name but no
+  SDK entry (`SDK_MISSING` in §3). The alternate magnetometer is real hardware
+  on Shimmer3R — the LIS3MDL on the sensing SPI bus (`CS_LIS3MDL` `PE6`,
+  `LIS3MDL_DRDY` `PE2`), with `altMagRange` / `altMagRate` configuration and
+  calibration commands in `common` — so the gap is on the SDK side, not the
+  firmware's. Whether the ADC channels are reachable on every shipping board
+  was not established.
+- ~~The `i12*` encoding marker~~ — resolved from the Java reference decoder
+  (`UtilParseData.java`, type `i12>`): read the 16-bit little-endian word,
+  take its two's complement as a 16-bit value, then **shift right by 4**. The
+  12 significant bits are therefore left-justified in the word and the low
+  nibble is discarded.
+- **Bridge-amplifier offset and gain constants.** Held in the Java driver's
+  per-board configuration; not present in the firmware and not restated here.
