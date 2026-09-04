@@ -639,7 +639,7 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `0x64` | `SET_DAUGHTER_CARD_ID_COMMAND` | SET | 2 + [args[0]] bytes |  |  | both | yes |  |  | FW_ONLY |
 | `0x65` | `DAUGHTER_CARD_ID_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
 | `0x66` | `GET_DAUGHTER_CARD_ID_COMMAND` | GET | 2 | `DAUGHTER_CARD_ID_RESPONSE` | 1 + dcMemLength | both |  |  |  |  |
-| `0x67` | `SET_DAUGHTER_CARD_MEM_COMMAND` | SET | 3 + [args[2]] bytes |  |  | both | yes |  |  | FW_ONLY |
+| `0x67` | `SET_DAUGHTER_CARD_MEM_COMMAND` | SET | 3 + [args[0]] bytes |  |  | both | yes |  |  | FW_ONLY |
 | `0x68` | `DAUGHTER_CARD_MEM_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
 | `0x69` | `GET_DAUGHTER_CARD_MEM_COMMAND` | GET | 3 | `DAUGHTER_CARD_MEM_RESPONSE` | 1 + dcMemLength | both |  |  |  | FW_ONLY |
 | `0x6D` | `SET_DERIVED_CHANNEL_BYTES` | SET | 8 |  |  | both | yes |  |  |  |
@@ -647,7 +647,7 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `0x6F` | `GET_DERIVED_CHANNEL_BYTES` | GET | 0 | `DERIVED_CHANNEL_BYTES_RESPONSE` | 8 | both |  |  |  |  |
 | `0x8A` | `INSTREAM_CMD_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
 | `0x8B` | `SET_CRC_COMMAND` | SET | 1 |  |  | both |  |  |  |  |
-| `0x8C` | `SET_INFOMEM_COMMAND` | SET | 3 + [args[2]] bytes |  |  | both | yes |  |  |  |
+| `0x8C` | `SET_INFOMEM_COMMAND` | SET | 3 + [args[0]] bytes |  |  | both | yes |  |  |  |
 | `0x8D` | `INFOMEM_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
 | `0x8E` | `GET_INFOMEM_COMMAND` | GET | 3 | `INFOMEM_RESPONSE` | 1 + infomemLength | both |  |  |  |  |
 | `0x94` | `VBATT_RESPONSE` | RSP |  |  |  | both |  |  |  |  |
@@ -734,7 +734,7 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `0x5B` | `RESET_CALIBRATION_VALUE_COMMAND` | CTRL | 0 |  |  | both | yes |  |  |  |
 | `0x5C` | `MPU9150_MAG_SENS_ADJ_VALS_RESPONSE` | RSP |  |  |  | S3 |  |  |  |  |
 | `0x5D` | `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` | GET | 0 | `S3: MPU9150_MAG_SENS_ADJ_VALS_RESPONSE<br>S3R: ACK_COMMAND_PROCESSED` | S3: 3<br>S3R: 0 | both |  |  |  |  |
-| `0x98` | `SET_CALIB_DUMP_COMMAND` | SET | 3 + [args[2]] bytes |  |  | both | yes |  |  |  |
+| `0x98` | `SET_CALIB_DUMP_COMMAND` | SET | 3 + [args[0]] bytes |  |  | both | yes |  |  |  |
 | `0x99` | `RSP_CALIB_DUMP_COMMAND` | RSP |  |  |  | both |  |  |  |  |
 | `0x9A` | `GET_CALIB_DUMP_COMMAND` | GET | 3 | `RSP_CALIB_DUMP_COMMAND` | 3 + calibRamLength | both |  |  |  |  |
 | `0x9B` | `UPD_CALIB_DUMP_COMMAND` | CTRL | 0 |  |  | both | yes |  |  |  |
@@ -1571,12 +1571,16 @@ Writes are **accumulated**, not applied per chunk:
    (`shimmer_comms_bluetooth.py:240-258`).
 4. Read the blob back with `GET_CALIB_DUMP_COMMAND` to confirm.
 
-⚠️ **`SET_CALIB_DUMP_COMMAND` lacks the bounds check its InfoMem sibling has.**
-`SET_INFOMEM_COMMAND` validates length and offset in the handler before
-touching anything (`Comms/shimmer_bt_uart.c:1398-1400`); `SET_CALIB_DUMP_COMMAND`
-calls `ShimCalib_ramWrite` directly (`:1158`). Containment comes from
-`ShimCalib_ramWrite`'s own check plus the 131-byte `args[]` truncation clamp
-(`:559-577`) — not from the handler.
+ℹ️ **`SET_CALIB_DUMP_COMMAND` validates in the callee, not in the handler.**
+`SET_INFOMEM_COMMAND` checks length and offset inline before touching anything
+(`Comms/shimmer_bt_uart.c:1398-1400`); `SET_CALIB_DUMP_COMMAND` passes them
+straight to `ShimCalib_ramWrite` (`:1158`), which applies the equivalent test
+itself — `length <= 128`, `offset <= SHIMMER_CALIB_RAM_MAX - 1`,
+`length + offset <= SHIMMER_CALIB_RAM_MAX`, returning `0xFF` otherwise
+(`Calibration/shimmer_calibration.c:332-340`). With the 131-byte `args[]`
+truncation clamp (`:559-577`) in front of both, an oversized or misaligned
+write is contained on either path. The difference is where the check lives, not
+whether there is one: a host reading only the handler will not find it.
 
 #### `UPD_CALIB_DUMP_COMMAND` (0x9B)
 
