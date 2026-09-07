@@ -348,10 +348,9 @@ clamped.
 | 1 | 1 | status — `SD_FT_STATUS_BAD_ARGS` if no path was staged **or the path is not deletable** (`sdFtIsDeletablePath`), else the `f_unlink` result |
 
 Delete first closes the cached transfer handle, because with `_FS_LOCK` FatFs
-refuses to unlink an open file (`FR_LOCKED`). Note that `BAD_ARGS` *is*
-reachable from this builder and from list/stat when no path was staged; the
-statement elsewhere in this document that it is never returned applies to the
-read path.
+refuses to unlink an open file (`FR_LOCKED`). `BAD_ARGS` is reachable from this
+builder and from list/stat when no path was staged — see the status-code
+appendix, which says where each code can and cannot appear.
 
 ## Still unverified / not found in code
 

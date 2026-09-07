@@ -158,7 +158,7 @@ Four helpers, all operating on `SHIM_RTC_t`:
 | Field | Range | Notes |
 |---|---|---|
 | `seconds` | 0-59 | |
-| `subseconds` | 0-1023 | Downcounter; reload is `RTC_SYNC_PREDIV` = 0x3FF, so 1024 steps per second |
+| `subseconds` | 0-32767 | Downcounter; reload is Shimmer3R's `SynchPrediv` = 32767, so 32768 steps per second |
 | `minutes` | 0-59 | |
 | `hours` | 0-23 | 24-hour |
 | `weekday` | 1-7 | **Monday is 1** |
@@ -168,9 +168,18 @@ Four helpers, all operating on `SHIM_RTC_t`:
 | `unix` | — | Seconds since 1970-01-01 |
 | `ticks` | — | Ticks since 1970-01-01 |
 
-> **`subseconds` has 1024 steps per second, not 32768.** It is the STM32 RTC's
-> own prediv counter, a different resolution from the tick counter. Do not mix
-> the two: a subsecond value of 512 is half a second, which is 16384 ticks.
+> **`subseconds` counts DOWN, and on Shimmer3R its step is the same 1/32768 s
+> as a tick.** Shimmer3R's `rtc.c` sets `AsynchPrediv = 0` and
+> `SynchPrediv = 32767`, so the register runs 32767 → 0 once per second. Being
+> a downcounter is the part that catches people: the elapsed fraction of the
+> current second is `(32767 - subseconds) / 32768`, so a register value of
+> 16383 means half a second has passed, not 16383/32768 of one.
+>
+> The field's own comment in `shimmer_rtc.h` says `RTC_SYNC_PREDIV` = 0x3FF,
+> 1024 steps. That is stale: no such symbol is defined on either platform, and
+> the value contradicts the prescaler the Shimmer3R actually configures. Do not
+> take 1024 from it. Shimmer3 has no prescaler at all — its real-world clock is
+> the 32 kHz tick counter itself.
 
 > **`year` is 0-99 meaning 2000-2099.** `ShimRtc_rtc2Unix` adds 2000 and returns
 > **0** for any year before `RTC_OFFSET_YEAR` (1970) — which cannot happen given
