@@ -31,7 +31,7 @@ The documents a host application needs to talk to a device or read its data.
 | [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) | The on-card layout: directory structure, the binary file header, sample records, `sdlog.cfg`, the calibration file |
 | [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) | The 512-byte configuration image: full byte map, validation rules, defaults, and the InfoMem-to-SD-header mapping |
 | [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) | Calibration in both its shapes, the 21-byte kinematic block, default seeds, and the conversion maths |
-| [SHIMMER3_SD_FILE_TRANSFER.md](SHIMMER3_SD_FILE_TRANSFER.md) | Retrieving logged files over Bluetooth (Shimmer3R only) |
+| [SHIMMER3R_SD_FILE_TRANSFER.md](SHIMMER3R_SD_FILE_TRANSFER.md) | Retrieving logged files over Bluetooth (Shimmer3R only) |
 | [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md) | The three clocks, the UTC contract, and placing a recording on an absolute timeline |
 | [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md) | Multi-device synchronisation and how to apply the recorded offsets |
 

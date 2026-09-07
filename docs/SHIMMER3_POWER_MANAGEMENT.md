@@ -134,7 +134,7 @@ Powered on demand rather than continuously:
 > recover from explicitly.** A bare rail restore is not enough — the SDMMC
 > peripheral retains state from before the card lost power, so a full bring-up
 > is needed. See
-> [SHIMMER3_SD_FILE_TRANSFER.md](SHIMMER3_SD_FILE_TRANSFER.md) §2.1. This is the
+> [SHIMMER3R_SD_FILE_TRANSFER.md](SHIMMER3R_SD_FILE_TRANSFER.md) §2.1. This is the
 > mechanism behind a device that appeared dead after a second connection.
 
 ### 4.2 Expansion board

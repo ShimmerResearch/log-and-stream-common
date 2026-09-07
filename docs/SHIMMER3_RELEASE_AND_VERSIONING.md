@@ -167,7 +167,7 @@ the TypeScript SDK. Details and the current gates are in
 > to older firmware produces **no response at all** — indistinguishable from a
 > dropped packet. The SD file-transfer commands are the current example: hosts
 > are directed to gate on the firmware version before using them
-> ([SHIMMER3_SD_FILE_TRANSFER.md](SHIMMER3_SD_FILE_TRANSFER.md)).
+> ([SHIMMER3R_SD_FILE_TRANSFER.md](SHIMMER3R_SD_FILE_TRANSFER.md)).
 
 ## 7. Release checklist
 
