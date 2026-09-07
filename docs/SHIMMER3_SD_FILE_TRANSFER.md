@@ -370,7 +370,13 @@ read path.
   the 16-bit-length variant of the comms CRC — same `CRC_INIT` `0xB0CA`, same
   odd-length zero pad. Neither platform overrides `platform_crcData16`, so it
   is the software implementation in `CRC/shimmer_crc.c` on both.
-- **`SD_FT_STATUS_BAD_ARGS` (`0xF2`).** Defined and never returned — a full
-  search of `shimmer_sd_file_transfer.c` finds only the definition. Argument
-  faults in the read path produce `SD_FT_XFER_DENIED` instead. A host should
-  not wait for `0xF2`.
+- **`SD_FT_STATUS_BAD_ARGS` (`0xF2`).** Returned by the three one-shot
+  commands when no path has been staged — `SD_LIST_DIR`, `SD_FILE_STAT` and
+  `SD_DELETE` each open with
+  `status = stagedPathValid ? sdFtAccessCheck() : SD_FT_STATUS_BAD_ARGS`
+  (`shimmer_sd_file_transfer.c:674, :775, :846`) — and once more by
+  `SD_DELETE` for a path `sdFtIsDeletablePath()` refuses (`:851`). A host must
+  handle `0xF2` on those three responses.
+
+  It is NOT used in the read path: an argument fault there produces
+  `SD_FT_XFER_DENIED` instead.

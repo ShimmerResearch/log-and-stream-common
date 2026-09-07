@@ -4,9 +4,11 @@ Reference documentation for the LogAndStream firmware shared by Shimmer3
 (MSP430) and Shimmer3R (STM32U5). These documents are the authoritative source
 for host-side integrations — Java, JavaScript/TypeScript, Python, C#.
 
-Every document carries a **Verified against** block naming the exact firmware
-revisions its byte-level claims were read from, and a **Still unverified /
-not found in code** section listing what could not be confirmed. A pinned
+Every document **except this index** carries a **Verified against** block
+naming the exact firmware revisions its byte-level claims were read from, and
+a **Still unverified / not found in code** section listing what could not be
+confirmed. This page makes no byte-level claims of its own, so it has nothing
+to pin. A pinned
 commit is a citation, not a claim of currency: when the firmware moves on,
 a document needs re-checking against it rather than the stamp being wrong.
 

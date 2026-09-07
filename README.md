@@ -82,8 +82,8 @@ Twenty documents cover the firmware in five groups:
 | **Hardware and production** | EEPROM memory map; Shimmer3R peripheral allocation; Shimmer3R factory test report |
 | **Development** | Build and programming; release and versioning |
 
-Every document carries a **Verified against** block naming the firmware
-revisions its claims were read from, and a **Still unverified / not found in
+Every one of the twenty carries a **Verified against** block naming the
+firmware revisions its claims were read from, and a **Still unverified / not found in
 code** section listing what could not be confirmed from the source. Treat the
 second as part of the content: it is where the open questions are recorded
 rather than guessed at.
