@@ -185,9 +185,11 @@ void ShimBt_stopCommon(uint8_t isCalledFromMain)
   shimmerStatus.btIsInitialised = 0;
   shimmerStatus.btInSyncMode = 0;
 #if defined(SHIMMER3R)
-  /* Not gated on TRANSPARANT_MODE: that macro lives in the platform BT driver
-   * header, which this file cannot see, so a mode-gated guard here silently
-   * compiles out. Clearing the flag is correct in both modes. */
+  /* Not gated on transparent mode, and there is nothing here to gate on:
+   * TRANSPARANT_MODE (the platform's own spelling) was a compile-time switch
+   * in hal_CYW20820.h and is gone - that header now #errors if it is defined
+   * and directs callers to the runtime BT_isTransparentMode(). Either way
+   * clearing the flag is correct in both modes, so this needs no mode test. */
   shimmerStatus.btFirstConnectionEstablished = 0;
 #endif
 }
