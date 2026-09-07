@@ -3,19 +3,22 @@
 > **How to read this document:** The **Firmware-relevant revision gates** and
 > **Shimmer3R revision quick reference** sections are the curated summaries and
 > should be treated as the reference for current development. The **per-product
-> tables** further down are a conversion of the source workbook, retained for
-> traceability. Source of truth:
-> `Shimmer - Shimmer\Projects\026 Legacy Designs\Shimmer_PCBREV_INDEX.xlsx`
-> (tabs "Shimmer3 Board Versions&ICs" and "Shimmer3 & 3R Generations").
-> Last synced: 2026-08-10.
+> tables** further down are a conversion of an internal hardware workbook,
+> retained for traceability; the **Verified against** block below names it
+> and says what a reader outside Shimmer can and cannot check.
 
 > **Verified against** — what these claims were read from. A pinned commit is
 > a citation, not a claim of currency.
 >
 > - **Hardware source:** `Shimmer_PCBREV_INDEX.xlsx`, tabs "Shimmer3 Board
->   Versions&ICs" and "Shimmer3 & 3R Generations", synced 2026-08-10. The
->   per-product tables below are a conversion of it; the workbook is the
->   authority for anything they disagree on.
+>   Versions&ICs" and "Shimmer3 & 3R Generations", synced 2026-08-10. **This is
+>   an internal Shimmer document and is not in this repository**, so a reader
+>   outside the company cannot check the per-product tables against it. What
+>   *is* checkable here is everything the firmware acts on: the revision gates
+>   in §2 name the functions that read them, and those are the authority for
+>   behaviour. The per-product tables are provenance for the gates, not a
+>   specification — where they and the firmware disagree, the firmware wins,
+>   and the disagreement is worth reporting.
 > - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
 >   `Boards/shimmer_boards.{h,c}` in full, for the revision gates
 >   (`ShimBrd_isBmp581PresentPerSrNumber()`, `ShimBrd_isLis3mdlPresent()`,
