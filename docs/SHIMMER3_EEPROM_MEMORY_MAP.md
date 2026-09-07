@@ -66,10 +66,24 @@ EEPROM_ADDRESS_BRAND_DETAILS     = 2032 - 80 = 1952
 EEPROM_AVAILABLE_SIZE            = 2048 - 16 = 2032
 ```
 
-> **`EEPROM_AVAILABLE_SIZE` (2032) does not account for the brand record.** It
-> subtracts only the Bluetooth page, so it claims bytes 1952-2031 are available
-> when they are not. Any host-side bounds check built on that constant will
-> allow a write straight through the brand record.
+> **`EEPROM_AVAILABLE_SIZE` (2032) is the host-offset bound, and it covers the
+> brand record deliberately.** It is the limit the daughter-card memory
+> commands enforce — `ShimEeprom_writeDaughterCardMem` accepts a write while
+> `writeEnd < EEPROM_AVAILABLE_SIZE` — so every host offset from 0 to 2031 is
+> addressable, the brand record among them. That is not an oversight: writing
+> the record through `SET_DAUGHTER_CARD_MEM` is how a host provisions
+> advertising names, and the firmware re-reads the record whenever a write
+> overlaps it (`ShimEeprom_readBrandDetails`), precisely so the change takes
+> effect.
+>
+> The same is true one page further up. The Bluetooth details page is reachable
+> at host offsets 2016-2031, and the firmware re-reads the sensor settings page
+> when a write overlaps the radio-settings byte at host offset 2018.
+>
+> So the caution for a host is not that the constant is too large — it is that
+> this range is **not empty**. Writing arbitrary data across the top of it
+> overwrites the brand record at host 1936-2015 and the radio settings above
+> it. Bound your own writes to the region you own, not to the constant.
 
 > **`EEPROM_ADDRESS_BLUETOOTH_DETAILS_HOST_OFFSET_ALIAS` (2016) is one page
 > below the Bluetooth page.** It exists because a host addressing the
