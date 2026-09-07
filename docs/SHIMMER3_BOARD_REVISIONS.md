@@ -9,6 +9,24 @@
 > (tabs "Shimmer3 Board Versions&ICs" and "Shimmer3 & 3R Generations").
 > Last synced: 2026-08-10.
 
+> **Verified against** — what these claims were read from. A pinned commit is
+> a citation, not a claim of currency.
+>
+> - **Hardware source:** `Shimmer_PCBREV_INDEX.xlsx`, tabs "Shimmer3 Board
+>   Versions&ICs" and "Shimmer3 & 3R Generations", synced 2026-08-10. The
+>   per-product tables below are a conversion of it; the workbook is the
+>   authority for anything they disagree on.
+> - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
+>   `Boards/shimmer_boards.{h,c}` in full, for the revision gates
+>   (`ShimBrd_isBmp581PresentPerSrNumber()`, `ShimBrd_isLis3mdlPresent()`,
+>   `ShimBrd_isAdxl371Present()`, `ShimBrd_areGen2ImuSensorsPresent()`, the
+>   `SRx-x-171` rule).
+> - **Platform firmware:** `shimmer3r-firmware` `hal_FactoryTest.c`, for
+>   `hseCapFixFitted()` and the crystal pass limits it selects.
+> - **Hardware measurement:** the 32 kHz LSE cap finding is from overnight
+>   RTC-versus-host drift runs on three boards, 2026-08-11, not from the
+>   workbook.
+
 A board identity is `SR<board id>-<major rev>-<minor rev>`, stored in the
 expansion-board EEPROM and read at runtime via `ShimBrd_getDaughtCardId()`
 (`Boards/shimmer_boards.c`). The **actual PCB** and the **programmed part
@@ -187,3 +205,15 @@ generation.
 | PCB | PN | Pressure | Gyro | LN accel | WR accel | Mag | BT | Gen | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | X | SRx-x-171 | BMP280 | MPU-9250 | KXTC9-2050 | LSM303AHTR | LSM303AHTR | RN42 | Second | Firmware reports minor 171 if both LSM303AHTR and BMP280 are detected and the board ID is anything other than SR31, SR47, SR48, SR49 and SR59 |
+
+## Still unverified / not found in code
+
+- **Blank cells in the per-product tables** mean "not recorded in the source
+  workbook", not "not fitted". They were carried across as-is rather than
+  guessed at; a blank is a question for the hardware team.
+- **Part numbers (`PN` column)** are populated only where the workbook had
+  them. Nothing in firmware reads a part number, so none of these could be
+  cross-checked against code.
+- **Which revisions were actually built in volume.** The workbook lists every
+  revision that was drawn, including dev builds such as SR48-7-2. It does not
+  say which shipped, and firmware cannot tell the difference.
