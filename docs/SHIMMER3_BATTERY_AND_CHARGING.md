@@ -219,8 +219,9 @@ if (battCriticalCount > 2)
 return battCritical;
 ```
 
-So it takes **three** consecutive low readings to trip — the count must exceed
-2, and each call to the update path increments it once.
+So it takes **three** low readings to trip — the count must exceed 2, and each
+call to the update path increments it once. They need not be consecutive; see
+the note below.
 
 > **`battCritical` latches; the voltage recovering does not clear it, docking
 > does.** Once tripped, `checkIfBatteryCritical` keeps returning 1 regardless of

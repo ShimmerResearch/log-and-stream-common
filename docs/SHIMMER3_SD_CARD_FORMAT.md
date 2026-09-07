@@ -226,7 +226,7 @@ Appendix A and is not repeated here. What follows is the header's own layout.
 | 222-223 | `SDH_TEMP_PRES_EXTRA_CALIB_BYTES` | 2 | BMP280 only |
 | 251 | `SDH_INITIAL_TIMESTAMP_4` | 1 | **Most significant of the 5** |
 | 252-255 | `SDH_INITIAL_TIMESTAMP_0..3` | 4 | Lower 4 bytes, LSB order |
-| **256-282** | `SDH_ALT_ACCEL_CALIBRATION` | 21 | S3R only |
+| **256-276** | `SDH_ALT_ACCEL_CALIBRATION` | 21 | S3R only |
 | **277-284** | `SDH_ALT_ACCEL_CALIB_TS` | 8 | S3R only |
 | **285-305** | `SDH_ALT_MAG_CALIBRATION` | 21 | S3R only |
 | **306-313** | `SDH_ALT_MAG_CALIB_TS` | 8 | S3R only |

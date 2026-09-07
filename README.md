@@ -72,7 +72,7 @@ must match, ahead of any host-side driver.
 "things that catch people out" table that maps a symptom to the document and
 section that explains it. Start there.
 
-Twenty documents cover the firmware in four groups:
+Twenty documents cover the firmware in five groups:
 
 | Group | Documents |
 |---|---|
