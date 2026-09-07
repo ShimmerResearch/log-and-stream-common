@@ -183,10 +183,13 @@ An implausibly high reading is treated as the measurement not having settled,
 and reported as `CHARGING_STATUS_CHECKING` — which the LED shows as red, the
 same as charging.
 
-> **`BATTERY_ERROR_VOLTAGE_MIN` (3200 mV) is defined but never used.** No code
-> in the shared module reads it. There is no corresponding low-voltage override,
-> so an implausibly *low* reading passes through to the pin-based
-> classification unchallenged.
+> **`BATTERY_ERROR_VOLTAGE_MIN` (3200 mV) turns a suspended charger into a bad
+> battery.** `ShimBatt_updateStatus` (`Battery/shimmer_battery.c`) overrides the
+> raw status byte to `BAD_BATTERY` when the charger reports `SUSPENDED` **and**
+> the measured voltage is at or below 3200 mV, before the ranking runs. So a low
+> reading is challenged, but only in combination with that one charger state —
+> a low reading with any other charger status still passes through to the
+> pin-based classification unchanged.
 
 ### 3.2 A bad-battery reading also forces the chip byte
 

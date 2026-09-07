@@ -83,10 +83,10 @@ Twenty documents cover the firmware in five groups:
 | **Development** | Build and programming; release and versioning |
 
 Every one of the twenty carries a **Verified against** block naming the
-firmware revisions its claims were read from, and a **Still unverified / not found in
-code** section listing what could not be confirmed from the source. Treat the
-second as part of the content: it is where the open questions are recorded
-rather than guessed at.
+firmware revisions its claims were read from, and a
+**Still unverified / not found in code** section listing what could not be
+confirmed from the source. Treat the second as part of the content: it is
+where the open questions are recorded rather than guessed at.
 
 ## Integration
 

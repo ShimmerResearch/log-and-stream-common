@@ -113,8 +113,9 @@ They are listed here so nobody looks for the equivalent:
 - The firmware is the authority. Where the Java driver and the firmware
   disagree, the firmware wins and the disagreement is worth documenting.
 - Trace every claim to a file and a symbol.
-- Put anything you could not confirm under **Still unverified / not found in
-  code** rather than guessing. That section is as valuable as the rest.
+- Put anything you could not confirm under
+  **Still unverified / not found in code** rather than guessing. That section
+  is as valuable as the rest.
 - Update the **Verified against** block when you re-check a document against a
   newer revision.
 - This is a public repository: no ticket identifiers in document bodies.
