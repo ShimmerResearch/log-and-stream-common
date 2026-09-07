@@ -3,11 +3,32 @@
 > **How to read this document:** The **Firmware-relevant revision gates** and
 > **Shimmer3R revision quick reference** sections are the curated summaries and
 > should be treated as the reference for current development. The **per-product
-> tables** further down are a conversion of the source workbook, retained for
-> traceability. Source of truth:
-> `Shimmer - Shimmer\Projects\026 Legacy Designs\Shimmer_PCBREV_INDEX.xlsx`
-> (tabs "Shimmer3 Board Versions&ICs" and "Shimmer3 & 3R Generations").
-> Last synced: 2026-08-10.
+> tables** further down are a conversion of an internal hardware workbook,
+> retained for traceability; the **Verified against** block below names it
+> and says what a reader outside Shimmer can and cannot check.
+
+> **Verified against** — what these claims were read from. A pinned commit is
+> a citation, not a claim of currency.
+>
+> - **Hardware source:** `Shimmer_PCBREV_INDEX.xlsx`, tabs "Shimmer3 Board
+>   Versions&ICs" and "Shimmer3 & 3R Generations", synced 2026-08-10. **This is
+>   an internal Shimmer document and is not in this repository**, so a reader
+>   outside the company cannot check the per-product tables against it. What
+>   *is* checkable here is everything the firmware acts on: the revision gates
+>   in §2 name the functions that read them, and those are the authority for
+>   behaviour. The per-product tables are provenance for the gates, not a
+>   specification — where they and the firmware disagree, the firmware wins,
+>   and the disagreement is worth reporting.
+> - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
+>   `Boards/shimmer_boards.{h,c}` in full, for the revision gates
+>   (`ShimBrd_isBmp581PresentPerSrNumber()`, `ShimBrd_isLis3mdlPresent()`,
+>   `ShimBrd_isAdxl371Present()`, `ShimBrd_areGen2ImuSensorsPresent()`, the
+>   `SRx-x-171` rule).
+> - **Platform firmware:** `shimmer3r-firmware` `hal_FactoryTest.c`, for
+>   `hseCapFixFitted()` and the crystal pass limits it selects.
+> - **Hardware measurement:** the 32 kHz LSE cap finding is from overnight
+>   RTC-versus-host drift runs on three boards, 2026-08-11, not from the
+>   workbook.
 
 A board identity is `SR<board id>-<major rev>-<minor rev>`, stored in the
 expansion-board EEPROM and read at runtime via `ShimBrd_getDaughtCardId()`
@@ -22,17 +43,17 @@ minors. Base board IDs never change; the revision signifies the variant.
 
 | Gate | Revisions (>= within same board ID) | Firmware hook |
 | --- | --- | --- |
-| BMP581 replaces BMP390 | SR31-11-2, SR38-4-2, SR47-8-2, SR48-8-2, SR49-4-2, plus dev build SR48-7-2 | `ShimBrd_isBmp581PresentPerSrNumber()` (log-and-stream-common PR #111 / DEV-818) |
-| HSE (16 MHz) load-cap fix 6.8 → 15 pF | SR31-11-2, SR38-4-2, SR47-8-2, SR48-8-2, SR49-4-2 — **not** SR48-7-2 (dev build predates the cap change) | `hseCapFixFitted()` in shimmer3r-firmware `hal_FactoryTest.c` (DEV-866); picks the S3R_TEST_0028 pass limit (±35 ppm fixed / ±100 ppm pre-fix) |
-| IM68D121JV01 replaces MP23DB01HP microphone | SR31-11-3, SR38-4-3, SR47-8-3, SR48-8-3, SR49-4-3 | none yet (DEV-686; both mics are PDM, same interface) |
+| BMP581 replaces BMP390 | SR31-11-2, SR38-4-2, SR47-8-2, SR48-8-2, SR49-4-2, plus dev build SR48-7-2 | `ShimBrd_isBmp581PresentPerSrNumber()` (log-and-stream-common PR #111) |
+| HSE (16 MHz) load-cap fix 6.8 → 15 pF | SR31-11-2, SR38-4-2, SR47-8-2, SR48-8-2, SR49-4-2 — **not** SR48-7-2 (dev build predates the cap change) | `hseCapFixFitted()` in shimmer3r-firmware `hal_FactoryTest.c`; picks the S3R_TEST_0028 pass limit (±35 ppm fixed / ±100 ppm pre-fix) |
+| IM68D121JV01 replaces MP23DB01HP microphone | SR31-11-3, SR38-4-3, SR47-8-3, SR48-8-3, SR49-4-3 | none yet (both mics are PDM, same interface) |
 | LIS3MDL + ADXL371 no longer placed | `.1` minors (SR31-11-1 keeps ADXL371; see tables) | `ShimBrd_isLis3mdlPresent()` / `ShimBrd_isAdxl371Present()` |
 
 Notes:
 
 - The crystal cap change is **HSE-only** and is **not** tracked per-row in the
   source workbook (it is bundled into the "Fourth (BMP-581, IM68D121JV01
-  fitted, XTAL cap change)" generation column); the `.2` gate above is per
-  DEV-866. **The 32 kHz LSE caps stay at 12 pF on all revisions**: hardware
+  fitted, XTAL cap change)" generation column); the `.2` gate above follows
+  `hseCapFixFitted()`. **The 32 kHz LSE caps stay at 12 pF on all revisions**: hardware
   measurement (2026-08-11, overnight RTC-vs-host drift runs on three boards)
   showed the S3R LSE near-spec at 12 pF (−7 ± 2 ppm — the STM32's pin strays
   complete the load, unlike the Verisense nRF52840 whose identical BOM ran
@@ -187,3 +208,15 @@ generation.
 | PCB | PN | Pressure | Gyro | LN accel | WR accel | Mag | BT | Gen | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | X | SRx-x-171 | BMP280 | MPU-9250 | KXTC9-2050 | LSM303AHTR | LSM303AHTR | RN42 | Second | Firmware reports minor 171 if both LSM303AHTR and BMP280 are detected and the board ID is anything other than SR31, SR47, SR48, SR49 and SR59 |
+
+## Still unverified / not found in code
+
+- **Blank cells in the per-product tables** mean "not recorded in the source
+  workbook", not "not fitted". They were carried across as-is rather than
+  guessed at; a blank is a question for the hardware team.
+- **Part numbers (`PN` column)** are populated only where the workbook had
+  them. Nothing in firmware reads a part number, so none of these could be
+  cross-checked against code.
+- **Which revisions were actually built in volume.** The workbook lists every
+  revision that was drawn, including dev builds such as SR48-7-2. It does not
+  say which shipped, and firmware cannot tell the difference.
