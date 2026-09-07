@@ -96,8 +96,13 @@ The clock is set by the host, over Bluetooth (`SET_RWC_COMMAND`) or over the
 dock (`UART_PROP_RWC_CFG_TIME`). The value is 64-bit ticks since the Unix
 epoch, **UTC**.
 
-`ShimRtc_isTimeSet()` and the platform's `RTC_isRwcTimeSet()` report whether
-the clock has ever been set this power cycle.
+The platform's `RTC_isRwcTimeSet()` reports whether the clock has been set
+this power cycle. It is declared in `log_and_stream_externs.h` and implemented
+by each platform, so it is the one to call.
+
+`ShimRtc_isTimeSet()` looks like a second way to ask, and is not: it is
+declared in `RTC/shimmer_rtc.h` and defined nowhere in this repository or
+either platform, so a caller would fail to link. Ignore it.
 
 > **The clock does not survive a power cycle on either generation** unless the
 > hardware has a backup supply. A host should set it on every connection rather
