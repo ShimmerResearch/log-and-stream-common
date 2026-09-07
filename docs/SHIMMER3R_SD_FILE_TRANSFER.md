@@ -60,8 +60,15 @@ free space and delete.
 |---|---|
 | Docked, USB plugged in, card not owned by the MCU, no card, or bad card | `SD_FT_STATUS_SD_UNAVAILABLE` (`0xF0`) |
 | Sensing, logging or streaming | `SD_FT_STATUS_BUSY` (`0xF1`) |
-| Bad arguments | `SD_FT_STATUS_BAD_ARGS` (`0xF2`) |
+| Card was powered down by a previous release and the bring-up (§2.1) fails | `SD_FT_STATUS_SD_UNAVAILABLE` (`0xF0`) |
 | Otherwise | `SD_FT_STATUS_OK` (`0x00`) |
+
+The access check itself returns only those three codes. `SD_FT_STATUS_BAD_ARGS`
+(`0xF2`) is produced by the *callers* — the list, stat and delete builders
+when no path has been staged, and delete when the path is not deletable — and
+never by the read path, which answers an argument fault with
+`SD_FT_XFER_DENIED`. The status-code notes in the appendix and in *Still
+unverified* say where each code can and cannot appear.
 
 > **Transfer is idle-only.** Any sensing activity blocks it, and the check is
 > `sensing || sdLogging || btStreaming` — so a device streaming without logging

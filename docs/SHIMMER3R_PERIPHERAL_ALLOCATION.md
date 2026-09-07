@@ -66,11 +66,11 @@ From the `Core/Src` initialisers:
 | I2C | `hi2c1`, `hi2c4` | Sensor bus and test bus, §1 |
 | ADC | `hadc1`, `hadc2`, `hadc4` | MCU-internal measurements |
 | SDMMC | `hsd1` | SD card |
-| UART | `huart1`, `huart3`, `huart6` | Bluetooth, dock, debug |
+| UART | `huart1`, `huart3` (`huart6` initialised, used only under `SHIMMER4_SDK`) | `huart1` dock (115200), `huart3` Bluetooth; no debug UART |
 | TIM | `htim2`, `htim3`, `htim6`, `htim7` (`htim1` declared but never initialised) | Sampling, timeouts, PWM |
 | GPDMA | multiple | SPI and SDMMC transfers |
-| CRC | `hcrc` | Hardware CRC |
-| RNG | `hrng` | |
+| CRC | `hcrc` | Configured (poly `0x1021`, init `0xB0CA`) but never called — the software CRC runs, see the *Still unverified* note and `SHIMMER3_ARCHITECTURE_OVERVIEW` |
+| RNG | `hrng` | Initialised, no consumer |
 | IWDG | `hiwdg` | Independent watchdog |
 | MDF | `hmdf1` | Microphone (PDM) |
 
