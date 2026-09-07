@@ -270,15 +270,20 @@ counts component + property + value. Multi-byte integers are little-endian.
 | `SHIMMER` | `RWC_CFG_TIME` `0x04` | none (`LEN` 2) | 8 bytes: the 64-bit tick value the clock was last set to (`LEN` 10) |
 | `SHIMMER` | `CURR_LOCAL_TIME` `0x05` | none (`LEN` 2) | 8 bytes: current 64-bit real-world-clock ticks (`LEN` 10) |
 | `SHIMMER` | `INFOMEM` `0x06` | `length` u8, `offset` u16 — `length ≤ 128`, `offset ≤ 0x1FF`, `length + offset ≤ 0x200` | `length` bytes of InfoMem from `offset` (`LEN` = length + 2) |
-| `SHIMMER` | `CALIB_DUMP` `0x07`* | `length` u8, `offset` u16 — `length ≤ 128`, within `SHIMMER_CALIB_RAM_MAX` | `length` bytes of the calibration RAM image |
+| `SHIMMER` | `CALIB_DUMP` (no value)* | `length` u8, `offset` u16 — `length ≤ 128`, within `SHIMMER_CALIB_RAM_MAX` | `length` bytes of the calibration RAM image |
 | `BAT` `0x02` | `VALUE` `0x02` | none (`LEN` 2) | 3 bytes `battStatusRaw` — ADC LSB, ADC MSB, charger status (`LEN` 5) |
 | `DAUGHTER_CARD` `0x03` | `CARD_ID` `0x02` | `length` u8, `offset` u8 — `length ≤ 16`, `offset ≤ 15`, sum `≤ 16` | `length` bytes of the 16-byte daughter-card ID |
 | `DAUGHTER_CARD` | `CARD_MEM` `0x03` | `length` u8, `offset` u16 — `length ≤ 128`, `offset ≤ 2031`, sum `≤ 2032` | `length` bytes of EEPROM read from `offset + 16` |
 | `BT` `0x0A` | `VER` `0x03` | none (`LEN` 2) | the module's version string, as many bytes as it has (`LEN` = 2 + strlen) |
 
-\* `CALIB_DUMP` is compiled in only when `EN_CALIB_DUMP_RSP` is set; the
-property value is whatever `UART_PROP_CALIB_DUMP` expands to in
-`shimmer_dock_usart.h`.
+\* **Do not implement this one.** It is listed because the handler is in the
+source, but `EN_CALIB_DUMP_RSP` is `0` in `shimmer_dock_usart.c:30`, so it is
+compiled out — and the guarded code refers to `UART_PROP_CALIB_DUMP`, which is
+**defined nowhere in the repository**. Setting the flag to 1 would therefore
+fail to build, and there is no property value to document: the `0x07` this
+table used to give was wrong. `0x07` in the `SHIMMER` component's own space is
+`UART_PROP_LED0_STATE` (and only under `SHIMMERGQ`); the `UART_PROP_CALIBRATION
+0x07` in the same header belongs to the sensor components, not this one.
 
 ### SET requests (all answered with `UART_ACK_RESPONSE` `0xFF` on success)
 
