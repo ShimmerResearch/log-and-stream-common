@@ -308,7 +308,16 @@ ShimBtn_init, ShimRtc_init
 ## 6. The data path
 
 1. A hardware timer fires at the configured rate.
-2. The ISR queues `TASK_GATHER_DATA`.
+2. The ISR calls `ShimSens_sampleTimerTriggered`, which timestamps the packet
+   and hands off to `platform_gatherData` — and what happens next is the
+   platform's choice, not a queued task in every case:
+   - **Shimmer3R** does not override the hook, so the weak default in
+     `platform_api.c` runs `ShimSens_gatherData` **inline, in the ISR**, and
+     returns 0 (do not wake the MCU). `TASK_GATHER_DATA` is never queued.
+   - **Shimmer3** overrides it (`main.c:899`). With MCU ADC channels enabled it
+     starts the DMA conversion and returns 0, and the conversion's completion
+     carries the packet on; with no analog channels it queues
+     `TASK_GATHER_DATA` and returns 1 to wake the MCU.
 3. `ShimSens_gatherData` collects the enabled channels into the packet buffer,
    in the fixed order `ShimSens_configureChannels` established.
 4. If logging, `ShimSdDataFile_writeToBuff` takes the record from

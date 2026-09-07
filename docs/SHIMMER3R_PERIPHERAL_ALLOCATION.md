@@ -67,7 +67,7 @@ From the `Core/Src` initialisers:
 | ADC | `hadc1`, `hadc2`, `hadc4` | MCU-internal measurements |
 | SDMMC | `hsd1` | SD card |
 | UART | `huart1`, `huart3`, `huart6` | Bluetooth, dock, debug |
-| TIM | `htim1`, `htim2`, `htim3`, `htim6`, `htim7` | Sampling, timeouts, PWM |
+| TIM | `htim2`, `htim3`, `htim6`, `htim7` (`htim1` declared but never initialised) | Sampling, timeouts, PWM |
 | GPDMA | multiple | SPI and SDMMC transfers |
 | CRC | `hcrc` | Hardware CRC |
 | RNG | `hrng` | |
@@ -84,14 +84,15 @@ From the `Core/Src` initialisers:
 
 ## 3. Timers
 
-`htim1`, `htim2`, `htim3`, `htim6` and `htim7` are all initialised. `htim2`,
-`htim3`, `htim6` and `htim7` are referenced heavily; `htim1` appears once.
+`htim2`, `htim3`, `htim6` and `htim7` are initialised and referenced heavily.
+**`htim1` is not initialised at all**: there is no `MX_TIM1_Init`, and its one
+appearance is a commented-out `HAL_TIM_Base_MspDeInit(&htim1)` in `spi.c`.
 
-> **TIM1 is the one to check before claiming a channel.** It is initialised but
-> barely referenced, which makes it look free — and it is the timer whose
+> **TIM1 is the one to check before claiming a channel.** It has no init
+> function, which makes it genuinely free rather than merely idle — and its
 > channels are the natural home for an input-capture feature. An event-capture
 > investigation identified TIM1_CH1 as the candidate for a hardware capture
-> input precisely because the timer is otherwise idle. Confirm the current
+> input precisely because the timer is unused. Confirm the current
 > state before assuming either that it is free or that it is not.
 
 ## 4. EXTI lines
