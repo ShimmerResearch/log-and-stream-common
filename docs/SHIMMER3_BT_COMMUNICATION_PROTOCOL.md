@@ -1584,7 +1584,7 @@ Writes are **accumulated**, not applied per chunk:
    before the command-handler fixes ignored the `0xFF` too, so an oversized or
    misaligned write was discarded silently after a normal ACK.
 3. Chunk at 128 bytes, as the Python reference does
-   (`shimmer_comms_bluetooth.py:240-258`).
+   (`Extras/python_scripts/Shimmer_common/shimmer_comms_bluetooth.py:240-258`).
 4. Read the blob back with `GET_CALIB_DUMP_COMMAND` to confirm.
 
 ℹ️ **`SET_CALIB_DUMP_COMMAND` validates in the callee, not in the handler.**
@@ -2584,7 +2584,7 @@ Both figures are in kilobytes, computed with 64-bit intermediates and saturated
 at `0xFFFFFFFF` so a large exFAT card cannot overflow them. This command mounts
 and interrogates the filesystem, so it can take seconds on a large card — the
 Python reference allows a 20-second timeout
-(`shimmer_comms_bluetooth.py:461`).
+(`Extras/python_scripts/Shimmer_common/shimmer_comms_bluetooth.py:461`).
 
 #### `SD_DELETE_COMMAND` (0xCA)
 
