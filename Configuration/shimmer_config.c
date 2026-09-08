@@ -51,6 +51,12 @@
 #include "log_and_stream_includes.h"
 #include "shimmer_definitions.h"
 
+#if defined(SHIMMER3R)
+/* For the ADXL371 ODR enum. The LIS2DW12, LIS2MDL, LIS3MDL and LSM6DSV enums
+ * arrive through shimmer_config.h; this one has no other route in. */
+#include "ADXL371/adxl371.h"
+#endif //SHIMMER3R
+
 static gConfigBytes storedConfig;
 uint8_t calibRamFlag = 0;
 
@@ -612,6 +618,175 @@ static uint8_t ShimConfig_lis2dw12OdrForFreq(float freq, uint8_t isHighPerforman
   return LIS2DW12_XL_ODR_1k6Hz;
 }
 
+/**
+ * Output rate of a LIS2MDL ODR setting, in Hz.
+ *
+ * The part has no power-down code - 0 is 10 Hz - so a disabled magnetometer is
+ * simply left slow rather than switched off. 100 Hz is its ceiling.
+ */
+static float ShimConfig_lis2mdlOdrToHz(uint8_t odr)
+{
+  switch (odr)
+  {
+    case LIS2MDL_ODR_10Hz:
+      return 10.0f;
+    case LIS2MDL_ODR_20Hz:
+      return 20.0f;
+    case LIS2MDL_ODR_50Hz:
+      return 50.0f;
+    case LIS2MDL_ODR_100Hz:
+      return 100.0f;
+    default:
+      return 0.0f;
+  }
+}
+
+/** Lowest LIS2MDL ODR that keeps up, capped at the part's 100 Hz ceiling. */
+static uint8_t ShimConfig_lis2mdlOdrForFreq(float freq)
+{
+  if (freq <= 10.0f)
+  {
+    return LIS2MDL_ODR_10Hz;
+  }
+  else if (freq <= 20.0f)
+  {
+    return LIS2MDL_ODR_20Hz;
+  }
+  else if (freq <= 50.0f)
+  {
+    return LIS2MDL_ODR_50Hz;
+  }
+  return LIS2MDL_ODR_100Hz;
+}
+
+/**
+ * Output rate of a LIS3MDL rate setting, in Hz.
+ *
+ * The field is composite - (operating mode << 4) | rate - so it is decoded
+ * rather than tabulated. A low nibble of 1 selects the mode's own fast rate,
+ * which differs per mode: 1000 Hz in low power, 560 Hz medium, 300 Hz high,
+ * 155 Hz ultra-high. Every other low nibble is a shared rate ladder.
+ */
+static float ShimConfig_lis3mdlRateToHz(uint8_t rate)
+{
+  if ((rate & 0x0FU) == 0x01U)
+  {
+    switch (rate >> 4)
+    {
+      case 0:
+        return 1000.0f;
+      case 1:
+        return 560.0f;
+      case 2:
+        return 300.0f;
+      default:
+        return 155.0f;
+    }
+  }
+
+  switch (rate & 0x0FU)
+  {
+    case 0x00U:
+      return 0.625f;
+    case 0x02U:
+      return 1.25f;
+    case 0x04U:
+      return 2.5f;
+    case 0x06U:
+      return 5.0f;
+    case 0x08U:
+      return 10.0f;
+    case 0x0AU:
+      return 20.0f;
+    case 0x0CU:
+      return 40.0f;
+    case 0x0EU:
+      return 80.0f;
+    default:
+      return 0.0f;
+  }
+}
+
+/**
+ * Lowest LIS3MDL setting that keeps up with a packet rate.
+ *
+ * The Java driver's ladder (SensorLIS3MDL.getMagRateFromFreq), which picks an
+ * operating mode as well as a rate and is followed here so a correction lands
+ * on the value Consensys would have chosen. Its two branches that both yielded
+ * ultra-high 155 Hz are collapsed into one.
+ *
+ * Tops out at low-power 1000 Hz, the fastest the part offers.
+ */
+static uint8_t ShimConfig_lis3mdlRateForFreq(float freq)
+{
+  if (freq > 560.0f)
+  {
+    return LIS3MDL_LP_1kHz;
+  }
+  else if (freq > 300.0f)
+  {
+    return LIS3MDL_MP_560Hz;
+  }
+  else if (freq > 155.0f)
+  {
+    return LIS3MDL_HP_300Hz;
+  }
+  else if (freq > 50.0f)
+  {
+    return LIS3MDL_UHP_155Hz;
+  }
+  else if (freq > 20.0f)
+  {
+    return LIS3MDL_UHP_80Hz;
+  }
+  else if (freq > 10.0f)
+  {
+    return LIS3MDL_UHP_20Hz;
+  }
+  return LIS3MDL_LP_10Hz;
+}
+
+/**
+ * Output rate of an ADXL371 ODR setting, in Hz.
+ *
+ * The high-g accelerometer's slowest setting is 320 Hz and it has no
+ * power-down code, so it is the one part here that cannot be left below a
+ * typical packet rate - the check exists for rates above 320 Hz. The stored
+ * field is two bits wide, so 5120 Hz is unreachable.
+ */
+static float ShimConfig_adxl371OdrToHz(uint8_t odr)
+{
+  switch (odr)
+  {
+    case ADXL371_ODR_320HZ:
+      return 320.0f;
+    case ADXL371_ODR_640HZ:
+      return 640.0f;
+    case ADXL371_ODR_1280HZ:
+      return 1280.0f;
+    default:
+      return 2560.0f;
+  }
+}
+
+/** Lowest ADXL371 ODR that keeps up, within the two bits the field holds. */
+static uint8_t ShimConfig_adxl371OdrForFreq(float freq)
+{
+  if (freq <= 320.0f)
+  {
+    return ADXL371_ODR_320HZ;
+  }
+  else if (freq <= 640.0f)
+  {
+    return ADXL371_ODR_640HZ;
+  }
+  else if (freq <= 1280.0f)
+  {
+    return ADXL371_ODR_1280HZ;
+  }
+  return ADXL371_ODR_2560HZ;
+}
+
 uint8_t ShimConfig_checkAndCorrectConfig(void)
 {
   uint8_t settingCorrected = 0;
@@ -802,6 +977,58 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
       if (wrAccelRateNew != storedConfig.wrAccelRate)
       {
         storedConfig.wrAccelRate = wrAccelRateNew;
+        settingCorrected = 1;
+      }
+    }
+  }
+
+  /* The magnetometer. i2c.c passes ShimConfig_configByteMagRateGet() to
+   * lis2mdl_configure, and the driver drops this part to 10 Hz whenever the
+   * sensor is disabled or its low-power flag is set - the same trap again. Its
+   * ceiling is 100 Hz, so a packet rate above that settles there rather than
+   * being corrected on every pass. */
+  if (storedConfig.chEnMag && storedConfig.samplingRateTicks > 0)
+  {
+    float packetRateHz = ShimConfig_getShimmerSamplingFreq();
+    if (ShimConfig_lis2mdlOdrToHz(storedConfig.magRate) < packetRateHz)
+    {
+      uint8_t magRateNew = ShimConfig_lis2mdlOdrForFreq(packetRateHz);
+      if (magRateNew != storedConfig.magRate)
+      {
+        ShimConfig_configByteMagRateSet(magRateNew);
+        settingCorrected = 1;
+      }
+    }
+  }
+
+  /* The alternative magnetometer, via lis3mdl_configure at spi.c. */
+  if (storedConfig.chEnAltMag && storedConfig.samplingRateTicks > 0)
+  {
+    float packetRateHz = ShimConfig_getShimmerSamplingFreq();
+    if (ShimConfig_lis3mdlRateToHz(storedConfig.altMagRate) < packetRateHz)
+    {
+      uint8_t altMagRateNew = ShimConfig_lis3mdlRateForFreq(packetRateHz);
+      if (altMagRateNew != storedConfig.altMagRate)
+      {
+        ShimConfig_configByteAltMagRateSet(altMagRateNew);
+        settingCorrected = 1;
+      }
+    }
+  }
+
+  /* The high-g accelerometer, via adxl371_configure at spi.c. Included for
+   * completeness rather than because it has been implicated: its slowest
+   * setting is 320 Hz and it has no power-down code, so unlike the others it
+   * cannot be parked below a typical packet rate. */
+  if (storedConfig.chEnAltAccel && storedConfig.samplingRateTicks > 0)
+  {
+    float packetRateHz = ShimConfig_getShimmerSamplingFreq();
+    if (ShimConfig_adxl371OdrToHz(storedConfig.altAccelRate) < packetRateHz)
+    {
+      uint8_t altAccelRateNew = ShimConfig_adxl371OdrForFreq(packetRateHz);
+      if (altAccelRateNew != storedConfig.altAccelRate)
+      {
+        storedConfig.altAccelRate = altAccelRateNew;
         settingCorrected = 1;
       }
     }
