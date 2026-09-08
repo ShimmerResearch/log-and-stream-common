@@ -690,7 +690,7 @@ Neither is detectable by any transport check. Timestamps are regular, packet
 loss is 0%, and link CRCs pass, because the packets are perfectly well formed —
 it is the sensor that is slow, not the link. Expect to spend a long time looking
 at the radio before suspecting the configuration. See
-[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §4.
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §8.1.
 
 #### Per-sensor rates (Shimmer3R)
 
