@@ -522,6 +522,96 @@ static uint8_t ShimConfig_lsm6dsvOdrForFreq(float freq)
 }
 #endif //SHIMMER3R
 
+/**
+ * Effective output rate of a LIS2DW12 ODR setting, in Hz.
+ *
+ * Mode-dependent, unlike the LSM6DSV's: LIS2DW12_XL_ODR_1Hz6_LP_ONLY is 1.6 Hz
+ * in a low-power mode and 12.5 Hz in high performance, and a low-power mode
+ * tops out at 200 Hz however fast the ODR field asks for. Both are reported
+ * here as what the part will actually deliver, so the check below cannot be
+ * satisfied by a rate the part is not going to produce.
+ *
+ * @param odr LIS2DW12 ODR field value (lis2dw12_reg.h)
+ * @param isHighPerformance the wrAccelHrMode bit - LIS2DW12_HIGH_PERFORMANCE is
+ *        0x04, i.e. that bit, so it alone separates high performance from the
+ *        continuous low-power modes
+ * @return the delivered rate in Hz, or 0 for power-down
+ */
+static float ShimConfig_lis2dw12OdrToHz(uint8_t odr, uint8_t isHighPerformance)
+{
+  switch (odr)
+  {
+    case LIS2DW12_XL_ODR_1Hz6_LP_ONLY:
+      return isHighPerformance ? 12.5f : 1.6f;
+    case LIS2DW12_XL_ODR_12Hz5:
+      return 12.5f;
+    case LIS2DW12_XL_ODR_25Hz:
+      return 25.0f;
+    case LIS2DW12_XL_ODR_50Hz:
+      return 50.0f;
+    case LIS2DW12_XL_ODR_100Hz:
+      return 100.0f;
+    case LIS2DW12_XL_ODR_200Hz:
+      return 200.0f;
+    case LIS2DW12_XL_ODR_400Hz:
+      return isHighPerformance ? 400.0f : 200.0f;
+    case LIS2DW12_XL_ODR_800Hz:
+      return isHighPerformance ? 800.0f : 200.0f;
+    case LIS2DW12_XL_ODR_1k6Hz:
+      return isHighPerformance ? 1600.0f : 200.0f;
+    default:
+      return 0.0f;
+  }
+}
+
+/**
+ * Lowest LIS2DW12 ODR that keeps up with a packet rate, in the current mode.
+ *
+ * Taken from the register map rather than from the Java driver, which is a
+ * deliberate departure from how the LSM6DSV ladder above was derived.
+ * SensorLIS2DW12.getAccelRateFromFreq returns ODR field value 1 for
+ * "freq <= 12.5" and comments it 12.5 Hz, but value 1 is
+ * LIS2DW12_XL_ODR_1Hz6_LP_ONLY. Copying that would make a correction in a
+ * low-power mode re-select the same 1.6 Hz and never settle. In high
+ * performance the two agree anyway, because value 1 really is 12.5 Hz there.
+ *
+ * Capped at the 200 Hz value in a low-power mode: the part cannot go faster in
+ * that mode, so asking for a higher ODR would promise a rate it will not
+ * deliver and leave the check firing on every pass.
+ */
+static uint8_t ShimConfig_lis2dw12OdrForFreq(float freq, uint8_t isHighPerformance)
+{
+  if (freq <= 12.5f)
+  {
+    return LIS2DW12_XL_ODR_12Hz5;
+  }
+  else if (freq <= 25.0f)
+  {
+    return LIS2DW12_XL_ODR_25Hz;
+  }
+  else if (freq <= 50.0f)
+  {
+    return LIS2DW12_XL_ODR_50Hz;
+  }
+  else if (freq <= 100.0f)
+  {
+    return LIS2DW12_XL_ODR_100Hz;
+  }
+  else if ((freq <= 200.0f) || !isHighPerformance)
+  {
+    return LIS2DW12_XL_ODR_200Hz;
+  }
+  else if (freq <= 400.0f)
+  {
+    return LIS2DW12_XL_ODR_400Hz;
+  }
+  else if (freq <= 800.0f)
+  {
+    return LIS2DW12_XL_ODR_800Hz;
+  }
+  return LIS2DW12_XL_ODR_1k6Hz;
+}
+
 uint8_t ShimConfig_checkAndCorrectConfig(void)
 {
   uint8_t settingCorrected = 0;
@@ -688,6 +778,32 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
     {
       ShimConfig_gyroRateSet(ShimConfig_lsm6dsvOdrForFreq(packetRateHz));
       settingCorrected = 1;
+    }
+  }
+
+  /* The same for the wide-range accelerometer, which the driver parks at its
+   * lowest rate when the sensor is disabled (setLowPowerAccelWR(true)) exactly
+   * as it does the gyroscope. spi.c passes wrAccelRate to lis2dw12_configure
+   * verbatim whenever chEnWrAccel is set, so a host that enables the channel
+   * without re-deriving the rate leaves the part sampling far below the packet
+   * rate - the same staircase, on a second chip.
+   *
+   * The target is re-read rather than compared against the ladder directly so
+   * that a rate the part cannot exceed in its current mode settles instead of
+   * being corrected on every pass. */
+  if (storedConfig.chEnWrAccel && storedConfig.samplingRateTicks > 0)
+  {
+    float packetRateHz = ShimConfig_getShimmerSamplingFreq();
+    uint8_t isHighPerformance = storedConfig.wrAccelHrMode;
+    if (ShimConfig_lis2dw12OdrToHz(storedConfig.wrAccelRate, isHighPerformance) < packetRateHz)
+    {
+      uint8_t wrAccelRateNew
+          = ShimConfig_lis2dw12OdrForFreq(packetRateHz, isHighPerformance);
+      if (wrAccelRateNew != storedConfig.wrAccelRate)
+      {
+        storedConfig.wrAccelRate = wrAccelRateNew;
+        settingCorrected = 1;
+      }
     }
   }
 #endif //SHIMMER3R
