@@ -526,7 +526,6 @@ static uint8_t ShimConfig_lsm6dsvOdrForFreq(float freq)
   }
   return LSM6DSV_ODR_AT_3840Hz;
 }
-#endif //SHIMMER3R
 
 /**
  * Effective output rate of a LIS2DW12 ODR setting, in Hz.
@@ -786,6 +785,7 @@ static uint8_t ShimConfig_adxl371OdrForFreq(float freq)
   }
   return ADXL371_ODR_2560HZ;
 }
+#endif //SHIMMER3R
 
 uint8_t ShimConfig_checkAndCorrectConfig(void)
 {
