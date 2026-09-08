@@ -429,6 +429,99 @@ uint8_t ShimConfig_configByteAltMagRateGet(void)
   return storedConfig.altMagRate;
 }
 
+#if defined(SHIMMER3R)
+/**
+ * Output rate of an LSM6DSV ODR setting, in Hz.
+ *
+ * @param odr a value from the LSM6DSV ODR enum (lsm6dsv_reg.h)
+ * @return the rate in Hz, or 0 for a setting that produces no new samples -
+ *         power-down, and the high-accuracy encodings this firmware never
+ *         writes (ShimConfig_gyroRateSet refuses anything from
+ *         LSM6DSV_ODR_AT_7680Hz upwards).
+ */
+static float ShimConfig_lsm6dsvOdrToHz(uint8_t odr)
+{
+  switch (odr)
+  {
+    case LSM6DSV_ODR_AT_1Hz875:
+      return 1.875f;
+    case LSM6DSV_ODR_AT_7Hz5:
+      return 7.5f;
+    case LSM6DSV_ODR_AT_15Hz:
+      return 15.0f;
+    case LSM6DSV_ODR_AT_30Hz:
+      return 30.0f;
+    case LSM6DSV_ODR_AT_60Hz:
+      return 60.0f;
+    case LSM6DSV_ODR_AT_120Hz:
+      return 120.0f;
+    case LSM6DSV_ODR_AT_240Hz:
+      return 240.0f;
+    case LSM6DSV_ODR_AT_480Hz:
+      return 480.0f;
+    case LSM6DSV_ODR_AT_960Hz:
+      return 960.0f;
+    case LSM6DSV_ODR_AT_1920Hz:
+      return 1920.0f;
+    case LSM6DSV_ODR_AT_3840Hz:
+      return 3840.0f;
+    case LSM6DSV_ODR_AT_7680Hz:
+      return 7680.0f;
+    default:
+      return 0.0f;
+  }
+}
+
+/**
+ * Lowest LSM6DSV ODR that keeps up with a packet rate.
+ *
+ * The ladder is the Java driver's, branch for branch
+ * (SensorLSM6DSV.getGyroRateFromFreq), and matching it is deliberate rather
+ * than incidental: the correction below has to land on the value Consensys
+ * would have chosen, or every write from Consensys would be "corrected" to a
+ * different one, flagged as changed and persisted - churn on every connect.
+ *
+ * That is also why LSM6DSV_ODR_AT_15Hz is skipped even though the part
+ * supports it: the Java ladder steps 7.5 Hz straight to 30 Hz.
+ */
+static uint8_t ShimConfig_lsm6dsvOdrForFreq(float freq)
+{
+  if (freq <= 7.5f)
+  {
+    return LSM6DSV_ODR_AT_7Hz5;
+  }
+  else if (freq <= 30.0f)
+  {
+    return LSM6DSV_ODR_AT_30Hz;
+  }
+  else if (freq <= 60.0f)
+  {
+    return LSM6DSV_ODR_AT_60Hz;
+  }
+  else if (freq <= 120.0f)
+  {
+    return LSM6DSV_ODR_AT_120Hz;
+  }
+  else if (freq <= 240.0f)
+  {
+    return LSM6DSV_ODR_AT_240Hz;
+  }
+  else if (freq <= 480.0f)
+  {
+    return LSM6DSV_ODR_AT_480Hz;
+  }
+  else if (freq <= 960.0f)
+  {
+    return LSM6DSV_ODR_AT_960Hz;
+  }
+  else if (freq <= 1920.0f)
+  {
+    return LSM6DSV_ODR_AT_1920Hz;
+  }
+  return LSM6DSV_ODR_AT_3840Hz;
+}
+#endif //SHIMMER3R
+
 uint8_t ShimConfig_checkAndCorrectConfig(void)
 {
   uint8_t settingCorrected = 0;
@@ -563,6 +656,41 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
 #endif
 
   ShimSdSync_checkSyncCenterName();
+
+#if defined(SHIMMER3R)
+  /* The LSM6DSV's output rate has to be at least the packet rate, or the
+   * device packages the same reading several times over with a fresh
+   * timestamp on each - so timestamps stay regular, packet loss stays at 0%
+   * and any CRC passes, while the signal is a staircase of repeats. Nothing on
+   * a host contradicts it, because none of that is wrong.
+   *
+   * The two are independent InfoMem fields (samplingRateTicks at bytes 0-1,
+   * gyroRate at ConfigSetupByte1) and until now nothing here related them.
+   * The intent was only ever expressed in the defaults above, in a comment:
+   * "LSM6DSV Gyro sampling rate, next highest to 51.2Hz".
+   *
+   * Corrected here rather than in any one host because this function is where
+   * they all converge - a Bluetooth setting write and SET_INFOMEM
+   * (Comms/shimmer_bt_uart.c:1716, :1474), the dock UART
+   * (Comms/shimmer_dock_usart.c:383), these defaults, and the SD
+   * configuration file (SDCard/shimmer_sd_cfg_file.c:905). A host that edits
+   * the two fields independently, or one whose own model has the gyro parked
+   * at its low-power rate, therefore cannot leave the device in a state that
+   * streams repeats.
+   *
+   * Note this catches power-down with the channels enabled too:
+   * ShimConfig_lsm6dsvOdrToHz reports 0 Hz for it, which is below any packet
+   * rate. */
+  if ((storedConfig.chEnGyro || storedConfig.chEnLnAccel) && storedConfig.samplingRateTicks > 0)
+  {
+    float packetRateHz = ShimConfig_getShimmerSamplingFreq();
+    if (ShimConfig_lsm6dsvOdrToHz(storedConfig.gyroRate) < packetRateHz)
+    {
+      ShimConfig_gyroRateSet(ShimConfig_lsm6dsvOdrForFreq(packetRateHz));
+      settingCorrected = 1;
+    }
+  }
+#endif //SHIMMER3R
 
   uint8_t *macIdBytesPtr = ShimBt_macIdBytesPtrGet();
   for (i = 0; i < 6; i++)
