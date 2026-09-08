@@ -278,6 +278,12 @@ Two consequences for hosts:
 - **The field is little-endian**, unlike most multi-byte fields in this layout
   (see §8 for the big-endian exceptions).
 
+> **Changing this field is not a self-contained edit.** Every enabled sensor's
+> own output rate has to be at or above the resulting packet rate, and nothing
+> in the protocol enforces that link. Writing this byte pair alone is how a
+> device ends up streaming repeated or all-zero readings that pass every
+> transport check. See §10.6.
+
 ### 3.2 Buffer size (byte 2)
 
 `bufferSize` is the number of samples the firmware accumulates before emitting
@@ -644,6 +650,110 @@ image being written back on that account alone.
 The stored `macAddr` is compared against the address read from the Bluetooth
 module and **overwritten from the module** on any mismatch. A host cannot set
 this field; writing it is a no-op that will be silently reverted.
+
+### 10.6 Sensor output rate must cover the packet rate
+
+Every sensor's own output data rate (ODR) is stored **independently of the
+sensor-enable bitmap**, in the configuration setup bytes of §4. Nothing in the
+protocol couples the two. The invariant they must satisfy is:
+
+> **A sensor's output rate must be at or above the packet rate.**
+
+The packet rate is `32768 / samplingRateTicks` (§3.1). The Java driver states
+this in comment after comment — *"as close to the Shimmer sampling rate as
+possible, sensor sampling rate >= shimmer sampling rate"* — and the firmware's
+own defaults follow it, e.g. `ShimConfig_setDefaultConfig` selecting the LSM6DSV
+ODR commented *"next highest to 51.2Hz"*.
+
+**Keeping the invariant is the host's job.** Consensys does it: the trial rate
+and each sensor toggle fan out through `setShimmerAndSensorsSamplingRate` and
+`setDefaultConfigForSensor`, which re-derive every affected ODR. A host that
+writes the InfoMem fields directly — setting the bitmap, or the rate, without
+re-deriving — produces pairs the driver never would.
+
+The trap is that the driver's **disabled-sensor** defaults park each chip at or
+near its slowest setting, and some of those settings mean *off*. So the bad
+state is reached by an ordinary sequence: one host disables a sensor, another
+enables it without re-deriving, and the stale disabled-state ODR survives.
+
+#### The failure signature
+
+The firmware passes the stored ODR to the driver verbatim whenever the channel
+is enabled, so the chip really is configured that way. What a host sees:
+
+| stored ODR | symptom |
+|---|---|
+| below the packet rate | **repeated readings with fresh timestamps** — the same sample value held for several packets, a visible staircase |
+| power-down | **all-zero data** on every channel of that sensor, persisting across connections until something re-configures the device |
+
+Neither is detectable by any transport check. Timestamps are regular, packet
+loss is 0%, and link CRCs pass, because the packets are perfectly well formed —
+it is the sensor that is slow, not the link. Expect to spend a long time looking
+at the radio before suspecting the configuration. See
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §4.
+
+#### Per-sensor rates (Shimmer3R)
+
+The rate field for each part, and what its codes mean. Field positions are in
+the §2 byte map.
+
+| Sensor | ODR field | Codes | Slowest | Fastest | Off? |
+|---|---|---|---|---|---|
+| LSM6DSV gyro + LN accel (**one shared field**) | `gyroRate` | 0 = power-down, 1 = 1.875 Hz, 2 = 7.5, 3 = 15, 4 = 30, 5 = 60, 6 = 120, 7 = 240, 8 = 480, 9 = 960, 10 = 1920, 11 = 3840, 12 = 7680 | 1.875 Hz | 7680 Hz | yes, code 0 |
+| LIS2DW12 WR accel | `wrAccelRate` | 0 = power-down, 1 = **1.6 Hz, low power only**, 2 = 12.5, 3 = 25, 4 = 50, 5 = 100, 6 = 200, 7 = 400, 8 = 800, 9 = 1600. In low-power mode codes 7-9 all deliver 200 Hz | 1.6 Hz | 1600 Hz (200 in low power) | yes, code 0 |
+| LIS2MDL mag | `magRate` | 0 = 10 Hz, 1 = 20, 2 = 50, 3 = 100 | 10 Hz | 100 Hz | **no** |
+| LIS3MDL alt mag | `altMagRate` | composite `(mode << 4) \| rate`; low nibble 1 = the mode's own fast rate (1000/560/300/155 Hz for LP/MP/HP/UHP), other even low nibbles = 0.625/1.25/2.5/5/10/20/40/80 Hz | 0.625 Hz | 1000 Hz | **no** |
+| ADXL371 high-g accel | `altAccelRate` | 0 = 320 Hz, 1 = 640, 2 = 1280, 3 = 2560 | 320 Hz | 2560 Hz | **no** |
+
+Three things worth noting from that table:
+
+- **The LSM6DSV gyro and low-noise accelerometer share one rate field.** Either
+  channel being enabled makes it live, so it has to be derived from the pair,
+  not from one of them.
+- **"Low power" is not a stored bit on the gyro and the mag — it *is* the
+  lowest rate code.** `checkLowPowerGyro` reads the flag back *from* the rate,
+  and its own docblock says the state is *"not related to any specific
+  configuration bytes"*. A host that re-derives a rate by inferring low-power
+  from the current value will therefore keep a device at 1.875 Hz forever; the
+  low-power request has to be an input to the derivation, not read out of it.
+- **Three of the five parts have no power-down code at all.** A disabled
+  magnetometer is left slow rather than switched off, which is why the mags fail
+  as a staircase and never as zeros. The ADXL371 is the extreme case: its
+  slowest setting is 320 Hz, so it is the one part that cannot be left below a
+  typical packet rate.
+
+Two mismatches between the hardware codes above and what a host will actually
+observe, both worth knowing before comparing values with Consensys:
+
+- **LSM6DSV code 3 (15 Hz) is never selected by the Java driver.** Its ladder
+  jumps from 2 to 4, so a device configured by Consensys never holds it. The
+  code is valid in hardware and the firmware will honour it if written.
+- **The Java LIS2DW12 ladder returns code 1 for a request of 12.5 Hz or below
+  and comments it "12.5Hz", but code 1 is 1.6 Hz.** That looks like a driver
+  bug rather than intent. Firmware follows the register map here and selects
+  code 2 for 12.5 Hz, so this is the one band where the firmware's correction
+  and the driver's derivation disagree — deliberately, because following the
+  driver would re-select a rate that still failed the invariant.
+
+#### Firmware enforcement
+
+`ShimConfig_checkAndCorrectConfig` now corrects a violation for all five parts,
+raising the ODR to the lowest setting that covers the packet rate. Being at the
+choke point every writer converges on — the Bluetooth handler, the dock UART
+handler and the SD config-file reader — this covers hosts the firmware does not
+control and configurations already stored on shipped devices.
+
+Two limits on relying on it:
+
+- Like every rule in this section it is **silent**, so a host still reads back
+  different bytes than it wrote.
+- Where a part's ceiling is below the packet rate the correction settles at the
+  ceiling rather than reaching the invariant. A LIS2MDL tops out at 100 Hz, so a
+  512 Hz trial simply runs the magnetometer at 100 Hz. The correction is applied
+  once and not repeated, so this does not churn the stored image.
+
+Hosts should still derive rather than depend on the correction, so that a device
+running firmware without it is not left in the bad state.
 
 `ShimSdSync_checkSyncCenterName` also runs here and may adjust the sync
 configuration.

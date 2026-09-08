@@ -603,6 +603,28 @@ A conforming parser must:
 8. **Unwrap the timestamp**, and do not assume the host's arrival time bears any
    relation to it.
 
+### 8.1 A well-formed packet is not a correct reading
+
+Every check in this document — the width total of rule 5, the CRC of §2.2, the
+timestamp continuity of §7.7 — validates the *transport*. All of them pass on a
+packet whose sample values are stale or zero, because the packet is genuinely
+well formed. Two configuration faults look exactly like this:
+
+| What is seen | Cause |
+|---|---|
+| The same reading repeated across several packets, timestamps advancing normally, 0% packet loss, CRCs valid | The sensor's output rate is **below** the packet rate, so the firmware reads the same conversion more than once |
+| All-zero data on every channel of one sensor, unchanged across reconnections | That sensor's output rate is set to its **power-down** code while its channels are enabled |
+
+Both are stored-configuration faults, not streaming faults, and no parser-side
+check can distinguish them from real data — a flat signal is a legitimate
+reading. The invariant being violated, the per-sensor rate tables, and how a
+host is supposed to keep them coherent are in
+[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.6.
+
+Worth knowing before investigating a "corrupt stream" report: if the packet
+structure validates and only the *values* look wrong, the radio is not the place
+to look.
+
 ## Still unverified / not found in code
 
 - **The Shimmer3R ADS7028 reference voltage and resolution.** The driver lives
