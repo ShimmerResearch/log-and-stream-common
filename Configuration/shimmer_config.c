@@ -945,14 +945,24 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
    *
    * Note this catches power-down with the channels enabled too:
    * ShimConfig_lsm6dsvOdrToHz reports 0 Hz for it, which is below any packet
-   * rate. */
+   * rate.
+   *
+   * The target is compared against the stored value rather than written
+   * unconditionally, so that a packet rate the part cannot reach - anything
+   * above its 3840 Hz ceiling - settles instead of re-flagging a correction on
+   * every pass, which for the SD path would mean a config rewrite on every
+   * read. */
   if ((storedConfig.chEnGyro || storedConfig.chEnLnAccel) && storedConfig.samplingRateTicks > 0)
   {
     float packetRateHz = ShimConfig_getShimmerSamplingFreq();
     if (ShimConfig_lsm6dsvOdrToHz(storedConfig.gyroRate) < packetRateHz)
     {
-      ShimConfig_gyroRateSet(ShimConfig_lsm6dsvOdrForFreq(packetRateHz));
-      settingCorrected = 1;
+      uint8_t gyroRateNew = ShimConfig_lsm6dsvOdrForFreq(packetRateHz);
+      if (gyroRateNew != storedConfig.gyroRate)
+      {
+        ShimConfig_gyroRateSet(gyroRateNew);
+        settingCorrected = 1;
+      }
     }
   }
 
