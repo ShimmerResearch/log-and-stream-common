@@ -699,7 +699,7 @@ the §2 byte map.
 
 | Sensor | ODR field | Codes | Slowest | Fastest | Off? |
 |---|---|---|---|---|---|
-| LSM6DSV gyro + LN accel (**one shared field**) | `gyroRate` | 0 = power-down, 1 = 1.875 Hz, 2 = 7.5, 3 = 15, 4 = 30, 5 = 60, 6 = 120, 7 = 240, 8 = 480, 9 = 960, 10 = 1920, 11 = 3840, 12 = 7680 | 1.875 Hz | 7680 Hz | yes, code 0 |
+| LSM6DSV gyro + LN accel (**one shared field**) | `gyroRate` | 0 = power-down, 1 = 1.875 Hz, 2 = 7.5, 3 = 15, 4 = 30, 5 = 60, 6 = 120, 7 = 240, 8 = 480, 9 = 960, 10 = 1920, 11 = 3840, 12 = 7680 (see note) | 1.875 Hz | **3840 Hz via any setter**; 7680 only by raw InfoMem write | yes, code 0 |
 | LIS2DW12 WR accel | `wrAccelRate` | 0 = power-down, 1 = **1.6 Hz, low power only**, 2 = 12.5, 3 = 25, 4 = 50, 5 = 100, 6 = 200, 7 = 400, 8 = 800, 9 = 1600. In low-power mode codes 7-9 all deliver 200 Hz | 1.6 Hz | 1600 Hz (200 in low power) | yes, code 0 |
 | LIS2MDL mag | `magRate` | 0 = 10 Hz, 1 = 20, 2 = 50, 3 = 100 | 10 Hz | 100 Hz | **no** |
 | LIS3MDL alt mag | `altMagRate` | composite `(mode << 4) \| rate`; low nibble 1 = the mode's own fast rate (1000/560/300/155 Hz for LP/MP/HP/UHP), other even low nibbles = 0.625/1.25/2.5/5/10/20/40/80 Hz | 0.625 Hz | 1000 Hz | **no** |
@@ -721,6 +721,19 @@ Three things worth noting from that table:
   as a staircase and never as zeros. The ADXL371 is the extreme case: its
   slowest setting is 320 Hz, so it is the one part that cannot be left below a
   typical packet rate.
+
+**LSM6DSV code 12 (7680 Hz) depends on how it is written.** The part supports
+it and the firmware will run it — but only if it arrives by a path that does not
+clamp. `ShimConfig_gyroRateSet` substitutes **60 Hz** for any value from 12
+upwards, and it sits behind `SET_GYRO_SAMPLING_RATE_COMMAND`, the SD config-file
+parser, and the §10.6 correction itself (which is why that ladder stops at 3840).
+An InfoMem write is a raw copy and skips the setter, so a 12 stored that way
+reaches the chip unchanged. The consequences run in both directions: a host that
+asks for 7680 through the dedicated command gets 60 Hz and a silent 128× rate
+cut, while one that writes InfoMem gets exactly what it asked for. The Java
+driver's ladder does produce a 12 for a request above 3840 Hz, but the packet
+rate is clamped to 2048 Hz (§R1/§R2 in the driver), so in practice nothing
+derives it.
 
 Two mismatches between the hardware codes above and what a host will actually
 observe, both worth knowing before comparing values with Consensys:

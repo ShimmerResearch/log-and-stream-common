@@ -439,11 +439,23 @@ uint8_t ShimConfig_configByteAltMagRateGet(void)
 /**
  * Output rate of an LSM6DSV ODR setting, in Hz.
  *
+ * Decodes every one of the part's twelve plain ODR codes, 7680 Hz (code 12)
+ * included. That is deliberate and worth spelling out, because this firmware's
+ * own setter will not produce a 12: ShimConfig_gyroRateSet substitutes 60 Hz
+ * for anything from LSM6DSV_ODR_AT_7680Hz upwards, which is why the correction
+ * ladder in ShimConfig_lsm6dsvOdrForFreq stops at 3840. But the setter is not
+ * the only way into the field. An InfoMem write is a raw memcpy
+ * (ShimConfig_storedConfigSet), so a host can store a 12 unclamped, and spi.c
+ * then hands it to lsm6dsv_configure verbatim - the chip really runs at
+ * 7680 Hz. Reading that as 0 here would send it through a "correction" down to
+ * 3840, actively downgrading a configuration that works.
+ *
  * @param odr a value from the LSM6DSV ODR enum (lsm6dsv_reg.h)
- * @return the rate in Hz, or 0 for a setting that produces no new samples -
- *         power-down, and the high-accuracy encodings this firmware never
- *         writes (ShimConfig_gyroRateSet refuses anything from
- *         LSM6DSV_ODR_AT_7680Hz upwards).
+ * @return the rate in Hz, or 0 for a setting that produces no new samples:
+ *         power-down, and the high-accuracy encodings (LSM6DSV_ODR_HA01_* and
+ *         HA02_*, 0x13 and up) that nothing in this firmware writes or
+ *         configures. A 0 for one of those does trigger a correction, and
+ *         should - it is an encoding this firmware does not support.
  */
 static float ShimConfig_lsm6dsvOdrToHz(uint8_t odr)
 {
