@@ -62,9 +62,31 @@ battValMV = (((uint32_t) raw * 3000) >> 12) * 2;   /* 3.0 V ref, 12-bit, x2 divi
 ```
 
 so counts convert at about 1.465 mV each, and the millivolt column in the
-tables below is derived with that integer arithmetic. On Shimmer3R the MCU's
-battery channel is *internally divided by 4* (`hal_adc.c`), so the same count
-does not mean the same voltage on the two generations.
+tables below is derived with that integer arithmetic.
+
+**Shimmer3R measures it the same way**, in
+`saveBatteryVoltageAndUpdateStatus` (`Shimmer_Driver/hal_adc.c:1214-1219`):
+
+```c
+battValMV = raw * VREF_EXTERNAL_SUPPLY_MV / 4095 * 2;   /* 3.0 V ref, 12-bit, x2 divider */
+```
+
+with `VREF_EXTERNAL_SUPPLY_MV` = 3000 on product hardware
+(`Shimmer_Driver/hal_Board.h:52-56`; 3300 only on the Nucleo build). The two
+formulas differ only in `4095` against the Shimmer3 shift's `4096` — 0.03 %,
+under a millivolt across the whole range — so **the millivolt columns in this
+document apply to both generations**: 2500 counts is about 3663 mV either way.
+
+> **The ÷4 in `hal_adc.c` is not the battery.** It belongs to
+> `ADC_CHANNEL_VBAT`, the STM32's own internal backup-supply monitor, which is
+> read once for diagnostics alongside `VREFINT` and the die temperature sensor
+> and multiplied by four to undo the on-chip divider
+> (`Shimmer_Driver/hal_adc.c:655,686-690`, commented *"Vbatt channel is
+> internally divided by 4"*). It lands in `adcDebugInfo->vBattPinMV` and never
+> in a stream or a status byte. The battery the user charges reaches the ADC
+> through the **board's** ×2 divider, on a different channel. An earlier version
+> of this document read that comment as describing the battery measurement,
+> which would put every reading at a quarter of its true value.
 
 ## 2. State of charge
 
@@ -299,7 +321,8 @@ In the order to check:
    ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §4.2).
 2. **The band disagrees with a voltage you measured** — the thresholds are raw
    counts, not millivolts, and the band depends on the previous band (§2.1).
-   Convert with `mV = raw × 3000 / 4096 × 2` before comparing.
+   Convert before comparing: `mV = raw × 3000 / 4096 × 2` on Shimmer3,
+   `mV = raw × 3000 / 4095 × 2` on Shimmer3R (§1). Do not divide by four.
 3. **Logging stops on a battery that reads fine** — the auto-stop latch (§4). It
    trips on any three low readings across a trial, not three consecutive, and
    only a dock cycle clears it.
@@ -309,14 +332,8 @@ In the order to check:
 
 ## Still unverified / not found in code
 
-- ~~The Shimmer3R count-to-millivolt conversion~~ — resolved
-  (`saveBatteryVoltageAndUpdateStatus`, `hal_adc.c`):
-  `mV = raw × VREF_EXTERNAL_SUPPLY_MV / 4095 × 2`, 12-bit, with
-  `VREF_EXTERNAL_SUPPLY_MV` = **3000** on product hardware (3300 only under
-  `S3R_NUCLEO`). That is within 0.03 % of the Shimmer3 formula
-  (`raw × 3000 / 4096 × 2`), so the millivolt column in §2 applies to both
-  platforms: 2500 counts ≈ 3663 mV. The `/4` divider belongs to the *MCU*
-  `VBAT` debug channel, not to the battery measurement.
+- ~~The Shimmer3R count-to-millivolt conversion~~ — resolved, and now stated
+  in §1 alongside the Shimmer3 formula.
 - **Which charger part is fitted on which board.** The status-pin naming
   (`lm3658sdStat1` / `Stat2`) points at the LM3658SD, but board-to-charger
   mapping lives in the platform repositories and the hardware documentation.

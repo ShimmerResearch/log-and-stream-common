@@ -180,6 +180,15 @@ from the `sensing.dataLen +=` accumulation that follows each run of channel-ID
 writes in the platform packers, so they are the widths the firmware actually
 emits. `Encoding` and `SDK name` come from the web SDK's channel-format table.
 
+> **Two generated columns describe no firmware path.** `u14` on the ADC rows is
+> a Java type string with no counterpart in either platform's code: every
+> analog channel is a right-aligned 12-bit conversion (§5.1), and the only
+> 14-bit resolution anywhere in the tree is compiled out under `SHIMMER4_SDK`
+> (`Shimmer_Driver/hal_adc.c:1036`). `u24` on the temperature row is right for
+> a Shimmer3R carrying a BMP180, BMP280 or BMP390 and wrong for one carrying a
+> BMP581, whose temperature register is **signed** (§5.5). Convert against §5
+> and §7, not against these strings.
+
 | ID | FW name | S3 meaning | S3R meaning | Bytes | Encoding | Java type string | Java channel name | SDK name | Flags |
 |---|---|---|---|---|---|---|---|---|---|
 | `0x00` | `X_LN_ACCEL` | `X_LN_ACCEL` | `X_LN_ACCEL` | 2 | i16 le | i16, u12 | `XAAccel` | `LN_ACCEL_X` |  |
@@ -331,13 +340,21 @@ the inquiry channel list.
 
 Widths and encodings are in the §3 registry. The families are:
 
-### 5.1 ADC channels — 2 bytes, unsigned, right-aligned
+### 5.1 ADC channels — 2 bytes, unsigned, 12-bit right-aligned
 
 `VBATT`, all `EXTERNAL_ADC_*` and `INTERNAL_ADC_*`, and the bridge-amplifier
-pair. Two bytes little-endian holding an unsigned value whose significant width
-is the converter's, not 16 bits: the Java driver's type strings are `u12` and
-`u14` for these channels. Mask before use — the unused high bits are not
-guaranteed.
+pair. Two bytes little-endian holding an unsigned **12-bit** value in bits
+11-0 — on both platforms. Shimmer3 uses the MSP430's ADC12; Shimmer3R uses
+either the ADS7028, whose 12-bit result the packer right-aligns and masks with
+`0x0FFF` (`shimmer3r-firmware` `Core/Src/spi.c:1415-1419`), or the STM32's own
+ADC at `ADC_RESOLUTION_12B` (`Shimmer_Driver/hal_adc.c:131,729,749,785`). Bits
+15-12 are emitted as zero; mask with `0x0FFF` anyway.
+
+> **There is no 14-bit path.** The Java driver's `u14` type string for these
+> channels has no counterpart in shipping firmware — the only
+> `ADC_RESOLUTION_14B` in the platform code is under `SHIMMER4_SDK`
+> (`Shimmer_Driver/hal_adc.c:1036`). A host dividing by 16383 reports values four times too
+> small.
 
 ### 5.2 IMU channels — 2 bytes, signed
 
@@ -369,7 +386,7 @@ is 16-bit.
 | Bits | Field |
 |---|---|
 | 15-14 | Active feedback resistor (0-3) |
-| 13-0 | ADC value |
+| 13-0 | ADC value — 12 significant bits; bits 13-12 are always zero on both platforms (§5.1) |
 
 `GSR_range()` packs it as `ADC_val | (current_active_resistor << 14)`. A host
 must mask with `0x3FFF` before treating the low field as a measurement, and
@@ -446,30 +463,52 @@ scale.
 
 ### 7.2 ADC and battery
 
-ADC channels are converted with the converter's reference and resolution.
-`VBATT` additionally passes through a resistive divider on the board, so the
-battery voltage is the converted ADC voltage multiplied by the divider ratio.
+Every ADC channel converts with one fixed formula, and **no per-channel
+calibration for any of them is stored on the device** (§7.8):
 
-The Java driver applies a two-point calibration to ADC channels where one has
-been stored, falling back to the nominal reference otherwise.
-
-On **Shimmer3** the MSP430 ADC12 is used at 12 bits against a 3.0 V reference,
-and the battery input has a ×2 divider, so from `adc.c`:
-
-```c
-battValMV = (((uint32_t) raw * 3000) >> 12) * 2;
+```
+mV = raw * 3000 / 4095
 ```
 
-The other ADC channels convert with the same 3.0 V / 4095 scale and no divider.
+The reference is 3.0 V on both generations and on every Shimmer3R analog path,
+ADS7028 and STM32 ADC alike — `VREF_EXTERNAL_SUPPLY_MV` is 3000 on product
+hardware and 3300 only under `S3R_NUCLEO`
+(`shimmer3r-firmware` `Shimmer_Driver/hal_Board.h:52-56`). The firmware's own
+conversions are `adcValue * 3000 / 4095`
+(`Shimmer_Driver/ADS7028_38/hal_ads7028_38.c:614`) and
+`__HAL_ADC_CALC_DATA_TO_VOLTAGE(…, VREF_EXTERNAL_SUPPLY_MV, …)` at 12-bit
+resolution (`Shimmer_Driver/hal_adc.c:1217-1219`).
 
-On **Shimmer3R** the sensor analog channels come through the external
-ADS7028 on SPI1 and the MCU's own battery channel is *internally divided by 4*
-(`hal_adc.c`). The ADS7028 reference was not found — see *Still unverified*.
+`VBATT` additionally sits behind a ×2 resistive divider, on both platforms:
+
+| Platform | Firmware's own conversion | Source |
+|---|---|---|
+| Shimmer3 | `((raw * 3000) >> 12) * 2` | `shimmer3-firmware` `LogAndStream_Shimmer3/adc.c` |
+| Shimmer3R | `raw * 3000 / 4095 * 2` | `Shimmer_Driver/hal_adc.c:1214-1219`, `saveBatteryVoltageAndUpdateStatus` |
+
+The two differ by one part in 4096, 0.03%. **The firmware's divider figure is
+2.** The Java reference's `SensorBattVoltage` class carries 1.988 while its own
+live path uses 2; take the firmware's. How the firmware then classifies the
+reading is in
+[SHIMMER3_BATTERY_AND_CHARGING.md](SHIMMER3_BATTERY_AND_CHARGING.md) §1.
+
+> **The ÷4 in `hal_adc.c` is not the battery.** It belongs to the STM32's
+> internal `VBAT` monitor (`ADC_CHANNEL_VBAT`, a debug input). The battery
+> measurement is `ADC_CHANNEL_VBATT`, through the board divider above.
+
+An earlier revision of this section said the Java driver "applies a two-point
+calibration to ADC channels where one has been stored". **There is nowhere on
+the device to store one** — no InfoMem field, no calibration-dump record id, and
+`ShimCalib_findLength` returns 0 for every non-kinematic sensor. The sentence
+has been removed rather than softened: it sent hosts looking for storage that
+does not exist.
 
 ### 7.3 GSR
 
 1. Split the 16-bit word: `range = w >> 14`, `adc = w & 0x3FFF` (§5.4).
-2. Convert `adc` to millivolts at the converter's reference.
+2. Convert `adc` to millivolts: `mV = adc * 3000 / 4095`, on both platforms
+   (§7.2). The value is 12 bits wide on both, so the auto-range thresholds
+   below are 12-bit counts.
 3. Apply the op-amp equation the firmware itself uses in `GSR_calcResistance`:
 
 ```
@@ -627,10 +666,15 @@ to look.
 
 ## Still unverified / not found in code
 
-- **The Shimmer3R ADS7028 reference voltage and resolution.** The driver lives
-  in `Shimmer_Driver/ADS7028_38/` and exposes per-channel max-value registers
-  but no reference constant was found in it; the Java `u14` type string suggests
-  a 14-bit path. Shimmer3's conversion is now in §7.2; Shimmer3R's is not.
+- ~~**The Shimmer3R ADS7028 reference voltage and resolution.**~~ — resolved:
+  **12-bit at 3.0 V**, on every Shimmer3R analog path. The packer masks with
+  `0x0FFF` (`Core/Src/spi.c:1415-1419`), the driver's own conversion is
+  `adcValue * 3000 / 4095` (`Shimmer_Driver/ADS7028_38/hal_ads7028_38.c:614`),
+  the reference constant is `VREF_EXTERNAL_SUPPLY_MV` = 3000 on product hardware
+  (`Shimmer_Driver/hal_Board.h:52-56`), and the STM32's own ADC runs at
+  `ADC_RESOLUTION_12B`. The Java `u14` type string has no firmware counterpart:
+  the only 14-bit resolution in the platform code is under `SHIMMER4_SDK`
+  (`Shimmer_Driver/hal_adc.c:1036`). Both platforms' conversions are now in §7.2.
 - ~~`BMPX80_PACKET_SIZE` on Shimmer3~~ — resolved: `BMPX80_TEMP_BUFF_SIZE`
   (`0x02`) + `BMPX80_PRESS_BUFF_SIZE` (`0x03`) = 5, confirming the registry's
   2-byte temperature and 3-byte pressure.
