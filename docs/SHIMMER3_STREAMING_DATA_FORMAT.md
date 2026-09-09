@@ -316,6 +316,39 @@ the SPI block.
 | 17 | SPI (ADS7028) | `EXTERNAL_ADC_2` | 2 |
 | 18 | SPI (ADS7028) | `VBATT` | 2 |
 
+The table above is the **usual** Shimmer3R layout, not the only one. Rows 10-18
+exist only while `isAds7028Present()` holds — the daughter-card id must be
+programmed, the hardware id must be Shimmer3R, and the board must not be an
+SR48-6.0 (`Boards/shimmer_boards.c:279-283`); the block is also skipped when no
+ADS7028 channel is enabled (`shimmer3r-firmware` `Core/Src/spi.c:935`).
+
+> **On an SR48-6.0 the analog channels move to the front of the packet.** That
+> board is wired to the STM32's own ADCs instead of an ADS7028
+> (`ShimBrd_areMcuAdcsUsedForSensing()`, `Boards/shimmer_boards.c:305-309`), and
+> `ADC_configureChannels()` runs **before** the I2C and SPI configurators
+> (`Sensing/shimmer_sensing.c:94-99`). So the same analog channels appear first
+> rather than last, and in a different internal order
+> (`Shimmer_Driver/hal_adc.c:212-341`):
+>
+> | Order | Channels |
+> |---:|---|
+> | 1 | `VBATT` |
+> | 2 | `EXTERNAL_ADC_0`, `EXTERNAL_ADC_1`, `EXTERNAL_ADC_2` |
+> | 3 | `INTERNAL_ADC_0` |
+> | 4 | `STRAIN_HIGH`, `STRAIN_LOW` **or** `INTERNAL_ADC_1`, `INTERNAL_ADC_2` |
+> | 5 | `GSR_RAW` **or** `INTERNAL_ADC_3` |
+>
+> A host that has learned "VBATT is last on Shimmer3R" gets every byte offset
+> wrong on this one board. Read the inquiry list.
+
+> **An unprogrammed daughter-card id removes the analog channels entirely.**
+> Both gates require `ShimBrd_isDaughterCardIdSet()`, so a Shimmer3R whose card
+> id page is blank configures no ADC block at all: `VBATT`, GSR, PPG, the
+> external ADCs and the bridge amplifier are absent from the inquiry list even
+> though their enable bits are set, and nothing reports an error. The IMU
+> channels stream normally, which makes it look like a channel-mapping bug
+> rather than an unprovisioned board.
+
 ### 4.3 The differences that bite
 
 | | Shimmer3 | Shimmer3R |
@@ -324,7 +357,7 @@ the SPI block.
 | Temperature width | 2 bytes | 3 bytes |
 | Pressure width | 3 bytes | 3 bytes |
 | First channel block | Low-noise accel (ADC) | Magnetometer (I2C) |
-| `VBATT` position | Second | Last |
+| `VBATT` position | Second | Last — but **first** on an SR48-6.0 (§4.2) |
 | Magnetometer axis order | X, Z, Y on LSM303DLHC | X, Y, Z |
 
 > **The pressure/temperature reversal is the single most damaging difference.**

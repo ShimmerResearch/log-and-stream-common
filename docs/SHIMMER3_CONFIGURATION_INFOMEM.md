@@ -489,11 +489,25 @@ Six 21-byte kinematic calibration blocks:
 | 55-75 | `gyroCalib` | `NV_GYRO_CALIBRATION` | both |
 | 76-96 | `magCalib` | `NV_MAG_CALIBRATION` | both |
 | 97-117 | `wrAccelCalib` | `NV_WR_ACCEL_CALIBRATION` | both |
-| 133-153 | `altAccelCalib` | `NV_ALT_ACCEL_CALIBRATION` | S3R |
-| 154-174 | `altMagCalib` | `NV_ALT_MAG_CALIBRATION` | S3R |
+| 133-153 | `altAccelCalib` | `NV_ALT_ACCEL_CALIBRATION` | both |
+| 154-174 | `altMagCalib` | `NV_ALT_MAG_CALIBRATION` | both |
 
 Bytes 175-186 are `NV_MPL_GYRO_CALIBRATION`, a 12-byte legacy MPL block, now
 `unusedIdx175To186`.
+
+> **The last two are `both`, not S3R-only.** The offsets and the struct fields
+> are declared outside any generation guard
+> (`Configuration/shimmer_config.h:118-119` and `:368-369`), and the Bluetooth
+> handlers write them on either platform — on Shimmer3 they hold the
+> MPU9x50/ICM20948 accelerometer and magnetometer, which is why the byte map in
+> §2 already lists `idxMPLAccelCalibration` alongside the ADXL371 name. This
+> table said S3R and the byte map said both; the byte map was right.
+>
+> On Shimmer3 the pair is effectively **write-only**: the value reaches these
+> bytes and the SD header, but never the calibration dump, so the matching
+> `GET_ALT_*_CALIBRATION` command answers with 21 zeros. Read them back from
+> here instead — see
+> [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §4.1.
 
 The internal layout of a 21-byte block — three big-endian `int16` biases, three
 big-endian `int16` sensitivities, nine `int8` alignment values scaled by 100 —
