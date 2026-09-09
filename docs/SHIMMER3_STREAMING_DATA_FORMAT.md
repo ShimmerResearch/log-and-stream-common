@@ -575,14 +575,41 @@ For the BMP581 the raw values are already compensated: scale and use directly.
 millivolts = sample * (V_REF * 1000) / (gain * (2^23 - 1))
 ```
 
-**16-bit mode.** As above, sign-extending from bit 15 and with `2^15 - 1`.
+**16-bit mode is not a 16-bit conversion.** The firmware builds the word from
+bits **22:7** of the 24-bit result — its own driver header says so, "drops 7
+least significant bits and most significant bit"
+(`shimmer3r-firmware` `Shimmer_Driver/EXG/exg.h:134`; the bit-shuffle is
+`Shimmer_Driver/EXG/exg.c:288-291` for chip 1 and `:261-266` for chip 2). The word is
+therefore the 24-bit value over 128 with bit 22 as its sign, so:
 
-Gain comes from the `CH1SET` / `CH2SET` registers in the configuration bytes
-(InfoMem 10-29, see
-[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §5) — the
-PGA gain field of each. The reference voltage is set by the `CONFIG2` register's
-internal-reference selection. Both are ADS1292R fields; the datasheet is the
-authority for the bit encodings.
+```
+millivolts = sample * (V_REF * 1000) / (2 * gain * (2^15 - 1))
+```
+
+Equivalently: treat the sample as `s24 >> 7` and use the 24-bit formula, or
+double the gain — which is what the Java reference does on its live path. Using
+`2^15 - 1` alone gives values **exactly twice too large**.
+
+> **16-bit mode halves the usable input range** to ±V_REF / (2 · gain). Beyond
+> that, bit 22 no longer agrees with bit 23 and the two chips wrap
+> *differently* — chip 1 takes bit 22 as the sign, chip 2 keeps bit 23 and drops
+> bit 22 — so a saturated CH1 reads differently on the two chips for the same
+> input.
+
+**V_REF** is `CONFIG2` bit 4, `VREF_4V`: 0 → **2.42 V**, 1 → **4.033 V**
+(`Shimmer_Driver/EXG/ads1292.h:219,235-238`, which rounds them to 2.4 and 4).
+The firmware's own ECG defaults write `CONFIG2 = 0x80` to both chips
+(`Configuration/shimmer_config.c:1103,1113`; the test-signal preset writes
+`0xAB` / `0xA3`, `:1078,1088`), so V_REF is 2.42 V unless a host has changed it.
+Read the register back rather than assuming: `ShimConfig_checkAndCorrectConfig`
+sets bit 3 (`CLK_EN`) on chip 1 where the ADS1292R clock lines are tied
+(`Configuration/shimmer_config.c:911-917`), so the stored byte can differ from the one
+written.
+
+**Gain** comes from the PGA field of `CH1SET` / `CH2SET` in the configuration
+bytes (InfoMem 10-29, see
+[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §5). The
+datasheet is the authority for both encodings.
 
 **Status byte.** One byte per chip, preceding its channel samples, carrying the
 lead-off detection bits. The ADS1292R datasheet defines the bit positions; the
