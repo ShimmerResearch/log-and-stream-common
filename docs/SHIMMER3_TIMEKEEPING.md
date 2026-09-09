@@ -154,10 +154,13 @@ as UTC, or vice versa.
 > and the dock path sends the same value to `RTC_CFG_TIME`
 > (`comms/wiredProtocol/CommsProtocolWiredShimmerViaDock.java:writeRealWorldClockFromPcTime`).
 > Neither applies a zone offset. The driver does carry
-> `getCurrentLocalTimezoneOffsetMillis`, and its only callers are in playback,
-> shifting recorded timestamps back to the civil time of the trial for
-> *display* — which is the correct place for a zone, and the reason it appears
-> nowhere on the write path.
+> `getCurrentLocalTimezoneOffsetMillis` and
+> `getLocalTimezoneOffsetMillisForSpecificDate`
+> (`driverUtilities/UtilShimmer.java:758-767`), and **nothing in the driver
+> calls either**. Their callers live in a separate module, the Advance API's
+> database playback, where they shift recorded timestamps back to the civil
+> time of the trial for *display* — the correct place for a zone, and the
+> reason no zone appears on the write path.
 >
 > So this is not a convention this platform gets to choose per host: write Unix
 > epoch ticks, convert for display only, and a sensor set by the Java driver, by

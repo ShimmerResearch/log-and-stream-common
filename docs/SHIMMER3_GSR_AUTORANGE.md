@@ -216,9 +216,11 @@ The 0.5 is the amplifier's reference in volts. Conductance in microsiemens is
 A host must do this itself — the firmware transmits raw counts. Steps:
 
 1. `range = word >> 14`, `adc = word & 0x3FFF`.
-2. `mV = adc * 3000 / 4095` — 3.0 V at 12 bits, the same on both platforms
-   (`Shimmer_Driver/ADS7028_38/hal_ads7028_38.c:612-614`,
-   `Shimmer_Driver/hal_Board.h:52-56`).
+2. `mV = adc * 3000 / 4095` — 3.0 V at 12 bits, the same on both platforms.
+   The ADS7028 driver spells the 3000 out as a literal
+   (`Shimmer_Driver/ADS7028_38/hal_ads7028_38.c:612-614`) rather than reading
+   `VREF_EXTERNAL_SUPPLY_MV`, so this path stays at 3.0 V even on a build where
+   that constant is 3300.
 3. Apply the formula with `GSR_FEEDBACK_RESISTORS_OHMS[range]`.
 
 > **The formula has a singularity at exactly 0.5 V**, where the denominator is
@@ -269,12 +271,13 @@ says so explicitly. See
 - ~~**The ADC reference and resolution — Shimmer3R only.**~~ — resolved:
   Shimmer3R is **12-bit at 3.0 V** as well, so §6's conversion is
   `mV = counts × 3000 / 4095` on both platforms. The ADS7028 driver converts
-  with exactly that expression
-  (`Shimmer_Driver/ADS7028_38/hal_ads7028_38.c:614`) against
-  `VREF_EXTERNAL_SUPPLY_MV` = 3000 on product hardware
-  (`Shimmer_Driver/hal_Board.h:52-56`; 3300 only on the Nucleo build), and
-  the packer masks the result with `0x0FFF`
-  (`shimmer3r-firmware` `Core/Src/spi.c:1415-1419`).
+  with exactly that expression, 3000 written as a literal
+  (`Shimmer_Driver/ADS7028_38/hal_ads7028_38.c:614`), and the packer masks the
+  result with `0x0FFF` (`shimmer3r-firmware` `Core/Src/spi.c:1415-1419`). The
+  platform's named reference is `VREF_EXTERNAL_SUPPLY_MV` = 3000 on product
+  hardware (`Shimmer_Driver/hal_Board.h:52-56`; 3300 only on the Nucleo build),
+  which the MCU ADC path does use — this GSR path agrees with it by literal
+  rather than by reference.
 - **The 0.5 V reference in `GSR_calcResistance`.** A literal in the formula
   with no named constant and no comment explaining its origin beyond "*uses op
   amp equation*".

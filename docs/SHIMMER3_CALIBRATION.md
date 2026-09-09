@@ -85,8 +85,9 @@ the host uninterpreted (§5).
 > derived from the board's components, and no calibration procedure adjusts
 > them. `ShimCalib_defaultAll` seeds four sensors on Shimmer3 and six on
 > Shimmer3R and no others (`Calibration/shimmer_calibration.c:388-403`), and
-> `ShimCalib_findLength` returns a block size for exactly those ids
-> (`:74-101`). The family-by-family table is in
+> `ShimCalib_findLength` gives a block size to those ids and, on Shimmer3, to
+> one more that nothing ever fills — BMP180's, see §5 (`:74-101`). The
+> family-by-family table is in
 > [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.8.
 
 The same kinematic parameters exist in four places at once, and the firmware
@@ -464,10 +465,14 @@ is what a host sees on a device that has never been calibrated:
 
 Each record is 33 bytes (12-byte header + 21-byte payload), the header is 10
 bytes, and `ShimCalib_init` starts the length field at 8 — so the field is
-`8 + 33n` and the blob is two bytes longer (§2.1). Range counts come from the
-seed loops' bounds (`Calibration/shimmer_calibration.c:585`, `:699`) and the
-`SC_SENSOR_RANGE_MAX_*` constants
-(`Calibration/shimmer_calibration.h:124-152`).
+`8 + 33n` and the blob is two bytes longer (§2.1). The range counts come from
+the seed loops' own bounds, and the two generations state them differently:
+Shimmer3's loops run against the `SC_SENSOR_RANGE_MAX_*` constants
+(`Calibration/shimmer_calibration.h:124-152`, all four inside
+`#if defined(SHIMMER3)`), while Shimmer3R's are bare literals in the loop
+headers (`Calibration/shimmer_calibration.c:654`, `:699`, `:785`, `:860`).
+The 175-byte fixture in `Extras/shimmer_calib_v2.0.4/calib_36ad` is the same
+arithmetic on five records: 8 + 33x5 = 173, plus 2.
 
 Values below are shown **as written in the C source** — that is, before
 `ShimCalib_reverseBiasAndSensitivityByteOrder` byte-swaps bias and sensitivity
@@ -566,11 +571,14 @@ Alignment matrices, Shimmer3:
 > "Shimmer config maps 0x05 to the chip's 0x0C"). A host that keys calibration
 > records on the chip value finds nothing at ±4000 dps.
 >
-> The seed loop shows the seam: its last comparison is
-> `range == LSM6DSV_4000dps`, which is `0x0C` and so never true for a loop
-> running 0-5, but the bare `else` it falls through to assigns the same 7 that
-> branch intended (`Calibration/shimmer_calibration.c:718-725`). The stored
-> value is right; the test that was supposed to produce it is dead.
+> The seed loop shows the seam. Its explicit comparisons stop at
+> `LSM6DSV_2000dps`, and configuration code 5 is caught by a bare `else`
+> carrying the comment `//(sc1Ptr->range == LSM6DSV_4000dps)`
+> (`Calibration/shimmer_calibration.c:718-725`). The stored value is right, and
+> the comment is a trap for the next reader: written as a condition it would
+> never be true, because the loop runs over configuration codes 0-5 while
+> `LSM6DSV_4000dps` is the chip's `0x0C`. The chain's earlier comparisons work
+> only because the two numberings agree below 4000 dps.
 
 > **The ADXL371 default is a placeholder.** Bias 10 and sensitivity 1 are
 > commented in the source as "+1 g" and "100 mg/LSB which equates to
@@ -714,24 +722,26 @@ bytes and InfoMem immediately; only the SD file lags.
 | Dump blob codec | dump parsing in `ShimmerObject` | `devices/calibration/dump.ts` |
 | Default seeds | per-sensor classes under `sensors/` | `devices/calibration/defaults.ts` |
 
-A third implementation is worth knowing about when reading old blobs: the
-MATLAB and Python tooling in `shimmer_calib_v2.0.4/`, which ships alongside the
-legacy Shimmer3 firmware projects in the internal CCS workspace (for example
-`FW_Shimmer3/LogAndStream/shimmer_calib_v2.0.4/`) rather than in the public
-repository.
+A third implementation ships **in this repository**, and is worth knowing
+about when reading old blobs: the MATLAB tooling in
+`Extras/shimmer_calib_v2.0.4/`.
 
 | File | What it is |
 |---|---|
 | `parse_calib_dump.m` | Reads a blob file and prints each record |
 | `sc_find_size.m` | The `ShimCalib_findLength` table, in MATLAB |
-| `shimmer_calibration.m`, `shimmer_calibration.h` | The `SC_*` constants, kept in both languages |
-| `btCalV2Tx.py`, `btCalV2Rx.py`, `btCalv1Test.py` | Bluetooth `SET`/`GET_CALIB_DUMP` paging exercisers |
+| `shimmer_calibration.m` | The `SC_*` constants, in MATLAB |
 | `calib_36ad` | A real 175-byte blob: 10-byte header + 5 records x 33 B |
-| `changelog.txt`, `calib_dump.docx`, `calib_dump_structure.xlsx` | The format's original write-up |
+| `changelog.txt`, `calib_dump.docx`, `calib_dump_structure.xlsx`, `calib_dump_flowchart_20160802.pptx` | The format's original write-up |
 
 `calib_36ad` is a useful conformance fixture — its size is the arithmetic of
 §2.1 and §2.2 in one file — and `sc_find_size.m` is a second opinion on the
 length table. Both predate Shimmer3R and know nothing of IDs 37-43.
+
+The same folder in the internal CCS workspace (for example
+`FW_Shimmer3/LogAndStream/shimmer_calib_v2.0.4/`) additionally carries
+`btCalV2Tx.py`, `btCalV2Rx.py` and `btCalv1Test.py`, which page a dump over
+Bluetooth. They are not in this repository.
 
 Two divergences are worth knowing about:
 

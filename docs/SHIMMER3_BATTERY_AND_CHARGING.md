@@ -72,10 +72,17 @@ battValMV = raw * VREF_EXTERNAL_SUPPLY_MV / 4095 * 2;   /* 3.0 V ref, 12-bit, x2
 ```
 
 with `VREF_EXTERNAL_SUPPLY_MV` = 3000 on product hardware
-(`Shimmer_Driver/hal_Board.h:52-56`; 3300 only on the Nucleo build). The two
-formulas differ only in `4095` against the Shimmer3 shift's `4096` — 0.03 %,
-under a millivolt across the whole range — so **the millivolt columns in this
-document apply to both generations**: 2500 counts is about 3663 mV either way.
+(`Shimmer_Driver/hal_Board.h:52-56`; 3300 only on the Nucleo build). The macro
+is `data * vref / fullScale` with `fullScale` = 4095 at `ADC_RESOLUTION_12B`,
+which is what makes the two comparable at all.
+
+They differ only in `4095` against the Shimmer3 shift's `4096`: one part in
+4095, which is 2 mV at the top of the range and less below it. **The millivolt
+columns in this document are within 2 mV for both generations**, and the two
+agree exactly at some counts and differ by 2 at others — 2500 counts is 3662 mV
+on both, while full scale is 5998 mV on Shimmer3 and 6000 on Shimmer3R. Treat
+the columns as Shimmer3's arithmetic, good to 2 mV on a Shimmer3R; nothing in
+§2 depends on a millivolt.
 
 > **The ÷4 in `hal_adc.c` is not the battery.** It belongs to
 > `ADC_CHANNEL_VBAT`, the STM32's own internal backup-supply monitor, which is

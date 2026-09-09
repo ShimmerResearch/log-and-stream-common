@@ -124,10 +124,16 @@ three bytes of a 32-bit counter read at the sampling instant
 
 > **Two bytes on old Shimmer3 firmware.** LogAndStream 0.5.4 widened it to
 > three (`LogAndStream_Shimmer3/CHANGELOG.txt`, "3bytes ts - both log&stream",
-> the release that also introduced `GET_RWC`); BtStream did so at 0.7.3 and
-> SDLog at 0.11.5. Below those versions the field is 2 bytes and wraps every
-> **2 seconds**, which no host can survive without unwrapping. Take the width
-> from the firmware version, not from the packet.
+> the release that also introduced `GET_RWC`). The equivalent rungs for the
+> other two firmware families are BtStream 0.7.3 and SDLog 0.11.5, which come
+> from the host version ladder rather than from a changelog in this repository:
+> the Java driver widens the field at firmware version code 6
+> (`ShimmerObject#updateTimestampByteLength` against `ShimmerVerObject`), and
+> the web SDK's port names all three rungs
+> (`devices/shimmer3/protocol.ts`, `shimmer3UsesThreeByteTimestamp`). Below
+> those versions the field is 2 bytes and wraps every **2 seconds**, which no
+> host can survive without unwrapping. Take the width from the firmware
+> version, not from the packet.
 
 A host must unwrap it. The obvious approach — bump a rollover count whenever the
 raw value falls — is what most implementations use, but it is wrong twice over:
@@ -206,9 +212,11 @@ emits. `Encoding` and `SDK name` come from the web SDK's channel-format table.
 > analog channel is a right-aligned 12-bit conversion (§5.1), and the only
 > 14-bit resolution anywhere in the tree is compiled out under `SHIMMER4_SDK`
 > (`Shimmer_Driver/hal_adc.c:1036`). `u24` on the temperature row is right for
-> a Shimmer3R carrying a BMP180, BMP280 or BMP390 and wrong for one carrying a
-> BMP581, whose temperature register is **signed** (§5.5). Convert against §5
-> and §7, not against these strings.
+> a Shimmer3R carrying a BMP390 and wrong for one carrying a BMP581, whose
+> temperature register is **signed** (§5.5) — those are the only two parts a
+> Shimmer3R can report (`Comms/shimmer_bt_uart.c:2093-2095`), the BMP180 and
+> BMP280 branches being Shimmer3-only (§7.4). Convert against §5 and §7, not
+> against these strings.
 
 | ID | FW name | S3 meaning | S3R meaning | Bytes | Encoding | Java type string | Java channel name | SDK name | Flags |
 |---|---|---|---|---|---|---|---|---|---|
@@ -544,10 +552,16 @@ resolution (`Shimmer_Driver/hal_adc.c:1217-1219`).
 | Shimmer3 | `((raw * 3000) >> 12) * 2` | `shimmer3-firmware` `LogAndStream_Shimmer3/adc.c` |
 | Shimmer3R | `raw * 3000 / 4095 * 2` | `Shimmer_Driver/hal_adc.c:1214-1219`, `saveBatteryVoltageAndUpdateStatus` |
 
-The two differ by one part in 4096, 0.03%. **The firmware's divider figure is
-2.** The Java reference's `SensorBattVoltage` class carries 1.988 while its own
-live path uses 2; take the firmware's. How the firmware then classifies the
-reading is in
+The two firmware formulas differ by one part in 4095, which is 2 mV at full
+scale and less below it.
+
+**The divider is 2, and the Java reference disagrees with itself about that.**
+Its older monolithic packet path multiplies by 2
+(`driver/ShimmerObject.java:1343`), while its newer per-sensor class multiplies
+by `BATTERY_VOLTAGE_DIVIDER_RATIO` = 1.988
+(`sensors/SensorBattVoltage.java:70,213-214`) — so which figure a host inherits
+depends on which of the two object models it drives. Take the firmware's 2. How
+the firmware then classifies the reading is in
 [SHIMMER3_BATTERY_AND_CHARGING.md](SHIMMER3_BATTERY_AND_CHARGING.md) §1.
 
 > **The ÷4 in `hal_adc.c` is not the battery.** It belongs to the STM32's
@@ -557,7 +571,8 @@ reading is in
 An earlier revision of this section said the Java driver "applies a two-point
 calibration to ADC channels where one has been stored". **There is nowhere on
 the device to store one** — no InfoMem field, no calibration-dump record id, and
-`ShimCalib_findLength` returns 0 for every non-kinematic sensor. The sentence
+no length in `ShimCalib_findLength` for any analog channel (§7.8; the one
+non-kinematic id with a length is BMP180's, which nothing fills). The sentence
 has been removed rather than softened: it sent hosts looking for storage that
 does not exist.
 

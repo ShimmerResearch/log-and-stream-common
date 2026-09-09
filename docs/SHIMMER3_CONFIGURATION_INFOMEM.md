@@ -645,6 +645,15 @@ wins over 16-bit.
 > lists are a superset of this table for exactly that reason, and Consensys
 > corrects against them before a write. A host that relies only on the firmware
 > rules will happily store a configuration that no physical device can satisfy.
+>
+> Those lists are easy to look for and not find. Almost every Shimmer3 entry
+> passes its list as **argument 5 of the eight-argument `SensorDetailsRef`
+> constructor** rather than assigning the field, so a search for
+> `mListOfSensorIdsConflicting =` turns up the Shimmer2 block and little else.
+> Read the constructor calls: `sensors/SensorGSR.java:139-167` names both
+> internal ADC channels, the bridge amplifier and the host ExG modes, and
+> `sensors/SensorBridgeAmp.java:97-121` names GSR back, which is the pair the
+> firmware has no rule for.
 
 ### 10.2 Forced-on channels
 
@@ -829,16 +838,26 @@ That makes it the one enable bit a host must reason about itself:
 
 | Expansion board | What the bit powers | Channels with no measurement without it |
 |---|---|---|
-| GSR+ (SR47-style GSR unified) | `SW_PPG_POWER`, plus the SR48-6.0 GSR switch | `GSR_RAW`, PPG on `INTERNAL_ADC_*` |
+| GSR+ (SR48, `EXP_BRD_GSR_UNIFIED`) | `SW_PPG_POWER` | `GSR_RAW`, PPG on `INTERNAL_ADC_*` |
 | Bridge Amp+ (SR49) | `SW_BRIDGE_AMP_PWR` when the bridge channel is on, `SW_VOLTAGE_DIVIDER_PWR` when internal ADC 3 is on | `STRAIN_HIGH`, `STRAIN_LOW`, the divider on internal ADC 3 |
 | Proto3 Deluxe | `SW_PROTO3_DELUXE_PWR` | Whatever the user has wired to the switched supply |
 | ExG (SR47) on **Shimmer3R** | **nothing** | none — see below |
+
+The board numbers are `Boards/shimmer_boards.h:36-38`: ExG unified is 47, GSR
+unified 48, bridge-amplifier unified 49.
 
 The Shimmer3R fan-out is per board: `Board_setExpansionBrdPower` tests the
 daughter-card id and does nothing at all for any board other than those three
 (`shimmer3r-firmware` `Shimmer_Driver/hal_Board.c:593-628`). Shimmer3 has no
 such fan-out — the bit drives one GPIO for the whole rail
 (`shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_Board.c:458-469`).
+
+> **One line in that fan-out does not follow the bit.** On an SR48-6.0 with GSR
+> enabled it calls `Board_SR48_6_0_SW_GSR(0)` — a literal zero, not `state`
+> (`Shimmer_Driver/hal_Board.c:606`) — so that switch is driven low both when
+> the rail is raised at sensing start and when it is lowered at the end. Read
+> the table above as "what the bit is wired to", not as "what the bit sets", on
+> that one board.
 
 > **On Shimmer3R the bit does not power the ExG front end, and it is still
 > worth setting.** The ADS1292R is brought up through its reset line instead
