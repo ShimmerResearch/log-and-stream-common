@@ -621,12 +621,41 @@ an ACK and different bytes on read-back.
 In every case **the ADC channel loses**, except the ExG width rule where 24-bit
 wins over 16-bit.
 
+> **These rules arbitrate shared ADC inputs, and nothing else.** They exist
+> because two channels would be reading the same pin, so the firmware has to
+> pick one. They say nothing about combinations that are impossible for other
+> reasons: GSR together with ExG, or ExG together with the bridge amplifier,
+> are each two different expansion boards competing for one connector, and the
+> firmware accepts both bitmaps without complaint. Host software carries the
+> broader rule set — the Java driver's `SensorDetailsRef.mListOfSensorIdsConflicting`
+> lists are a superset of this table for exactly that reason, and Consensys
+> corrects against them before a write. A host that relies only on the firmware
+> rules will happily store a configuration that no physical device can satisfy.
+
 ### 10.2 Forced-on channels
 
 `chEnSkinTemp` or `chEnResAmp` set forces `chEnIntADC1` (S3) /
 `chEnIntADC3` (S3R) **on**. This is the one rule that enables rather than
 disables, and it does not set the corrected flag, so it is applied without the
 image being written back on that account alone.
+
+> **Ordering matters, and the two rules disagree.** The GSR exclusion runs
+> first (`Configuration/shimmer_config.c:807-821`) and clears the internal ADC
+> channel; the force-on rule runs afterwards (`:867-874`) and sets the same bit
+> straight back. Enable GSR and skin temperature together and the stored image
+> ends up with **both** `chEnGsr` and the internal ADC channel set — a
+> combination §10.1 exists to forbid — and because the force-on rule does not
+> raise `settingCorrected`, the image need never be written back for the host to
+> read it that way.
+>
+> Nothing streams twice, though: the conflict is resolved again when the channel
+> list is built, and there GSR wins. Both packers emit `GSR_RAW` when
+> `chEnGsr` is set and `INTERNAL_ADC_3` only otherwise
+> (`shimmer3r-firmware` `Core/Src/spi.c:1639-1657` for the ADS7028 path,
+> `Shimmer_Driver/hal_adc.c:323-341` for the MCU path). So skin temperature
+> silently does not stream while GSR is on, and the stored bitmap is not a
+> reliable description of the packet. Take the channel list from the inquiry
+> response.
 
 ### 10.3 Value clamps
 
@@ -770,6 +799,53 @@ running firmware without it is not left in the bad state.
 
 `ShimSdSync_checkSyncCenterName` also runs here and may adjust the sync
 configuration.
+
+### 10.7 A relationship the firmware deliberately does not correct
+
+`expansionBoardPower` — byte 9 bit 0
+(`Configuration/shimmer_config.h:273`) — switches the expansion connector's
+power rail. It defaults to **off** (`Configuration/shimmer_config.c:205`), it
+is read exactly once, at the start of sensing
+(`Sensing/shimmer_sensing.c:181-184`, lowered again at `:399-402`), and it
+appears nowhere in `ShimConfig_checkAndCorrectConfig`
+(`Configuration/shimmer_config.c:802-1072`). No rule in this section derives
+it from the channels that need it.
+
+That makes it the one enable bit a host must reason about itself:
+
+| Expansion board | What the bit powers | Channels with no measurement without it |
+|---|---|---|
+| GSR+ (SR47-style GSR unified) | `SW_PPG_POWER`, plus the SR48-6.0 GSR switch | `GSR_RAW`, PPG on `INTERNAL_ADC_*` |
+| Bridge Amp+ (SR49) | `SW_BRIDGE_AMP_PWR` when the bridge channel is on, `SW_VOLTAGE_DIVIDER_PWR` when internal ADC 3 is on | `STRAIN_HIGH`, `STRAIN_LOW`, the divider on internal ADC 3 |
+| Proto3 Deluxe | `SW_PROTO3_DELUXE_PWR` | Whatever the user has wired to the switched supply |
+| ExG (SR47) on **Shimmer3R** | **nothing** | none — see below |
+
+The Shimmer3R fan-out is per board: `Board_setExpansionBrdPower` tests the
+daughter-card id and does nothing at all for any board other than those three
+(`shimmer3r-firmware` `Shimmer_Driver/hal_Board.c:593-628`). Shimmer3 has no
+such fan-out — the bit drives one GPIO for the whole rail
+(`shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_Board.c:458-469`).
+
+> **On Shimmer3R the bit does not power the ExG front end, and it is still
+> worth setting.** The ADS1292R is brought up through its reset line instead
+> (`Shimmer_Driver/EXG/ads1292.c:161-183`), which is why
+> `Board_setExpansionBrdPower` opens with the comment *"ExG is handled in SPI
+> stop sensing"* (`Shimmer_Driver/hal_Board.c:595`). So an ExG board on a
+> Shimmer3R streams with the bit clear. Consensys sets it for ExG regardless,
+> and a host should match that: the same stored image on a **Shimmer3** does
+> need it, because there the bit is the whole rail.
+
+> **The failure mode is a well-formed stream of zeros.** Nothing reports an
+> error: the channels are enabled, the packet is the right length, timestamps
+> advance, CRCs pass, and the IMU channels are perfectly fine. Only the
+> unpowered front end's output is wrong, and a flat signal is a legitimate
+> reading. See
+> [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §8.1.
+
+The rule host software applies, and the one Consensys uses, is: switch the rail
+on if GSR, the bridge amplifier or ExG is enabled; leave it as the user set it
+if only internal ADC channels are enabled, since a Proto3 board may or may not
+need it; otherwise switch it off.
 
 ## 11. Defaults
 

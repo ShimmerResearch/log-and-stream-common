@@ -239,7 +239,19 @@ silently disable the internal ADC channel
 ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.1).
 
 Enabling skin temperature or the resistance amplifier forces that same internal
-ADC channel **on**, which then collides with GSR.
+ADC channel **on**, which then collides with GSR — and the force-on rule runs
+**after** the exclusion rule, so a stored image can hold both bits at once. The
+collision is resolved again when the channel list is built, and there GSR wins:
+skin temperature simply does not stream while GSR is on. The ordering and its
+consequence are in
+[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.2.
+
+> **GSR also needs the expansion rail switched on, and nothing derives that.**
+> `expansionBoardPower` (InfoMem byte 9 bit 0) powers the GSR+ board's front
+> end; it defaults to off and no firmware rule sets it from the GSR enable bit.
+> With the bit clear a GSR channel streams a well-formed sequence of zeros or
+> unpowered noise, with valid CRCs and regular timestamps. See
+> [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.7.
 
 On Shimmer3, GSR must be the **last analog channel** in the packet — the source
 says so explicitly. See

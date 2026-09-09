@@ -434,6 +434,7 @@ Raw counts alone are not interpretable. To convert a packet a host must hold:
 | Pressure oversampling | InfoMem bytes 9 and 130 | Sample timing |
 | Pressure coefficients | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | Compensation |
 | ExG registers | InfoMem bytes 10-29 | Gain, reference, lead-off |
+| Expansion-board power | InfoMem byte 9 bit 0 | Whether GSR / PPG / bridge / skin-temp read anything at all (§8.1) |
 | CRC mode | Session state | Packet framing |
 
 > **Re-read after every configuration write.** Changing a range changes which
@@ -661,8 +662,13 @@ amplifier on the SR49 expansion board; conversion is an offset and gain applied
 per board revision, held in the Java driver's board configuration rather than
 in the firmware.
 
+Convert each as a 12-bit ADC channel first (§7.2); the board-specific offset
+and gain then apply to millivolts.
+
 Note that enabling the bridge amplifier forces two internal ADC channels off
-(InfoMem §10.1), because they share inputs.
+(InfoMem §10.1), because they share inputs — and that it reads nothing at all
+without the expansion-board power bit
+([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.7).
 
 ### 7.7 Timestamps
 
@@ -760,18 +766,20 @@ A conforming parser must:
 Every check in this document — the width total of rule 5, the CRC of §2.2, the
 timestamp continuity of §7.7 — validates the *transport*. All of them pass on a
 packet whose sample values are stale or zero, because the packet is genuinely
-well formed. Two configuration faults look exactly like this:
+well formed. Three configuration faults look exactly like this:
 
 | What is seen | Cause |
 |---|---|
 | The same reading repeated across several packets, timestamps advancing normally, 0% packet loss, CRCs valid | The sensor's output rate is **below** the packet rate, so the firmware reads the same conversion more than once |
 | All-zero data on every channel of one sensor, unchanged across reconnections | That sensor's output rate is set to its **power-down** code while its channels are enabled |
+| Zeros, or an unpowered front end's noise, on GSR / PPG / bridge-amp / skin-temp while the IMU channels are fine; CRCs valid; unchanged across reconnections | The expansion-board power bit (InfoMem byte 9 bit 0) is off. The firmware does not derive it from the channel enables — [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.7 |
 
-Both are stored-configuration faults, not streaming faults, and no parser-side
-check can distinguish them from real data — a flat signal is a legitimate
-reading. The invariant being violated, the per-sensor rate tables, and how a
+All three are stored-configuration faults, not streaming faults, and no
+parser-side check can distinguish them from real data — a flat signal is a
+legitimate reading. The rate invariant, the per-sensor rate tables, and how a
 host is supposed to keep them coherent are in
-[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.6.
+[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.6;
+the expansion rail is §10.7 of the same document.
 
 Worth knowing before investigating a "corrupt stream" report: if the packet
 structure validates and only the *values* look wrong, the radio is not the place

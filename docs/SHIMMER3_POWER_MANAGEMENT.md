@@ -147,9 +147,13 @@ if (ShimConfig_isExpansionBoardPwrEnabled())
     Board_setExpansionBrdPower(1);
 ```
 
-**Default is off.** A trial using an expansion board that needs power must set
-the bit; the symptom of forgetting is a board that reads as absent or returns
-zeros.
+**Default is off, and nothing derives it.** No firmware rule turns the bit on
+because a channel that needs the rail was enabled — it is absent from
+`ShimConfig_checkAndCorrectConfig` entirely, so a host that sets the GSR,
+bridge-amplifier or ExG channels and leaves this bit clear gets a well-formed
+stream of zeros or unpowered noise with valid CRCs. Which boards the bit
+actually powers, and the one case where it powers nothing, are tabulated in
+[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.7.
 
 ### 4.3 Sensor rails (Shimmer3R)
 
