@@ -79,6 +79,16 @@ Pressure sensors are calibrated by a completely different mechanism: the part's
 own factory trim coefficients, read straight out of the sensor and passed to
 the host uninterpreted (§5).
 
+> **The inertial sensors are the only ones with calibration on the device.**
+> Battery voltage, the external and internal ADC channels, PPG, GSR, the bridge
+> amplifier and the ExG channels have none: their conversions are fixed formulas
+> derived from the board's components, and no calibration procedure adjusts
+> them. `ShimCalib_defaultAll` seeds four sensors on Shimmer3 and six on
+> Shimmer3R and no others (`Calibration/shimmer_calibration.c:388-403`), and
+> `ShimCalib_findLength` returns a block size for exactly those ids
+> (`:74-101`). The family-by-family table is in
+> [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.8.
+
 The same kinematic parameters exist in four places at once, and the firmware
 keeps them synchronised:
 
@@ -373,6 +383,20 @@ where `len` is `1 + coefficientByteCount` — it counts the sensor-ID byte.
 > can positively identify the fitted part — a NACK would be ambiguous with older
 > firmware that does not implement the command at all.
 
+> **These coefficients are not stored in the calibration dump.**
+> `ShimCalib_findLength` does return 22 for `SC_SENSOR_BMP180_PRESSURE` (id 36)
+> under `SHIMMER3` (`Calibration/shimmer_calibration.h:106`, `:153`), so a host
+> can write a record under that id and read it back, but nothing in the firmware
+> fills it, reads it or copies it anywhere — those two lines are its only
+> mentions in the tree, and the matching InfoMem slot was reserved and then
+> commented out (`Configuration/shimmer_config.h:136`). Always fetch the
+> coefficients from the part.
+
+How to apply each part's coefficients — the register widths and signedness, the
+BMP180 oversampling shift, the BMP280 temperature shift, and the BMP581's
+pre-compensated scaling — is in
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.4.
+
 Two legacy part-specific commands remain for backward compatibility:
 
 | Command | Behaviour |
@@ -508,6 +532,14 @@ Units by sensor type:
 | Accelerometer | m/s^2 |
 | Gyroscope | deg/s |
 | Magnetometer | counts ÷ sensitivity (see the note in *Still unverified*) |
+
+> **This model applies to the kinematic sensors and nothing else.** It is
+> tempting to read `C = inv(R) * inv(K) * (U - B)` as *the* Shimmer conversion,
+> but no other channel has an `R`, a `K` or a `B` to fetch. Battery voltage, the
+> ADC channels, PPG, GSR, the bridge amplifier, the ExG channels and pressure
+> each have their own fixed formula, listed in
+> [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §7 with
+> the family-by-family summary in §7.8 of that document.
 
 ### 7.1 Degenerate matrices
 

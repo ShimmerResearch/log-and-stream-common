@@ -400,8 +400,11 @@ resistor mid-stream, so the range is not a constant for the trial.
 | Shimmer3 | 2 bytes | 3 bytes |
 | Shimmer3R | 3 bytes | 3 bytes |
 
-Both are unsigned and raw — the compensation formula and the part's coefficient
-block turn them into physical units (§7.4).
+Both are raw — the compensation formula and the part's coefficient block turn
+them into physical units (§7.4). Both are unsigned, with one exception: a
+**Shimmer3R carrying a BMP581** streams temperature as a **signed** 24-bit
+two's-complement value, because that part self-compensates and the firmware
+relays its output register untouched (§7.4).
 
 ### 5.6 The width problem
 
@@ -559,13 +562,48 @@ them:
 | BMP390 | 2 | 21 | Both |
 | BMP581 | 3 | **0** | Shimmer3R. Outputs pre-compensated data |
 
-Fetch with `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND`, whose reply carries
-the sensor ID so the host knows which compensation formula to apply — see
-[SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §5. The formulae themselves
-are Bosch's and are in each part's datasheet; the firmware does not implement
-them.
+Fetch with `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` (0xA7). The reply is
 
-For the BMP581 the raw values are already compensated: scale and use directly.
+```
+[0xA6][1 + n][sensorId][coeffs × n]
+```
+
+— the length byte **counts the sensor id** (`Comms/shimmer_bt_uart.c:2064-2099`;
+ids at `Comms/shimmer_bt_uart.h:297-301`). The id is sent in-band precisely so a
+BMP581's empty coefficient block is distinguishable from an older firmware's
+NACK. The legacy `0x59` and `0xA0` commands are Shimmer3-only and NACK on
+Shimmer3R. Layout detail is in
+[SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §5; the compensation formulae
+themselves are Bosch's, in each part's datasheet — the firmware implements none
+of them.
+
+Two shifts are needed before the datasheet's algorithm sees the values, because
+its `adc_T` and `adc_P` are **20-bit** and the packet does not carry the chip's
+XLSB register:
+
+| Part | Temperature in | Pressure in |
+|---|---|---|
+| BMP180 | as sent | `raw >> (8 - oss)`, `oss` being the configured oversampling |
+| BMP280 | `raw << 4` | `raw >> 4` |
+| BMP390 | as sent | as sent |
+
+**BMP581 (Shimmer3R).** The six bytes are the part's own compensated output
+registers, relayed as-is. The firmware reads from `TEMP_DATA_XLSB` and swaps the
+two blocks so the packet keeps the BMP390 order, pressure first
+(`shimmer3r-firmware` `Core/Src/spi.c:1382-1393`;
+`Shimmer_Driver/BMP5/hal_bmp5.c:415-422`). Both fields are 3 bytes
+little-endian:
+
+| Channel | Encoding | Scale (Bosch API, `Shimmer_Driver/BMP5/BMP5_SensorAPI/bmp5.c:682-720`) |
+|---|---|---|
+| `BMP_PRESSURE` | `u24` LE | Pa = raw / 64 |
+| `BMP_TEMPERATURE` | **`i24`** LE, two's complement | °C = raw / 65536 |
+
+> **A BMP581 whose NVM trim has not loaded streams uncompensated values with no
+> in-band indication.** The driver checks `STATUS.nvm_rdy`/`nvm_err`, retries
+> three times and refuses to configure a part that never came up
+> (`Shimmer_Driver/BMP5/hal_bmp5.c:117-126`), so a stream that starts at all is
+> trustworthy — but nothing in the data itself says which case applies.
 
 ### 7.5 ExG
 
@@ -641,6 +679,54 @@ Note that enabling the bridge amplifier forces two internal ADC channels off
 > placed on an absolute timeline — but by different arithmetic. See
 > [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.3 and
 > [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
+
+### 7.8 What the device does and does not calibrate
+
+Only the kinematic sensors have calibration stored on the device. Every other
+conversion in §7 is a **fixed formula** compiled into the host, derived from the
+board's components — there is nothing per-unit to fetch and nothing a
+calibration procedure can adjust.
+
+The store's own contents say so. `ShimCalib_defaultAll` seeds four sensors on
+Shimmer3 and six on Shimmer3R and no others
+(`Calibration/shimmer_calibration.c:388-403`), `ShimCalib_findLength` returns a
+non-zero block size for exactly those ids
+(`Calibration/shimmer_calibration.c:74-101`), and the InfoMem reserves a
+21-byte block per kinematic sensor and for nothing else
+(`Configuration/shimmer_config.h:102-105` and `:118-119`).
+
+| Channel family | Calibration on the device | What the host applies |
+|---|---|---|
+| LN accel, WR accel, alt accel, gyro, mag, alt mag | **Yes** — 21-byte bias / sensitivity / alignment block per sensor **per range** | That block (§7.1). Absent or default-timestamped → the range's nominal sensitivity |
+| VBATT | No | `raw × 3000 / 4095 × 2` (§7.2) |
+| External and internal ADC, PPG | No | `raw × 3000 / 4095` (§7.2) |
+| GSR | No | The per-range amplifier equation, range read per sample (§7.3) |
+| Bridge amplifier / strain | No | The SR49 board's fixed offset and gain (§7.6) |
+| ExG | No | The chip's own gain and reference registers, read back over the link (§7.5) |
+| BMP pressure and temperature | No — see below | Bosch compensation with coefficients fetched from the chip (§7.4) |
+| Timestamp | No | Unwrap and divide by 32768 (§7.7) |
+
+> **The pressure coefficients are not in the calibration store, on either
+> platform.** `ShimCalib_findLength` does return 22 for
+> `SC_SENSOR_BMP180_PRESSURE` (id 36) under `SHIMMER3`
+> (`Calibration/shimmer_calibration.h:106`, `:153`), so a host can write a
+> 22-byte record under that id and read it back — but the firmware never fills
+> it, never reads it, and never copies it anywhere: those two lines are the
+> only mentions of the id in the whole tree. The matching InfoMem slot was
+> reserved and then commented out
+> (`Configuration/shimmer_config.h:136`). Fetch the coefficients from the chip
+> with `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` (§7.4); a record found
+> under id 36 in a dump is something a host put there.
+
+> **Unrecognised ids are stored but never applied.** `SET_CALIB_DUMP_COMMAND`
+> writes bytes straight into the calibration RAM blob at a host-chosen offset
+> (`Comms/shimmer_bt_uart.c:1175-1190`), which is then persisted and served
+> back verbatim. Only the known sensor ids are pushed on into the InfoMem
+> blocks and the SD header
+> (`Calibration/shimmer_calibration.c:1063-1079`). So a round trip through the
+> device is not evidence that the device understands what was written: a
+> mis-typed id survives the write, the read-back and a power cycle, while
+> changing nothing about the data that streams.
 
 ## 8. Normative interpretation rules
 
