@@ -12,7 +12,7 @@ logging, so a parser written from this document reads both.
 > being wrong, and the `file:line` references throughout only resolve because
 > the revision is pinned here.
 >
-> - **Firmware (authority for bytes):** `log-and-stream-common` @ `f3cf73e` —
+> - **Firmware (authority for bytes):** `log-and-stream-common` @ `ff242a6` —
 >   `Sensing/shimmer_sensing.h` (packet layout `#define`s, channel-ID `#define`s
 >   per platform, `MAX_NUM_CHANNELS`), `Sensing/shimmer_sensing.c`
 >   (`ShimSens_configureChannels` — channel order and `dataLen` accumulation),
@@ -20,7 +20,7 @@ logging, so a parser written from this document reads both.
 > - **Platform packers (channel order and byte widths):** `shimmer3-firmware` @
 >   `2765ff4` — `LogAndStream_Shimmer3/adc.c`, `i2c.c`, `spi.c` (plus
 >   `Shimmer_Driver/BMPX80/bmpX80.h` for the pressure/temperature widths);
->   `shimmer3r-firmware` @ `a8f105e5` — `LogAndStream_Shimmer3R/Core/Src/i2c.c`,
+>   `shimmer3r-firmware` @ `8f800952` — `LogAndStream_Shimmer3R/Core/Src/i2c.c`,
 >   `Core/Src/spi.c`, `Shimmer_Driver/hal_adc.c`.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/Configuration.java` (`Shimmer3.Channel`,

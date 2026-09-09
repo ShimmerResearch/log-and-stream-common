@@ -7,10 +7,10 @@ the cell is nearly flat.
 > **Verified against** — the revisions these claims were read from. A pinned
 > commit is a citation, not a claim of currency.
 >
-> - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
+> - **Firmware:** `log-and-stream-common` @ `ff242a6` —
 >   `Battery/shimmer_battery.{h,c}` in full.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
->   `shimmer3r-firmware` @ `a8f105e5` — the ADC sampling and charger-chip
+>   `shimmer3r-firmware` @ `8f800952` — the ADC sampling and charger-chip
 >   pin reads that feed `ShimBatt_updateStatus`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =

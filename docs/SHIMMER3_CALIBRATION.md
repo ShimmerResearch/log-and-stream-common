@@ -15,7 +15,7 @@ firmware and the host SDKs.
 > being wrong, and the `file:line` references throughout only resolve because
 > the revision is pinned here.
 >
-> - **Firmware (authority for bytes):** `log-and-stream-common` @ `f3cf73e` —
+> - **Firmware (authority for bytes):** `log-and-stream-common` @ `ff242a6` —
 >   `Calibration/shimmer_calibration.h` (`sc_t` / `sc_data_u` / `sc_default_t`,
 >   the `SC_OFFSET_*` blob offsets, `SC_SENSOR_*` sensor IDs, `SC_SENSOR_RANGE_*`
 >   range codes, `SC_DATA_LEN_STD_IMU_CALIB`),
@@ -26,7 +26,7 @@ firmware and the host SDKs.
 >   (`ShimBt_replySingleSensorCalibCmd`, `ShimBt_calibrationChangeCommon`,
 >   the `GET`/`SET_CALIB_DUMP` handlers).
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`,
->   `shimmer3r-firmware` @ `a8f105e5`.
+>   `shimmer3r-firmware` @ `8f800952`.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — the `sensors/` calibration classes
 >   (`adxl371/SensorADXL371.java`, `bmpX80/SensorBMP390.java`,

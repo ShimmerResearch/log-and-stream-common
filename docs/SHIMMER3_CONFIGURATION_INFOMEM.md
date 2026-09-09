@@ -12,7 +12,7 @@ and mirrored into the SD-card file header.
 > being wrong, and the `file:line` references throughout only resolve because
 > the revision is pinned here.
 >
-> - **Firmware (authority for bytes):** `log-and-stream-common` @ `f3cf73e` —
+> - **Firmware (authority for bytes):** `log-and-stream-common` @ `ff242a6` —
 >   `Configuration/shimmer_config.h` (`NV_*` offset `#define`s, the `gConfigBytes`
 >   packed union with its `#if defined(SHIMMER3)` / `#if defined(SHIMMER3R)`
 >   variants), `Configuration/shimmer_config.c`
@@ -21,7 +21,7 @@ and mirrored into the SD-card file header.
 >   `Comms/shimmer_bt_uart.c` (paging and the per-setting write paths).
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4` —
 >   `LogAndStream_Shimmer3/Shimmer_Driver/5xx_HAL/hal_InfoMem.h`;
->   `shimmer3r-firmware` @ `a8f105e5` —
+>   `shimmer3r-firmware` @ `8f800952` —
 >   `LogAndStream_Shimmer3R/Shimmer_Driver/hal_Infomem.h`.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/shimmer2r3/ConfigByteLayoutShimmer3.java`,

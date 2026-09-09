@@ -13,13 +13,13 @@ has to be right for a recording to be placeable on a real timeline.
 > **Verified against** — the revisions these claims were read from. A pinned
 > commit is a citation, not a claim of currency.
 >
-> - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
+> - **Firmware:** `log-and-stream-common` @ `ff242a6` —
 >   `RTC/shimmer_rtc.{h,c}` in full; `Sensing/shimmer_sensing.h`
 >   (`PACKET_TIMESTAMP_LEN`); `SDCard/shimmer_sd_data_file.{h,c}`
 >   (`BIN_FILE_SPLIT_TIME_TICKS`, `ShimSdDataFile_writeSdHeaderToFile`);
 >   `SDCard/shimmer_sd_header.c` (`SDH_RTC_DIFF_*`).
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
->   `shimmer3r-firmware` @ `a8f105e5` — `RTC_get64`,
+>   `shimmer3r-firmware` @ `8f800952` — `RTC_get64`,
 >   `RTC_getRwcTimeDiffPtr`, `RTC_isRwcTimeSet`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =

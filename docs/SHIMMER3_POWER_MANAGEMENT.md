@@ -7,13 +7,13 @@ document is about consumption.
 
 > **Verified against** — the revisions these claims were read from.
 >
-> - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
+> - **Firmware:** `log-and-stream-common` @ `ff242a6` —
 >   `Platform/platform_api.{h,c}`, `TaskList/shimmer_taskList.c`,
 >   `log_and_stream_common.c`, `Configuration/shimmer_config.c`,
 >   `Battery/shimmer_battery.{h,c}`, `Sensing/shimmer_sensing.c`,
 >   `Comms/shimmer_sd_file_transfer.c`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
->   `shimmer3r-firmware` @ `a8f105e5`.
+>   `shimmer3r-firmware` @ `8f800952`.
 
 > **Scope.** The shared module decides *when* rails go on and off and when the
 > part may sleep; the actual low-power modes are platform code. This document

@@ -8,10 +8,10 @@ makes a range change visible in the data.
 > **Verified against** — the revisions these claims were read from. A pinned
 > commit is a citation, not a claim of currency.
 >
-> - **Firmware:** `log-and-stream-common` @ `f3cf73e` — `GSR/gsr.{h,c}` in
+> - **Firmware:** `log-and-stream-common` @ `ff242a6` — `GSR/gsr.{h,c}` in
 >   full.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
->   `shimmer3r-firmware` @ `a8f105e5` — the A0/A1 GPIO drive.
+>   `shimmer3r-firmware` @ `8f800952` — the A0/A1 GPIO drive.
 
 > **How to read this document.** **S3** = Shimmer3; **S3R** = Shimmer3R.
 > LogAndStream only. ADC values are raw converter counts.
