@@ -147,25 +147,28 @@ firmware is consistent — it applies no zone at all — and the failure comes f
 a host writing local civil time into the RWC and then interpreting the result
 as UTC, or vice versa.
 
-> **This document and the protocol document disagree, and the disagreement is
-> worth spelling out.**
-> [SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md)
-> §`SET_RWC_COMMAND` says host software has settled on **local civil time**,
-> *"because that is what makes logged data split at local midnight"*. That
-> rationale does not hold: nothing splits at midnight in any zone — files roll
-> every hour of sample time from when logging started, as above. And the
-> reference host does not do it: the Java driver writes
-> `System.currentTimeMillis()` unmodified, scaled by 32.768
+> **The reference host writes the plain Unix epoch, on both of its links.** The
+> Bluetooth path sends `System.currentTimeMillis()` scaled by 32.768
 > (`bluetooth/ShimmerBluetooth.java:691-696`,
-> `driverUtilities/UtilShimmer.java:convertMilliSecondsToShimmerRtcDataBytes*`),
-> which is plain Unix epoch time — UTC. The driver does carry
-> `getCurrentLocalTimezoneOffsetMillis` helpers, and nothing in the driver calls
-> them, so if a local-civil-time convention exists it is imposed by an
-> application above the driver, per installation, and is invisible on the wire.
+> `driverUtilities/UtilShimmer.java:convertMilliSecondsToShimmerRtcDataBytes*`)
+> and the dock path sends the same value to `RTC_CFG_TIME`
+> (`comms/wiredProtocol/CommsProtocolWiredShimmerViaDock.java:writeRealWorldClockFromPcTime`).
+> Neither applies a zone offset. The driver does carry
+> `getCurrentLocalTimezoneOffsetMillis`, and its only callers are in playback,
+> shifting recorded timestamps back to the civil time of the trial for
+> *display* — which is the correct place for a zone, and the reason it appears
+> nowhere on the write path.
 >
-> Take this document's rule: write Unix epoch ticks, convert for display only.
-> The protocol document's paragraph needs correcting at its next re-pin — it is
-> pinned to an older revision and is not edited here.
+> So this is not a convention this platform gets to choose per host: write Unix
+> epoch ticks, convert for display only, and a sensor set by the Java driver, by
+> desktop Consensys or by the web SDK all read back the same instant.
+>
+> **Local civil time is the Verisense convention**, and it does not belong here.
+> Verisense sets its real-world clock to the base station's local civil time, so
+> code or documentation moved across from it will be a whole timezone offset
+> adrift on a Shimmer3 or Shimmer3R — a mistake made at least twice in these
+> repositories, once in a host page and once in the protocol document's
+> `SET_RWC_COMMAND` caution, which now says the same as this section.
 
 ## 5. Time-of-day arithmetic and scheduling
 
