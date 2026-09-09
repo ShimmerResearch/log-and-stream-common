@@ -114,27 +114,48 @@ packet from a command response on the same stream.
 
 ### 2.1 The timestamp
 
-Three bytes, **little-endian**, counting ticks of the 32768 Hz clock. It is a
-free-running counter, not a time of day.
+Three bytes, **little-endian**, counting ticks of the 32768 Hz clock — the low
+three bytes of a 32-bit counter read at the sampling instant
+(`Sensing/shimmer_sensing.c:445-476`, both platforms).
 
 - **Resolution** is 1/32768 s, about 30.5 µs.
 - **Range** is 2^24 ticks = 16,777,216 ticks = **512 seconds exactly**, after
   which it wraps to zero.
 
-A host must unwrap it. The standard approach is to track the previous raw value
-and increment a rollover count whenever the new value is lower:
+> **Two bytes on old Shimmer3 firmware.** LogAndStream 0.5.4 widened it to
+> three (`LogAndStream_Shimmer3/CHANGELOG.txt`, "3bytes ts - both log&stream",
+> the release that also introduced `GET_RWC`); BtStream did so at 0.7.3 and
+> SDLog at 0.11.5. Below those versions the field is 2 bytes and wraps every
+> **2 seconds**, which no host can survive without unwrapping. Take the width
+> from the firmware version, not from the packet.
+
+A host must unwrap it. The obvious approach — bump a rollover count whenever the
+raw value falls — is what most implementations use, but it is wrong twice over:
+it double-counts on a single out-of-order packet, and it misses whole wraps
+across a gap. Compare against half the modulo instead, and cross-check long
+gaps against host elapsed time:
 
 ```
-if (rawNow < rawPrev) rolloverCount++;
-totalTicks = rawNow + rolloverCount * 16777216
-seconds    = totalTicks / 32768.0
+delta = (rawNow - rawPrev + modulo) % modulo     // modulo = 2^24, or 2^16
+if (delta > modulo / 2) { /* out of order: do not advance */ }
+else totalTicks += delta
+seconds = totalTicks / 32768.0
 ```
 
-> **Unwrapping fails if the host misses more than 512 seconds of packets.** The
-> counter gives no absolute reference, so a gap longer than one wrap period is
-> indistinguishable from a short one. A host that reconnects mid-trial cannot
-> recover absolute time from the stream alone; it must re-anchor against the
-> real-world clock. See [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
+At 2^24 the naive test costs nothing until a reorder or a 512 s gap; at 2^16 the
+whole modulo is 2 s, so a single missed Bluetooth window loses a wrap and the
+host cross-check is not optional.
+
+> **Unwrapping alone never gives absolute time.** The field carries no absolute
+> reference, so a gap longer than one wrap period is indistinguishable from a
+> short one. A host that reconnects mid-trial cannot recover absolute time from
+> the stream alone; it must re-anchor against the real-world clock. How well
+> that anchor can be made differs by generation, and it is not a detail: on
+> Shimmer3R these bytes **are** the low bytes of the real-world clock, so one
+> `GET_RWC` fixes the timeline exactly, whereas on Shimmer3 they are a
+> free-running counter whose offset from the clock never leaves the device. The
+> recipe for each is in §7.7; see also
+> [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
 
 > **The timestamp is the *sampling* instant, not the transmission instant.**
 > Bluetooth buffering and retransmission mean packets can arrive late, in
@@ -711,6 +732,29 @@ without the expansion-board power bit
    clock. The device's RWC is set by `SET_RWC_COMMAND` and read by
    `GET_RWC_COMMAND`; the offset between the free-running tick counter and the
    RWC is what converts one to the other.
+
+> **On Shimmer3R the packet timestamp IS the low 24 bits of the real-world
+> clock**, which makes an exact anchor possible from a single `GET_RWC`. The
+> packet takes `RTC_get32()` (`Sensing/shimmer_sensing.c:445-476`) and the clock
+> `RTC_get64()`; `RTC/shimmer_rtc.h:25-28` defines `RTC_getRwcTime` as the
+> latter, and `shimmer3r-firmware` `Core/Src/rtc.c` gives the two functions
+> identical bodies. So a host takes the value congruent to a sample's counter
+> (mod 2^24) nearest its estimate of now, and the result is right to the tick —
+> elapsed host time only has to be good to ±256 s to pick the wrap.
+>
+> **On Shimmer3 it is not.** That counter cannot be set: the real-world clock is
+> the counter plus a stored offset, `RTC_getRwcTime()` returning
+> `rwcTimeDiff64 + RTC_get64()`
+> (`shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_RTC.c:73-76`, set at `:78-86`).
+> That offset **never goes over Bluetooth** — only into an SD-file header
+> (`SDH_RTC_DIFF_*`) — so a Bluetooth host can only estimate where the counter
+> stood when the reply was composed. The usable recipe is to take the host clock
+> either side of the `GET_RWC` exchange, use the midpoint, and carry half the
+> round trip as the anchor's stated uncertainty.
+>
+> Either way the samples' **spacing** is exact, being the device's own counter;
+> it is only the constant offset that differs in quality between the two
+> platforms.
 
 > On Shimmer3 the SD header carries that offset in `SDH_RTC_DIFF_*`. On
 > Shimmer3R the same eight bytes instead carry the top three bytes of the
