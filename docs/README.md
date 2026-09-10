@@ -79,6 +79,13 @@ something that "should work".
 | A Shimmer3R recording cannot be placed in absolute time | The RTC-diff bytes are repurposed on Shimmer3R — [SD card](SHIMMER3_SD_CARD_FORMAT.md) §3.3 |
 | No sync offset recorded for a node | The first sync round is deliberately discarded — [SD sync](SHIMMER3_SD_SYNC.md) §4.3 |
 | Repeated identical GSR samples | The 80 ms settling hold after a range change — [GSR](SHIMMER3_GSR_AUTORANGE.md) §5.1 |
+| Zeros or unpowered noise on GSR / PPG / bridge / skin temp, with the IMU channels fine | The expansion-power bit is off, and no firmware rule derives it — [InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.7 |
+| ExG millivolts exactly 2x too large in 16-bit mode | The 16-bit word is bits 22:7 of the 24-bit conversion, so the denominator needs a factor of 2 — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.5 |
+| Shimmer3R ADC or battery millivolts 4x too small | The channel is 12-bit at 3.0 V; the div-by-four belongs to the MCU's own VBAT debug channel — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.2, [battery](SHIMMER3_BATTERY_AND_CHARGING.md) §1 |
+| Skin temperature does not stream although its bit is set | GSR wins the shared ADC input when the channel list is built — [InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.2 |
+| Uncalibrated magnetometer reads about 5x high on a Shimmer3 | LSM303AH boards are clamped to mag range 0, whose default seed carries the wrong sensitivities — [calibration](SHIMMER3_CALIBRATION.md) §6.1 |
+| `GET_ALT_ACCEL_CALIBRATION` returns 21 zeros after a successful write | On Shimmer3 those two blocks are write-only — [calibration](SHIMMER3_CALIBRATION.md) §4.1 |
+| VBATT is not the last channel on a Shimmer3R | An SR48-6.0 uses the MCU ADCs, which are configured first — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §4.2 |
 | GSR values out by a large constant factor | The range-pin reversal flag — [GSR](SHIMMER3_GSR_AUTORANGE.md) §2 |
 | Solid red LED and no battery indication | The host `TOGGLE_LED` override, never cleared by the firmware — [LEDs](SHIMMER3_LED_FEEDBACK.md) §4 |
 | A newer command gets no response at all | Older firmware ignores unknown opcodes rather than NACKing — [versioning](SHIMMER3_RELEASE_AND_VERSIONING.md) §6 |

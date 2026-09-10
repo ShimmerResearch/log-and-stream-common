@@ -15,7 +15,7 @@ firmware and the host SDKs.
 > being wrong, and the `file:line` references throughout only resolve because
 > the revision is pinned here.
 >
-> - **Firmware (authority for bytes):** `log-and-stream-common` @ `f3cf73e` —
+> - **Firmware (authority for bytes):** `log-and-stream-common` @ `ff242a6` —
 >   `Calibration/shimmer_calibration.h` (`sc_t` / `sc_data_u` / `sc_default_t`,
 >   the `SC_OFFSET_*` blob offsets, `SC_SENSOR_*` sensor IDs, `SC_SENSOR_RANGE_*`
 >   range codes, `SC_DATA_LEN_STD_IMU_CALIB`),
@@ -26,7 +26,7 @@ firmware and the host SDKs.
 >   (`ShimBt_replySingleSensorCalibCmd`, `ShimBt_calibrationChangeCommon`,
 >   the `GET`/`SET_CALIB_DUMP` handlers).
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`,
->   `shimmer3r-firmware` @ `a8f105e5`.
+>   `shimmer3r-firmware` @ `8f800952`.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — the `sensors/` calibration classes
 >   (`adxl371/SensorADXL371.java`, `bmpX80/SensorBMP390.java`,
@@ -78,6 +78,17 @@ rescale the current one.
 Pressure sensors are calibrated by a completely different mechanism: the part's
 own factory trim coefficients, read straight out of the sensor and passed to
 the host uninterpreted (§5).
+
+> **The inertial sensors are the only ones with calibration on the device.**
+> Battery voltage, the external and internal ADC channels, PPG, GSR, the bridge
+> amplifier and the ExG channels have none: their conversions are fixed formulas
+> derived from the board's components, and no calibration procedure adjusts
+> them. `ShimCalib_defaultAll` seeds four sensors on Shimmer3 and six on
+> Shimmer3R and no others (`Calibration/shimmer_calibration.c:388-403`), and
+> `ShimCalib_findLength` gives a block size to those ids and, on Shimmer3, to
+> one more that nothing ever fills — BMP180's, see §5 (`:74-101`). The
+> family-by-family table is in
+> [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.8.
 
 The same kinematic parameters exist in four places at once, and the firmware
 keeps them synchronised:
@@ -140,7 +151,7 @@ written verbatim to the SD card, and paged over Bluetooth in 128-byte chunks.
 ### 2.2 Per-sensor record
 
 Each record is a 12-byte header followed by `data_len` bytes of payload, laid
-out to match the packed `sc_t` struct:
+out to match the `sc_t` struct:
 
 | Offset in record | Name | Size | Meaning |
 |---:|---|---:|---|
@@ -149,6 +160,18 @@ out to match the packed `sc_t` struct:
 | 3 | `SC_OFFSET_SENSOR_LENGTH` | 1 | `data_len` — payload byte count |
 | 4 | `SC_OFFSET_SENSOR_TIMESTAMP` | 8 | Calibration timestamp, RWC ticks, little-endian |
 | 12 | `SC_OFFSET_SENSOR_DATA` | `data_len` | Payload — 21 bytes for every kinematic sensor |
+
+> **`sc_t` is not declared packed, and the firmware copies it as if it were.**
+> There is no `__attribute__((packed))` or `#pragma pack` on the declaration
+> (`Calibration/shimmer_calibration.h:68-75`); the offsets above hold because
+> the natural layout happens to have no padding — `uint16_t` at 0, two
+> `uint8_t`, an eight-byte array, then a union whose widest member is
+> `uint16_t`, so offset 12 is already aligned. The read and write paths
+> `memcpy` straight between the blob and the struct
+> (`Calibration/shimmer_calibration.c:298-301`), which is only correct while
+> that coincidence holds. Treat the table above as the specification and the
+> struct as an implementation that currently agrees with it: a host must parse
+> the offsets, never a compiler's idea of the struct.
 
 Records are found by linear scan from offset 10, stepping `12 + data_len` each
 time; there is no index. A record is identified by the **pair** (`id`, `range`),
@@ -294,8 +317,36 @@ promotes it into the dump if at least one byte differs from `0xFF`.
 | Gyroscope | `NV_GYRO_CALIBRATION` | 55 | both |
 | Magnetometer | `NV_MAG_CALIBRATION` | 76 | both |
 | Wide-range accel | `NV_WR_ACCEL_CALIBRATION` | 97 | both |
-| Alt. accel (ADXL371) | `NV_ALT_ACCEL_CALIBRATION` | 133 | S3R |
-| Alt. mag (LIS3MDL) | `NV_ALT_MAG_CALIBRATION` | 154 | S3R |
+| Alt. accel (ADXL371 / MPU9x50-ICM20948) | `NV_ALT_ACCEL_CALIBRATION` | 133 | both |
+| Alt. mag (LIS3MDL / MPU9x50-ICM20948) | `NV_ALT_MAG_CALIBRATION` | 154 | both |
+
+The last two rows say **both** because the offsets, the struct fields and the
+Bluetooth handlers are all unconditional: `gConfigBytes` declares
+`altAccelCalib` and `altMagCalib` outside any generation guard
+(`Configuration/shimmer_config.h:368-369`, matching the byte map at `:118-119`),
+and `SET_ALT_ACCEL_CALIBRATION_COMMAND` / `SET_ALT_MAG_CALIBRATION_COMMAND`
+write them on either platform (`Comms/shimmer_bt_uart.c:1521-1545`). On
+Shimmer3 they hold the MPU9x50/ICM20948 accelerometer and magnetometer.
+
+> **On Shimmer3 those two blocks are write-only.** The write lands in InfoMem
+> and in the SD header, and then `ShimBt_calibrationChangeCommon` hands the
+> sensor id to `ShimCalib_configBytesToCalibDump`
+> (`Comms/shimmer_bt_uart.c:1734`) — which under `SHIMMER3` has cases for the
+> analog accel, gyro, LSM303 accel and LSM303 mag and **none** for
+> `SC_SENSOR_MPU9X50_ICM20948_ACCEL` (33) or `_MAG` (34)
+> (`Calibration/shimmer_calibration.c:955-982`). Nor does
+> `ShimCalib_configBytes128To255ToCalibDumpBytes` cover them: its whole body is
+> inside `#if defined(SHIMMER3R)` (`:947-953`). So no record for those ids ever
+> enters the dump, and the matching `GET` reply is built by
+> `ShimCalib_singleSensorRead`, which zero-fills its buffer and returns "not
+> found" — a return value the caller ignores before sending the buffer anyway
+> (`Comms/shimmer_bt_uart.c:1820-1823`).
+>
+> A Shimmer3 therefore answers `GET_ALT_ACCEL_CALIBRATION_COMMAND` with **21
+> zero bytes** no matter what was written, while the value the host wrote is
+> sitting in InfoMem and in every subsequent SD file header. Read those blocks
+> back from the configuration bytes, not from the per-sensor command. On
+> Shimmer3R both directions work.
 
 Each occupies 21 bytes. The first four are contiguous from 34 to 117; the two
 Shimmer3R additions live in the second 128-byte configuration page, which is why
@@ -373,6 +424,20 @@ where `len` is `1 + coefficientByteCount` — it counts the sensor-ID byte.
 > can positively identify the fitted part — a NACK would be ambiguous with older
 > firmware that does not implement the command at all.
 
+> **These coefficients are not stored in the calibration dump.**
+> `ShimCalib_findLength` does return 22 for `SC_SENSOR_BMP180_PRESSURE` (id 36)
+> under `SHIMMER3` (`Calibration/shimmer_calibration.h:106`, `:153`), so a host
+> can write a record under that id and read it back, but nothing in the firmware
+> fills it, reads it or copies it anywhere — those two lines are its only
+> mentions in the tree, and the matching InfoMem slot was reserved and then
+> commented out (`Configuration/shimmer_config.h:136`). Always fetch the
+> coefficients from the part.
+
+How to apply each part's coefficients — the register widths and signedness, the
+BMP180 oversampling shift, the BMP280 temperature shift, and the BMP581's
+pre-compensated scaling — is in
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.4.
+
 Two legacy part-specific commands remain for backward compatibility:
 
 | Command | Behaviour |
@@ -389,6 +454,25 @@ the generic command and read the sensor ID.
 When no calibration is stored, the firmware seeds a default set for every
 sensor and every range it knows about. `ShimCalib_defaultAll` runs from
 `ShimCalib_init`.
+
+That fixes the size of a factory-fresh blob, which is worth knowing because it
+is what a host sees on a device that has never been calibrated:
+
+| | Records | Length field | Blob on the wire |
+|---|---:|---:|---:|
+| Shimmer3 | 16 — analog accel x1, gyro x4, LSM303 accel x4, LSM303 mag x7 | 536 | **538 B** |
+| Shimmer3R | 20 — LSM6DSV accel x4, gyro x6, LIS2DW12 x4, ADXL371 x1, LIS3MDL x4, LIS2MDL x1 | 668 | **670 B** |
+
+Each record is 33 bytes (12-byte header + 21-byte payload), the header is 10
+bytes, and `ShimCalib_init` starts the length field at 8 — so the field is
+`8 + 33n` and the blob is two bytes longer (§2.1). The range counts come from
+the seed loops' own bounds, and the two generations state them differently:
+Shimmer3's loops run against the `SC_SENSOR_RANGE_MAX_*` constants
+(`Calibration/shimmer_calibration.h:124-152`, all four inside
+`#if defined(SHIMMER3)`), while Shimmer3R's are bare literals in the loop
+headers (`Calibration/shimmer_calibration.c:654`, `:699`, `:785`, `:860`).
+The 175-byte fixture in `Extras/shimmer_calib_v2.0.4/calib_36ad` is the same
+arithmetic on five records: 8 + 33x5 = 173, plus 2.
 
 Values below are shown **as written in the C source** — that is, before
 `ShimCalib_reverseBiasAndSensitivityByteOrder` byte-swaps bias and sensitivity
@@ -408,19 +492,36 @@ actually applies.
 | | | 1 (±4 g) | 0 | 815 |
 | | | 2 (±8 g) | 0 | 408 |
 | | | 3 (±16 g) | 0 | 135 |
-| LSM303 mag | 32 | 1 (±1.3 Ga) | 0 | 1100 / 1100 / 980 |
+| LSM303 mag | 32 | **0 (no range — see below)** | 0 | 230 / 230 / 205 |
+| | | 1 (±1.3 Ga) | 0 | 1100 / 1100 / 980 |
 | | | 2 (±1.9 Ga) | 0 | 855 / 855 / 760 |
 | | | 3 (±2.5 Ga) | 0 | 670 / 670 / 600 |
 | | | 4 (±4.0 Ga) | 0 | 450 / 450 / 400 |
 | | | 5 (±4.7 Ga) | 0 | 400 / 400 / 355 |
 | | | 6 (±5.6 Ga) | 0 | 330 / 330 / 295 |
-| | | 7 (±8.1 Ga) | 0 | 230 / 230 / 205 |
+| | | 7 (±8.1 Ga) | — | **never seeded** |
 
 Where three sensitivity values are given they are X / Y / Z; the LSM303
-magnetometer is the only sensor with an anisotropic default. Note that the
-magnetometer range codes start at **1**, not 0, and that the ±16 g
+magnetometer is the only sensor with an anisotropic default. Note that the ±16 g
 accelerometer default of 135 does not follow the halving pattern of the lower
 ranges.
+
+> **The magnetometer's range-0 record carries the ±8.1 Ga sensitivities, and it
+> is the record an LSM303AH board actually uses.** The range constants run 1-7
+> (`Calibration/shimmer_calibration.h:141-147`) while the seed loop runs
+> `range < SC_SENSOR_RANGE_MAX_LSM303_MAG`, i.e. 0-6
+> (`Calibration/shimmer_calibration.c:585`). Code 0 matches none of the
+> comparisons and falls into the final `else`, which is commented as the ±8.1 Ga
+> case; code 7 is never written. That would be harmless if code 0 were unused —
+> but `ShimConfig_checkAndCorrectConfig` forces `magRange = 0` on every Shimmer3
+> whose wide-range accelerometer is **not** an LSM303DLHC, i.e. on every
+> LSM303AH board (`Configuration/shimmer_config.c:927-933`). Such a device
+> therefore selects a default whose sensitivity is roughly a factor of five too
+> small for the range in force, and an uncalibrated magnetometer reads about
+> five times high. Writing a real calibration for range 0 fixes it; the
+> off-by-one itself is listed under *Still unverified* as a firmware defect. The
+> `magRange` clamp is cross-referenced in
+> [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.3.
 
 Alignment matrices, Shimmer3:
 
@@ -461,6 +562,23 @@ Alignment matrices, Shimmer3:
 > 229 rather than the 228.6 the part's nominal 4.375 mdps/LSB would give — the
 > default carries roughly 0.2 % of scale error by construction and is only a
 > placeholder until a real calibration is written.
+
+> **Range codes in the blob are configuration codes, not chip register
+> values.** The LSM6DSV numbers its ±4000 dps full scale `0x0C`
+> (`Shimmer_Driver/LSM6DSV/lsm6dsv-pid/lsm6dsv_reg.h:3822-3829`), but the
+> configuration byte and the calibration record both use **5**; the driver call
+> site does the remap (`shimmer3r-firmware` `Core/Src/spi.c:907-911`, commented
+> "Shimmer config maps 0x05 to the chip's 0x0C"). A host that keys calibration
+> records on the chip value finds nothing at ±4000 dps.
+>
+> The seed loop shows the seam. Its explicit comparisons stop at
+> `LSM6DSV_2000dps`, and configuration code 5 is caught by a bare `else`
+> carrying the comment `//(sc1Ptr->range == LSM6DSV_4000dps)`
+> (`Calibration/shimmer_calibration.c:718-725`). The stored value is right, and
+> the comment is a trap for the next reader: written as a condition it would
+> never be true, because the loop runs over configuration codes 0-5 while
+> `LSM6DSV_4000dps` is the chip's `0x0C`. The chain's earlier comparisons work
+> only because the two numberings agree below 4000 dps.
 
 > **The ADXL371 default is a placeholder.** Bias 10 and sensitivity 1 are
 > commented in the source as "+1 g" and "100 mg/LSB which equates to
@@ -508,6 +626,14 @@ Units by sensor type:
 | Accelerometer | m/s^2 |
 | Gyroscope | deg/s |
 | Magnetometer | counts ÷ sensitivity (see the note in *Still unverified*) |
+
+> **This model applies to the kinematic sensors and nothing else.** It is
+> tempting to read `C = inv(R) * inv(K) * (U - B)` as *the* Shimmer conversion,
+> but no other channel has an `R`, a `K` or a `B` to fetch. Battery voltage, the
+> ADC channels, PPG, GSR, the bridge amplifier, the ExG channels and pressure
+> each have their own fixed formula, listed in
+> [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §7 with
+> the family-by-family summary in §7.8 of that document.
 
 ### 7.1 Degenerate matrices
 
@@ -596,6 +722,27 @@ bytes and InfoMem immediately; only the SD file lags.
 | Dump blob codec | dump parsing in `ShimmerObject` | `devices/calibration/dump.ts` |
 | Default seeds | per-sensor classes under `sensors/` | `devices/calibration/defaults.ts` |
 
+A third implementation ships **in this repository**, and is worth knowing
+about when reading old blobs: the MATLAB tooling in
+`Extras/shimmer_calib_v2.0.4/`.
+
+| File | What it is |
+|---|---|
+| `parse_calib_dump.m` | Reads a blob file and prints each record |
+| `sc_find_size.m` | The `ShimCalib_findLength` table, in MATLAB |
+| `shimmer_calibration.m` | The `SC_*` constants, in MATLAB |
+| `calib_36ad` | A real 175-byte blob: 10-byte header + 5 records x 33 B |
+| `changelog.txt`, `calib_dump.docx`, `calib_dump_structure.xlsx`, `calib_dump_flowchart_20160802.pptx` | The format's original write-up |
+
+`calib_36ad` is a useful conformance fixture — its size is the arithmetic of
+§2.1 and §2.2 in one file — and `sc_find_size.m` is a second opinion on the
+length table. Both predate Shimmer3R and know nothing of IDs 37-43.
+
+The same folder in the internal CCS workspace (for example
+`FW_Shimmer3/LogAndStream/shimmer_calib_v2.0.4/`) additionally carries
+`btCalV2Tx.py`, `btCalV2Rx.py` and `btCalv1Test.py`, which page a dump over
+Bluetooth. They are not in this repository.
+
 Two divergences are worth knowing about:
 
 - **Java truncates, it does not round, when serialising the bias.**
@@ -631,9 +778,14 @@ Two divergences are worth knowing about:
   `case` label that returns its length; there is no writer. A record with this
   ID in a blob came from a host, and the firmware would store and echo it
   without using it.
-- **Shimmer3 magnetometer range code 0.** `SC_SENSOR_RANGE_MAX_LSM303_MAG` is 7
-  and the seed loop runs `range < 7`, i.e. codes 0-6, but the value assignments
-  are keyed to codes 1-7. Code 0 therefore receives the final `else` branch
-  (the ±8.1 Ga sensitivities) and code 7 is never seeded at all. Whether the
-  off-by-one is in the loop bound or in the constants was not resolved; it has
-  been raised as a firmware defect.
+- **Shimmer3 magnetometer range code 0** — *partly resolved.*
+  `SC_SENSOR_RANGE_MAX_LSM303_MAG` is 7 and the seed loop runs `range < 7`, i.e.
+  codes 0-6, but the value assignments are keyed to codes 1-7. Code 0 therefore
+  receives the final `else` branch (the ±8.1 Ga sensitivities) and code 7 is
+  never seeded at all. What is now known is that code 0 is **not** unreachable:
+  `ShimConfig_checkAndCorrectConfig` forces `magRange = 0` on every
+  non-LSM303DLHC Shimmer3 (`Configuration/shimmer_config.c:927-933`), so
+  LSM303AH boards use precisely the mis-seeded record — see the callout in
+  §6.1. What is still unresolved is whether the off-by-one belongs in the loop
+  bound or in the constants, and therefore what the intended default for an
+  LSM303AH is; it has been raised as a firmware defect.

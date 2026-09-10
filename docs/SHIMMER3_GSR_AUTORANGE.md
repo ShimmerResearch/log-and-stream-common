@@ -8,10 +8,10 @@ makes a range change visible in the data.
 > **Verified against** — the revisions these claims were read from. A pinned
 > commit is a citation, not a claim of currency.
 >
-> - **Firmware:** `log-and-stream-common` @ `f3cf73e` — `GSR/gsr.{h,c}` in
+> - **Firmware:** `log-and-stream-common` @ `ff242a6` — `GSR/gsr.{h,c}` in
 >   full.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
->   `shimmer3r-firmware` @ `a8f105e5` — the A0/A1 GPIO drive.
+>   `shimmer3r-firmware` @ `8f800952` — the A0/A1 GPIO drive.
 
 > **How to read this document.** **S3** = Shimmer3; **S3R** = Shimmer3R.
 > LogAndStream only. ADC values are raw converter counts.
@@ -73,7 +73,7 @@ round; it is set by the board layer.
 | Bits | Field |
 |---|---|
 | 15-14 | Active resistor, 0-3 |
-| 13-0 | ADC value |
+| 13-0 | ADC value — **12 significant bits**; bits 13-12 are always zero |
 
 **Every sample carries its own range.** Under auto-range the resistor changes
 mid-stream, so the range is not a per-trial constant and a host must read the
@@ -87,10 +87,20 @@ two bits from each sample.
 > word as the measurement adds up to 49152 counts of offset depending on the
 > range in force, which looks like a step change in skin conductance.
 
+> **The conversion itself is 12-bit on both platforms**, so the field's top two
+> bits are always zero and `0x0FFF` would mask just as well. Shimmer3 uses the
+> MSP430's ADC12; Shimmer3R's GSR input is on the ADS7028, whose result the
+> packer right-aligns and masks with `0x0FFF`
+> (`shimmer3r-firmware` `Core/Src/spi.c:1415-1419`). Keep masking with
+> `0x3FFF` — it is what the packing guarantees — but do not scale as though
+> the value were 14-bit. See
+> [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §5.1.
+
 ## 4. Auto-range switching
 
 `GSR_controlRange` runs per sample when the configured range is
-`GSR_AUTORANGE`. Thresholds are in raw ADC counts, with hysteresis:
+`GSR_AUTORANGE`. Thresholds are in raw ADC counts — **12-bit counts**, so 3960
+of a full scale of 4095 — with hysteresis:
 
 | Current resistor | Switch to a larger resistor below | Switch to a smaller resistor above |
 |---|---:|---:|
@@ -206,7 +216,11 @@ The 0.5 is the amplifier's reference in volts. Conductance in microsiemens is
 A host must do this itself — the firmware transmits raw counts. Steps:
 
 1. `range = word >> 14`, `adc = word & 0x3FFF`.
-2. Convert `adc` to millivolts using the converter's reference and resolution.
+2. `mV = adc * 3000 / 4095` — 3.0 V at 12 bits, the same on both platforms.
+   The ADS7028 driver spells the 3000 out as a literal
+   (`Shimmer_Driver/ADS7028_38/hal_ads7028_38.c:612-614`) rather than reading
+   `VREF_EXTERNAL_SUPPLY_MV`, so this path stays at 3.0 V even on a build where
+   that constant is 3300.
 3. Apply the formula with `GSR_FEEDBACK_RESISTORS_OHMS[range]`.
 
 > **The formula has a singularity at exactly 0.5 V**, where the denominator is
@@ -227,7 +241,19 @@ silently disable the internal ADC channel
 ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.1).
 
 Enabling skin temperature or the resistance amplifier forces that same internal
-ADC channel **on**, which then collides with GSR.
+ADC channel **on**, which then collides with GSR — and the force-on rule runs
+**after** the exclusion rule, so a stored image can hold both bits at once. The
+collision is resolved again when the channel list is built, and there GSR wins:
+skin temperature simply does not stream while GSR is on. The ordering and its
+consequence are in
+[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.2.
+
+> **GSR also needs the expansion rail switched on, and nothing derives that.**
+> `expansionBoardPower` (InfoMem byte 9 bit 0) powers the GSR+ board's front
+> end; it defaults to off and no firmware rule sets it from the GSR enable bit.
+> With the bit clear a GSR channel streams a well-formed sequence of zeros or
+> unpowered noise, with valid CRCs and regular timestamps. See
+> [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.7.
 
 On Shimmer3, GSR must be the **last analog channel** in the packet — the source
 says so explicitly. See
@@ -242,12 +268,16 @@ says so explicitly. See
 - ~~`got_first_sample` and `last_resistance`~~ — resolved: they are state for
   `GSR_smoothSample` only, so they are dead with it — reset by
   `GSR_initSmoothing`, never read by any live path.
-- **The ADC reference and resolution — Shimmer3R only.** Shimmer3 is resolved:
-  the MSP430 `ADC12` runs from a 3.0 V reference at 12 bits, so §6's counts
-  are `mV = counts × 3000 / 4095` (the battery path in `shimmer_battery.c` uses
-  the same constants). Shimmer3R's GSR channel is on the external ADS7028,
-  whose reference is not stated in the driver; see the battery and streaming
-  documents for the same open item.
+- ~~**The ADC reference and resolution — Shimmer3R only.**~~ — resolved:
+  Shimmer3R is **12-bit at 3.0 V** as well, so §6's conversion is
+  `mV = counts × 3000 / 4095` on both platforms. The ADS7028 driver converts
+  with exactly that expression, 3000 written as a literal
+  (`Shimmer_Driver/ADS7028_38/hal_ads7028_38.c:614`), and the packer masks the
+  result with `0x0FFF` (`shimmer3r-firmware` `Core/Src/spi.c:1415-1419`). The
+  platform's named reference is `VREF_EXTERNAL_SUPPLY_MV` = 3000 on product
+  hardware (`Shimmer_Driver/hal_Board.h:52-56`; 3300 only on the Nucleo build),
+  which the MCU ADC path does use — this GSR path agrees with it by literal
+  rather than by reference.
 - **The 0.5 V reference in `GSR_calcResistance`.** A literal in the formula
   with no named constant and no comment explaining its origin beyond "*uses op
   amp equation*".

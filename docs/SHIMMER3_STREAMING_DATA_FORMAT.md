@@ -12,7 +12,7 @@ logging, so a parser written from this document reads both.
 > being wrong, and the `file:line` references throughout only resolve because
 > the revision is pinned here.
 >
-> - **Firmware (authority for bytes):** `log-and-stream-common` @ `f3cf73e` —
+> - **Firmware (authority for bytes):** `log-and-stream-common` @ `ff242a6` —
 >   `Sensing/shimmer_sensing.h` (packet layout `#define`s, channel-ID `#define`s
 >   per platform, `MAX_NUM_CHANNELS`), `Sensing/shimmer_sensing.c`
 >   (`ShimSens_configureChannels` — channel order and `dataLen` accumulation),
@@ -20,7 +20,7 @@ logging, so a parser written from this document reads both.
 > - **Platform packers (channel order and byte widths):** `shimmer3-firmware` @
 >   `2765ff4` — `LogAndStream_Shimmer3/adc.c`, `i2c.c`, `spi.c` (plus
 >   `Shimmer_Driver/BMPX80/bmpX80.h` for the pressure/temperature widths);
->   `shimmer3r-firmware` @ `a8f105e5` — `LogAndStream_Shimmer3R/Core/Src/i2c.c`,
+>   `shimmer3r-firmware` @ `8f800952` — `LogAndStream_Shimmer3R/Core/Src/i2c.c`,
 >   `Core/Src/spi.c`, `Shimmer_Driver/hal_adc.c`.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/Configuration.java` (`Shimmer3.Channel`,
@@ -114,27 +114,54 @@ packet from a command response on the same stream.
 
 ### 2.1 The timestamp
 
-Three bytes, **little-endian**, counting ticks of the 32768 Hz clock. It is a
-free-running counter, not a time of day.
+Three bytes, **little-endian**, counting ticks of the 32768 Hz clock — the low
+three bytes of a 32-bit counter read at the sampling instant
+(`Sensing/shimmer_sensing.c:445-476`, both platforms).
 
 - **Resolution** is 1/32768 s, about 30.5 µs.
 - **Range** is 2^24 ticks = 16,777,216 ticks = **512 seconds exactly**, after
   which it wraps to zero.
 
-A host must unwrap it. The standard approach is to track the previous raw value
-and increment a rollover count whenever the new value is lower:
+> **Two bytes on old Shimmer3 firmware.** LogAndStream 0.5.4 widened it to
+> three (`LogAndStream_Shimmer3/CHANGELOG.txt`, "3bytes ts - both log&stream",
+> the release that also introduced `GET_RWC`). The equivalent rungs for the
+> other two firmware families are BtStream 0.7.3 and SDLog 0.11.5, which come
+> from the host version ladder rather than from a changelog in this repository:
+> the Java driver widens the field at firmware version code 6
+> (`ShimmerObject#updateTimestampByteLength` against `ShimmerVerObject`), and
+> the web SDK's port names all three rungs
+> (`devices/shimmer3/protocol.ts`, `shimmer3UsesThreeByteTimestamp`). Below
+> those versions the field is 2 bytes and wraps every **2 seconds**, which no
+> host can survive without unwrapping. Take the width from the firmware
+> version, not from the packet.
+
+A host must unwrap it. The obvious approach — bump a rollover count whenever the
+raw value falls — is what most implementations use, but it is wrong twice over:
+it double-counts on a single out-of-order packet, and it misses whole wraps
+across a gap. Compare against half the modulo instead, and cross-check long
+gaps against host elapsed time:
 
 ```
-if (rawNow < rawPrev) rolloverCount++;
-totalTicks = rawNow + rolloverCount * 16777216
-seconds    = totalTicks / 32768.0
+delta = (rawNow - rawPrev + modulo) % modulo     // modulo = 2^24, or 2^16
+if (delta > modulo / 2) { /* out of order: do not advance */ }
+else totalTicks += delta
+seconds = totalTicks / 32768.0
 ```
 
-> **Unwrapping fails if the host misses more than 512 seconds of packets.** The
-> counter gives no absolute reference, so a gap longer than one wrap period is
-> indistinguishable from a short one. A host that reconnects mid-trial cannot
-> recover absolute time from the stream alone; it must re-anchor against the
-> real-world clock. See [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
+At 2^24 the naive test costs nothing until a reorder or a 512 s gap; at 2^16 the
+whole modulo is 2 s, so a single missed Bluetooth window loses a wrap and the
+host cross-check is not optional.
+
+> **Unwrapping alone never gives absolute time.** The field carries no absolute
+> reference, so a gap longer than one wrap period is indistinguishable from a
+> short one. A host that reconnects mid-trial cannot recover absolute time from
+> the stream alone; it must re-anchor against the real-world clock. How well
+> that anchor can be made differs by generation, and it is not a detail: on
+> Shimmer3R these bytes **are** the low bytes of the real-world clock, so one
+> `GET_RWC` fixes the timeline exactly, whereas on Shimmer3 they are a
+> free-running counter whose offset from the clock never leaves the device. The
+> recipe for each is in §7.7; see also
+> [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
 
 > **The timestamp is the *sampling* instant, not the transmission instant.**
 > Bluetooth buffering and retransmission mean packets can arrive late, in
@@ -179,6 +206,17 @@ generations (the ADC block `0x0D`–`0x13` in particular). Byte widths are deriv
 from the `sensing.dataLen +=` accumulation that follows each run of channel-ID
 writes in the platform packers, so they are the widths the firmware actually
 emits. `Encoding` and `SDK name` come from the web SDK's channel-format table.
+
+> **Two generated columns describe no firmware path.** `u14` on the ADC rows is
+> a Java type string with no counterpart in either platform's code: every
+> analog channel is a right-aligned 12-bit conversion (§5.1), and the only
+> 14-bit resolution anywhere in the tree is compiled out under `SHIMMER4_SDK`
+> (`Shimmer_Driver/hal_adc.c:1036`). `u24` on the temperature row is right for
+> a Shimmer3R carrying a BMP390 and wrong for one carrying a BMP581, whose
+> temperature register is **signed** (§5.5) — those are the only two parts a
+> Shimmer3R can report (`Comms/shimmer_bt_uart.c:2093-2095`), the BMP180 and
+> BMP280 branches being Shimmer3-only (§7.4). Convert against §5 and §7, not
+> against these strings.
 
 | ID | FW name | S3 meaning | S3R meaning | Bytes | Encoding | Java type string | Java channel name | SDK name | Flags |
 |---|---|---|---|---|---|---|---|---|---|
@@ -307,6 +345,39 @@ the SPI block.
 | 17 | SPI (ADS7028) | `EXTERNAL_ADC_2` | 2 |
 | 18 | SPI (ADS7028) | `VBATT` | 2 |
 
+The table above is the **usual** Shimmer3R layout, not the only one. Rows 10-18
+exist only while `isAds7028Present()` holds — the daughter-card id must be
+programmed, the hardware id must be Shimmer3R, and the board must not be an
+SR48-6.0 (`Boards/shimmer_boards.c:279-283`); the block is also skipped when no
+ADS7028 channel is enabled (`shimmer3r-firmware` `Core/Src/spi.c:935`).
+
+> **On an SR48-6.0 the analog channels move to the front of the packet.** That
+> board is wired to the STM32's own ADCs instead of an ADS7028
+> (`ShimBrd_areMcuAdcsUsedForSensing()`, `Boards/shimmer_boards.c:305-309`), and
+> `ADC_configureChannels()` runs **before** the I2C and SPI configurators
+> (`Sensing/shimmer_sensing.c:94-99`). So the same analog channels appear first
+> rather than last, and in a different internal order
+> (`Shimmer_Driver/hal_adc.c:212-341`):
+>
+> | Order | Channels |
+> |---:|---|
+> | 1 | `VBATT` |
+> | 2 | `EXTERNAL_ADC_0`, `EXTERNAL_ADC_1`, `EXTERNAL_ADC_2` |
+> | 3 | `INTERNAL_ADC_0` |
+> | 4 | `STRAIN_HIGH`, `STRAIN_LOW` **or** `INTERNAL_ADC_1`, `INTERNAL_ADC_2` |
+> | 5 | `GSR_RAW` **or** `INTERNAL_ADC_3` |
+>
+> A host that has learned "VBATT is last on Shimmer3R" gets every byte offset
+> wrong on this one board. Read the inquiry list.
+
+> **An unprogrammed daughter-card id removes the analog channels entirely.**
+> Both gates require `ShimBrd_isDaughterCardIdSet()`, so a Shimmer3R whose card
+> id page is blank configures no ADC block at all: `VBATT`, GSR, PPG, the
+> external ADCs and the bridge amplifier are absent from the inquiry list even
+> though their enable bits are set, and nothing reports an error. The IMU
+> channels stream normally, which makes it look like a channel-mapping bug
+> rather than an unprovisioned board.
+
 ### 4.3 The differences that bite
 
 | | Shimmer3 | Shimmer3R |
@@ -315,7 +386,7 @@ the SPI block.
 | Temperature width | 2 bytes | 3 bytes |
 | Pressure width | 3 bytes | 3 bytes |
 | First channel block | Low-noise accel (ADC) | Magnetometer (I2C) |
-| `VBATT` position | Second | Last |
+| `VBATT` position | Second | Last — but **first** on an SR48-6.0 (§4.2) |
 | Magnetometer axis order | X, Z, Y on LSM303DLHC | X, Y, Z |
 
 > **The pressure/temperature reversal is the single most damaging difference.**
@@ -331,13 +402,21 @@ the inquiry channel list.
 
 Widths and encodings are in the §3 registry. The families are:
 
-### 5.1 ADC channels — 2 bytes, unsigned, right-aligned
+### 5.1 ADC channels — 2 bytes, unsigned, 12-bit right-aligned
 
 `VBATT`, all `EXTERNAL_ADC_*` and `INTERNAL_ADC_*`, and the bridge-amplifier
-pair. Two bytes little-endian holding an unsigned value whose significant width
-is the converter's, not 16 bits: the Java driver's type strings are `u12` and
-`u14` for these channels. Mask before use — the unused high bits are not
-guaranteed.
+pair. Two bytes little-endian holding an unsigned **12-bit** value in bits
+11-0 — on both platforms. Shimmer3 uses the MSP430's ADC12; Shimmer3R uses
+either the ADS7028, whose 12-bit result the packer right-aligns and masks with
+`0x0FFF` (`shimmer3r-firmware` `Core/Src/spi.c:1415-1419`), or the STM32's own
+ADC at `ADC_RESOLUTION_12B` (`Shimmer_Driver/hal_adc.c:131,729,749,785`). Bits
+15-12 are emitted as zero; mask with `0x0FFF` anyway.
+
+> **There is no 14-bit path.** The Java driver's `u14` type string for these
+> channels has no counterpart in shipping firmware — the only
+> `ADC_RESOLUTION_14B` in the platform code is under `SHIMMER4_SDK`
+> (`Shimmer_Driver/hal_adc.c:1036`). A host dividing by 16383 reports values four times too
+> small.
 
 ### 5.2 IMU channels — 2 bytes, signed
 
@@ -369,7 +448,7 @@ is 16-bit.
 | Bits | Field |
 |---|---|
 | 15-14 | Active feedback resistor (0-3) |
-| 13-0 | ADC value |
+| 13-0 | ADC value — 12 significant bits; bits 13-12 are always zero on both platforms (§5.1) |
 
 `GSR_range()` packs it as `ADC_val | (current_active_resistor << 14)`. A host
 must mask with `0x3FFF` before treating the low field as a measurement, and
@@ -383,8 +462,11 @@ resistor mid-stream, so the range is not a constant for the trial.
 | Shimmer3 | 2 bytes | 3 bytes |
 | Shimmer3R | 3 bytes | 3 bytes |
 
-Both are unsigned and raw — the compensation formula and the part's coefficient
-block turn them into physical units (§7.4).
+Both are raw — the compensation formula and the part's coefficient block turn
+them into physical units (§7.4). Both are unsigned, with one exception: a
+**Shimmer3R carrying a BMP581** streams temperature as a **signed** 24-bit
+two's-complement value, because that part self-compensates and the firmware
+relays its output register untouched (§7.4).
 
 ### 5.6 The width problem
 
@@ -414,6 +496,7 @@ Raw counts alone are not interpretable. To convert a packet a host must hold:
 | Pressure oversampling | InfoMem bytes 9 and 130 | Sample timing |
 | Pressure coefficients | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | Compensation |
 | ExG registers | InfoMem bytes 10-29 | Gain, reference, lead-off |
+| Expansion-board power | InfoMem byte 9 bit 0 | Whether GSR / PPG / bridge / skin-temp read anything at all (§8.1) |
 | CRC mode | Session state | Packet framing |
 
 > **Re-read after every configuration write.** Changing a range changes which
@@ -446,30 +529,59 @@ scale.
 
 ### 7.2 ADC and battery
 
-ADC channels are converted with the converter's reference and resolution.
-`VBATT` additionally passes through a resistive divider on the board, so the
-battery voltage is the converted ADC voltage multiplied by the divider ratio.
+Every ADC channel converts with one fixed formula, and **no per-channel
+calibration for any of them is stored on the device** (§7.8):
 
-The Java driver applies a two-point calibration to ADC channels where one has
-been stored, falling back to the nominal reference otherwise.
-
-On **Shimmer3** the MSP430 ADC12 is used at 12 bits against a 3.0 V reference,
-and the battery input has a ×2 divider, so from `adc.c`:
-
-```c
-battValMV = (((uint32_t) raw * 3000) >> 12) * 2;
+```
+mV = raw * 3000 / 4095
 ```
 
-The other ADC channels convert with the same 3.0 V / 4095 scale and no divider.
+The reference is 3.0 V on both generations and on every Shimmer3R analog path,
+ADS7028 and STM32 ADC alike — `VREF_EXTERNAL_SUPPLY_MV` is 3000 on product
+hardware and 3300 only under `S3R_NUCLEO`
+(`shimmer3r-firmware` `Shimmer_Driver/hal_Board.h:52-56`). The firmware's own
+conversions are `adcValue * 3000 / 4095`
+(`Shimmer_Driver/ADS7028_38/hal_ads7028_38.c:614`) and
+`__HAL_ADC_CALC_DATA_TO_VOLTAGE(…, VREF_EXTERNAL_SUPPLY_MV, …)` at 12-bit
+resolution (`Shimmer_Driver/hal_adc.c:1217-1219`).
 
-On **Shimmer3R** the sensor analog channels come through the external
-ADS7028 on SPI1 and the MCU's own battery channel is *internally divided by 4*
-(`hal_adc.c`). The ADS7028 reference was not found — see *Still unverified*.
+`VBATT` additionally sits behind a ×2 resistive divider, on both platforms:
+
+| Platform | Firmware's own conversion | Source |
+|---|---|---|
+| Shimmer3 | `((raw * 3000) >> 12) * 2` | `shimmer3-firmware` `LogAndStream_Shimmer3/adc.c` |
+| Shimmer3R | `raw * 3000 / 4095 * 2` | `Shimmer_Driver/hal_adc.c:1214-1219`, `saveBatteryVoltageAndUpdateStatus` |
+
+The two firmware formulas differ by one part in 4095, which is 2 mV at full
+scale and less below it.
+
+**The divider is 2, and the Java reference disagrees with itself about that.**
+Its older monolithic packet path multiplies by 2
+(`driver/ShimmerObject.java:1343`), while its newer per-sensor class multiplies
+by `BATTERY_VOLTAGE_DIVIDER_RATIO` = 1.988
+(`sensors/SensorBattVoltage.java:70,213-214`) — so which figure a host inherits
+depends on which of the two object models it drives. Take the firmware's 2. How
+the firmware then classifies the reading is in
+[SHIMMER3_BATTERY_AND_CHARGING.md](SHIMMER3_BATTERY_AND_CHARGING.md) §1.
+
+> **The ÷4 in `hal_adc.c` is not the battery.** It belongs to the STM32's
+> internal `VBAT` monitor (`ADC_CHANNEL_VBAT`, a debug input). The battery
+> measurement is `ADC_CHANNEL_VBATT`, through the board divider above.
+
+An earlier revision of this section said the Java driver "applies a two-point
+calibration to ADC channels where one has been stored". **There is nowhere on
+the device to store one** — no InfoMem field, no calibration-dump record id, and
+no length in `ShimCalib_findLength` for any analog channel (§7.8; the one
+non-kinematic id with a length is BMP180's, which nothing fills). The sentence
+has been removed rather than softened: it sent hosts looking for storage that
+does not exist.
 
 ### 7.3 GSR
 
 1. Split the 16-bit word: `range = w >> 14`, `adc = w & 0x3FFF` (§5.4).
-2. Convert `adc` to millivolts at the converter's reference.
+2. Convert `adc` to millivolts: `mV = adc * 3000 / 4095`, on both platforms
+   (§7.2). The value is 12 bits wide on both, so the auto-range thresholds
+   below are 12-bit counts.
 3. Apply the op-amp equation the firmware itself uses in `GSR_calcResistance`:
 
 ```
@@ -520,13 +632,48 @@ them:
 | BMP390 | 2 | 21 | Both |
 | BMP581 | 3 | **0** | Shimmer3R. Outputs pre-compensated data |
 
-Fetch with `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND`, whose reply carries
-the sensor ID so the host knows which compensation formula to apply — see
-[SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §5. The formulae themselves
-are Bosch's and are in each part's datasheet; the firmware does not implement
-them.
+Fetch with `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` (0xA7). The reply is
 
-For the BMP581 the raw values are already compensated: scale and use directly.
+```
+[0xA6][1 + n][sensorId][coeffs × n]
+```
+
+— the length byte **counts the sensor id** (`Comms/shimmer_bt_uart.c:2064-2099`;
+ids at `Comms/shimmer_bt_uart.h:297-301`). The id is sent in-band precisely so a
+BMP581's empty coefficient block is distinguishable from an older firmware's
+NACK. The legacy `0x59` and `0xA0` commands are Shimmer3-only and NACK on
+Shimmer3R. Layout detail is in
+[SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §5; the compensation formulae
+themselves are Bosch's, in each part's datasheet — the firmware implements none
+of them.
+
+Two shifts are needed before the datasheet's algorithm sees the values, because
+its `adc_T` and `adc_P` are **20-bit** and the packet does not carry the chip's
+XLSB register:
+
+| Part | Temperature in | Pressure in |
+|---|---|---|
+| BMP180 | as sent | `raw >> (8 - oss)`, `oss` being the configured oversampling |
+| BMP280 | `raw << 4` | `raw >> 4` |
+| BMP390 | as sent | as sent |
+
+**BMP581 (Shimmer3R).** The six bytes are the part's own compensated output
+registers, relayed as-is. The firmware reads from `TEMP_DATA_XLSB` and swaps the
+two blocks so the packet keeps the BMP390 order, pressure first
+(`shimmer3r-firmware` `Core/Src/spi.c:1382-1393`;
+`Shimmer_Driver/BMP5/hal_bmp5.c:415-422`). Both fields are 3 bytes
+little-endian:
+
+| Channel | Encoding | Scale (Bosch API, `Shimmer_Driver/BMP5/BMP5_SensorAPI/bmp5.c:682-720`) |
+|---|---|---|
+| `BMP_PRESSURE` | `u24` LE | Pa = raw / 64 |
+| `BMP_TEMPERATURE` | **`i24`** LE, two's complement | °C = raw / 65536 |
+
+> **A BMP581 whose NVM trim has not loaded streams uncompensated values with no
+> in-band indication.** The driver checks `STATUS.nvm_rdy`/`nvm_err`, retries
+> three times and refuses to configure a part that never came up
+> (`Shimmer_Driver/BMP5/hal_bmp5.c:117-126`), so a stream that starts at all is
+> trustworthy — but nothing in the data itself says which case applies.
 
 ### 7.5 ExG
 
@@ -536,14 +683,41 @@ For the BMP581 the raw values are already compensated: scale and use directly.
 millivolts = sample * (V_REF * 1000) / (gain * (2^23 - 1))
 ```
 
-**16-bit mode.** As above, sign-extending from bit 15 and with `2^15 - 1`.
+**16-bit mode is not a 16-bit conversion.** The firmware builds the word from
+bits **22:7** of the 24-bit result — its own driver header says so, "drops 7
+least significant bits and most significant bit"
+(`shimmer3r-firmware` `Shimmer_Driver/EXG/exg.h:134`; the bit-shuffle is
+`Shimmer_Driver/EXG/exg.c:288-291` for chip 1 and `:261-266` for chip 2). The word is
+therefore the 24-bit value over 128 with bit 22 as its sign, so:
 
-Gain comes from the `CH1SET` / `CH2SET` registers in the configuration bytes
-(InfoMem 10-29, see
-[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §5) — the
-PGA gain field of each. The reference voltage is set by the `CONFIG2` register's
-internal-reference selection. Both are ADS1292R fields; the datasheet is the
-authority for the bit encodings.
+```
+millivolts = sample * (V_REF * 1000) / (2 * gain * (2^15 - 1))
+```
+
+Equivalently: treat the sample as `s24 >> 7` and use the 24-bit formula, or
+double the gain — which is what the Java reference does on its live path. Using
+`2^15 - 1` alone gives values **exactly twice too large**.
+
+> **16-bit mode halves the usable input range** to ±V_REF / (2 · gain). Beyond
+> that, bit 22 no longer agrees with bit 23 and the two chips wrap
+> *differently* — chip 1 takes bit 22 as the sign, chip 2 keeps bit 23 and drops
+> bit 22 — so a saturated CH1 reads differently on the two chips for the same
+> input.
+
+**V_REF** is `CONFIG2` bit 4, `VREF_4V`: 0 → **2.42 V**, 1 → **4.033 V**
+(`Shimmer_Driver/EXG/ads1292.h:219,235-238`, which rounds them to 2.4 and 4).
+The firmware's own ECG defaults write `CONFIG2 = 0x80` to both chips
+(`Configuration/shimmer_config.c:1103,1113`; the test-signal preset writes
+`0xAB` / `0xA3`, `:1078,1088`), so V_REF is 2.42 V unless a host has changed it.
+Read the register back rather than assuming: `ShimConfig_checkAndCorrectConfig`
+sets bit 3 (`CLK_EN`) on chip 1 where the ADS1292R clock lines are tied
+(`Configuration/shimmer_config.c:911-917`), so the stored byte can differ from the one
+written.
+
+**Gain** comes from the PGA field of `CH1SET` / `CH2SET` in the configuration
+bytes (InfoMem 10-29, see
+[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §5). The
+datasheet is the authority for both encodings.
 
 **Status byte.** One byte per chip, preceding its channel samples, carrying the
 lead-off detection bits. The ADS1292R datasheet defines the bit positions; the
@@ -557,8 +731,13 @@ amplifier on the SR49 expansion board; conversion is an offset and gain applied
 per board revision, held in the Java driver's board configuration rather than
 in the firmware.
 
+Convert each as a 12-bit ADC channel first (§7.2); the board-specific offset
+and gain then apply to millivolts.
+
 Note that enabling the bridge amplifier forces two internal ADC channels off
-(InfoMem §10.1), because they share inputs.
+(InfoMem §10.1), because they share inputs — and that it reads nothing at all
+without the expansion-board power bit
+([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.7).
 
 ### 7.7 Timestamps
 
@@ -569,12 +748,83 @@ Note that enabling the bridge amplifier forces two internal ADC channels off
    `GET_RWC_COMMAND`; the offset between the free-running tick counter and the
    RWC is what converts one to the other.
 
+> **On Shimmer3R the packet timestamp IS the low 24 bits of the real-world
+> clock**, which makes an exact anchor possible from a single `GET_RWC`. The
+> packet takes `RTC_get32()` (`Sensing/shimmer_sensing.c:445-476`) and the clock
+> `RTC_get64()`; `RTC/shimmer_rtc.h:25-28` defines `RTC_getRwcTime` as the
+> latter, and `shimmer3r-firmware` `Core/Src/rtc.c` gives the two functions
+> identical bodies. So a host takes the value congruent to a sample's counter
+> (mod 2^24) nearest its estimate of now, and the result is right to the tick —
+> elapsed host time only has to be good to ±256 s to pick the wrap.
+>
+> **On Shimmer3 it is not.** That counter cannot be set: the real-world clock is
+> the counter plus a stored offset, `RTC_getRwcTime()` returning
+> `rwcTimeDiff64 + RTC_get64()`
+> (`shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_RTC.c:73-76`, set at `:78-86`).
+> That offset **never goes over Bluetooth** — only into an SD-file header
+> (`SDH_RTC_DIFF_*`) — so a Bluetooth host can only estimate where the counter
+> stood when the reply was composed. The usable recipe is to take the host clock
+> either side of the `GET_RWC` exchange, use the midpoint, and carry half the
+> round trip as the anchor's stated uncertainty.
+>
+> Either way the samples' **spacing** is exact, being the device's own counter;
+> it is only the constant offset that differs in quality between the two
+> platforms.
+
 > On Shimmer3 the SD header carries that offset in `SDH_RTC_DIFF_*`. On
 > Shimmer3R the same eight bytes instead carry the top three bytes of the
 > file's 64-bit initial timestamp, so a logged file on either generation can be
 > placed on an absolute timeline — but by different arithmetic. See
 > [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.3 and
 > [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
+
+### 7.8 What the device does and does not calibrate
+
+Only the kinematic sensors have calibration stored on the device. Every other
+conversion in §7 is a **fixed formula** compiled into the host, derived from the
+board's components — there is nothing per-unit to fetch and nothing a
+calibration procedure can adjust.
+
+The store's own contents say so. `ShimCalib_defaultAll` seeds four sensors on
+Shimmer3 and six on Shimmer3R and no others
+(`Calibration/shimmer_calibration.c:388-403`), `ShimCalib_findLength` returns a
+non-zero block size for exactly those ids
+(`Calibration/shimmer_calibration.c:74-101`), and the InfoMem reserves a
+21-byte block per kinematic sensor and for nothing else
+(`Configuration/shimmer_config.h:102-105` and `:118-119`).
+
+| Channel family | Calibration on the device | What the host applies |
+|---|---|---|
+| LN accel, WR accel, alt accel, gyro, mag, alt mag | **Yes** — 21-byte bias / sensitivity / alignment block per sensor **per range** | That block (§7.1). Absent or default-timestamped → the range's nominal sensitivity |
+| VBATT | No | `raw × 3000 / 4095 × 2` (§7.2) |
+| External and internal ADC, PPG | No | `raw × 3000 / 4095` (§7.2) |
+| GSR | No | The per-range amplifier equation, range read per sample (§7.3) |
+| Bridge amplifier / strain | No | The SR49 board's fixed offset and gain (§7.6) |
+| ExG | No | The chip's own gain and reference registers, read back over the link (§7.5) |
+| BMP pressure and temperature | No — see below | Bosch compensation with coefficients fetched from the chip (§7.4) |
+| Timestamp | No | Unwrap and divide by 32768 (§7.7) |
+
+> **The pressure coefficients are not in the calibration store, on either
+> platform.** `ShimCalib_findLength` does return 22 for
+> `SC_SENSOR_BMP180_PRESSURE` (id 36) under `SHIMMER3`
+> (`Calibration/shimmer_calibration.h:106`, `:153`), so a host can write a
+> 22-byte record under that id and read it back — but the firmware never fills
+> it, never reads it, and never copies it anywhere: those two lines are the
+> only mentions of the id in the whole tree. The matching InfoMem slot was
+> reserved and then commented out
+> (`Configuration/shimmer_config.h:136`). Fetch the coefficients from the chip
+> with `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` (§7.4); a record found
+> under id 36 in a dump is something a host put there.
+
+> **Unrecognised ids are stored but never applied.** `SET_CALIB_DUMP_COMMAND`
+> writes bytes straight into the calibration RAM blob at a host-chosen offset
+> (`Comms/shimmer_bt_uart.c:1175-1190`), which is then persisted and served
+> back verbatim. Only the known sensor ids are pushed on into the InfoMem
+> blocks and the SD header
+> (`Calibration/shimmer_calibration.c:1063-1079`). So a round trip through the
+> device is not evidence that the device understands what was written: a
+> mis-typed id survives the write, the read-back and a power cycle, while
+> changing nothing about the data that streams.
 
 ## 8. Normative interpretation rules
 
@@ -608,18 +858,20 @@ A conforming parser must:
 Every check in this document — the width total of rule 5, the CRC of §2.2, the
 timestamp continuity of §7.7 — validates the *transport*. All of them pass on a
 packet whose sample values are stale or zero, because the packet is genuinely
-well formed. Two configuration faults look exactly like this:
+well formed. Three configuration faults look exactly like this:
 
 | What is seen | Cause |
 |---|---|
 | The same reading repeated across several packets, timestamps advancing normally, 0% packet loss, CRCs valid | The sensor's output rate is **below** the packet rate, so the firmware reads the same conversion more than once |
 | All-zero data on every channel of one sensor, unchanged across reconnections | That sensor's output rate is set to its **power-down** code while its channels are enabled |
+| Zeros, or an unpowered front end's noise, on GSR / PPG / bridge-amp / skin-temp while the IMU channels are fine; CRCs valid; unchanged across reconnections | The expansion-board power bit (InfoMem byte 9 bit 0) is off. The firmware does not derive it from the channel enables — [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.7 |
 
-Both are stored-configuration faults, not streaming faults, and no parser-side
-check can distinguish them from real data — a flat signal is a legitimate
-reading. The invariant being violated, the per-sensor rate tables, and how a
+All three are stored-configuration faults, not streaming faults, and no
+parser-side check can distinguish them from real data — a flat signal is a
+legitimate reading. The rate invariant, the per-sensor rate tables, and how a
 host is supposed to keep them coherent are in
-[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.6.
+[SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.6;
+the expansion rail is §10.7 of the same document.
 
 Worth knowing before investigating a "corrupt stream" report: if the packet
 structure validates and only the *values* look wrong, the radio is not the place
@@ -627,10 +879,15 @@ to look.
 
 ## Still unverified / not found in code
 
-- **The Shimmer3R ADS7028 reference voltage and resolution.** The driver lives
-  in `Shimmer_Driver/ADS7028_38/` and exposes per-channel max-value registers
-  but no reference constant was found in it; the Java `u14` type string suggests
-  a 14-bit path. Shimmer3's conversion is now in §7.2; Shimmer3R's is not.
+- ~~**The Shimmer3R ADS7028 reference voltage and resolution.**~~ — resolved:
+  **12-bit at 3.0 V**, on every Shimmer3R analog path. The packer masks with
+  `0x0FFF` (`Core/Src/spi.c:1415-1419`), the driver's own conversion is
+  `adcValue * 3000 / 4095` (`Shimmer_Driver/ADS7028_38/hal_ads7028_38.c:614`),
+  the reference constant is `VREF_EXTERNAL_SUPPLY_MV` = 3000 on product hardware
+  (`Shimmer_Driver/hal_Board.h:52-56`), and the STM32's own ADC runs at
+  `ADC_RESOLUTION_12B`. The Java `u14` type string has no firmware counterpart:
+  the only 14-bit resolution in the platform code is under `SHIMMER4_SDK`
+  (`Shimmer_Driver/hal_adc.c:1036`). Both platforms' conversions are now in §7.2.
 - ~~`BMPX80_PACKET_SIZE` on Shimmer3~~ — resolved: `BMPX80_TEMP_BUFF_SIZE`
   (`0x02`) + `BMPX80_PRESS_BUFF_SIZE` (`0x03`) = 5, confirming the registry's
   2-byte temperature and 3-byte pressure.

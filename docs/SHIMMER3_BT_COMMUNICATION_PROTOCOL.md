@@ -27,7 +27,8 @@ BLE, and over the dock's serial link.
 >   (`LogAndStream_Shimmer3R/`).
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/ShimmerObject.java`,
->   `bluetooth/ShimmerBluetooth.java`, `bluetooth/BtCommandDetails.java`;
+>   `bluetooth/ShimmerBluetooth.java`, `bluetooth/BtCommandDetails.java`,
+>   `comms/wiredProtocol/CommsProtocolWiredShimmerViaDock.java`;
 >   `shimmer-web-sdk` @ `8f78313` — `devices/shimmer3r/constants.ts`,
 >   `devices/shimmer3/protocol.ts`, `devices/shimmer3r/sdTransfer/protocol.ts`;
 >   `Extras/python_scripts/` in this repository.
@@ -1976,10 +1977,28 @@ carry it (`isSupportedRtcStateInStatus`,
 
 > **Caution — the epoch is a host convention, not a firmware one.** The firmware
 > stores and returns whatever 64-bit tick value it was given; it has no notion of
-> time zone or of UTC. Host software has settled on **local civil time**, because
-> that is what makes logged data split at local midnight. A host that writes UTC
-> will produce files whose day boundaries do not match the operator's calendar.
-> Nothing in the firmware detects or corrects this.
+> time zone or of UTC. Nothing in it detects or corrects a host that picks a
+> different base, and nothing in a file or a stream records which base was used.
+>
+> **Write the plain Unix epoch.** That is what the reference host does, on both
+> of its links: the Bluetooth path sends `System.currentTimeMillis()` scaled by
+> 32.768 (`bluetooth/ShimmerBluetooth.java:691-696`) and the dock path sends the same
+> value to `RTC_CFG_TIME`
+> (`CommsProtocolWiredShimmerViaDock.writeRealWorldClockFromPcTime`), neither
+> applying a zone offset. So a Shimmer3 or Shimmer3R set by the Java driver, by
+> desktop Consensys or by the web SDK reads back as UTC, and the same reading
+> means the same instant whichever tool set it.
+>
+> An earlier revision of this paragraph said host software had settled on
+> **local civil time**, on the reasoning that this is what makes logged data
+> split at local midnight. Both halves were wrong. Nothing splits at midnight in
+> any zone — data files roll every hour of *sample* time from when logging
+> started
+> ([SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md) §4) — and the reference
+> host writes no offset. Local civil time is the **Verisense** convention, which
+> is a different platform with a different clock contract; do not carry it
+> across. The dock property being named `CURR_LOCAL_TIME` is the likeliest
+> source of the confusion, and it is a name, not a statement about its base.
 
 `SET_RWC_COMMAND` is **not** blocked while sensing — it is one of the few writes
 permitted mid-recording ([§10](#10-important-boundaries)) — and its handler is

@@ -12,7 +12,7 @@ and mirrored into the SD-card file header.
 > being wrong, and the `file:line` references throughout only resolve because
 > the revision is pinned here.
 >
-> - **Firmware (authority for bytes):** `log-and-stream-common` @ `f3cf73e` —
+> - **Firmware (authority for bytes):** `log-and-stream-common` @ `ff242a6` —
 >   `Configuration/shimmer_config.h` (`NV_*` offset `#define`s, the `gConfigBytes`
 >   packed union with its `#if defined(SHIMMER3)` / `#if defined(SHIMMER3R)`
 >   variants), `Configuration/shimmer_config.c`
@@ -21,7 +21,7 @@ and mirrored into the SD-card file header.
 >   `Comms/shimmer_bt_uart.c` (paging and the per-setting write paths).
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4` —
 >   `LogAndStream_Shimmer3/Shimmer_Driver/5xx_HAL/hal_InfoMem.h`;
->   `shimmer3r-firmware` @ `a8f105e5` —
+>   `shimmer3r-firmware` @ `8f800952` —
 >   `LogAndStream_Shimmer3R/Shimmer_Driver/hal_Infomem.h`.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/shimmer2r3/ConfigByteLayoutShimmer3.java`,
@@ -489,11 +489,25 @@ Six 21-byte kinematic calibration blocks:
 | 55-75 | `gyroCalib` | `NV_GYRO_CALIBRATION` | both |
 | 76-96 | `magCalib` | `NV_MAG_CALIBRATION` | both |
 | 97-117 | `wrAccelCalib` | `NV_WR_ACCEL_CALIBRATION` | both |
-| 133-153 | `altAccelCalib` | `NV_ALT_ACCEL_CALIBRATION` | S3R |
-| 154-174 | `altMagCalib` | `NV_ALT_MAG_CALIBRATION` | S3R |
+| 133-153 | `altAccelCalib` | `NV_ALT_ACCEL_CALIBRATION` | both |
+| 154-174 | `altMagCalib` | `NV_ALT_MAG_CALIBRATION` | both |
 
 Bytes 175-186 are `NV_MPL_GYRO_CALIBRATION`, a 12-byte legacy MPL block, now
 `unusedIdx175To186`.
+
+> **The last two are `both`, not S3R-only.** The offsets and the struct fields
+> are declared outside any generation guard
+> (`Configuration/shimmer_config.h:118-119` and `:368-369`), and the Bluetooth
+> handlers write them on either platform — on Shimmer3 they hold the
+> MPU9x50/ICM20948 accelerometer and magnetometer, which is why the byte map in
+> §2 already lists `idxMPLAccelCalibration` alongside the ADXL371 name. This
+> table said S3R and the byte map said both; the byte map was right.
+>
+> On Shimmer3 the pair is effectively **write-only**: the value reaches these
+> bytes and the SD header, but never the calibration dump, so the matching
+> `GET_ALT_*_CALIBRATION` command answers with 21 zeros. Read them back from
+> here instead — see
+> [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §4.1.
 
 The internal layout of a 21-byte block — three big-endian `int16` biases, three
 big-endian `int16` sensitivities, nine `int8` alignment values scaled by 100 —
@@ -621,12 +635,50 @@ an ACK and different bytes on read-back.
 In every case **the ADC channel loses**, except the ExG width rule where 24-bit
 wins over 16-bit.
 
+> **These rules arbitrate shared ADC inputs, and nothing else.** They exist
+> because two channels would be reading the same pin, so the firmware has to
+> pick one. They say nothing about combinations that are impossible for other
+> reasons: GSR together with ExG, or ExG together with the bridge amplifier,
+> are each two different expansion boards competing for one connector, and the
+> firmware accepts both bitmaps without complaint. Host software carries the
+> broader rule set — the Java driver's `SensorDetailsRef.mListOfSensorIdsConflicting`
+> lists are a superset of this table for exactly that reason, and Consensys
+> corrects against them before a write. A host that relies only on the firmware
+> rules will happily store a configuration that no physical device can satisfy.
+>
+> Those lists are easy to look for and not find. Almost every Shimmer3 entry
+> passes its list as **argument 5 of the eight-argument `SensorDetailsRef`
+> constructor** rather than assigning the field, so a search for
+> `mListOfSensorIdsConflicting =` turns up the Shimmer2 block and little else.
+> Read the constructor calls: `sensors/SensorGSR.java:139-167` names both
+> internal ADC channels, the bridge amplifier and the host ExG modes, and
+> `sensors/SensorBridgeAmp.java:97-121` names GSR back, which is the pair the
+> firmware has no rule for.
+
 ### 10.2 Forced-on channels
 
 `chEnSkinTemp` or `chEnResAmp` set forces `chEnIntADC1` (S3) /
 `chEnIntADC3` (S3R) **on**. This is the one rule that enables rather than
 disables, and it does not set the corrected flag, so it is applied without the
 image being written back on that account alone.
+
+> **Ordering matters, and the two rules disagree.** The GSR exclusion runs
+> first (`Configuration/shimmer_config.c:807-821`) and clears the internal ADC
+> channel; the force-on rule runs afterwards (`:867-874`) and sets the same bit
+> straight back. Enable GSR and skin temperature together and the stored image
+> ends up with **both** `chEnGsr` and the internal ADC channel set — a
+> combination §10.1 exists to forbid — and because the force-on rule does not
+> raise `settingCorrected`, the image need never be written back for the host to
+> read it that way.
+>
+> Nothing streams twice, though: the conflict is resolved again when the channel
+> list is built, and there GSR wins. Both packers emit `GSR_RAW` when
+> `chEnGsr` is set and `INTERNAL_ADC_3` only otherwise
+> (`shimmer3r-firmware` `Core/Src/spi.c:1639-1657` for the ADS7028 path,
+> `Shimmer_Driver/hal_adc.c:323-341` for the MCU path). So skin temperature
+> silently does not stream while GSR is on, and the stored bitmap is not a
+> reliable description of the packet. Take the channel list from the inquiry
+> response.
 
 ### 10.3 Value clamps
 
@@ -770,6 +822,63 @@ running firmware without it is not left in the bad state.
 
 `ShimSdSync_checkSyncCenterName` also runs here and may adjust the sync
 configuration.
+
+### 10.7 A relationship the firmware deliberately does not correct
+
+`expansionBoardPower` — byte 9 bit 0
+(`Configuration/shimmer_config.h:273`) — switches the expansion connector's
+power rail. It defaults to **off** (`Configuration/shimmer_config.c:205`), it
+is read exactly once, at the start of sensing
+(`Sensing/shimmer_sensing.c:181-184`, lowered again at `:399-402`), and it
+appears nowhere in `ShimConfig_checkAndCorrectConfig`
+(`Configuration/shimmer_config.c:802-1072`). No rule in this section derives
+it from the channels that need it.
+
+That makes it the one enable bit a host must reason about itself:
+
+| Expansion board | What the bit powers | Channels with no measurement without it |
+|---|---|---|
+| GSR+ (SR48, `EXP_BRD_GSR_UNIFIED`) | `SW_PPG_POWER` | `GSR_RAW`, PPG on `INTERNAL_ADC_*` |
+| Bridge Amp+ (SR49) | `SW_BRIDGE_AMP_PWR` when the bridge channel is on, `SW_VOLTAGE_DIVIDER_PWR` when internal ADC 3 is on | `STRAIN_HIGH`, `STRAIN_LOW`, the divider on internal ADC 3 |
+| Proto3 Deluxe | `SW_PROTO3_DELUXE_PWR` | Whatever the user has wired to the switched supply |
+| ExG (SR47) on **Shimmer3R** | **nothing** | none — see below |
+
+The board numbers are `Boards/shimmer_boards.h:36-38`: ExG unified is 47, GSR
+unified 48, bridge-amplifier unified 49.
+
+The Shimmer3R fan-out is per board: `Board_setExpansionBrdPower` tests the
+daughter-card id and does nothing at all for any board other than those three
+(`shimmer3r-firmware` `Shimmer_Driver/hal_Board.c:593-628`). Shimmer3 has no
+such fan-out — the bit drives one GPIO for the whole rail
+(`shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_Board.c:458-469`).
+
+> **One line in that fan-out does not follow the bit.** On an SR48-6.0 with GSR
+> enabled it calls `Board_SR48_6_0_SW_GSR(0)` — a literal zero, not `state`
+> (`Shimmer_Driver/hal_Board.c:606`) — so that switch is driven low both when
+> the rail is raised at sensing start and when it is lowered at the end. Read
+> the table above as "what the bit is wired to", not as "what the bit sets", on
+> that one board.
+
+> **On Shimmer3R the bit does not power the ExG front end, and it is still
+> worth setting.** The ADS1292R is brought up through its reset line instead
+> (`Shimmer_Driver/EXG/ads1292.c:161-183`), which is why
+> `Board_setExpansionBrdPower` opens with the comment *"ExG is handled in SPI
+> stop sensing"* (`Shimmer_Driver/hal_Board.c:595`). So an ExG board on a
+> Shimmer3R streams with the bit clear. Consensys sets it for ExG regardless,
+> and a host should match that: the same stored image on a **Shimmer3** does
+> need it, because there the bit is the whole rail.
+
+> **The failure mode is a well-formed stream of zeros.** Nothing reports an
+> error: the channels are enabled, the packet is the right length, timestamps
+> advance, CRCs pass, and the IMU channels are perfectly fine. Only the
+> unpowered front end's output is wrong, and a flat signal is a legitimate
+> reading. See
+> [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §8.1.
+
+The rule host software applies, and the one Consensys uses, is: switch the rail
+on if GSR, the bridge amplifier or ExG is enabled; leave it as the user set it
+if only internal ADC channels are enabled, since a Proto3 board may or may not
+need it; otherwise switch it off.
 
 ## 11. Defaults
 

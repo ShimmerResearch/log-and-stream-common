@@ -13,13 +13,13 @@ has to be right for a recording to be placeable on a real timeline.
 > **Verified against** — the revisions these claims were read from. A pinned
 > commit is a citation, not a claim of currency.
 >
-> - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
+> - **Firmware:** `log-and-stream-common` @ `ff242a6` —
 >   `RTC/shimmer_rtc.{h,c}` in full; `Sensing/shimmer_sensing.h`
 >   (`PACKET_TIMESTAMP_LEN`); `SDCard/shimmer_sd_data_file.{h,c}`
 >   (`BIN_FILE_SPLIT_TIME_TICKS`, `ShimSdDataFile_writeSdHeaderToFile`);
 >   `SDCard/shimmer_sd_header.c` (`SDH_RTC_DIFF_*`).
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
->   `shimmer3r-firmware` @ `a8f105e5` — `RTC_get64`,
+>   `shimmer3r-firmware` @ `8f800952` — `RTC_get64`,
 >   `RTC_getRwcTimeDiffPtr`, `RTC_isRwcTimeSet`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =
@@ -143,9 +143,35 @@ hour **of sample time**, measured from when logging started.
 > wall-clock moment than a local-time one, by exactly the local offset.
 
 That is the mechanism behind the class of bug this document opens with. The
-firmware is consistent — it uses UTC throughout — and the failure comes from a
-host writing local civil time into the RWC and then interpreting the result as
-UTC, or vice versa.
+firmware is consistent — it applies no zone at all — and the failure comes from
+a host writing local civil time into the RWC and then interpreting the result
+as UTC, or vice versa.
+
+> **The reference host writes the plain Unix epoch, on both of its links.** The
+> Bluetooth path sends `System.currentTimeMillis()` scaled by 32.768
+> (`bluetooth/ShimmerBluetooth.java:691-696`,
+> `driverUtilities/UtilShimmer.java:convertMilliSecondsToShimmerRtcDataBytes*`)
+> and the dock path sends the same value to `RTC_CFG_TIME`
+> (`comms/wiredProtocol/CommsProtocolWiredShimmerViaDock.java:writeRealWorldClockFromPcTime`).
+> Neither applies a zone offset. The driver does carry
+> `getCurrentLocalTimezoneOffsetMillis` and
+> `getLocalTimezoneOffsetMillisForSpecificDate`
+> (`driverUtilities/UtilShimmer.java:758-767`), and **nothing in the driver
+> calls either**. Their callers live in a separate module, the Advance API's
+> database playback, where they shift recorded timestamps back to the civil
+> time of the trial for *display* — the correct place for a zone, and the
+> reason no zone appears on the write path.
+>
+> So this is not a convention this platform gets to choose per host: write Unix
+> epoch ticks, convert for display only, and a sensor set by the Java driver, by
+> desktop Consensys or by the web SDK all read back the same instant.
+>
+> **Local civil time is the Verisense convention**, and it does not belong here.
+> Verisense sets its real-world clock to the base station's local civil time, so
+> code or documentation moved across from it will be a whole timezone offset
+> adrift on a Shimmer3 or Shimmer3R — a mistake made at least twice in these
+> repositories, once in a host page and once in the protocol document's
+> `SET_RWC_COMMAND` caution, which now says the same as this section.
 
 ## 5. Time-of-day arithmetic and scheduling
 
@@ -222,16 +248,82 @@ The upper LED then flashes cyan (Shimmer3R) or green-plus-blue (Shimmer3) at
 > starts logging with an unset clock shows the warning right up to the moment
 > it starts producing files with wrong timestamps, and then stops warning.
 
+> **`RTC_isRwcTimeSet` compares ticks against a millisecond constant on
+> Shimmer3R.** The body is
+> `RTC_get64() > 1735689600000`, commented as *"the timestamp for
+> 2025-01-01T00:00:00Z"* (`shimmer3r-firmware` `Core/Src/rtc.c:707-710`) —
+> but `RTC_get64` returns **32768 Hz ticks**, and 2025-01-01 in ticks is
+> 56,875,076,812,800, some 32768× larger. As written the threshold is crossed
+> once the counter passes about 613 days, so it still distinguishes a
+> never-set clock from a set one — a device that has just booted reads near
+> zero — but it does not do what its comment says, and it would accept a clock
+> set to any date after 1971. Shimmer3 has no such problem: there the test is
+> `rwcTimeDiff64 != 0`
+> (`shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_RTC.c:98-101`). Treat the
+> flag as "probably set", not as a validity check on the value.
+
 ## 7. Placing a recording on an absolute timeline
 
 ### 7.1 Streamed data
 
-Three bytes per packet, little-endian, wrapping every 512 s. Unwrapping and
-its failure mode are in
+Three bytes per packet, little-endian, wrapping every 512 s — two bytes and
+2 s on Shimmer3 firmware below LogAndStream 0.5.4. Unwrapping and its failure
+mode are in
 [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1.
 
 To place a stream on an absolute timeline, read the RWC at session start and
-anchor the first packet against it.
+anchor the first packet against it. **How good that anchor can be depends on
+the generation**, and it follows directly from §2: one platform's packet
+timestamp is a slice of the real-world clock, the other's is not.
+
+**Shimmer3R — exact.** The packet takes `RTC_get32()` and the clock
+`RTC_get64()`, and on this platform `RTC_getRwcTime` *is* `RTC_get64`
+(`RTC/shimmer_rtc.h:25-28`; the two functions have identical bodies in
+`shimmer3r-firmware` `Core/Src/rtc.c:374-408`, and the packet is filled at
+`Sensing/shimmer_sensing.c:445-476`). The three bytes in the packet are
+therefore the **low 24 bits of the value `GET_RWC` returns**. So:
+
+```
+candidate = (rwcTicks & ~0xFFFFFF) | packetTicks
+absTicks  = candidate adjusted by whole multiples of 2^24 so that it is
+            nearest to rwcTicks + (hostNow - hostAtRwcRead) * 32.768
+```
+
+Host elapsed time is used only to pick the wrap, so it has to be good to
+±256 s — no calibration, no latency assumption. The result is right to the
+tick, and one `GET_RWC` per session is enough.
+
+**Shimmer3 — estimated.** The counter cannot be set, so the clock is the
+counter plus a stored offset
+(`shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_RTC.c:73-76`, set at `:78-86`),
+and that offset **never goes over Bluetooth** — only into an SD header as
+`SDH_RTC_DIFF_*`. The low bits of the clock and of the packet do not line up,
+so the offset has to be inferred from the exchange itself:
+
+```
+hostMid       = (hostBefore + hostAfter) / 2      // of the GET_RWC exchange
+counterAtRead = firstPacketTicks - (hostAtFirstPacket - hostMid) * 32.768
+K             = rwcTicks - counterAtRead
+absTicks(n)   = unwrap(packetTicks(n)) + K
+```
+
+Carry `(hostAfter - hostBefore) / 2` as the anchor's stated uncertainty: it is
+the link's latency asymmetry, tens of milliseconds over Bluetooth. Sample
+**spacing** is still exact on both platforms, being the device's own counter;
+only the constant offset differs in quality.
+
+**Neither — host-anchored.** When the clock has never been set, or the
+firmware predates `GET_RWC` (LogAndStream 0.5.4), the only anchor left is the
+host's own arrival time for the first packet:
+`unixMs(n) = deviceMs(n) + (hostMs(first) - deviceMs(first))`. This is what
+Consensys plots against, and it inherits the first packet's buffering delay as
+a constant offset. Check the *clock has been set* status bit (§6) before
+preferring an RWC anchor to this one.
+
+> **Setting the clock mid-stream moves the anchor.** `SET_RWC_COMMAND` is one
+> of the few writes permitted while sensing, and on Shimmer3R it steps the very
+> counter the packets carry. Re-anchor after any write; do not carry an
+> anchor across one.
 
 ### 7.2 Logged data
 
