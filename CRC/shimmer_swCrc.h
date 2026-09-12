@@ -47,6 +47,7 @@
 
 uint16_t ShimSwCrc_byte(uint16_t crc, uint8_t b);
 uint16_t ShimSwCrc_calc(uint8_t *msg, uint8_t len);
+uint16_t ShimSwCrc_calc16(uint8_t *msg, uint16_t len);
 uint8_t ShimSwCrc_check(uint8_t *msg, uint8_t len);
 
 #endif //SHIMMER_SWCRC_H
