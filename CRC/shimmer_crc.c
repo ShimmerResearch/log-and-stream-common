@@ -110,5 +110,52 @@ uint8_t testCrcDriver(void)
   {
     return 1;
   }
+
+  /* platform_crcData16() is a separate weak hook from platform_crcData(), used
+   * by SD file transfer for frames longer than a uint8_t length can express.
+   * It is not overridden on any platform, so it needs vectors of its own - the
+   * cases above exercise platform_crcData() only and would not catch a
+   * regression here. */
+  uint8_t crcTestArray16[] = { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09 };
+  /* No bytes consumed: the bare seed, NOT what ShimSwCrc_calc() returns for a
+   * zero length (that one reads msg[0] first). The two differ here by design. */
+  if (platform_crcData16(crcTestArray16, 0) != 0xB0CA)
+  {
+    return 1;
+  }
+  if (platform_crcData16(crcTestArray16, 1) != 0x553A)
+  {
+    return 1;
+  }
+  /* These two must agree with the 8- and 9-byte platform_crcData() cases above
+   * (0x48AA and 0x2A5D), since both hooks share the seed and the odd-length
+   * zero pad. If they ever diverge, the two paths have drifted apart. */
+  if (platform_crcData16(crcTestArray16, 8) != 0x48AA)
+  {
+    return 1;
+  }
+  if (platform_crcData16(crcTestArray16, 9) != 0x2A5D)
+  {
+    return 1;
+  }
+
+  /* Lengths above 255, which platform_crcData() cannot express at all. Proves
+   * the uint16_t length survives the call chain without being truncated, and
+   * covers the odd-length pad at a length where a uint8_t counter would wrap. */
+  uint8_t crcTestArrayLong[301];
+  uint16_t i;
+  for (i = 0; i < sizeof(crcTestArrayLong); i++)
+  {
+    crcTestArrayLong[i] = (uint8_t) (i & 0xFF);
+  }
+  if (platform_crcData16(crcTestArrayLong, 300) != 0x4A84)
+  {
+    return 1;
+  }
+  if (platform_crcData16(crcTestArrayLong, 301) != 0x7080)
+  {
+    return 1;
+  }
+
   return 0;
 }
