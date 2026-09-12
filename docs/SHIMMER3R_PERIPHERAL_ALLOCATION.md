@@ -69,7 +69,7 @@ From the `Core/Src` initialisers:
 | UART | `huart1`, `huart3` (`huart6` initialised, used only under `SHIMMER4_SDK`) | `huart1` dock (115200), `huart3` Bluetooth; no debug UART |
 | TIM | `htim2`, `htim3`, `htim6`, `htim7` (`htim1` declared but never initialised) | Sampling, timeouts, PWM |
 | GPDMA | multiple | SPI and SDMMC transfers |
-| CRC | `hcrc` | Configured (poly `0x1021`, init `0xB0CA`) but never called — the software CRC runs, see the *Still unverified* note and `SHIMMER3_ARCHITECTURE_OVERVIEW` |
+| CRC | — | **Removed (DEV-1003).** Was configured (poly `0x1021`, init `0xB0CA`) but never called; all checksums run the shared software CRC by design. See `SHIMMER3_ARCHITECTURE_OVERVIEW` for the measurements, and for the conditions that would justify bringing it back |
 | RNG | `hrng` | Initialised, no consumer |
 | IWDG | `hiwdg` | Independent watchdog |
 | MDF | `hmdf1` | Microphone (PDM) |
