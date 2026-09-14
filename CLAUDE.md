@@ -28,8 +28,3 @@ SD format, timekeeping, board revisions. Consult them before reading code. Note 
 ## Versioning
 `scripts/increment_version.sh` is called by the *consuming* firmware's release workflow, not by this
 repo. There is no release pipeline here.
-
-## Working copies
-There is no standalone clone on this machine. Worktrees are hosted from the submodule gitdir inside
-shimmer3r-firmware (`.git/modules/LogAndStream_Shimmer3R/log-and-stream-common/`), which means they
-break if that superproject is re-cloned or the submodule is deinitialised.
