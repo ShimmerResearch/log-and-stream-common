@@ -392,18 +392,25 @@ not start and stop logging repeatedly. Dock/USB state changes are debounced at
   | `platform_processHwRevision` | yes | **no** | no-op |
   | `platform_initGpioForRevision` | yes | yes | no-op |
   | `platform_gatherData` | yes (starts the ADC DMA, or queues `TASK_GATHER_DATA`) | **no** | calls `ShimSens_gatherData()` directly |
-  | `platform_crcData` | yes (MSP430 hardware CRC16) | **no** | software CRC (`ShimSwCrc_calc`) |
-  | `platform_crcData16` | **no** | **no** | software CRC, 16-bit length |
+  | `platform_crcData` | yes (MSP430 hardware CRC16) | **no** (deliberate, see below) | software CRC (`ShimSwCrc_calc`) |
+  | `platform_crcData16` | **no** | **no** | software CRC, 16-bit length (`ShimSwCrc_calc16`) |
   | `platform_isDockUartInitialised` | yes | yes | false |
   | `platform_isUsbUartInitialised` | **no** (no USB) | yes | false |
   | `platform_sleepWhenNoTask` | yes (LPM3) | yes (Sleep / WFI) | no-op (busy loop) |
 
   Two consequences worth knowing. First, **Shimmer3R runs the software CRC**
-  for every Bluetooth, dock and SD-transfer checksum: `Shimmer_Driver/hal_CRC.c`
-  defines `platform_CrcData` — capital *C* — which does not match the weak
-  symbol, is never called, and leaves the configured CRC peripheral (`crc.c`,
-  polynomial `0x1021`, init `0xB0CA`) idle. The results are identical, so
-  nothing is wrong on the wire, but the hardware path is dead. Second,
+  for every Bluetooth, dock and SD-transfer checksum, and does so deliberately.
+  It did not start that way: `Shimmer_Driver/hal_CRC.c` used to define
+  `platform_CrcData` — capital *C* — which did not match the weak symbol, was
+  never called, and left the configured CRC peripheral idle while reading as
+  though it were live. DEV-1003 removed the peripheral rather than fixing the
+  name, because measurement did not support keeping it: the STM32 CRC unit is
+  2.8–4.6x faster per byte, but it cannot pay for its own AHB clock at any
+  packet rate this firmware produces, and the software implementation sustains
+  ~2.8 MB/s against a Bluetooth link that manages a small fraction of that. If
+  a workload ever does need it — an OTA image check is the plausible one — the
+  peripheral is a CubeMX checkbox away, and would want CRC-32 rather than the
+  `0x1021`/`0xB0CA` wire configuration. Second,
   **Shimmer3R samples in interrupt context**: with `platform_gatherData` not
   overridden, the RTC wake-up-timer callback runs `ShimSens_gatherData()`
   inline and `TASK_GATHER_DATA` is never queued on that platform.

@@ -317,8 +317,8 @@ otherwise to the dock UART; on Shimmer3 always to the dock UART.
   Bluetooth link**. `ShimDock_uartCheckCrc` and `ShimDock_sendRsp` both call
   `platform_crcData` — on Shimmer3 the MSP430 CRC16 module seeded with
   `CRC_INIT` (`0xB0CA`, `hal_CRC.c`), on Shimmer3R the shared software CRC
-  (`CRC/shimmer_crc.c`; the hardware CRC peripheral is configured for
-  `0x1021`/`0xB0CA` but its wrapper is misnamed and never called). The check
+  (`CRC/shimmer_crc.c`, by design since DEV-1003; the STM32 CRC peripheral was
+  removed rather than wired up, see `SHIMMER3_ARCHITECTURE_OVERVIEW`). The check
   covers `'$'`, the command byte, the length byte and the payload (`LEN + 3`
   bytes) and compares against the two little-endian CRC bytes that follow;
   responses append their CRC the same way.

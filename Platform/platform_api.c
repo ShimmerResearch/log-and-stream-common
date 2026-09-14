@@ -65,17 +65,7 @@ PLATFORM_WEAK uint32_t platform_crcData16(uint8_t *buf, uint16_t len)
   /* This function can be overridden by the main application to provide hardware
    based CRC calculation. Same conventions as ShimSwCrc_calc() (CRC_INIT seed,
    odd-length zero pad) with a 16-bit length. */
-  uint16_t crc = CRC_INIT;
-  uint16_t i;
-  for (i = 0; i < len; i++)
-  {
-    crc = ShimSwCrc_byte(crc, buf[i]);
-  }
-  if (len % 2)
-  {
-    crc = ShimSwCrc_byte(crc, 0x00);
-  }
-  return crc;
+  return ShimSwCrc_calc16(buf, len);
 }
 
 PLATFORM_WEAK bool platform_isDockUartInitialised(void)

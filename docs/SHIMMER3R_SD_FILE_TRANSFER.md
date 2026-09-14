@@ -374,8 +374,15 @@ appendix, which says where each code can and cannot appear.
   interleaved reader.
 - ~~The CRC used by `sdFtCalcCrc`~~ — resolved: it is `platform_crcData16`,
   the 16-bit-length variant of the comms CRC — same `CRC_INIT` `0xB0CA`, same
-  odd-length zero pad. Neither platform overrides `platform_crcData16`, so it
-  is the software implementation in `CRC/shimmer_crc.c` on both.
+  odd-length zero pad. Neither platform overrides `platform_crcData16`, so on
+  both it is the weak default in `Platform/platform_api.c`, which delegates to
+  `ShimSwCrc_calc16` in `CRC/shimmer_swCrc.c`. That delegation is the point:
+  the loop lives in the same translation unit as the per-byte step so the
+  compiler inlines it, and neither firmware builds with LTO. Before DEV-1003
+  the loop was open-coded in `platform_api.c` and paid a call per byte —
+  ~25 cycles/byte against ~16 now, or 537 µs down to 344 µs for a full
+  1031-byte block at 48 MHz. This is the largest CRC workload in the firmware
+  by an order of magnitude, and the only one where the cost was measurable.
 - **`SD_FT_STATUS_BAD_ARGS` (`0xF2`).** Returned by the three one-shot
   commands when no path has been staged — `SD_LIST_DIR`, `SD_FILE_STAT` and
   `SD_DELETE` each open with

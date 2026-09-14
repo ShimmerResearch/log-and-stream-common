@@ -71,6 +71,35 @@ uint16_t ShimSwCrc_calc(uint8_t *msg, uint8_t len)
   return crcCalc;
 }
 
+/* 16-bit-length variant, for payloads longer than 255 bytes. Same CRC
+ * conventions as ShimSwCrc_calc(): CRC_INIT seed, odd-length zero pad.
+ *
+ * It lives here rather than being open-coded in the caller so that the
+ * compiler inlines ShimSwCrc_byte() into the loop. Neither firmware builds
+ * with LTO, so a cross-translation-unit call costs a bl and a return per
+ * byte - about half again as much as the inlined form.
+ *
+ * Deliberately NOT expressed in terms of ShimSwCrc_calc(), and vice versa:
+ * the two differ at len == 0. ShimSwCrc_calc() seeds with msg[0] before its
+ * loop and so reads a byte even when told there are none, while this returns
+ * a bare CRC_INIT. ShimSwCrc_check() calls ShimSwCrc_calc(msg, len - 2), so a
+ * 2-byte packet reaches exactly that case. */
+uint16_t ShimSwCrc_calc16(uint8_t *msg, uint16_t len)
+{
+  uint16_t crcCalc = CRC_INIT;
+  uint16_t i;
+
+  for (i = 0; i < len; i++)
+  {
+    crcCalc = ShimSwCrc_byte(crcCalc, *(msg + i));
+  }
+  if (len % 2)
+  {
+    crcCalc = ShimSwCrc_byte(crcCalc, 0x00);
+  }
+  return crcCalc;
+}
+
 uint8_t ShimSwCrc_check(uint8_t *msg, uint8_t len)
 {
   uint16_t crc;

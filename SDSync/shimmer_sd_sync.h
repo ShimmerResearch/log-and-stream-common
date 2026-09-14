@@ -15,8 +15,6 @@
 #if defined(SHIMMER3)
 #include "../5xx_HAL/hal_CRC.h"
 #include "msp430.h"
-#elif defined(SHIMMER3R)
-#include "crc.h"
 #endif
 
 #define BT_SD_SYNC_CRC_MODE CRC_1BYTE_ENABLED

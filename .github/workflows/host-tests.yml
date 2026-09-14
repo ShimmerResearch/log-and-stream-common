@@ -1,0 +1,29 @@
+name: host-tests
+
+on: [push, pull_request]
+
+jobs:
+  software-crc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # shimmer_swCrc.c includes only shimmer_swCrc.h and shimmer_crc.h, and
+      # both include nothing but <stdint.h> - so this needs no ARM toolchain,
+      # no HAL and no target hardware.
+      #
+      # -DSHIMMER_HOST_TEST is what un-hides main() in test_swcrc.c. The
+      # firmware projects compile every .c under this repository, so the test's
+      # main() stays behind that guard for everyone except this job.
+      - name: Build
+        run: >
+          gcc -std=c11 -O2 -Wall -Wextra -Werror -DSHIMMER_HOST_TEST
+          -I CRC
+          Test/host/test_swcrc.c CRC/shimmer_swCrc.c
+          -o /tmp/test_swcrc
+
+      - name: Assertions
+        run: /tmp/test_swcrc
+
+      - name: Cross-check against the Python host reference
+        run: python3 Test/host/crosscheck_swcrc.py /tmp/test_swcrc
