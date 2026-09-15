@@ -37,7 +37,13 @@ void ShimBrd_init(void)
 
 void ShimBrd_resetDaughterCardId(void)
 {
-  memset(daughterCardIdPage.raw, 0, sizeof(daughterCardIdPage.raw));
+  /* 0xFF, not 0x00: it is what an erased/unprogrammed EEPROM holds, and what
+   * CAT24C16_read() fills the buffer with when a read fails. Boards with no
+   * EEPROM fitted (Shimmer3 pre-SR31-7-0) reach neither path, because the read
+   * is skipped when the chip is absent, so this reset value is the only thing
+   * they ever report. Zeroes made them look like a real board, SR0-0-0, to
+   * host software; 0xFF reports them as unprogrammed. DEV-1019 */
+  memset(daughterCardIdPage.raw, 0xFF, sizeof(daughterCardIdPage.raw));
 }
 
 void ShimBrd_setHwId(uint8_t hwIdToSet)
