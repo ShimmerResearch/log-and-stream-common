@@ -1,0 +1,98 @@
+# Advisory check: did a subsystem change land without its documentation?
+#
+# docs/ is the authoritative reference for this library (see AGENTS.md), and it
+# ships to two platforms. A stale doc is worse than no doc, because it gets
+# believed over the code it contradicts.
+#
+# This check NEVER fails the build. Not every code change needs a doc change,
+# and a blocking gate would only train people to route around it. It writes a
+# note on the PR summary naming the doc that probably needs a look.
+#
+# To silence it for a PR that genuinely needs no doc change, add the
+# "docs-not-needed" label.
+
+name: docs-in-step
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare changed subsystems against changed docs
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+
+          if [[ ",$LABELS," == *",docs-not-needed,"* ]]; then
+            echo "Labelled docs-not-needed — skipping." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          changed=$(git diff --name-only "$BASE" "$HEAD" || true)
+          [ -z "$changed" ] && exit 0
+
+          if echo "$changed" | grep -qE '^docs/.+\.md$'; then
+            echo "Documentation was updated in this PR." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # subsystem directory -> the doc that describes it
+          MAP='
+          Comms|SHIMMER3_BT_COMMUNICATION_PROTOCOL.md, SHIMMER3_DOCK_PROTOCOL.md
+          Battery|SHIMMER3_BATTERY_AND_CHARGING.md
+          Boards|SHIMMER3_BOARD_REVISIONS.md
+          Calibration|SHIMMER3_CALIBRATION.md
+          Configuration|SHIMMER3_CONFIGURATION_INFOMEM.md
+          EEPROM|SHIMMER3_EEPROM_MEMORY_MAP.md
+          GSR|SHIMMER3_GSR_AUTORANGE.md
+          LEDs|SHIMMER3_LED_FEEDBACK.md
+          RTC|SHIMMER3_TIMEKEEPING.md
+          SDCard|SHIMMER3_SD_CARD_FORMAT.md, SHIMMER3_STREAMING_DATA_FORMAT.md
+          Sensing|SHIMMER3_STREAMING_DATA_FORMAT.md
+          SDSync|SHIMMER3_SD_SYNC.md
+          Test|SHIMMER3R_FACTORY_TEST_REPORT.md
+          Platform|SHIMMER3R_PERIPHERAL_ALLOCATION.md
+          '
+
+          hits=""
+          while IFS='|' read -r dir doc; do
+            dir=$(echo "$dir" | tr -d '[:space:]')
+            [ -z "$dir" ] && continue
+            if echo "$changed" | grep -qE "^$dir/.+\.(c|h)$"; then
+              hits="${hits}| \`$dir/\` | ${doc# } |"$'\n'
+            fi
+          done <<< "$MAP"
+
+          if [ -z "$hits" ]; then
+            echo "No documented subsystem changed." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "### Documentation may need updating"
+            echo ""
+            echo "This PR changes subsystems whose behaviour is documented, but no file under \`docs/\` changed."
+            echo ""
+            echo "| Changed | Documented in |"
+            echo "|---|---|"
+            printf '%s' "$hits"
+            echo ""
+            echo "If the change is a rename, a refactor, or anything else with no observable behaviour"
+            echo "change, this is nothing to act on — add the \`docs-not-needed\` label to silence it."
+            echo ""
+            echo "Remember this library ships to both Shimmer3 (MSP430) and Shimmer3R (STM32)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::warning title=Documentation may need updating::A documented subsystem changed but docs/ did not. See the job summary."
