@@ -56,6 +56,14 @@ Change behaviour in a subsystem, update its doc **in the same PR**. Scope this t
 register maps, protocol bytes, memory layouts, state machines — not renames or refactors that change
 nothing observable.
 
-Two docs are derived from elsewhere and should not be edited to match code: `SHIMMER3_BOARD_REVISIONS.md`
-comes from `Shimmer_PCBREV_INDEX.xlsx`, and anything it feeds. If code and doc disagree there, raise it
-in the PR — the workbook is the source of truth, and the code may be what is wrong.
+`SHIMMER3_BOARD_REVISIONS.md` is a special case. Its per-product tables are a conversion of an
+internal hardware workbook that is **not in this repository**, so a reader outside Shimmer cannot
+check them. Do not edit those tables to match code.
+
+But the workbook is provenance, not specification: **where the tables and the firmware disagree, the
+firmware wins.** The revision gates in that document name the functions that read them
+(`ShimBrd_isBmp581PresentPerSrNumber()` and friends), and those are the authority for behaviour.
+Report the disagreement rather than silently reconciling either side.
+
+This repository is public. Keep internal paths, customer names and ticket identifiers out of the
+docs and out of this file.
