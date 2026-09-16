@@ -89,12 +89,15 @@ uint8_t PktRing_isEmpty(const PacketRing *ringPtr)
   return ringPtr->rdIdx == ringPtr->wrIdx;
 }
 
+/* Deliberately a >= rather than an equality on the indices. The two are the
+ * same while the ring's own invariant holds - starts are refused here, so the
+ * count can never pass DATA_BUF_QTY_IN_USE - but an equality fails OPEN if it
+ * ever does not: it would report "not full", allow a start, and let the write
+ * index lap the read index, which aliases the whole ring. Failing closed costs
+ * nothing and is the same class of mistake this module exists to remove. */
 uint8_t PktRing_isFull(const PacketRing *ringPtr)
 {
-  uint16_t wrIdx = ringPtr->wrIdx;
-  uint16_t rdIdx = ringPtr->rdIdx;
-  return ((DATA_BUF_MASK & rdIdx)
-      == (DATA_BUF_MASK & (wrIdx + (DATA_BUF_QTY - DATA_BUF_QTY_IN_USE))));
+  return (uint8_t) (PktRing_count(ringPtr) >= DATA_BUF_QTY_IN_USE);
 }
 
 PktTickAction PktRing_onTick(PacketRing *ringPtr)
