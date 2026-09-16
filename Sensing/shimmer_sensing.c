@@ -195,6 +195,24 @@ void ShimSens_startSensing(void)
         / sensing.freq; //216000000 = 8192*26367 or 108000000 = 4096*26367
     sensing.clkInterval16k = samplingRateTicks / 2;
 
+    /* Give a gather ~100 ms before the fail-safe decides it is never coming
+     * back. That has to be a duration rather than a sample count: the thing
+     * being waited on is an SD write, and on Shimmer3 - one 512-byte write
+     * buffer, SPI card - a single f_write can run for tens of milliseconds
+     * during the card's own garbage collection. Held as a period count so the
+     * tick path needs neither an RTC read nor a 32-bit subtraction.
+     * Never below 2, so a very slow sample rate still has a fail-safe. */
+    uint16_t stallLimitPeriods = 2U;
+    if (samplingRateTicks > 0U)
+    {
+      stallLimitPeriods = (uint16_t) (TIMEOUT_100_MS / samplingRateTicks);
+      if (stallLimitPeriods < 2U)
+      {
+        stallLimitPeriods = 2U;
+      }
+    }
+    sensing.ring.stallLimitPeriods = stallLimitPeriods;
+
     if (shimmerStatus.docked)
     {
       DockUart_deinit();

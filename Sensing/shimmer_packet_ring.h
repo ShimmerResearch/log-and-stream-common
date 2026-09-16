@@ -52,7 +52,14 @@
  * gives up on it and lets the next tick start a fresh packet. Without this a
  * lost completion - a dropped HAL callback, or the deliberate
  * ShimTask_clear(TASK_GATHER_DATA) in ShimSdCfgFile_readSdConfiguration() -
- * strands the slot IN_PROGRESS and sampling never restarts. */
+ * strands the slot IN_PROGRESS and sampling never restarts.
+ *
+ * This is only the value the ring starts with. ShimSens_startSensing()
+ * replaces it with the number of periods that make up a fixed WALL-CLOCK
+ * timeout, because what the fail-safe is really waiting on - an SD write - has
+ * a duration that has nothing to do with the sample rate. Counting periods
+ * instead meant the timeout shrank as the rate rose: three periods is 6 ms at
+ * 504 Hz, so an ordinary f_write looked like a hang. */
 #define PKT_RING_STALL_LIMIT_DEFAULT  3U
 /* Sentinel for "never give up", used by the host tests. */
 #define PKT_RING_STALL_LIMIT_DISABLED 0xFFFFU
