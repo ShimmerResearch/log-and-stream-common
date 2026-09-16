@@ -40,16 +40,16 @@ void ShimSdDataFile_openNewDataFile(void);
 void ShimSdDataFile_writeSdHeaderToFile(void);
 void ShimSdDataFile_closeDataFile(void);
 
-/* Two-dimensional SD write buffer */
-uint8_t sdWrBuf[NUM_SDWRBUF][SD_WRITE_BUF_SIZE];
-/* Current sensing buffer index in-which new data is being saved into */
-uint8_t sdBufSens = 0;
-/* Current write buffer index that is being written to the SD card */
-uint8_t sdBufWr = 0;
-/* Length of data within each buffer */
-uint16_t sdWrLen[NUM_SDWRBUF];
+/* The SD write buffers and all of their bookkeeping. The state machine is in
+ * SDCard/shimmer_sd_write_buf.c, which knows nothing of FatFs and is driven by
+ * Test/host/test_sd_write_buf.c on a PC. Everything here is the file side of
+ * the job: opening, writing, splitting and syncing.
+ *
+ * sdWrBuf.diag holds the refusal counters, which survive a stop so they can be
+ * read in the debugger after a bench run. */
+SdWriteBuf sdWrBuf;
 
-uint8_t fileName[64], dirName[64], expDirName[32], sdBufInQ;
+uint8_t fileName[64], dirName[64], expDirName[32];
 uint16_t fileNum, dirCounter;
 uint64_t sdFileCrTs, sdFileSyncTs;
 #if USE_FATFS
@@ -74,6 +74,9 @@ extern FIL SDFile;     /* File object for SD */
 
 void ShimSdDataFile_init(void)
 {
+  /* The only place the diagnostics are cleared, other than the start of a
+   * logging session. */
+  SdWrBuf_init(&sdWrBuf);
   ShimSdDataFile_resetVars();
 }
 
@@ -86,14 +89,12 @@ void ShimSdDataFile_resetVars(void)
   memset(&fileName[0], 0x00, sizeof(fileName));
   memset(&dirName[0], 0x00, sizeof(dirName));
   memset(&expDirName[0], 0x00, sizeof(expDirName));
-  memset(&sdWrBuf[0][0], 0x00, sizeof(sdWrBuf));
-  sdBufInQ = 0;
+  /* Keeps sdWrBuf.diag - this runs on the stop path, and the counters are
+   * there to be read after the run they describe. */
+  SdWrBuf_reset(&sdWrBuf);
 
-  sdBufSens = 0;
-  sdBufWr = 0;
   fileNum = 0;
   dirCounter = 0;
-  memset(&sdWrLen[0], 0x00, sizeof(sdWrLen));
   sdFileCrTs = 0;
   sdFileSyncTs = 0;
   file_status = FR_OK;
@@ -297,8 +298,8 @@ void ShimSdDataFile_fileInit(void)
 
   sensing.isSdOperating = 0;
   sensing.isFileCreated = 1;
-  memset(sdWrLen, 0, sizeof(sdWrLen));
-  sdBufInQ = sdBufSens = sdBufWr = 0;
+  /* Start of a logging session: the refusal counters describe this run. */
+  SdWrBuf_init(&sdWrBuf);
 }
 
 void ShimSdDataFile_close(void)
@@ -312,24 +313,37 @@ void ShimSdDataFile_close(void)
 
 void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len)
 {
-  if ((NUM_SDWRBUF == sdBufInQ) || (sensing.isFileCreated == 0))
+  const uint8_t *headPtr = 0;
+  uint8_t headLen = 0;
+  SdWrBufPutResult putResult;
+
+  if (sensing.isFileCreated == 0)
   {
-    __NOP();
     return;
   }
 
-  /* If enabled, write the sync offset to the start of the buffer */
-  if (sdWrLen[sdBufSens] == 0 && shimmerStatus.sdSyncEnabled)
+  /* If enabled, the sync offset leads every buffer. Passing it in on every
+   * record rather than writing it here keeps the sync module out of the buffer
+   * state machine; only a record that starts a fresh buffer consumes it. */
+  if (shimmerStatus.sdSyncEnabled)
   {
-    ShimSdDataFile_prepareSDBuffHead();
+    headPtr = ShimSdSync_myTimeDiffPtrGet();
+    headLen = SYNC_PACKET_PAYLOAD_SIZE;
   }
 
-  memcpy(sdWrBuf[sdBufSens] + sdWrLen[sdBufSens], buf, len);
-  sdWrLen[sdBufSens] += len;
-  if (sdWrLen[sdBufSens] + len > SD_WRITE_BUF_SIZE)
+  putResult = SdWrBuf_put(&sdWrBuf, headPtr, headLen, buf, len);
+
+  if ((putResult == SDWRBUF_PUT_STARTED_FRESH) && (headLen > 0))
+  {
+    ShimSdSync_resetMyTimeDiff();
+  }
+
+  /* Whatever happened to the record, a buffer may have been closed by it - and
+   * a refused record means the card is behind, which is when the write matters
+   * most. Setting the task is idempotent. */
+  if (SdWrBuf_numQueued(&sdWrBuf) > 0)
   {
     ShimTask_set(TASK_SDWRITE);
-    ShimSdDataFile_advanceSensingBuf();
   }
 }
 
@@ -338,15 +352,12 @@ void ShimSdDataFile_writeToCard(void)
 #if USE_FATFS
   UINT bw;
 #endif //USE_FATFS
-  uint8_t *writing_buf;
-  uint16_t *writing_buf_len;
-
-  writing_buf = &sdWrBuf[sdBufWr][0];
-  writing_buf_len = &sdWrLen[sdBufWr];
+  const uint8_t *writing_buf;
+  uint16_t writing_buf_len;
 
   __NOP();
 
-  if ((0 == *writing_buf_len) || (0 == sdBufInQ))
+  if (!SdWrBuf_peekWrite(&sdWrBuf, &writing_buf, &writing_buf_len))
   {
     return;
   }
@@ -358,7 +369,7 @@ void ShimSdDataFile_writeToCard(void)
   //dataFileInfo.fsize was not incrementing the file size.
   file_status = f_lseek(&dataFile, f_size(&dataFile));
   assert_param(file_status == FR_OK);
-  file_status = f_write(&dataFile, writing_buf, *writing_buf_len, &bw);
+  file_status = f_write(&dataFile, writing_buf, writing_buf_len, &bw);
   assert_param(file_status == FR_OK);
 #endif
 
@@ -389,13 +400,7 @@ void ShimSdDataFile_writeToCard(void)
 
   sensing.isSdOperating = 0;
 
-  *writing_buf_len = 0;
-  //sdBufWr++;
-  if (++sdBufWr >= NUM_SDWRBUF)
-  {
-    sdBufWr = 0;
-  }
-  sdBufInQ--;
+  SdWrBuf_writeDone(&sdWrBuf);
   if (ShimSdDataFile_getNumberOfFullBuffers() > 0)
   {
     ShimTask_set(TASK_SDWRITE);
@@ -419,37 +424,28 @@ void ShimSdDataFile_writeToCard(void)
 
 void ShimSdDataFile_writeAllBufsToSd(void)
 {
-  /* 'Package up' any data that is in the current SD sensing buffer. */
-  if (ShimSdDataFile_getBytesInCurrentSensingBuffer() > 0)
-  {
-    ShimSdDataFile_advanceSensingBuf();
-  }
+  /* 'Package up' any data that is in the current SD sensing buffer. Does
+   * nothing when every buffer is already queued - there is no open buffer
+   * then, and queueing one anyway is what used to leave this loop unable to
+   * reach zero. */
+  SdWrBuf_queueCurrent(&sdWrBuf);
 
-  /* Write all buffers with data to the SD card. */
+  /* Write all buffers with data to the SD card. Each pass releases exactly one
+   * buffer, so this always terminates. */
   while (ShimSdDataFile_getNumberOfFullBuffers() > 0)
   {
     ShimSdDataFile_writeToCard();
   }
 }
 
-void ShimSdDataFile_advanceSensingBuf(void)
-{
-  sdBufInQ++;
-  sdBufSens++;
-  if (sdBufSens >= NUM_SDWRBUF)
-  {
-    sdBufSens = 0;
-  }
-}
-
 uint8_t ShimSdDataFile_getNumberOfFullBuffers(void)
 {
-  return sdBufInQ;
+  return SdWrBuf_numQueued(&sdWrBuf);
 }
 
 uint16_t ShimSdDataFile_getBytesInCurrentSensingBuffer(void)
 {
-  return sdWrLen[sdBufSens];
+  return SdWrBuf_bytesInCurrent(&sdWrBuf);
 }
 
 void ShimSdDataFile_openNewDataFile(void)
@@ -526,12 +522,4 @@ uint8_t ShimSdDataFile_isFileStatusOk(void)
 uint8_t *ShimSdDataFile_fileNamePtrGet(void)
 {
   return &fileName[0];
-}
-
-void ShimSdDataFile_prepareSDBuffHead(void)
-{
-  memcpy(&sdWrBuf[sdBufSens][sdWrLen[sdBufSens]], ShimSdSync_myTimeDiffPtrGet(),
-      SYNC_PACKET_PAYLOAD_SIZE);
-  sdWrLen[sdBufSens] += SYNC_PACKET_PAYLOAD_SIZE;
-  ShimSdSync_resetMyTimeDiff();
 }

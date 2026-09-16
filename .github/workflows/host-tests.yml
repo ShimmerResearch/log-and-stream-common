@@ -51,3 +51,35 @@ jobs:
 
       - name: Assertions
         run: /tmp/test_packet_ring
+
+  sd-write-buf:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The number of buffers is a compile-time constant, so the same test is
+        # built once per count: 1 is what Shimmer3 shipped and pins down the
+        # records that cost, 2 is Shimmer3 now, 4 is Shimmer3R.
+        numbufs: [1, 2, 4]
+    steps:
+      - uses: actions/checkout@v4
+
+      # shimmer_sd_write_buf.c includes only <stdint.h> and <string.h>, so the
+      # buffer state machine can be driven on a PC. The states worth testing -
+      # a buffer filling while the previous one is still going to the card, a
+      # stop arriving while every buffer is queued - need a card slower than
+      # the sample rate, which is not something you can ask hardware for.
+      #
+      # -DSHIMMER_HOST_TEST is what un-hides main() in test_sd_write_buf.c. The
+      # firmware projects compile every .c under this repository, so the test's
+      # main() stays behind that guard for everyone except this job.
+      - name: Build (NUM_SDWRBUF=${{ matrix.numbufs }})
+        run: >
+          gcc -std=c11 -O2 -Wall -Wextra -Werror -DSHIMMER_HOST_TEST
+          -DNUM_SDWRBUF=${{ matrix.numbufs }}
+          -I .
+          Test/host/test_sd_write_buf.c SDCard/shimmer_sd_write_buf.c
+          -o /tmp/test_sd_write_buf
+
+      - name: Assertions
+        run: /tmp/test_sd_write_buf
