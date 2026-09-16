@@ -55,12 +55,12 @@
  * 1 (what Shimmer3 shipped), 2 and 4. */
 #if !defined(NUM_SDWRBUF)
 #if defined(SHIMMER3)
-#define NUM_SDWRBUF 1
+#define NUM_SDWRBUF 2
 #elif defined(SHIMMER3R)
 #define NUM_SDWRBUF 4
 #else
 /* Host build with no platform selected: the Shimmer3 value. */
-#define NUM_SDWRBUF 1
+#define NUM_SDWRBUF 2
 #endif
 #endif
 
