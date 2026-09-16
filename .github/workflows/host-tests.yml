@@ -27,3 +27,27 @@ jobs:
 
       - name: Cross-check against the Python host reference
         run: python3 Test/host/crosscheck_swcrc.py /tmp/test_swcrc
+
+  packet-ring:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # shimmer_packet_ring.c includes only <stdint.h> and <string.h>, so the
+      # ring's state machine can be driven on a PC. That matters here more than
+      # it does for the CRC: the interleavings this covers need a sample timer,
+      # a gather completion and an SD write to land in a particular order, which
+      # is not something you can ask real hardware for.
+      #
+      # -DSHIMMER_HOST_TEST is what un-hides main() in test_packet_ring.c. The
+      # firmware projects compile every .c under this repository, so the test's
+      # main() stays behind that guard for everyone except this job.
+      - name: Build
+        run: >
+          gcc -std=c11 -O2 -Wall -Wextra -Werror -DSHIMMER_HOST_TEST
+          -I .
+          Test/host/test_packet_ring.c Sensing/shimmer_packet_ring.c
+          -o /tmp/test_packet_ring
+
+      - name: Assertions
+        run: /tmp/test_packet_ring

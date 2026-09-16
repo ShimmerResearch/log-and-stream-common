@@ -47,6 +47,8 @@
 
 #include "log_and_stream_externs.h"
 
+#include "Sensing/shimmer_packet_ring.h"
+
 #if defined(SHIMMER3R)
 #include "shimmer_definitions.h"
 #include "shimmer_include.h"
@@ -55,18 +57,6 @@
 #ifndef __weak
 #define __weak __attribute__((weak))
 #endif /* __weak */
-
-#define SENSING_LOCK_UP_PREVENTION 1
-
-/* Packet structure: [Header(1)][Timestamp(3)][Sensor Data(N)][CRC(N)] */
-#define PACKET_HEADER_IDX          0
-#define PACKET_HEADER_LEN          1
-#define PACKET_TIMESTAMP_IDX       1
-#define PACKET_TIMESTAMP_LEN       3
-#define FIRST_CH_BYTE_IDX          (PACKET_HEADER_LEN + PACKET_TIMESTAMP_LEN)
-
-/* Max samples before considering packet stuck */
-#define BLOCKAGE_THRESHOLD         3
 
 #if defined(SHIMMER3)
 /* 3xanalogAccel + 3xdigiGyro + 3xdigiMag +
@@ -160,11 +150,6 @@
 #define PPG_2           0x37
 #endif
 
-#define DATA_BUF_SIZE       128U
-#define DATA_BUF_QTY        8U /* packet buffer (power 2)  */
-#define DATA_BUF_QTY_IN_USE 6U /* must be < DATA_BUF_QTY */
-#define DATA_BUF_MASK       (DATA_BUF_QTY - 1UL)
-
 typedef struct
 { //data ptr (offset)
   uint8_t ts;
@@ -199,25 +184,11 @@ typedef struct
 
 typedef enum
 {
-  SAMPLING_PACKET_IDLE = 0x00,
-  SAMPLING_IN_PROGRESS = 0x01,
-  SAMPLING_COMPLETE = 0x02
-} samplingStatus_t;
-
-typedef enum
-{
   NEW_SD_FILE_TS_IDLE,
   NEW_SD_FILE_TS_PENDING_UPDATE,
   NEW_SD_FILE_TS_UPDATED,
   NEW_SD_FILE_TS_SAVED
 } newSdFileTsStatus_t;
-
-typedef struct
-{ //sensor data
-  volatile samplingStatus_t samplingStatus;
-  volatile uint32_t timestampTicks;
-  uint8_t dataBuf[DATA_BUF_SIZE];
-} PACKETBufferTypeDef;
 
 typedef struct
 { //sensor data
@@ -244,12 +215,7 @@ typedef struct
   volatile uint64_t firstTsForSdFile;
   volatile uint64_t startTs;
   volatile uint32_t latestTs;
-#if SENSING_LOCK_UP_PREVENTION
-  uint8_t blockageCount;
-#endif //SENSING_LOCK_UP_PREVENTION
-  volatile uint16_t packetBuffWrIdx;
-  volatile uint16_t packetBuffRdIdx;
-  PACKETBufferTypeDef packetBuffers[DATA_BUF_QTY];
+  PacketRing ring;
   uint8_t skippingPacketsFlag;
   //STATTypeDef stat;
   DATAPTRTypeDef ptr;
@@ -296,24 +262,11 @@ uint8_t ShimSens_checkAutostopLoggingCondition(void);
 void ShimSens_currentExperimentLengthReset(void);
 void ShimSens_maxExperimentLengthSecsSet(uint16_t expLengthMins);
 uint8_t *ShimSens_getDataBuffAtWrIdx(void);
-uint8_t *ShimSens_getDataBuffAtNextWrIdx(void);
 //Buffer before the write index (the last completed sample). Never NULL, but only
 //holds a completed sample once sampling is underway - see definition for details.
 uint8_t *ShimSens_getDataBuffAtPrevWrIdx(void);
 PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void);
-PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void);
-void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll);
 void ShimSens_resetPacketBuffAll(void);
-void ShimSens_incrementPacketBuffWrIdx(void);
-void ShimSens_incrementPacketBuffReadIndex(void);
-uint8_t ShimSens_arePacketBuffsEmpty(void);
-uint8_t ShimSens_arePacketBuffsFull(void);
-uint8_t ShimSens_getPacketBuffFullCount(void);
-
-uint8_t ShimSens_getPacketBufRdIdx(void);
-uint8_t ShimSens_getPacketBufWrIdx(void);
-uint8_t ShimSens_getPacketBufAtNextWrIdx(void);
-uint8_t ShimSens_getPacketBufAtPrevWrIdx(void);
 
 __weak void ADC_gatherDataStart(void);
 

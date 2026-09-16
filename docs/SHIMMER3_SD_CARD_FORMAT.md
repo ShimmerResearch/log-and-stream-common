@@ -160,6 +160,13 @@ and §5.
 > streaming document; the header's initial timestamp (§3.3) gives the absolute
 > anchor for the first record.
 
+> **A record's timestamp is never zero.** Records are stamped when the sample
+> tick starts them and are not written out otherwise, so `00 00 00` in the
+> field marks an invalid record rather than the counter's origin. Reading one
+> as a wrap costs the remainder of the file 512 seconds — see
+> [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1
+> for which unwrapping rules survive it and which do not.
+
 ### 2.2 Header size differs by generation
 
 | Platform | `SD_HEAD_SIZE` |
@@ -348,6 +355,22 @@ sample records using the header alone.
 Samples accumulate into a 512-byte buffer; when full it is written with
 `f_write`. Shimmer3R rotates four buffers so sensing can continue during a
 write, Shimmer3 has one.
+
+Behind that sits the sample ring (`Sensing/shimmer_packet_ring.c`): eight slots,
+six usable, with one packet being filled at a time. A sample tick starts a
+packet and stamps it; the platform gathers the enabled channels; a completion
+closes the slot and the drain hands it to the SD and Bluetooth writers. Ticks
+are refused while the ring is full or while a gather is still outstanding, so
+**a slow card costs samples rather than correctness** — the gaps that leaves
+are genuine, and a parser should read the timestamps rather than assume a fixed
+cadence.
+
+A gather that never completes would strand the packet, so a fail-safe releases
+the slot after roughly 100 ms and lets the next tick start fresh. Three guards
+keep that from producing a record nobody stamped: a gather may only run against
+a slot that is in progress, a completion may only close one, and the drain
+emits only completed slots. The ring keeps a counter for each refusal path,
+never reset while sensing, so a bench run can be read out afterwards.
 
 Every 60 seconds of sample time the file is `f_sync`ed, bounding data loss on
 power failure to about a minute. Every 3600 seconds a new file is opened.
