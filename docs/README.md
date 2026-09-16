@@ -91,6 +91,8 @@ something that "should work".
 | Solid red LED and no battery indication | The host `TOGGLE_LED` override, never cleared by the firmware — [LEDs](SHIMMER3_LED_FEEDBACK.md) §4 |
 | A newer command gets no response at all | Older firmware ignores unknown opcodes rather than NACKing — [versioning](SHIMMER3_RELEASE_AND_VERSIONING.md) §6 |
 | `sdlog.cfg` edit reset unrelated settings | Parsing starts from a blank configuration; the file is authoritative — [SD card](SHIMMER3_SD_CARD_FORMAT.md) §5.2 |
+| A Shimmer3 file is missing a run of consecutive samples at roughly every block boundary | Older Shimmer3 firmware had one SD write buffer and dropped records while it waited for the card — [SD card](SHIMMER3_SD_CARD_FORMAT.md) §4.1 |
+| Records decode correctly at the start of a Shimmer3 file and drift into nonsense | Blocks are not 512 bytes, and a 9-byte sync offset leads each one when the trial has sync enabled — [SD card](SHIMMER3_SD_CARD_FORMAT.md) §2.1 |
 | Headless Shimmer3R build fails with `no file system for scheme: C` | `-import` needs backslashes — [build](SHIMMER3_BUILD_AND_PROGRAMMING.md) §5.1 |
 | Shimmer3 Release configuration will not build | Known and parked; releases ship from **Debug** — [build](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
 
