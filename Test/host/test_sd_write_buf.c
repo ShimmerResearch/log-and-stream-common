@@ -167,7 +167,10 @@ static void sim_checkInvariants(Sim *sim, const char *where)
 /* One record, contents derived from a counter so consecutive records differ. */
 static SdWrBufPutResult sim_put(Sim *sim, uint16_t recLen)
 {
-  uint8_t rec[SD_WRITE_BUF_SIZE + 4];
+  /* Zeroed rather than left to the stack: a zero-length record is one of the
+   * cases under test, and gcc cannot otherwise prove the array is initialised
+   * before it is passed. */
+  uint8_t rec[SD_WRITE_BUF_SIZE + 4] = { 0 };
   SdWrBufPutResult r;
   uint16_t i;
 
