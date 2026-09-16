@@ -376,7 +376,7 @@ sample records using the header alone.
 | Constant | Value | Meaning |
 |---|---:|---|
 | `SD_WRITE_BUF_SIZE` | 512 | One write buffer |
-| `NUM_SDWRBUF` | S3: 2, S3R: 4 | Number of buffers |
+| `NUM_SDWRBUF` | 4 | Number of buffers, both platforms |
 | `BIN_FILE_SYNC_TIME_TICKS` | 32768 × 60 | `f_sync` every 60 s |
 | `BIN_FILE_SPLIT_TIME_TICKS` | 32768 × 3600 | New file every 3600 s |
 
@@ -384,15 +384,18 @@ Samples accumulate into a 512-byte buffer. A record that does not fit the
 buffer in progress closes it: the full buffer is queued for `TASK_SDWRITE`,
 which writes it with one `f_write`, and the record begins the next buffer.
 Buffers therefore end on record boundaries, and a write is never more than 512
-bytes. Shimmer3R rotates four buffers and Shimmer3 two, so on both platforms
-sensing continues into a fresh buffer while the previous one waits for the card.
+bytes. Both platforms rotate four buffers, so sensing continues into a fresh one
+while the previous waits for the card.
 
-If every buffer is waiting — the card has stalled for longer than the others
-take to fill — the record is dropped and counted in
-`sdWrBuf.diag.putsRefusedFull`. That counter is cleared when logging starts and
-never while it runs, so a bench run can be read out afterwards. The file then
-shows a gap of whole sample periods at a block boundary; it never shows a
-partial record.
+That is what sets how long a card may stall without costing a sample. One buffer
+takes `recordsPerBlock / sampleRate` to fill — about 46 ms at 504 Hz with a
+21-byte record — and four of them absorb roughly four times that.
+
+If every buffer is waiting — the card has stalled for longer than the rest take
+to fill — the record is dropped and counted in `sdWrBuf.diag.putsRefusedFull`.
+That counter is cleared when logging starts and never while it runs, so a bench
+run can be read out afterwards. The file then shows a gap of whole sample
+periods at a block boundary; it never shows a partial record.
 
 When logging stops, the partially filled buffer is queued and every queued
 buffer is written before the file is closed.

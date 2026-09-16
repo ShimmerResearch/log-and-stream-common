@@ -51,16 +51,22 @@
 
 /* How many buffers rotate. Compile-time per platform, because the storage is
  * a fixed array and on the MSP430 each buffer is 512 B of a 16 KB budget.
+ *
+ * Four on both platforms. What the count buys is the length of card stall the
+ * firmware can absorb without losing a record: a buffer takes
+ * recordsPerBlock / sampleRate to fill - about 46 ms at 504 Hz with a 21-byte
+ * record - and a stall is survived for roughly NUM_SDWRBUF times that. Four is
+ * about 180 ms, which covers the internal housekeeping a well-used card does
+ * without warning.
+ *
  * Overridable with -DNUM_SDWRBUF=n so the host test can build the same code at
- * 1 (what Shimmer3 shipped), 2 and 4. */
+ * 1 (what Shimmer3 shipped, and what loses records), 2 and 4. */
 #if !defined(NUM_SDWRBUF)
-#if defined(SHIMMER3)
-#define NUM_SDWRBUF 2
-#elif defined(SHIMMER3R)
+#if defined(SHIMMER3) || defined(SHIMMER3R)
 #define NUM_SDWRBUF 4
 #else
-/* Host build with no platform selected: the Shimmer3 value. */
-#define NUM_SDWRBUF 2
+/* Host build with no platform selected. */
+#define NUM_SDWRBUF 4
 #endif
 #endif
 
