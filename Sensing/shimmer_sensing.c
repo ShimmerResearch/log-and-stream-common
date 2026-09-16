@@ -410,6 +410,13 @@ __attribute__((weak)) void ShimSens_stopSensingWrapup(void)
 
 void ShimSens_gatherData(void)
 {
+  if (!PktRing_gatherMayProceed(&sensing.ring))
+  {
+    /* Queued for a packet that no longer exists - the fail-safe released it,
+     * or sensing stopped. Polling now would fill a slot nothing has stamped. */
+    return;
+  }
+
   if (sensing.nbrMcuAdcChans && ShimBrd_areMcuAdcsUsedForSensing())
   {
     ADC_gatherDataStart();
@@ -484,9 +491,16 @@ uint8_t ShimSens_sampleTimerTriggered(void)
       ShimTask_set(TASK_SAVEDATA);
       return 1; //Wake MCU
     case PKT_TICK_START:
-      /* If packet isn't currently underway, start a new one */
-      PktRing_markInProgress(&sensing.ring);
+      /* If packet isn't currently underway, start a new one.
+       *
+       * Stamp before marking it in progress. On Shimmer3R this runs in the RTC
+       * wake-up interrupt at priority 1 while every GPDMA/I2C/SPI/ADC IRQ is
+       * priority 0, so a completion left over from a released packet can
+       * preempt these two writes. Arriving first it finds the slot idle and is
+       * dropped; arriving after, the stamp it closes is already in place. */
       ShimSens_saveTimestampToPacket();
+      ShimSens_resetCurrentCbFlags();
+      PktRing_markInProgress(&sensing.ring);
       return platform_gatherData();
     default:
       /* Busy, stalled or nothing to do - this sample is skipped. */
@@ -534,8 +548,6 @@ void ShimSens_stageCompleteCb(uint8_t stage)
   currentCbFlags |= stage;
   if (currentCbFlags == expectedCbFlags)
   {
-    PktRing_onComplete(&sensing.ring);
-
     ShimSens_resetCurrentCbFlags();
 
     //TODO
@@ -550,7 +562,10 @@ void ShimSens_stageCompleteCb(uint8_t stage)
         }
     */
 
-    ShimTask_set(TASK_SAVEDATA);
+    if (PktRing_onComplete(&sensing.ring))
+    {
+      ShimTask_set(TASK_SAVEDATA);
+    }
   }
 }
 

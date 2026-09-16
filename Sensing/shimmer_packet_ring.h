@@ -108,6 +108,7 @@ typedef struct
   {
     volatile uint16_t startsRefusedFull;
     volatile uint16_t stallResets;
+    volatile uint16_t gathersRefused;
     volatile uint16_t completionsDropped;
     volatile uint16_t drainSkipped;
   } diag;
@@ -128,6 +129,9 @@ uint8_t PktRing_isFull(const PacketRing *ringPtr);
 
 PktTickAction PktRing_onTick(PacketRing *ringPtr);
 void PktRing_markInProgress(PacketRing *ringPtr);
+/* Returns 0 when the write slot is not in progress, i.e. no gather should run
+ * against it. */
+uint8_t PktRing_gatherMayProceed(PacketRing *ringPtr);
 uint8_t PktRing_onComplete(PacketRing *ringPtr);
 
 /* Returns 1 and sets *slotPtrOut when there is a packet to emit. */

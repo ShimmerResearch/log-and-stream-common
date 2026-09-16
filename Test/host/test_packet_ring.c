@@ -138,24 +138,25 @@ static void test_normal_cycle(void)
  * The DEV-1023 field interleaving, as reconstructed from a customer .bin.
  *
  * An SD write holds the main loop long enough that the gather queued by tick 1
- * has not run by tick 5, so the fail-safe releases the slot. The gather then
- * runs against the released slot, a tick restarts that same slot mid-gather,
- * and the completion of the first gather closes it - leaving a SECOND gather
- * queued that now lands on the next slot, which nothing has stamped.
+ * has not run by tick 5, so the fail-safe releases the slot. Before the guards
+ * this is where it came apart: the stale gather ran against the released slot,
+ * a tick restarted that same slot mid-gather, and the completion of the stale
+ * gather closed it - leaving a second gather queued that landed on the next
+ * slot, which nothing had stamped. That slot went to the card with a 00 00 00
+ * timestamp, and Consensys read it as a 24-bit roll-over worth 512 s.
  *
- * This is the behaviour as it shipped in LogAndStream v1.00.x-v1.01.003: the
- * second completion is accepted for an unstamped slot and a packet with a
- * 00 00 00 timestamp reaches the card. Consensys reads that as a 24-bit
- * roll-over and adds 512 s to the rest of the recording.
+ * With the entry guard the stale gather never runs, so there is no second
+ * gather and no unstamped packet. The cost is the samples the stall ate, which
+ * is what a dropped sample should cost.
  */
-static void test_field_interleaving_emits_unstamped_packet(void)
+static void test_field_interleaving_is_contained(void)
 {
   Sim sim;
   uint32_t emitted[4];
   uint32_t restartTs;
   uint8_t i;
 
-  printf("test_field_interleaving_emits_unstamped_packet\n");
+  printf("test_field_interleaving_is_contained\n");
   sim_init(&sim, PKT_RING_STALL_LIMIT_DEFAULT);
 
   /* tick 1: the packet starts and a gather is queued behind the SD write. */
@@ -171,26 +172,89 @@ static void test_field_interleaving_emits_unstamped_packet(void)
   expect("tick 5 releases the slot", sim_tick(&sim), PKT_TICK_STALL_RESET);
   expect("one stall reset recorded", sim.ring.diag.stallResets, 1);
 
-  /* tick 6 lands while the first gather is finally running, and restarts the
-   * very slot that gather is filling. 390 ticks after the last good sample -
-   * the gap that identifies this fault in a file. */
-  expect("tick 6 restarts the slot", sim_tick(&sim), PKT_TICK_START);
+  /* The SD write finishes and the queued gather is finally dispatched - but
+   * the packet it was queued for no longer exists. This is the guard that
+   * stops the cascade. */
+  expect("stale gather refused", PktRing_gatherMayProceed(&sim.ring), 0);
+  expect("refusal recorded", sim.ring.diag.gathersRefused, 1);
+
+  /* tick 6 starts a fresh packet, 390 ticks after the last good sample - the
+   * gap that identifies this fault in a file. */
+  expect("tick 6 starts a fresh packet", sim_tick(&sim), PKT_TICK_START);
   restartTs = sim.nowTicks;
   expect("restart is 6 sample periods on", restartTs - 1000000U - PERIOD_TICKS,
       5U * PERIOD_TICKS);
 
-  /* The first gather completes and closes the restarted slot. */
-  expect("first completion accepted", sim_gather_complete(&sim), 1);
+  /* Its own gather is allowed through and completes normally. */
+  expect("fresh gather allowed", PktRing_gatherMayProceed(&sim.ring), 1);
+  expect("completion accepted", sim_gather_complete(&sim), 1);
 
-  /* The gather queued by the restart now runs against the NEXT slot, which no
-   * tick has started or stamped. */
-  expect("second completion accepted", sim_gather_complete(&sim), 1);
+  expect("exactly one packet queued", PktRing_count(&sim.ring), 1);
+  expect("exactly one packet emitted", sim_drain(&sim, emitted, 4), 1);
+  expect("and it carries the stamp it started with", emitted[0], restartTs);
+  expect("no unstamped packet was written", sim.ring.diag.drainSkipped, 0);
+}
 
+/* On Shimmer3R the gather is asynchronous and its completion interrupt runs at
+ * a higher priority than the sample tick, so a completion can arrive after the
+ * fail-safe has already released the packet it belonged to. It must not close
+ * a slot that is no longer in progress. */
+static void test_stale_completion_is_dropped(void)
+{
+  Sim sim;
+  uint32_t emitted[4];
+  uint32_t restartTs;
+  uint8_t i;
+
+  printf("test_stale_completion_is_dropped\n");
+  sim_init(&sim, PKT_RING_STALL_LIMIT_DEFAULT);
+
+  expect("packet starts", sim_tick(&sim), PKT_TICK_START);
+  for (i = 0; i < PKT_RING_STALL_LIMIT_DEFAULT; i++)
+  {
+    sim_tick(&sim);
+  }
+  expect("fail-safe releases the slot", sim_tick(&sim), PKT_TICK_STALL_RESET);
+
+  /* The abandoned gather finishes now. */
+  expect("stale completion dropped", sim_gather_complete(&sim), 0);
+  expect("drop recorded", sim.ring.diag.completionsDropped, 1);
+  expect("write index did not move", PktRing_count(&sim.ring), 0);
+
+  /* Sampling carries on unharmed. */
+  expect("next packet starts", sim_tick(&sim), PKT_TICK_START);
+  restartTs = sim.nowTicks;
+  expect("its completion accepted", sim_gather_complete(&sim), 1);
+  expect("one packet emitted", sim_drain(&sim, emitted, 4), 1);
+  expect("with the right stamp", emitted[0], restartTs);
+}
+
+/* Belt to the completion guard's braces: if an unstamped slot ever does end up
+ * inside the drain window, it is dropped rather than written out. */
+static void test_drain_skips_incomplete_slot(void)
+{
+  Sim sim;
+  uint32_t emitted[4];
+  uint32_t secondTs;
+
+  printf("test_drain_skips_incomplete_slot\n");
+  sim_init(&sim, PKT_RING_STALL_LIMIT_DEFAULT);
+
+  sim_tick(&sim);
+  sim_gather_complete(&sim);
+  sim_tick(&sim);
+  secondTs = sim.nowTicks;
+  sim_gather_complete(&sim);
   expect("two packets queued", PktRing_count(&sim.ring), 2);
-  expect("two packets emitted", sim_drain(&sim, emitted, 4), 2);
-  expect("first packet carries the restart stamp", emitted[0], restartTs);
-  /* The defect: a packet nothing ever stamped is written out. */
-  expect("second packet is unstamped", emitted[1], 0);
+
+  /* Plant an unstamped slot where the first packet is. */
+  PktRing_rdSlot(&sim.ring)->samplingStatus = SAMPLING_PACKET_IDLE;
+  PktRing_rdSlot(&sim.ring)->timestampTicks = 0;
+
+  expect("only the complete packet is emitted", sim_drain(&sim, emitted, 4), 1);
+  expect("and it is the second one", emitted[0], secondTs);
+  expect("the incomplete slot was skipped", sim.ring.diag.drainSkipped, 1);
+  expect("ring fully drained", PktRing_count(&sim.ring), 0);
 }
 
 /* Sampling stops while the drain is behind, and resumes once it catches up. */
@@ -214,6 +278,11 @@ static void test_ring_full(void)
   expect("ring reports full", PktRing_isFull(&sim.ring), 1);
   expect("tick refused while full", sim_tick(&sim), PKT_TICK_FULL);
   expect("refusal recorded", sim.ring.diag.startsRefusedFull, 1);
+  /* The write index always moves on a completion, so filling the ring can
+   * never strand a completed slot under it - which would stall sampling for
+   * good, because no tick can start on a slot that is already complete. */
+  expect("write slot is not left completed",
+      PktRing_wrSlot(&sim.ring)->samplingStatus != SAMPLING_COMPLETE, 1);
 
   expect("all packets emitted", sim_drain(&sim, emitted, DATA_BUF_QTY), DATA_BUF_QTY_IN_USE);
   expect("sampling resumes after the drain", sim_tick(&sim), PKT_TICK_START);
@@ -308,7 +377,9 @@ int main(void)
   printf("packet ring host tests\n\n");
 
   test_normal_cycle();
-  test_field_interleaving_emits_unstamped_packet();
+  test_field_interleaving_is_contained();
+  test_stale_completion_is_dropped();
+  test_drain_skips_incomplete_slot();
   test_ring_full();
   test_stall_boundary();
   test_index_wrap();

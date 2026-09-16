@@ -137,26 +137,73 @@ void PktRing_markInProgress(PacketRing *ringPtr)
   PktRing_wrSlot(ringPtr)->samplingStatus = SAMPLING_IN_PROGRESS;
 }
 
+/* A gather may only run against a slot a tick actually started. Without this a
+ * gather left queued from a packet the fail-safe already released - or one
+ * re-queued by the restart - runs against whatever the write index points at
+ * by then, which may be a slot nothing has stamped. */
+uint8_t PktRing_gatherMayProceed(PacketRing *ringPtr)
+{
+  if (PktRing_wrSlot(ringPtr)->samplingStatus != SAMPLING_IN_PROGRESS)
+  {
+    ringPtr->diag.gathersRefused++;
+    return 0;
+  }
+  return 1;
+}
+
 uint8_t PktRing_onComplete(PacketRing *ringPtr)
 {
-  PktRing_wrSlot(ringPtr)->samplingStatus = SAMPLING_COMPLETE;
+  PACKETBufferTypeDef *slotPtr = PktRing_wrSlot(ringPtr);
 
-  if (!PktRing_isFull(ringPtr))
+  /* Only a packet that is actually in progress can be completed. A completion
+   * arriving for anything else is stale - the fail-safe released the slot, or
+   * the gather was refused - and closing the slot on it would publish a packet
+   * no tick ever stamped. */
+  if (slotPtr->samplingStatus != SAMPLING_IN_PROGRESS)
   {
-    ringPtr->wrIdx++;
+    ringPtr->diag.completionsDropped++;
+    return 0;
   }
+
+  /* COMPLETE before the index moves. Reversed, a drain running between the two
+   * writes would find a slot inside [rd, wr) that is not yet complete and
+   * discard a good packet.
+   *
+   * The increment is unconditional. It used to be skipped when the ring was
+   * full, which could leave a COMPLETE slot at the write index with the index
+   * unmoved - after that no tick can ever start again. It cannot overflow:
+   * PktRing_onTick refuses to start a packet at DATA_BUF_QTY_IN_USE, so the
+   * count here is at most DATA_BUF_QTY_IN_USE - 1. */
+  slotPtr->samplingStatus = SAMPLING_COMPLETE;
+  ringPtr->wrIdx++;
   return 1;
 }
 
 uint8_t PktRing_drainNext(PacketRing *ringPtr, PACKETBufferTypeDef **slotPtrOut)
 {
-  if (PktRing_count(ringPtr) == 0)
+  while (PktRing_count(ringPtr) > 0)
   {
-    return 0;
-  }
+    PACKETBufferTypeDef *slotPtr = PktRing_rdSlot(ringPtr);
 
-  *slotPtrOut = PktRing_rdSlot(ringPtr);
-  return 1;
+    if (slotPtr->samplingStatus == SAMPLING_COMPLETE)
+    {
+      *slotPtrOut = slotPtr;
+      return 1;
+    }
+
+    /* Anything else in the drain window was never completed, so it carries no
+     * timestamp and must not reach the card or the Bluetooth link. Drop it and
+     * keep going - leaving it in place would stall the drain.
+     *
+     * Deliberately keyed on the status and not on timestampTicks == 0: the
+     * tick counter is ticks-since-boot on Shimmer3 and the low 32 bits of the
+     * real-world clock on Shimmer3R, and both pass through zero legitimately
+     * every 2^32 ticks (36.4 hours). */
+    PktRing_resetSlot(ringPtr, (uint8_t) (DATA_BUF_MASK & ringPtr->rdIdx), 0);
+    ringPtr->rdIdx++;
+    ringPtr->diag.drainSkipped++;
+  }
+  return 0;
 }
 
 void PktRing_drainDone(PacketRing *ringPtr)
