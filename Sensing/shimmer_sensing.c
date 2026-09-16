@@ -378,6 +378,14 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
       LogAndStream_syncConfigAndCalibOnSd();
     }
     ShimTask_clear(TASK_GATHER_DATA);
+    /* The drain task goes with it. Benign either way - the ring was reset
+     * above, so a leftover TASK_SAVEDATA would find nothing to drain and the
+     * sdLogging and btStreaming guards inside the loop would refuse to write
+     * regardless - but leaving a sensing task queued after sensing has stopped
+     * is the kind of loose end that becomes a real one later. This is the
+     * symmetric half of the change above, where a completion now only sets
+     * TASK_SAVEDATA for a packet the ring actually accepted. */
+    ShimTask_clear(TASK_SAVEDATA);
     shimmerStatus.configuring = 0;
   }
 }
