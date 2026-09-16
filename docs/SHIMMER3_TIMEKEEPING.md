@@ -336,6 +336,11 @@ absoluteTicks(n) = initialTimestamp + unwrap(recordTick(n) - recordTick(0))
 absoluteUnixSeconds = absoluteTicks / 32768
 ```
 
+`unwrap` carries the one trap worth naming here: a record whose timestamp is
+exactly zero is invalid, not a counter origin, and unwrapping rules differ in
+whether they survive one. See
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1.
+
 ### 7.3 Multi-device
 
 SD sync records each node's offset from the centre without adjusting any clock.

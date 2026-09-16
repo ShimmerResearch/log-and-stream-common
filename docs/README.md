@@ -76,6 +76,7 @@ something that "should work".
 | A written configuration reads back different | The firmware silently corrects illegal combinations — [InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §10 |
 | Device not discoverable over classic Bluetooth | The EEPROM radio-enable bits, which nothing corrects — [EEPROM](SHIMMER3_EEPROM_MEMORY_MAP.md) §4.2 |
 | Timestamps wrong by the local UTC offset | The real-world clock is **UTC** — [timekeeping](SHIMMER3_TIMEKEEPING.md) |
+| A recording reads minutes or hours longer than it ran, in exact multiples of 512 s | A record with a `00 00 00` timestamp, counted as a wrap — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1 |
 | A Shimmer3R recording cannot be placed in absolute time | The RTC-diff bytes are repurposed on Shimmer3R — [SD card](SHIMMER3_SD_CARD_FORMAT.md) §3.3 |
 | No sync offset recorded for a node | The first sync round is deliberately discarded — [SD sync](SHIMMER3_SD_SYNC.md) §4.3 |
 | Repeated identical GSR samples | The 80 ms settling hold after a range change — [GSR](SHIMMER3_GSR_AUTORANGE.md) §5.1 |

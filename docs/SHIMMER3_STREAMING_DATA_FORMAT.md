@@ -135,10 +135,27 @@ three bytes of a 32-bit counter read at the sampling instant
 > host can survive without unwrapping. Take the width from the firmware
 > version, not from the packet.
 
+> **The timestamp field is never zero, and a zero is not a wrap.** A packet is
+> stamped when the sample tick starts it, and the firmware does not publish a
+> packet it did not stamp, so `0x000000` in the field means the record is
+> invalid — not that the counter reached its origin. LogAndStream v1.00.x
+> through v1.01.003 could emit one under SD write back-pressure on a Shimmer3
+> configured with no analog channels; the guards that prevent it are in
+> `Sensing/shimmer_packet_ring.c`.
+>
+> The distinction is worth 512 seconds. Under the naive rule below, a mid-range
+> value followed by `0` counts as a rollover and **every later sample in the
+> recording is 512 s late**. Under the half-modulo rule it is not: the implied
+> delta is `2^24 - rawPrev`, which exceeds `modulo / 2` for any `rawPrev` below
+> 2^23, so the record is rejected as out of order — and provided `rawPrev` is
+> left alone when that happens, the next record resumes at its true spacing.
+> Files written by an affected firmware are best repaired by dropping the
+> zero-stamped records outright before unwrapping.
+
 A host must unwrap it. The obvious approach — bump a rollover count whenever the
-raw value falls — is what most implementations use, but it is wrong twice over:
-it double-counts on a single out-of-order packet, and it misses whole wraps
-across a gap. Compare against half the modulo instead, and cross-check long
+raw value falls — is what most implementations use, but it is wrong three times
+over: it double-counts on a single out-of-order packet, it misses whole wraps
+across a gap, and it turns an invalid zero-stamped record into a 512 s jump. Compare against half the modulo instead, and cross-check long
 gaps against host elapsed time:
 
 ```

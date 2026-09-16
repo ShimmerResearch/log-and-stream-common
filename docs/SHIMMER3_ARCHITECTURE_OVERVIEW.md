@@ -319,12 +319,25 @@ ShimBtn_init, ShimRtc_init
      carries the packet on; with no analog channels it queues
      `TASK_GATHER_DATA` and returns 1 to wake the MCU.
 3. `ShimSens_gatherData` collects the enabled channels into the packet buffer,
-   in the fixed order `ShimSens_configureChannels` established.
+   in the fixed order `ShimSens_configureChannels` established. It first checks
+   that the slot it would fill is actually a packet in progress: a gather left
+   queued for a packet the fail-safe has since released must not run, or it
+   fills a slot nothing has stamped.
 4. If logging, `ShimSdDataFile_writeToBuff` takes the record from
    `PACKET_TIMESTAMP_IDX` for `dataLen - 1` bytes.
 5. If streaming, the CRC is appended per the session mode and the packet is
    handed to the Bluetooth writer.
 6. When an SD buffer fills, `TASK_SDWRITE` flushes it.
+
+> **The ring refuses more than it used to, on purpose.** A tick whose slot is
+> still being gathered is skipped; a gather queued for a released packet is
+> refused; a completion that does not match a packet in progress is dropped;
+> the drain emits only completed slots. Each is counted in `sensing.ring.diag`.
+> The fail-safe that releases a stuck packet is a ~100 ms wall-clock timeout
+> converted to a period count at `ShimSens_startSensing` — not a fixed number
+> of samples, which shrank as the sample rate rose and made an ordinary SD
+> write look like a hang. See
+> [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §4.1.
 
 Channel order and encodings are in
 [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §4-5.
