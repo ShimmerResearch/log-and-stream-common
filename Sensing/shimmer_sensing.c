@@ -75,7 +75,7 @@ void ShimSens_init(void)
   memset((uint8_t *) &sensing, 0, sizeof(sensing));
   ShimSens_currentExperimentLengthReset();
   ShimSens_maxExperimentLengthSecsSet(0);
-  ShimSens_resetPacketBuffAll();
+  PktRing_init(&sensing.ring, DATA_PACKET);
   ShimSens_resetCurrentCbFlags();
 }
 
@@ -477,45 +477,21 @@ void ShimSens_saveTimestampToPacket(void)
 
 uint8_t ShimSens_sampleTimerTriggered(void)
 {
-  PACKETBufferTypeDef *packetBufPtr = ShimSens_getPacketBuffAtWrIdx();
-
-#if SENSING_LOCK_UP_PREVENTION
-  if (ShimSens_arePacketBuffsFull())
+  switch (PktRing_onTick(&sensing.ring))
   {
-    //Fail-safe - if any packets are complete and haven't been saved.
-    ShimTask_set(TASK_SAVEDATA);
-    return 1; //Wake MCU
-  }
-  else
-#endif //SENSING_LOCK_UP_PREVENTION
-    if (packetBufPtr->samplingStatus == SAMPLING_PACKET_IDLE)
-    {
-#if SENSING_LOCK_UP_PREVENTION
-      sensing.blockageCount = 0;
-#endif //SENSING_LOCK_UP_PREVENTION
+    case PKT_TICK_FULL:
+      //Fail-safe - if any packets are complete and haven't been saved.
+      ShimTask_set(TASK_SAVEDATA);
+      return 1; //Wake MCU
+    case PKT_TICK_START:
       /* If packet isn't currently underway, start a new one */
-      packetBufPtr->samplingStatus = SAMPLING_IN_PROGRESS;
+      PktRing_markInProgress(&sensing.ring);
       ShimSens_saveTimestampToPacket();
       return platform_gatherData();
-    }
-#if SENSING_LOCK_UP_PREVENTION
-    else if (packetBufPtr->samplingStatus == SAMPLING_IN_PROGRESS)
-    {
-      //Fail-safe - if current packet has been stuck for a while
-      sensing.blockageCount++;
-      if (sensing.blockageCount > BLOCKAGE_THRESHOLD)
-      {
-        /* Reset packet status to allow new sample to be taken on next event */
-        packetBufPtr->samplingStatus = SAMPLING_PACKET_IDLE;
-      }
-    }
-#endif //SENSING_LOCK_UP_PREVENTION
-    else
-    {
-      __NOP();
-    }
-
-  return 0;
+    default:
+      /* Busy, stalled or nothing to do - this sample is skipped. */
+      return 0;
+  }
 }
 
 void ShimSens_stepInit(void)
@@ -558,7 +534,7 @@ void ShimSens_stageCompleteCb(uint8_t stage)
   currentCbFlags |= stage;
   if (currentCbFlags == expectedCbFlags)
   {
-    ShimSens_getPacketBuffAtWrIdx()->samplingStatus = SAMPLING_COMPLETE;
+    PktRing_onComplete(&sensing.ring);
 
     ShimSens_resetCurrentCbFlags();
 
@@ -575,11 +551,6 @@ void ShimSens_stageCompleteCb(uint8_t stage)
     */
 
     ShimTask_set(TASK_SAVEDATA);
-
-    if (!ShimSens_arePacketBuffsFull())
-    {
-      ShimSens_incrementPacketBuffWrIdx();
-    }
   }
 }
 
@@ -645,16 +616,18 @@ void ShimSens_stepDone(void)
 
 void ShimSens_saveData(void)
 {
-  uint8_t bufferCount = ShimSens_getPacketBuffFullCount();
-  uint8_t bufferCounter = 0;
+  /* Snapshot the count so this task run is bounded: a completion landing while
+   * the loop is running queues TASK_SAVEDATA again. */
+  uint8_t budget = PktRing_count(&sensing.ring);
+  PACKETBufferTypeDef *slotPtr;
 
-  for (bufferCounter = 0; bufferCounter < bufferCount; bufferCounter++)
+  while (budget-- && PktRing_drainNext(&sensing.ring, &slotPtr))
   {
-    uint8_t *dataBufferPtr = &ShimSens_getPacketBuffAtRdIdx()->dataBuf[0];
+    uint8_t *dataBufferPtr = &slotPtr->dataBuf[0];
 
 #if TICKS_TO_SKIP
     if (!sensing.skippingPacketsFlag
-        && ((ShimSens_getPacketBuffAtRdIdx()->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
+        && ((slotPtr->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
     {
       __NOP();
     }
@@ -689,9 +662,7 @@ void ShimSens_saveData(void)
 #endif //TICKS_TO_SKIP
 
     /* Data packet has moved off dataBuf, device is free to start new packet */
-    //sensing.isSampling = SAMPLING_COMPLETE;
-    ShimSens_resetPacketBufferAtIdx(ShimSens_getPacketBufRdIdx(), 0);
-    ShimSens_incrementPacketBuffReadIndex();
+    PktRing_drainDone(&sensing.ring);
   }
 }
 
@@ -747,115 +718,22 @@ void ShimSens_maxExperimentLengthSecsSet(uint16_t maxExpLenMins)
 
 uint8_t *ShimSens_getDataBuffAtWrIdx(void)
 {
-  return &ShimSens_getPacketBuffAtWrIdx()->dataBuf[0];
+  return &PktRing_wrSlot(&sensing.ring)->dataBuf[0];
 }
 
-uint8_t *ShimSens_getDataBuffAtNextWrIdx(void)
-{
-  return &sensing.packetBuffers[ShimSens_getPacketBufAtNextWrIdx()].dataBuf[0];
-}
-
-/* Buffer for the slot before the write index. The write index points at the
- * sample the DMA is currently filling, so the previous slot is never the DMA's
- * current target and is safe to read without a critical section. Always returns
- * a valid (non-NULL) pointer.
- * PRECONDITION: this only holds a completed sample once at least one sample has
- * been captured. Before that (e.g. right after ShimSens_resetPacketBuffAll()
- * sets the indices to 0, so "previous" wraps to the last slot) it points at an
- * idle/uninitialised buffer. Callers must only use it while sampling is active
- * - the sole caller (battery read, used only when sensing) satisfies this. */
 uint8_t *ShimSens_getDataBuffAtPrevWrIdx(void)
 {
-  return &sensing.packetBuffers[ShimSens_getPacketBufAtPrevWrIdx()].dataBuf[0];
+  return &PktRing_prevWrSlot(&sensing.ring)->dataBuf[0];
 }
 
 PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void)
 {
-  return &sensing.packetBuffers[ShimSens_getPacketBufWrIdx()];
-}
-
-PACKETBufferTypeDef *ShimSens_getPacketBuffAtRdIdx(void)
-{
-  return &sensing.packetBuffers[ShimSens_getPacketBufRdIdx()];
-}
-
-void ShimSens_resetPacketBufferAtIdx(uint8_t index, uint8_t resetAll)
-{
-  PACKETBufferTypeDef *packetBufferPtr = &sensing.packetBuffers[index];
-
-  packetBufferPtr->samplingStatus = SAMPLING_PACKET_IDLE;
-  packetBufferPtr->timestampTicks = 0;
-  if (resetAll)
-  {
-    memset(&packetBufferPtr->dataBuf[0], 0, DATA_BUF_SIZE);
-  }
-  else
-  {
-    packetBufferPtr->dataBuf[PACKET_HEADER_IDX] = DATA_PACKET;
-    packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX] = 0;
-    packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX + 1] = 0;
-    packetBufferPtr->dataBuf[PACKET_TIMESTAMP_IDX + 2] = 0;
-  }
+  return PktRing_wrSlot(&sensing.ring);
 }
 
 void ShimSens_resetPacketBuffAll(void)
 {
-  sensing.packetBuffRdIdx = sensing.packetBuffWrIdx = 0;
-  uint8_t i = 0;
-  for (i = 0; i < DATA_BUF_QTY; i++)
-  {
-    ShimSens_resetPacketBufferAtIdx(i, 1);
-  }
-}
-
-void ShimSens_incrementPacketBuffWrIdx(void)
-{
-  sensing.packetBuffWrIdx++;
-}
-
-void ShimSens_incrementPacketBuffReadIndex(void)
-{
-  sensing.packetBuffRdIdx++;
-}
-
-uint8_t ShimSens_arePacketBuffsEmpty(void)
-{
-  return sensing.packetBuffRdIdx == sensing.packetBuffWrIdx;
-}
-
-uint8_t ShimSens_arePacketBuffsFull(void)
-{
-  uint8_t rdIdx = sensing.packetBuffRdIdx;
-  uint8_t wrIdx = sensing.packetBuffWrIdx;
-  return ((DATA_BUF_MASK & rdIdx)
-      == (DATA_BUF_MASK & (wrIdx + (DATA_BUF_QTY - DATA_BUF_QTY_IN_USE))));
-}
-
-uint8_t ShimSens_getPacketBuffFullCount(void)
-{
-  uint8_t wrIdx = sensing.packetBuffWrIdx;
-  uint8_t rdIdx = sensing.packetBuffRdIdx;
-  return (DATA_BUF_MASK & (wrIdx - rdIdx));
-}
-
-uint8_t ShimSens_getPacketBufRdIdx(void)
-{
-  return (DATA_BUF_MASK & sensing.packetBuffRdIdx);
-}
-
-uint8_t ShimSens_getPacketBufWrIdx(void)
-{
-  return (DATA_BUF_MASK & sensing.packetBuffWrIdx);
-}
-
-uint8_t ShimSens_getPacketBufAtNextWrIdx(void)
-{
-  return (DATA_BUF_MASK & (sensing.packetBuffWrIdx + 1));
-}
-
-uint8_t ShimSens_getPacketBufAtPrevWrIdx(void)
-{
-  return (DATA_BUF_MASK & (sensing.packetBuffWrIdx - 1));
+  PktRing_reset(&sensing.ring);
 }
 
 __weak void ADC_gatherDataStart(void)

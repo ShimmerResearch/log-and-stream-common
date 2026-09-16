@@ -27,6 +27,7 @@
 #include "SDCard/shimmer_sd_data_file.h"
 #include "SDCard/shimmer_sd_header.h"
 #include "SDSync/shimmer_sd_sync.h"
+#include "Sensing/shimmer_packet_ring.h"
 #include "Sensing/shimmer_sensing.h"
 #include "TaskList/shimmer_taskList.h"
 #include "Test/shimmer_test.h"
