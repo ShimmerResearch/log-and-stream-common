@@ -28,3 +28,42 @@ SD format, timekeeping, board revisions. Consult them before reading code. Note 
 ## Versioning
 `scripts/increment_version.sh` is called by the *consuming* firmware's release workflow, not by this
 repo. There is no release pipeline here.
+
+## Keep the docs in step with the code
+These docs are the authoritative source, and this file tells you to consult them before reading code.
+That only holds while they are current — **a stale doc here is worse than no doc, because it will be
+believed**, and believed on two platforms at once.
+
+The mapping is the directory name: most subsystem folders have a doc named after them.
+
+| Code | Doc |
+|---|---|
+| `Comms/` | `SHIMMER3_BT_COMMUNICATION_PROTOCOL.md`, `SHIMMER3_DOCK_PROTOCOL.md` |
+| `Battery/` | `SHIMMER3_BATTERY_AND_CHARGING.md` |
+| `Boards/` | `SHIMMER3_BOARD_REVISIONS.md` |
+| `Calibration/` | `SHIMMER3_CALIBRATION.md` |
+| `Configuration/` | `SHIMMER3_CONFIGURATION_INFOMEM.md` |
+| `EEPROM/` | `SHIMMER3_EEPROM_MEMORY_MAP.md` |
+| `GSR/` | `SHIMMER3_GSR_AUTORANGE.md` |
+| `LEDs/` | `SHIMMER3_LED_FEEDBACK.md` |
+| `RTC/` | `SHIMMER3_TIMEKEEPING.md` |
+| `SDCard/`, `Sensing/` | `SHIMMER3_SD_CARD_FORMAT.md`, `SHIMMER3_STREAMING_DATA_FORMAT.md` |
+| `SDSync/` | `SHIMMER3_SD_SYNC.md` |
+| `Test/` | `SHIMMER3R_FACTORY_TEST_REPORT.md` |
+| `Platform/` | `SHIMMER3R_PERIPHERAL_ALLOCATION.md` |
+
+Change behaviour in a subsystem, update its doc **in the same PR**. Scope this to behaviour —
+register maps, protocol bytes, memory layouts, state machines — not renames or refactors that change
+nothing observable.
+
+`SHIMMER3_BOARD_REVISIONS.md` is a special case. Its per-product tables are a conversion of an
+internal hardware workbook that is **not in this repository**, so a reader outside Shimmer cannot
+check them. Do not edit those tables to match code.
+
+But the workbook is provenance, not specification: **where the tables and the firmware disagree, the
+firmware wins.** The revision gates in that document name the functions that read them
+(`ShimBrd_isBmp581PresentPerSrNumber()` and friends), and those are the authority for behaviour.
+Report the disagreement rather than silently reconciling either side.
+
+This repository is public. Keep internal paths, customer names and ticket identifiers out of the
+docs and out of this file.
