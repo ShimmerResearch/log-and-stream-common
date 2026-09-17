@@ -128,10 +128,15 @@ common case, CI catches everyone else, including the fork PRs the hook cannot
 reach. `.githooks/README.md` has the rest, including why a partly staged file
 (`git add -p`) is deliberately left alone.
 
-Three places now encode the same exclusion list — the workflow, the
-`.bat`, and the hook's `EXCLUDE_RE`. **Change one and change all three in the
-same commit**, or they will format different sets of files and fight over the
-difference.
+**The exclusion list lives in one file.** `.clang-format-exclude` at each
+repository root names the source directory and the paths clang-format must not
+touch; the workflow and the hook read it through
+`scripts/clang-format-exclude.sh`, and the `.bat` reads it directly. It replaced
+three hand-maintained copies that had already drifted — the workflow and the
+`.bat` disagreed about `lis303ah-pid` and about how `ezsapi` was spelled. The
+conversion was checked by comparing the excluded file set before and after over
+every `.c`/`.h` in each repository: identical, 449 files on Shimmer3R and 74 on
+Shimmer3.
 
 - Shimmer3 / Shimmer3R whole-project format: `Extras/clang-format-all-win64/LogAndStream-Shimmer3*.bat`
 - Shimmer3R IDE profile: `STM32CubeIDE_Format_Profile.xml` at the repo root

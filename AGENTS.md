@@ -72,6 +72,12 @@ through. `git commit --no-verify` bypasses it. `.githooks/README.md` has the det
 From a firmware checkout the installer configures this repository too — commits made inside the
 submodule are its commits, so it needs its own hook configuration.
 
+**Which files get formatted is decided by `.clang-format-exclude` at the repository root, and only
+there.** The workflow, the hook and the Windows `.bat` all read it, the first two through
+`scripts/clang-format-exclude.sh`. Nothing is excluded here — every `.c`/`.h` in this repository is
+ours — but the file exists so the three repositories are configured identically, and so a vendor
+directory added later is excluded everywhere at once.
+
 > CI pins clang-format **17**; the bundled `clang-format.exe` is **18.1.8**. They currently produce
 > byte-identical output on this codebase — reformatting `main` with 18 changes 0 of 60 files — so the
 > difference is not a live problem. It is recorded because a future version bump on either side could
