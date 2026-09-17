@@ -1,85 +1,59 @@
+# Host tests: everything about this library that can be checked without an MCU.
+#
+# The whole suite is driven by Test/host/Makefile, deliberately. CI running the
+# same command a developer runs is what stops the two drifting apart - a suite
+# that passes locally passes here, and adding a suite to that Makefile adds it
+# to CI with no change to this file.
+#
+# Nothing here needs a cross-compiler, a HAL, a vendor IDE or a device. The
+# modules under test either depend on nothing but the C library, or reach the
+# platform only through the contract in log_and_stream_externs.h, which
+# Test/host/stubs implements for a PC. See Test/host/stubs/README.md.
+#
+# WHAT THIS DOES NOT COVER, and must not be mistaken for:
+#   - The MSP430 and STM32 builds themselves. The host compiler has a 32-bit
+#     int; the MSP430's is 16. An expression that overflows on Shimmer3 is
+#     silently correct here.
+#   - Anything involving real peripherals, timing, power or radio.
+# Both are release gates in docs/SHIMMER3_TEST_PROCEDURE.md. This workflow is
+# the fast layer underneath them, not a substitute for either.
+
 name: host-tests
 
 on: [push, pull_request]
 
+permissions:
+  contents: read
+
 jobs:
-  software-crc:
+  host-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # shimmer_swCrc.c includes only shimmer_swCrc.h and shimmer_crc.h, and
-      # both include nothing but <stdint.h> - so this needs no ARM toolchain,
-      # no HAL and no target hardware.
+      # Compile every host-clean module for BOTH platforms before running
+      # anything. This library is a submodule of both shimmer3-firmware
+      # (MSP430) and shimmer3r-firmware (STM32U5), and AGENTS.md calls that the
+      # single most important thing to hold in mind here: nothing in this repo
+      # tells you at edit time that a change has broken the other one. This is
+      # the cheapest check that it has not.
       #
-      # -DSHIMMER_HOST_TEST is what un-hides main() in test_swcrc.c. The
-      # firmware projects compile every .c under this repository, so the test's
-      # main() stays behind that guard for everyone except this job.
-      - name: Build
-        run: >
-          gcc -std=c11 -O2 -Wall -Wextra -Werror -DSHIMMER_HOST_TEST
-          -I CRC
-          Test/host/test_swcrc.c CRC/shimmer_swCrc.c
-          -o /tmp/test_swcrc
+      # It runs first because its failure mode - a symbol used outside the #if
+      # that defines it - makes the test results below meaningless anyway.
+      - name: Compile for both platforms
+        run: make -C Test/host platform-check
 
-      - name: Assertions
-        run: /tmp/test_swcrc
+      - name: Run host tests
+        run: make -C Test/host test
 
-      - name: Cross-check against the Python host reference
-        run: python3 Test/host/crosscheck_swcrc.py /tmp/test_swcrc
-
-  packet-ring:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # shimmer_packet_ring.c includes only <stdint.h> and <string.h>, so the
-      # ring's state machine can be driven on a PC. That matters here more than
-      # it does for the CRC: the interleavings this covers need a sample timer,
-      # a gather completion and an SD write to land in a particular order, which
-      # is not something you can ask real hardware for.
-      #
-      # -DSHIMMER_HOST_TEST is what un-hides main() in test_packet_ring.c. The
-      # firmware projects compile every .c under this repository, so the test's
-      # main() stays behind that guard for everyone except this job.
-      - name: Build
-        run: >
-          gcc -std=c11 -O2 -Wall -Wextra -Werror -DSHIMMER_HOST_TEST
-          -I .
-          Test/host/test_packet_ring.c Sensing/shimmer_packet_ring.c
-          -o /tmp/test_packet_ring
-
-      - name: Assertions
-        run: /tmp/test_packet_ring
-
-  sd-write-buf:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # The number of buffers is a compile-time constant, so the same test is
-        # built once per count: 1 is what Shimmer3 shipped and pins down the
-        # records that cost, 2 is Shimmer3 now, 4 is Shimmer3R.
-        numbufs: [1, 2, 4]
-    steps:
-      - uses: actions/checkout@v4
-
-      # shimmer_sd_write_buf.c includes only <stdint.h> and <string.h>, so the
-      # buffer state machine can be driven on a PC. The states worth testing -
-      # a buffer filling while the previous one is still going to the card, a
-      # stop arriving while every buffer is queued - need a card slower than
-      # the sample rate, which is not something you can ask hardware for.
-      #
-      # -DSHIMMER_HOST_TEST is what un-hides main() in test_sd_write_buf.c. The
-      # firmware projects compile every .c under this repository, so the test's
-      # main() stays behind that guard for everyone except this job.
-      - name: Build (NUM_SDWRBUF=${{ matrix.numbufs }})
-        run: >
-          gcc -std=c11 -O2 -Wall -Wextra -Werror -DSHIMMER_HOST_TEST
-          -DNUM_SDWRBUF=${{ matrix.numbufs }}
-          -I .
-          Test/host/test_sd_write_buf.c SDCard/shimmer_sd_write_buf.c
-          -o /tmp/test_sd_write_buf
-
-      - name: Assertions
-        run: /tmp/test_sd_write_buf
+      # The suite prints a per-case report; on failure it is the only place the
+      # failing assertion names itself, so surface it in the job summary rather
+      # than making someone open the log.
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo "### Host tests"
+            echo ""
+            echo "Run locally with \`make -C Test/host\`."
+          } >> "$GITHUB_STEP_SUMMARY"

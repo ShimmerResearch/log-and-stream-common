@@ -7,3 +7,5 @@ codeql-db/
 *.sarif
 *.sarif.json
 _codeql_detected_source_root
+# Host test build output (Test/host/Makefile)
+Test/host/out/

@@ -225,6 +225,26 @@ Four helpers, all operating on `SHIM_RTC_t`:
 Leap years use the full proleptic Gregorian rule
 (`RTC_LEAP_YEAR`): divisible by 4, except centuries, except multiples of 400.
 
+> **The hours term in `ShimRtc_rtc2Unix` carries an explicit `uint32_t` cast,
+> and it is load-bearing on Shimmer3.** `data->hours` is a `uint8_t` and
+> `RTC_SECONDS_PER_HOUR` is 3600, which fits an `int` — so without the cast the
+> product is computed in `int` arithmetic, and the MSP430's `int` is 16 bits.
+> From 10:00 onwards `hours * 3600` exceeds 32767 and the result is wrong; the
+> same expression is correct on Shimmer3R, where `int` is 32 bits. The minutes
+> term needs no cast (59 × 60 = 3540 fits either width), and the days term is
+> already `uint32_t`.
+>
+> This is the general shape of the trap rather than a one-off: a constant too
+> large for 16 bits (`32768`, `86400`) is already `long` and widens the
+> expression by itself, so it is the constants that *do* fit — 3600, 1000 — that
+> bite. Host tests cannot catch it, because the host's `int` is 32 bits. See
+> [SHIMMER3_TEST_PROCEDURE.md](SHIMMER3_TEST_PROCEDURE.md) §3.2.
+
+`Test/host/test_rtc.c` converts every day from 2000-01-01 to 2099-12-31 in both
+directions and asserts the two agree, and `Test/host/crosscheck_rtc.py` puts the
+firmware's answers against Python's `datetime` — an oracle that shares no code
+with it, which is what a round-trip on its own cannot provide.
+
 ## 6. Error indication
 
 `ShimRtc_rwcErrorCheck`:
