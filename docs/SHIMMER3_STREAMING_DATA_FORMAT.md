@@ -143,31 +143,78 @@ three bytes of a 32-bit counter read at the sampling instant
 > configured with no analog channels; the guards that prevent it are in
 > `Sensing/shimmer_packet_ring.c`.
 >
-> The distinction is worth 512 seconds. Under the naive rule below, a mid-range
-> value followed by `0` counts as a rollover and **every later sample in the
-> recording is 512 s late**. Under the half-modulo rule it is not: the implied
-> delta is `2^24 - rawPrev`, which exceeds `modulo / 2` for any `rawPrev` below
-> 2^23, so the record is rejected as out of order — and provided `rawPrev` is
-> left alone when that happens, the next record resumes at its true spacing.
-> Files written by an affected firmware are best repaired by dropping the
-> zero-stamped records outright before unwrapping.
+> The distinction is worth 512 seconds. Under the naive rule, a mid-range value
+> followed by `0` counts as a rollover and **every later sample in the recording
+> is 512 s late**. The rule below rejects the record instead, leaving the
+> previous value in place so the next record resumes at its true spacing. A host
+> importing a file is better off dropping zero-stamped records outright.
 
 A host must unwrap it. The obvious approach — bump a rollover count whenever the
-raw value falls — is what most implementations use, but it is wrong three times
-over: it double-counts on a single out-of-order packet, it misses whole wraps
-across a gap, and it turns an invalid zero-stamped record into a 512 s jump. Compare against half the modulo instead, and cross-check long
-gaps against host elapsed time:
+raw value falls — is wrong three times over: it double-counts on a single
+out-of-order packet, it misses whole wraps across a gap, and it turns an invalid
+zero-stamped record into a 512 s jump.
+
+Classify each sample by its **modular forward distance** from the last one, with
+forward motion as the default:
 
 ```
-delta = (rawNow - rawPrev + modulo) % modulo     // modulo = 2^24, or 2^16
-if (delta > modulo / 2) { /* out of order: do not advance */ }
-else totalTicks += delta
-seconds = totalTicks / 32768.0
+unwrap(raw, modulo, W):                    // modulo = 2^24, or 2^16; W = reorder window
+  if no previous sample:      lastRaw = raw; lastUnwrapped = raw; return raw
+  forward   = (raw - lastRaw) mod modulo   // 0 <= forward < modulo
+  backwards = modulo - forward
+  if forward == 0:            u = lastUnwrapped               // duplicate: hold
+  elif backwards <= W:        u = lastUnwrapped - backwards   // 1. reordered packet
+  elif modulo == 2^24 and raw == 0 and lastRaw < modulo - 32768:
+                              return lastUnwrapped, invalid   // 2. never stamped; state untouched
+  else:                       u = lastUnwrapped + forward     // 3. forward; a wrap iff raw < lastRaw
+  lastRaw = raw; lastUnwrapped = u; return u
+
+W(rateHz, modulo) = 0                        if the rate is unknown, NaN, infinite or <= 0
+                  = min(8 * 32768 / rateHz,  otherwise
+                        modulo / 8)
 ```
 
-At 2^24 the naive test costs nothing until a reorder or a 512 s gap; at 2^16 the
-whole modulo is 2 s, so a single missed Bluetooth window loses a wrap and the
-host cross-check is not optional.
+Four things about that are easy to get wrong.
+
+**Compare modular distances, not unwrapped values.** A host that asks "is the new
+unwrapped candidate below the last one?" misses a packet arriving late from
+*before* a wrap boundary: the candidate is nearly a whole modulo ahead, so it is
+accepted, and the next real sample is then read as a second wrap. The sequence
+`16777206, 5, 16777206, 70` is the smallest case.
+
+**Forward motion is the default.** A rollover preceded by a long dropout must
+still be a rollover. Rules that treat an unexplained backward step as corruption
+unless it clears some large threshold get this backwards and lose the wrap.
+
+**Size the reorder window in sample periods, not as a fraction of the modulo.** A
+reorder swaps packets adjacent in time — a handful of periods. A dropout that
+spans the wrap point is most of a modulo. A window of `modulo / 8` confuses the
+two: on the 2-byte counter every dropout between 1.75 s and 2.0 s reads as a
+reorder and the wrap is silently lost, and that is an ordinary Bluetooth gap.
+Eight periods shrinks the band where that can happen to about 16 ms. The tick
+domain is the **32768 Hz real-time clock the packet counter runs on** — never a
+TCXO sampling clock, which is 312500 or 255765.625 Hz on the boards that have
+one. The `modulo / 8` clamp matters only at very low rates, where an unclamped
+window would reach the modulo and leave no backward step large enough to be a
+wrap.
+
+**An unknown rate means no window, not an infinite one.** Deriving `32768 / 0`
+gives infinity in most languages, which classifies every backward step as a
+reorder and loses every wrap — a silent return to worse-than-naive behaviour.
+Disable the branch instead; rejecting unstamped records does not need a rate.
+
+Two limits are worth stating to a user rather than hiding: a packet more than
+eight sample periods late is indistinguishable from a rollover and is read as
+one, and a gap longer than a whole modulo cannot be recovered from the counter at
+all. On a live link a host can cross-check long gaps against its own elapsed
+clock and add back whole modulos; a file has no such reference, which is why the
+rule above has to stand on its own.
+
+Machine-readable vectors for all of this, including every case named here, are in
+[`Test/conformance/timestamp_unwrap.json`](../Test/conformance/timestamp_unwrap.json);
+[`Test/host/crosscheck_timestamp_unwrap.py`](../Test/host/crosscheck_timestamp_unwrap.py)
+is the reference implementation that generates them and re-checks them in CI. Run
+your port against that file.
 
 > **Unwrapping alone never gives absolute time.** The field carries no absolute
 > reference, so a gap longer than one wrap period is indistinguishable from a

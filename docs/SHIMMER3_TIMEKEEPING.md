@@ -356,10 +356,15 @@ absoluteTicks(n) = initialTimestamp + unwrap(recordTick(n) - recordTick(0))
 absoluteUnixSeconds = absoluteTicks / 32768
 ```
 
-`unwrap` carries the one trap worth naming here: a record whose timestamp is
-exactly zero is invalid, not a counter origin, and unwrapping rules differ in
-whether they survive one. See
-[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1.
+`unwrap` is where a file import goes wrong, and three traps are worth naming: a
+record whose timestamp is exactly zero is invalid rather than a counter origin,
+and an importer is better off dropping it than placing it; a packet that arrives
+out of order is not a rollover; and a rollover preceded by a long gap is still a
+rollover. The reference algorithm, the reorder window it needs and
+machine-readable vectors for each case are in
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1. Note
+that the cross-check against host elapsed time described there is available only
+on a live link — a file carries no second reference.
 
 ### 7.3 Multi-device
 

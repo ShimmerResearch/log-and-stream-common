@@ -89,7 +89,7 @@ INC_test_sd_write_buf := -I . -I $(REPO)
 ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) \
               $(DUAL_PLATFORM_SUITES) $(SD_WRBUF_SUITES)
 
-.PHONY: all build test clean help platform-check host-constants $(ALL_SUITES)
+.PHONY: all build test clean help platform-check host-constants timestamp-unwrap $(ALL_SUITES)
 
 all: test
 
@@ -100,6 +100,7 @@ help:
 	@echo "make clean      remove $(BUILD)/"
 	@echo "make platform-check   compile every host-clean module for BOTH MCUs"
 	@echo "make host-constants   check the Python host reference against the firmware"
+	@echo "make timestamp-unwrap check the shared unwrap vectors against their reference"
 	@echo ""
 	@echo "Suites: $(ALL_SUITES)"
 	@echo "Run one with e.g. 'make test_rtc'."
@@ -173,6 +174,9 @@ test: build
 	  failed="$$failed crosscheck_board_revisions.py"; fi; \
 	if ! $(PYTHON) crosscheck_host_constants.py; then \
 	  failed="$$failed crosscheck_host_constants.py"; fi; \
+	if ! $(PYTHON) crosscheck_timestamp_unwrap.py \
+	     --check $(REPO)/Test/conformance/timestamp_unwrap.json; then \
+	  failed="$$failed crosscheck_timestamp_unwrap.py"; fi; \
 	echo ""; \
 	echo "=============================================================="; \
 	if [ -n "$$failed" ]; then \
@@ -257,6 +261,14 @@ platform-check: | $(BUILD)
 # that runs from a bare checkout.
 host-constants:
 	@$(PYTHON) crosscheck_host_constants.py
+
+# The other odd one out: no compiler, no binary. Recomputes every expectation
+# in the shared conformance vectors from the reference implementation beside
+# it, so the rule in docs/, the vectors, and the four host APIs that run them
+# cannot drift apart at the source.
+timestamp-unwrap:
+	@$(PYTHON) crosscheck_timestamp_unwrap.py \
+	  --check $(REPO)/Test/conformance/timestamp_unwrap.json
 
 clean:
 	rm -rf $(BUILD)
