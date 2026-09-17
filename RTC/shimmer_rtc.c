@@ -62,7 +62,13 @@ uint32_t ShimRtc_rtc2Unix(SHIM_RTC_t *data)
   /* Day starts with 1 */
   days += data->date - 1;
   seconds = days * RTC_SECONDS_PER_DAY;
-  seconds += data->hours * RTC_SECONDS_PER_HOUR;
+  /* The cast is load-bearing on Shimmer3. data->hours is a uint8_t and
+   * RTC_SECONDS_PER_HOUR is 3600, which fits an int - so on MSP430, where int
+   * is 16 bits, the product is computed as a 16-bit int and overflows from
+   * 10:00 onwards (10 * 3600 = 36000 > INT_MAX). Widening one operand forces
+   * the whole expression to 32 bits. The minutes term needs no cast:
+   * 59 * 60 = 3540 fits either width. */
+  seconds += (uint32_t) data->hours * RTC_SECONDS_PER_HOUR;
   seconds += data->minutes * RTC_SECONDS_PER_MINUTE;
   seconds += data->seconds;
 
