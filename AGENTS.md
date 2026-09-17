@@ -48,6 +48,27 @@ restates it — Consensys included. It needs no compiler.
 
 When you fix a bug, add the case that would have caught it, in the same PR.
 
+## Formatting is applied for you, after the fact
+`clang-format-check.yml` runs on every push with **`inplace: True`** and then commits the result back
+as "Committing clang-format changes". It does not reject a badly formatted push — it reformats it and
+pushes a commit on top of your branch. Two consequences:
+
+- **Your branch moves under you.** Pull before your next push, and **fetch before tagging a release**,
+  or the tag misses the formatting commit.
+- **That commit gets no CI run of its own.** GitHub does not trigger workflows for pushes made with
+  `GITHUB_TOKEN`, so the host tests that passed ran on the *pre-format* tree. Harmless for whitespace,
+  worth knowing.
+
+It fires often — around 15% of commits in this repo are auto-format commits, and they consistently
+touch a subset of the files the preceding commit touched. That is not a tooling fault, it is the
+formatter not being run before pushing. Run `Extras/clang-format-all-win64/` (the Shimmer3 and
+Shimmer3R repos each carry a `.bat`) or your IDE's format-on-save and the commit never appears.
+
+> CI pins clang-format **17**; the bundled `clang-format.exe` is **18.1.8**. They currently produce
+> byte-identical output on this codebase — reformatting `main` with 18 changes 0 of 60 files — so the
+> difference is not a live problem. It is recorded because a future version bump on either side could
+> make it one, and because it is otherwise the obvious thing to blame for churn it does not cause.
+
 ## Versioning
 `scripts/increment_version.sh` is called by the *consuming* firmware's release workflow, not by this
 repo. There is no release pipeline here.

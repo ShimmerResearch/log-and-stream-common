@@ -94,26 +94,36 @@ result back with `EndBug/add-and-commit`. So it does not fail a badly formatted
 push — it **reformats it and pushes a "Committing clang-format changes" commit
 on top**.
 
-Two consequences worth knowing before a release:
+That is deliberate and it does save time — nobody applies formatting review
+comments by hand. Three consequences worth knowing before a release:
 
-- A formatting commit can appear on your branch after you pushed, so **fetch
-  before you build the commit you intend to release**. The tag must point at the
-  formatted commit, not the one you pushed.
-- Formatting is never a release blocker, but it is also never enforced at review
-  time — the diff you reviewed may not be the diff that shipped.
+- **A formatting commit appears on your branch after you pushed.** Pull before
+  your next push, and **fetch before you build the commit you intend to
+  release** — the tag must point at the formatted commit, not the one you pushed.
+- **That commit gets no CI run of its own.** GitHub does not trigger workflows
+  for pushes made with `GITHUB_TOKEN`, so the checks that passed ran on the
+  *pre-format* tree. Harmless for whitespace; worth knowing it is not the tree
+  the checks saw.
+- **Fork pull requests are not covered.** All three workflows are `on: [push]`,
+  with the `pull_request` block commented out, so an external contribution is
+  never formatted.
 
-Format locally to avoid both:
+It fires often — roughly **15% of commits in `log-and-stream-common`** are
+auto-format commits, and they consistently touch a subset of the files the
+preceding commit touched. That is the formatter not being run before pushing,
+not a tooling fault. Formatting locally removes the round-trip entirely:
 
-- Shimmer3 / Shimmer3R: `Extras/clang-format-all-win64/LogAndStream-Shimmer3*.bat`
+- Shimmer3 / Shimmer3R: `Extras/clang-format-all-win64/LogAndStream-Shimmer3*.bat`,
+  whose exclusion lists match the workflows'
 - Shimmer3R IDE profile: `STM32CubeIDE_Format_Profile.xml` at the repo root
-- CI pins **clang-format 17**; a different local version can produce a different
-  result and so a surprise commit
+- `.clang-format` lives in each project directory, not at the repo root
 
-> The `AGENTS.md` in all three repositories currently states that this workflow
-> "checks rather than reformatting, so a badly formatted push fails CI instead
-> of being silently fixed". That is not what the workflow does at the pinned
-> revisions. Either the text or the workflow needs to change — this document
-> describes the workflow as it is.
+> **The version pins differ and it does not currently matter.** CI pins
+> clang-format **17**; the bundled `clang-format.exe` is **18.1.8**. Reformatting
+> `log-and-stream-common`'s `main` with 18 changes **0 of 60 files**, so the two
+> agree on this codebase and the difference is not a cause of churn. Recorded so
+> that it is not blamed for churn it does not cause, and so that a future bump on
+> either side is known to need checking.
 
 ### 2.2 Host tests
 
