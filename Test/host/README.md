@@ -40,6 +40,12 @@ Three kinds of fault are cheap here and expensive or impossible on a bench:
 | `test_*.c` | The suites |
 | `crosscheck_*.py` | Comparisons against references that share no code with the firmware |
 
+`crosscheck_host_constants.py` is the odd one out: it needs no compiler and no
+binary, so it runs from a bare checkout with `make host-constants`. It compares
+the firmware headers against the protocol document and the Python host reference
+in `Extras/`, and it is the only automated check in the repository that looks at
+host compatibility at all — see `docs/SHIMMER3_TEST_PROCEDURE.md` §6.
+
 ## The platform seam
 
 `log_and_stream_externs.h` declares what each platform firmware must implement.
@@ -95,5 +101,5 @@ card in a slot.
    reset inherits whatever the last one left — which is how a suite starts
    passing in one order and failing in another.
 
-`docs/SHIMMER3_TEST_PROCEDURE.md` §8 lists the next modules worth covering and
+`docs/SHIMMER3_TEST_PROCEDURE.md` §9 lists the next modules worth covering and
 what each needs first.

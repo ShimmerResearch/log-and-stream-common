@@ -66,6 +66,13 @@ carry the same submodule commit. §7 is per platform.
 | 3 | Platform builds | Per release, by hand | What only the real toolchains see — **MSP430 16-bit `int`**, section overflow, linker limits | Anything not exercised at runtime |
 | 4 | On-device automated | Per release, per platform | The BT and dock protocols, SD transfer, end to end against real silicon | Long-run behaviour, power, RF range, multi-device |
 | 5 | Functional, on hardware | Per release, per platform | Firmware behaviour that is per-model, per-radio or per-revision: packet layout, scaling, driver selection, radio bring-up | Hardware faults (that is §4.1's job), and whatever nobody thought to try |
+| 6 | Host compatibility | Per release, both platforms | Whether the firmware still works with the host software customers have: Consensys, the Java driver, the web SDK | Nothing a host does not touch |
+
+**Layer 6 is the one with the widest blast radius.** Layers 1-5 all ask whether
+the firmware is correct. Layer 6 asks whether it is still *compatible*, which is
+a different question with a different answer: a change can be entirely correct
+and still break every customer's analysis, because the firmware carries no
+compatibility logic and every gate is host-side (§6.1).
 
 **No layer above replaces the one below it, and layer 2 is the one most often
 mistaken for layer 3.** Host tests compile with a 32-bit `int`. The MSP430's is
@@ -146,6 +153,7 @@ code with the firmware — an oracle, not a restatement:
 | `crosscheck_swcrc.py` | The Python host CRC in `Extras/python_scripts/` | If firmware and host tooling disagree, a host silently fails to verify CRCs a device produced |
 | `crosscheck_rtc.py` | Python's `datetime` | A conversion pair can be each other's exact inverse and both be a day out. A round-trip cannot see that; an independent calendar can |
 | `crosscheck_board_revisions.py` | The gate table in [SHIMMER3_BOARD_REVISIONS.md](SHIMMER3_BOARD_REVISIONS.md) | Reports drift between the document and the firmware — see §2.4 |
+| `crosscheck_host_constants.py` | The protocol document **and** the Python host reference | The only automated host-compatibility check there is — see §6.3. Needs no compiler, so it also runs standalone: `make -C Test/host host-constants` |
 
 ### 2.3 Documentation
 
@@ -660,7 +668,146 @@ non-zero delta names which mechanism to chase.
 
 ---
 
-## 6. Regression cases
+## 6. Gate 5 — host-side and Consensys compatibility
+
+**Required for every release, both platforms.** This is the gate with the widest
+blast radius: a firmware change that breaks a host does not break one unit on a
+bench, it breaks every customer's analysis the day they update.
+
+### 6.1 Why the firmware cannot help you here
+
+Two facts, both already documented, and together they are the whole reason this
+section exists:
+
+> **"The firmware carries no compatibility logic. Every gate is host-side."**
+> — [SHIMMER3_RELEASE_AND_VERSIONING.md](SHIMMER3_RELEASE_AND_VERSIONING.md) §6
+
+> **Older firmware silently ignores unknown opcodes rather than NACKing them**,
+> so sending a newer command to older firmware produces *no response at all* —
+> indistinguishable from a dropped packet.
+
+So the firmware will not refuse an incompatible host, will not announce a
+changed layout, and will not report a command it no longer implements. Nothing
+in gates 1–4 looks at a host at all. **If a firmware change breaks host
+software, this gate is the only thing between it and a customer.**
+
+The corollary is worth stating plainly: because every gate is host-side, a
+firmware change that is *correct* can still be breaking. Renumbering an opcode,
+reusing a config byte, adding a channel to the middle of a packet — each is a
+reasonable firmware decision and each invalidates every host that was not
+updated in step.
+
+### 6.2 The five surfaces a host depends on
+
+Anything crossing one of these is a compatibility change, whatever it looked
+like in the diff:
+
+| Surface | What a host does with it | Reference |
+|---|---|---|
+| **BT command protocol** | Opcodes, argument and response lengths, ACK/NACK, CRC mode | [SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) |
+| **Streaming packet layout** | Channel order, widths, encodings, timestamps | [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) |
+| **Configuration image** | The 512-byte InfoMem byte map, and its SD-header twin | [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) |
+| **SD card format** | Directory naming, file header, sample records, `sdlog.cfg`, the calibration file | [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) |
+| **Dock protocol** | A *different* protocol, not a subset of the BT one | [SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) |
+
+> **The InfoMem and the SD header are not parallel layouts.** `config2SdHead`
+> is a field-by-field copy to different offsets, which is why Appendix A of the
+> InfoMem document exists. A change to one needs the other checked, and both
+> need the host checked.
+
+### 6.3 What CI already checks
+
+`make -C Test/host host-constants` compares the firmware headers, the protocol
+document and the Python host reference in `Extras/python_scripts/`. It runs on
+every push, needs no device and no compiler, and is the only automated
+host-compatibility check that exists.
+
+It is deliberately **value-centric, not name-centric** — the wire contract is
+the number. The firmware has renamed two dozen opcodes for clarity (`ACCEL` →
+`WR_ACCEL` / `LN_ACCEL`, `PRES` → `PRESSURE`) without moving a single value;
+those are reported and not failed. What fails:
+
+| Finding | Why it is a failure |
+|---|---|
+| A host opcode with no firmware opcode at that value, where the document says the firmware implements it | Removed or renumbered — the host will get silence |
+| An opcode value documented as two different firmware commands | A packet carrying it is ambiguous |
+| A board code or hardware ID whose value differs between firmware and host | Devices identified as the wrong model |
+
+The protocol document arbitrates, which is what keeps the check quiet enough to
+act on: its "FW name" column is empty for opcodes the firmware never
+implemented — the Java driver's legacy ExG calibration commands, for instance —
+so a host carrying those is correct by design rather than a finding. **If the
+opcode table's columns are ever restructured, the check fails closed** with a
+message saying so, rather than silently passing.
+
+> **This only covers the host that lives in this repository.** Consensys, the
+> Java driver and the web SDK restate the same constants again and cannot be
+> reached from CI. The Python reference is a proxy — a good one, because it
+> drifts the same way for the same reasons, but a proxy. §6.4 is not optional
+> because §6.3 is green.
+
+### 6.4 Manual: the current host stack against the new firmware
+
+The core of the gate. Run against a device carrying the release candidate, with
+the **shipping** version of each host — not a development build.
+
+| # | Step | Expected |
+|---|---|---|
+| 6.4.1 | Consensys: discover, connect, read the configuration | Device identified with the right model and firmware version |
+| 6.4.2 | Consensys: write a configuration, power-cycle, read it back | Byte-identical, and the UI shows what it wrote |
+| 6.4.3 | Consensys: stream every channel the board carries | All channels plotted, correctly labelled, correctly scaled |
+| 6.4.4 | Consensys: import a recording made on the release candidate | Parses; sample count and duration match the trial |
+| 6.4.5 | Consensys: import a recording made on the **previous** release | Still parses — a format change must not orphan existing data |
+| 6.4.6 | The dock route: configure and read back over the dock | Matches the BT route |
+| 6.4.7 | Web Bluetooth / TypeScript SDK tools, where they cover the change | Connect, configure, stream |
+| 6.4.8 | The in-repo Python suites (§4) against the release candidate | Pass |
+
+6.4.5 is the one people skip and the one that hurts. **A host update ships to
+customers after the firmware, or never** — so the firmware must keep working
+with the host version already installed, and old recordings must keep opening in
+the new host.
+
+### 6.5 Both directions of the version skew
+
+A release is used in four combinations, not one. Walk the two diagonals:
+
+| | Old firmware | New firmware |
+|---|---|---|
+| **Old host** | The baseline | **Test this.** The common case in the field: firmware updated, host not |
+| **New host** | **Test this.** A customer with a mixed fleet | The happy path everyone tests |
+
+| # | Step | Expected |
+|---|---|---|
+| 6.5.1 | New firmware, previous shipping host | Everything the old host supported still works |
+| 6.5.2 | Previous firmware, new host | The host gates on version rather than probing — no hangs |
+| 6.5.3 | A new command sent to previous firmware | The host times out cleanly and says something useful |
+
+6.5.3 is worth doing explicitly because the failure is *silence*, not an error.
+A host that probes instead of gating on the version tuple
+`(hardwareVersion, firmwareIdentifier, major, minor, patch)` will appear to hang.
+
+### 6.6 When a compatibility change is unavoidable
+
+Sometimes it is. Then the job is to make it loud rather than to avoid it:
+
+1. **Bump the version so hosts can gate on it**, and say which field moved —
+   [SHIMMER3_RELEASE_AND_VERSIONING.md](SHIMMER3_RELEASE_AND_VERSIONING.md).
+   A host cannot gate on something that did not change.
+2. **Update the document for the surface that changed**, in the same PR. The
+   documents in `docs/` are what host teams implement from; a change that
+   reaches a device before it reaches the document is a change nobody can
+   implement against.
+3. **Update the Python host reference** in `Extras/python_scripts/`, so
+   `host-constants` stays green and the next person sees the new shape.
+4. **Say so in the release notes, naming the host versions required.** "Requires
+   Consensys ≥ x.y" is a sentence that saves a support cycle.
+5. **Never reuse a retired opcode or config byte for a new meaning.** An old host
+   will parse it as the old thing and be confidently wrong, which is far worse
+   than getting nothing back. Take the next free value instead.
+
+---
+
+## 7. Regression cases
 
 Faults that reached a customer, or nearly did. **Every one of these is on the
 list because it got past the testing of its day**, which is the only reason a
@@ -675,6 +822,7 @@ case earns a permanent place here.
 | DEV-866 | A board with a dead LSE hangs at boot | §5.2.1 on an affected unit |
 | DEV-818 | BMP581 / BMP390 fitted per revision | `test_boards`, `crosscheck_board_revisions.py` |
 | Radio bring-up | A unit halts at boot, yellow at 5 Hz, on some radio-firmware combinations | §5.1 — nothing automated reaches this |
+| Host constant drift | A host restates a firmware constant and the firmware moves it; the device is fine and every host is wrong | `crosscheck_host_constants.py` for the in-repo host, §6.4 for the rest |
 | BMP581 SR48 window | A plain `>= 7.2` wrongly claims SR48-8-0 and 8-1 | `test_boards` — both layers catch it |
 
 **When a fault escapes, add its case here and a test for it in the same PR.** A
@@ -682,7 +830,7 @@ regression list that only grows by hand stops growing.
 
 ---
 
-## 7. Release sign-off
+## 8. Release sign-off
 
 Per platform. Release mechanics — versioning, tags, the workflow inputs — are in
 [SHIMMER3_RELEASE_AND_VERSIONING.md](SHIMMER3_RELEASE_AND_VERSIONING.md); this
@@ -700,7 +848,11 @@ is what has to be true before you trigger it.
 - [ ] **§5.1 boot matrix** walked — one unit per radio firmware, banner strings recorded
 - [ ] §5.4 walked on the models the release's changes actually touch (§5.4.5), rows recorded
 - [ ] Rest of §5 walked on at least one unit, results recorded
-- [ ] §6 regression cases considered against what changed
+- [ ] **§6.4 host stack** exercised against the release candidate, with the *shipping* host versions
+- [ ] **§6.4.5** — a recording from the previous release still imports
+- [ ] **§6.5** version skew walked in both directions
+- [ ] Any compatibility change handled per §6.6: version bumped, document updated, host reference updated, release notes name the host version required
+- [ ] §7 regression cases considered against what changed
 - [ ] `version.h` — all four values changed together, string zero-padded
 - [ ] `FirmwareIdentifierList.txt` in step, if a build was added
 - [ ] Documentation updated for every behaviour change in the release
@@ -709,7 +861,7 @@ is what has to be true before you trigger it.
 Then trigger `build-release-firmware.yml` by **workflow_dispatch**. The push
 trigger is commented out on purpose, so releases are never accidental.
 
-### 7.1 A shared-library change spans two releases
+### 8.1 A shared-library change spans two releases
 
 A change to `log-and-stream-common` is not released. It ships when a platform
 firmware bumps its submodule pointer and releases — so a shared change needs
@@ -718,12 +870,12 @@ even if only one of them ships first.
 
 ---
 
-## 8. Extending the host tests
+## 9. Extending the host tests
 
 This is the cheapest testing you have, and the list in §2.2 is short because of
 what is reachable, not because of what is worth covering.
 
-### 8.1 What makes a module reachable
+### 9.1 What makes a module reachable
 
 `log_and_stream_externs.h` declares what each platform firmware must implement.
 Shimmer3 implements it against the MSP430 HAL, Shimmer3R against the STM32 HAL,
@@ -739,7 +891,7 @@ redefines a type, struct or constant from this repository — only
 headers need firmware-side files. Struct layouts a test sees are the firmware's
 own, which is what stops a green test from meaning nothing.
 
-### 8.2 The next candidates, roughly by value
+### 9.2 The next candidates, roughly by value
 
 | Module | What a test would pin | What it needs first |
 |---|---|---|
@@ -754,7 +906,7 @@ own, which is what stops a green test from meaning nothing.
 Each stub added brings its whole subsystem within reach, so the order above is
 roughly the order of return.
 
-### 8.3 Adding a suite
+### 9.3 Adding a suite
 
 1. Write `Test/host/test_<module>.c`, guarded with
    `#if defined(SHIMMER_HOST_TEST)` — **the guard is not optional.** Both
@@ -767,7 +919,7 @@ roughly the order of return.
    `DUAL_PLATFORM_SUITES`. Prefer that where the module has any `#if
    defined(SHIMMER3...)` in it at all.
 
-### 8.4 What a good case here looks like
+### 9.4 What a good case here looks like
 
 The suites in §2.2 follow four habits worth keeping:
 
@@ -807,6 +959,20 @@ The suites in §2.2 follow four habits worth keeping:
 - **The maximum sampling rate per board and channel set (§5.5.4).** The ladder
   step asks where packets start dropping; no documented ceiling exists to check
   it against.
+- **Consensys, the Java driver and the web SDK are not reachable from CI
+  (§6.3).** `crosscheck_host_constants.py` checks the one host that lives in
+  this repository. The others restate the same constants in other repositories,
+  so §6.4 is a manual step and there is no automated equivalent. Whether a
+  contract test could be shared across those repositories is an open question
+  worth asking; it would be the largest single reduction in risk available to
+  this document.
+- **Which Consensys version is "the shipping version" at any time (§6.4).** The
+  procedure says to test against it rather than a development build; the
+  version itself is a release-management fact this repository does not record.
+- **`SHIMMER4_SDK` (board code 58) is absent from the Python host reference's
+  `SrBoardCodes`.** Reported by `crosscheck_host_constants.py` as a note rather
+  than a failure, because the reference is a test tool and not a shipping host.
+  Listed here so it is a known gap rather than an unexamined one.
 - **Bluetooth range expectations (§5.5.2).** No documented pass criterion; the
   step checks graceful degradation and recovery, not a distance.
 - **SD sync accuracy (§5.6).** [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md)

@@ -76,7 +76,7 @@ INC_test_util        := -I . -I $(REPO)
 
 ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) $(DUAL_PLATFORM_SUITES)
 
-.PHONY: all build test clean help platform-check $(ALL_SUITES)
+.PHONY: all build test clean help platform-check host-constants $(ALL_SUITES)
 
 all: test
 
@@ -86,6 +86,7 @@ help:
 	@echo "make test       run the suites and the Python cross-checks"
 	@echo "make clean      remove $(BUILD)/"
 	@echo "make platform-check   compile every host-clean module for BOTH MCUs"
+	@echo "make host-constants   check the Python host reference against the firmware"
 	@echo ""
 	@echo "Suites: $(ALL_SUITES)"
 	@echo "Run one with e.g. 'make test_rtc'."
@@ -147,6 +148,8 @@ test: build
 	  failed="$$failed crosscheck_rtc.py"; fi; \
 	if ! $(PYTHON) crosscheck_board_revisions.py $(BUILD)/test_boards.SHIMMER3R; then \
 	  failed="$$failed crosscheck_board_revisions.py"; fi; \
+	if ! $(PYTHON) crosscheck_host_constants.py; then \
+	  failed="$$failed crosscheck_host_constants.py"; fi; \
 	echo ""; \
 	echo "=============================================================="; \
 	if [ -n "$$failed" ]; then \
@@ -221,6 +224,12 @@ platform-check: | $(BUILD)
 	fi; \
 	echo ""; \
 	echo "every listed module compiles for both Shimmer3 and Shimmer3R"
+
+# Compares the firmware headers, the protocol document and the in-repo Python
+# host reference. Needs no compiler and no binary, so it is the one check here
+# that runs from a bare checkout.
+host-constants:
+	@$(PYTHON) crosscheck_host_constants.py
 
 clean:
 	rm -rf $(BUILD)

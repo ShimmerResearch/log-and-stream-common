@@ -36,10 +36,15 @@ the only one that acts at edit time rather than at release time.
 The suite covers the CRC, the sample ring, the string/number helpers, the RTC conversions, the
 battery classification and the board revision gates; three of those are additionally cross-checked
 against references that share no code with the firmware. `Test/host/README.md` has the mechanics and
-`docs/SHIMMER3_TEST_PROCEDURE.md` §8 lists the next modules worth covering.
+`docs/SHIMMER3_TEST_PROCEDURE.md` §9 lists the next modules worth covering.
 
 **What it cannot catch:** the host's `int` is 32 bits and the MSP430's is 16, so an expression that
 overflows on Shimmer3 passes here every time. Add a test *and* build for the target.
+
+`make -C Test/host host-constants` is the one to run after touching an opcode, a config byte or a
+board code. It checks the firmware headers against the protocol document and the Python host
+reference in `Extras/`, because a constant that moves here is silently wrong in every host that
+restates it — Consensys included. It needs no compiler.
 
 When you fix a bug, add the case that would have caught it, in the same PR.
 
