@@ -65,7 +65,7 @@ carry the same submodule commit. §7 is per platform.
 | 2 | Host tests | Every push, ~10 s | Logic: arithmetic, state machines, revision gates, protocol framing, hysteresis | Word sizes, peripherals, timing, power, radio |
 | 3 | Platform builds | Per release, by hand | What only the real toolchains see — **MSP430 16-bit `int`**, section overflow, linker limits | Anything not exercised at runtime |
 | 4 | On-device automated | Per release, per platform | The BT and dock protocols, SD transfer, end to end against real silicon | Long-run behaviour, power, RF range, multi-device |
-| 5 | Manual bench | Per release, per platform | Everything the above cannot reach — and the reason for §6 | Whatever nobody thought to try |
+| 5 | Functional, on hardware | Per release, per platform | Firmware behaviour that is per-model, per-radio or per-revision: packet layout, scaling, driver selection, radio bring-up | Hardware faults (that is §4.1's job), and whatever nobody thought to try |
 
 **No layer above replaces the one below it, and layer 2 is the one most often
 mistaken for layer 3.** Host tests compile with a 32-bit `int`. The MSP430's is
@@ -297,83 +297,366 @@ for a part that is not fitted is worse.
 
 ---
 
-## 5. Gate 4 — manual bench
+## 5. Gate 4 — functional testing on hardware
 
-**Required for every release, per platform.** What follows is the minimum. It is
-ordered so that a failure stops you early.
+**Required for every release, per platform.** Ordered so a failure stops you
+early; §5.1 comes first because a unit that will not boot cannot be tested for
+anything else.
 
-Record, for each run: firmware version, board SR number, host tool and version.
+> **This section tests firmware, not hardware.** Hardware qualification is a
+> different activity with a different owner — the factory self-test (§4.1) finds
+> a part that is missing, dead or out of tolerance, and it does so better than a
+> person with a bench can.
+>
+> What is being asked here is narrower and harder to see: **given this hardware,
+> does the firmware do the right thing?** The firmware takes a different path per
+> board revision, per fitted sensor, per radio and per radio firmware, and the
+> failures that ship are the ones where a path is wrong but nothing looks broken
+> — a channel in the wrong slot, a value out by a constant factor, a radio the
+> firmware misidentifies. None of those show up as a dead sensor, and none of
+> them are caught by anything earlier in this document.
+>
+> So where a step below involves a physical stimulus — rotating a unit, injecting
+> a square wave, presenting a known resistance — the stimulus is a means of
+> knowing what the firmware *should* have emitted. The part's health is not the
+> measurement.
 
-### 5.1 Boot and identity
+Record, for each run: firmware version, board SR number, **radio module and its
+firmware version**, host tool and version.
+
+### 5.1 The boot matrix — board × radio × radio firmware
+
+**This is the most combinatorial thing in the product, and on Shimmer3 it has the
+harshest failure mode in the firmware.** Both platforms walk a ladder of baud
+rates when the radio does not answer, and both set
+`BOOT_STAGE_BLUETOOTH_FAILURE` when the ladder runs out. What happens next
+differs, and the difference matters for what you are looking for:
+
+| Platform | When the baud ladder is exhausted | What you see |
+|---|---|---|
+| **Shimmer3** | `while (1) { __bis_SR_register(LPM3_bits + GIE); }` — the boot never completes | **The unit is halted.** No Bluetooth, no logging, no dock response. Yellow at 5 Hz, because the blink timer still runs on ACLK |
+| **Shimmer3R** | `break` — boot continues without the radio | The unit comes up and logs, but has no Bluetooth. Yellow at 5 Hz |
+
+> `shimmer3-firmware` `LogAndStream_Shimmer3/main.c:300-321`;
+> `shimmer3r-firmware` `LogAndStream_Shimmer3R/Core/Src/main.c:732-739`;
+> the LED pattern is [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §5.
+>
+> The Shimmer3R behaviour is the friendlier one and the Shimmer3 behaviour is
+> the one that generates support calls — but **the Shimmer3R case is easier to
+> miss**, because a unit that boots and logs looks fine until someone tries to
+> connect to it. Check for the LED pattern on both, not just for "it booted".
+
+Two modules on Shimmer3, one on Shimmer3R, and **six recognised firmware
+versions on the RN4678 alone**:
+
+| Platform | Module | Firmware the firmware recognises | Notes |
+|---|---|---|---|
+| Shimmer3 | Microchip RN41 | v4.77 | Classic only. Fitted to units with no EEPROM |
+| Shimmer3 | Microchip RN42 | v4.77, v6.15 | Classic only |
+| Shimmer3 | Microchip RN42 | **v6.30** | **Deliberately refused** — `triggerShimmerErrorState()` |
+| Shimmer3 | Microchip RN4678 | v1.00.5, v1.11.0, v1.13.5, v1.22.0, v1.23.0, v1.24.0 | Dual-mode, classic + BLE |
+| Shimmer3R | Infineon CYW20820 (Vela IF820), EZ-Serial | per the module's own release | Dual-mode |
+
+> Detection is `Comms/shimmer_bt_uart.c:341-463`. The RN4678 branch keys the
+> version on **characters 10 and 11 of the banner only** — `00`, `11`, `13`,
+> `22`, `23`, `24` — then waits for an exact further byte count chosen per
+> version (`RN4678_VERSION_LEN_V1_*` in `Shimmer_Driver/RN4X/RN4X.h`). That is
+> what makes this fragile in a way no amount of code reading fixes:
+>
+> - **Expected length too long** for the banner the module actually sends → the
+>   receive never completes, the baud ladder exhausts, and the unit halts as
+>   above.
+> - **Expected length too short** → the surplus bytes fall through to the
+>   command parser as garbage.
+> - **An unrecognised module** does not hang; it proceeds with
+>   `BT_FW_VER_UNKNOWN`, which then feeds every version-gated decision — baud
+>   selection, BLE availability, error-LED support. The unit boots and
+>   misbehaves, which is harder to spot than a unit that does not boot.
+
+**The test.** Load the release firmware onto one unit of each row, power-cycle
+and confirm it reaches idle:
 
 | # | Step | Expected |
 |---|---|---|
-| 5.1.1 | Power on undocked | Boots to idle; LED matches charge band ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md)) |
-| 5.1.2 | Read firmware version over BT | Matches the release, zero-padded (`v1.01.012`) |
-| 5.1.3 | Read the daughter-card ID | Correct SR number and human-readable name |
-| 5.1.4 | Power on with no SD card | Boots; reports no card; does not hang |
-| 5.1.5 | Power on with an unformatted card | Boots; reports bad card; does not hang |
+| 5.1.1 | Power on | Reaches idle. **Not** yellow flashing at 5 Hz |
+| 5.1.2 | `GET_BT_VERSION_STR_COMMAND` | Returns the banner, and it matches the module actually fitted |
+| 5.1.3 | Connect over classic Bluetooth | Connects and streams |
+| 5.1.4 | Connect over BLE, where the row supports it | Connects and streams |
+| 5.1.5 | Power-cycle five times | Boots every time — an intermittent bring-up is a bring-up failure |
 
-### 5.2 Configuration
+Two things make this cheaper than it looks:
+
+- **The radio firmware is the variable, not the board.** A given RN4678 firmware
+  behaves the same across board revisions, so one unit per radio-firmware row
+  covers it — you do not need the full board × radio cross product. Use whatever
+  boards you have; the board axis is covered by §5.4.
+- **It is the reprogramming that takes the time**, not the test. Where a rig can
+  reflash the radio, this is a batch job.
+
+> **Record the banner string, not just "passed".** It is the only ground truth
+> for what was actually on the unit, and a matrix run without it cannot be
+> reproduced when a customer reports a fault six months later.
+
+If a row fails, capture: the banner string, the baud the unit settled on, and
+whether the failure is at bring-up or at first connect. Those three separate the
+three mechanisms above.
+
+### 5.2 Boot and identity
 
 | # | Step | Expected |
 |---|---|---|
-| 5.2.1 | Write a full config over BT, power-cycle, read back | Byte-identical |
-| 5.2.2 | Write via dock, read over BT | Identical — one config, two routes |
-| 5.2.3 | Set the real-world clock, power-cycle | Time correct, no RTC error flash |
-| 5.2.4 | Boot with the clock never set | RTC error flash, if enabled in config |
-| 5.2.5 | Write `sdlog.cfg` by hand, boot | Parsed; a malformed key is rejected without taking the rest of the file with it |
+| 5.2.1 | Power on undocked | Boots to idle; LED matches charge band ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md)) |
+| 5.2.2 | Read firmware version over BT | Matches the release, zero-padded (`v1.01.012`) |
+| 5.2.3 | Read the daughter-card ID | Correct SR number and human-readable name |
+| 5.2.4 | Power on with no SD card | Boots; reports no card; does not hang |
+| 5.2.5 | Power on with an unformatted card | Boots; reports bad card; does not hang |
+| 5.2.6 | Power on with no EEPROM fitted (pre-SR31-7-0) | Boots; reports the card ID as unprogrammed (`0xFF`), **not** as SR0-0-0 |
 
-### 5.3 Logging and streaming
+### 5.3 Configuration
 
 | # | Step | Expected |
 |---|---|---|
-| 5.3.1 | Log 10 min, all channels, max rate | No gaps; timestamps monotonic |
-| 5.3.2 | Stream 10 min, all channels, max rate | No dropped packets |
-| 5.3.3 | **Log and stream simultaneously, max rate** | Both intact — this is the headline feature and the hardest case |
-| 5.3.4 | Log across a file-split boundary | Files continuous, no lost samples at the join |
-| 5.3.5 | Pull the card mid-log | Clean stop; the file up to that point is readable |
-| 5.3.6 | Start/stop 20 times | No leak, no drift, no stuck state |
+| 5.3.1 | Write a full config over BT, power-cycle, read back | Byte-identical |
+| 5.3.2 | Write via dock, read over BT | Identical — one config, two routes |
+| 5.3.3 | Set the real-world clock, power-cycle | Time correct, no RTC error flash |
+| 5.3.4 | Boot with the clock never set | RTC error flash, if enabled in config |
+| 5.3.5 | Write `sdlog.cfg` by hand, boot | Parsed; a malformed key is rejected without taking the rest of the file with it |
 
-Check 5.3.1–5.3.3 in Consensys, not just for file size. **A packet with a zero
+### 5.4 Per-model behaviour — what the firmware does differently
+
+**The question here is not whether the part works. It is whether the firmware
+handles this variant correctly.**
+
+That distinction decides what is worth testing. A channel stuck at zero is a
+hardware fault and the factory self-test already finds it. What ships instead is
+a channel carrying *plausible* values in the wrong slot, at the wrong scale, or
+in the wrong byte order — because the firmware takes a different code path per
+model and one of those paths is wrong. That is invisible on the device, survives
+every automated gate, and surfaces weeks later as data nobody can reconcile.
+
+`test_boards` proves the firmware's *belief* about what is fitted matches the SR
+number. It cannot prove the firmware then does the right thing with that belief.
+This section does.
+
+Four things branch per model, and each is a separate failure:
+
+| What branches | Decided by | How it fails |
+|---|---|---|
+| Which driver runs | Revision gates (`ShimBrd_is*Present`) | Wrong driver for the fitted part |
+| Channel order and widths in the packet | Board + platform + enabled channels | Everything after the offending channel decodes as garbage |
+| Calibration defaults and scaling | Sensor in use, range, board generation | Values wrong by a constant factor |
+| Config validation | Board capability | A setting silently corrected — or silently not |
+
+The fitted set is a function of generation, not board alone — see
+[SHIMMER3_BOARD_REVISIONS.md](SHIMMER3_BOARD_REVISIONS.md):
+
+| Generation | Pressure | Gyro / LN accel | WR accel | Mag | Alt mag | Mic | Radio |
+|---|---|---|---|---|---|---|---|
+| First | BMP180 | MPU-9150 / KXRB5-2042 | LSM303DLHC | LSM303DLHC | MPU-9150 | — | RN42 |
+| Second | BMP280 | MPU-9250 / KXTC9-2050 | LSM303AHTR | LSM303AHTR | MPU-9250 | — | RN42 |
+| Third | BMP280 | ICM-20948 / KXTC9-2050 | LSM303AHTR | LSM303AHTR | ICM-20948 | — | RN4678 |
+| Fourth (S3R) | BMP390 | LSM6DSV | LIS2DW12 | LIS2MDL | LIS3MDL (to `.1`) | MP23DB01HP | Vela IF820 |
+| Fourth `.2`+ | **BMP581** | LSM6DSV | LIS2DW12 | LIS2MDL | — | IM68D121 (from `.3`) | Vela IF820 |
+
+#### 5.4.1 Packet layout, decoded against the document
+
+The single highest-value test in this section. Enable every channel the board
+carries, capture one packet, and **decode it by hand against
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §4** for
+that exact model — not with Consensys, which shares assumptions with the
+firmware and will agree with it about a shared mistake.
+
+| # | Check | Why this model matters |
+|---|---|---|
+| 5.4.1a | Channel order matches the documented order for this board | Shimmer3 emits temperature-then-pressure; Shimmer3R pressure-then-temperature, and **the widths differ** (§4.3) |
+| 5.4.1b | Magnetometer axis order | An LSM303DLHC board emits X, **Z**, **Y** — not X, Y, Z (§4.1) |
+| 5.4.1c | VBATT position | On an SR48-6-0 the MCU ADCs are configured first, so VBATT is **not** last (§4.2) |
+| 5.4.1d | Total packet length | Matches the sum of the enabled channel widths — a length that is right by accident on one board is wrong on another |
+| 5.4.1e | Timestamp advances by one sample period | And is never `00 00 00` |
+
+#### 5.4.2 Scaling and calibration, per sensor in use
+
+Values in the right slot but the wrong size. Each of these is a known trap with a
+documented cause:
+
+| # | Check | The trap |
+|---|---|---|
+| 5.4.2a | Uncalibrated magnetometer magnitude is plausible | LSM303AH boards are clamped to mag range 0, whose default seed carries the wrong sensitivities — reads ~5× high ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
+| 5.4.2b | Calibration bias and sensitivity read back correctly | They are **big-endian**, unlike most of the config (§3.1) |
+| 5.4.2c | Low-noise and wide-range accel calibrations are not swapped | The SD header order is not the InfoMem order (§4.2) |
+| 5.4.2d | ExG millivolts in 16-bit mode | The 16-bit word is bits 22:7 of the 24-bit conversion — the denominator needs a factor of 2 ([streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.5) |
+| 5.4.2e | Shimmer3R ADC / battery millivolts | 12-bit at 3.0 V; the divide-by-four belongs to the MCU's own VBAT debug channel, not these (§7.2) |
+| 5.4.2f | Gyro range on Shimmer3R | The range's high bit lives in config byte 130 — getting it wrong is a 16× error ([InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §4.1) |
+
+Axis identity is a firmware question here, not a hardware one: rotate the unit
+through six orientations only to establish **which emitted channel is which
+axis and with what sign**, then check that against the documented mapping for
+the model. You are testing the firmware's channel assignment, not the part.
+
+#### 5.4.3 Driver selection across a revision boundary
+
+The revision gates choose a driver. The interesting units are the ones either
+side of a boundary, because that is where the gate is load-bearing:
+
+| # | Step | Expected |
+|---|---|---|
+| 5.4.3a | A `.1` board and a `.2` board of the same family, same firmware | The `.2` uses the **BMP581** path, the `.1` the **BMP390** path — different calibration coefficients and a different packet encoding |
+| 5.4.3b | A board with LIS3MDL and one without (`.1` dropped it) | Alt-mag channels present on one, absent on the other, and the packet shortens accordingly |
+| 5.4.3c | SR48-6-0 versus SR48-7-0 | MCU ADCs versus the ADS7028 — a different acquisition path entirely |
+| 5.4.3d | An SR31-11-1 | Keeps the ADXL371 — the IMU-board exception to the `.1` rule |
+
+A mismatch here is a **firmware** finding even though it presents as a sensor
+problem, and per `AGENTS.md` it is the gate that is authoritative, not the
+hardware workbook. Report it rather than reconciling either side (§2.4).
+
+#### 5.4.4 Firmware-computed outputs
+
+Nothing to do with a part being fitted — these are the firmware's own arithmetic,
+and a bench unit is the only place the whole chain runs:
+
+| # | Step | Expected |
+|---|---|---|
+| 5.4.4a | Enable derived channels | Computed values match the inputs they are derived from — `derivedChannels.py` |
+| 5.4.4b | Sweep known resistances into GSR | Each auto-range band **entered, held and reported** correctly, including the 80 ms settling hold ([GSR](SHIMMER3_GSR_AUTORANGE.md) §5.1). The Shimmer3R tree carries a rig driver for exactly this — `Shimmer_Driver/GSRTestRig/`, an AD5242 pot and ADG715 switch bank presenting known resistances to 1 MΩ, which makes this a calibration check rather than "the number moved" |
+| 5.4.4c | Configure each supported sampling rate | The packet rate is `32768 / samplingRateTicks` and matches — `samplingRate.py` |
+| 5.4.4d | GSR boards with reversed control pins (SR48-4-1) | The reversal flag applied — values not out by a large constant factor ([GSR](SHIMMER3_GSR_AUTORANGE.md) §2) |
+| 5.4.4e | Set an illegal channel combination | Silently corrected, and corrected the same way the InfoMem document says ([InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §10) |
+| 5.4.4f | Enable skin temperature alongside GSR | GSR wins the shared ADC input — documented, and the config read-back should show it (§10.2) |
+| 5.4.4g | Clear the expansion-power bit with GSR/PPG enabled | Those channels read as unpowered noise. No firmware rule derives this bit — confirm the behaviour rather than expecting a correction (§10.7) |
+
+**Existing scripts, worth using rather than rewriting**, all under
+`Extras/python_scripts/Bluetooth commands/`: `aAccel5Hz.py`,
+`exgSquareWave512Hz.py`, `samplingRate.py`, `derivedChannels.py`,
+`bmp390_plot.py`, `bmp581_plot.py`, `bmp_compare.py` (overlays a BMP581 and a
+BMP390 stream — how the `.2` change was checked rather than assumed),
+`btCalV2Rx.py` / `btCalV2Tx.py`.
+
+#### 5.4.5 Coverage, honestly
+
+You will not have one of every model. Prioritise by **how much firmware is
+unique to the row**, not by how many units exist:
+
+1. One board per **generation** — the widest code-path differences.
+2. Both sides of a **live revision boundary** (§5.4.3), for the release's gates.
+3. One board per **expansion type** — ExG, GSR+, Bridge Amp, Proto3 — since each
+   brings its own channels and calibration.
+
+Everything else is a repeat of a path already walked. Record which rows you
+actually covered; an untested row is not a passed row.
+
+### 5.5 Throughput and the rate ladder
+
+The firmware has a **built-in throughput test**: `SET_DATA_RATE_TEST` (`0xA4`)
+streams 5-byte packets — one header byte plus a `uint32_t` counter that
+increments once per packet — as fast as the link will carry them. A gap in the
+counter is a dropped packet, and it needs no sensor configuration at all, so it
+separates *link* throughput from *sampling* throughput.
+
+`Extras/python_scripts/Bluetooth commands/SpeedTest/` drives it:
+`speedTest.py` (classic), `speedTestBle.py` (BLE), `speedTestPlot.py`.
+
+| # | Step | Expected |
+|---|---|---|
+| 5.5.1 | Data rate test, classic, 10 min | No counter gaps; rate recorded and compared with the previous release |
+| 5.5.2 | Data rate test, BLE, 10 min, where supported | As above; BLE is expected to be slower, but *record the number* |
+| 5.5.3 | Repeat at each baud the fitted module supports | See the ladder below |
+| 5.5.4 | Climb the sampling-rate ladder with all channels on until packets drop | Note the rate it breaks at, and compare with the previous release |
+
+**The baud ladder is per module, and the constraints are real:**
+
+| Baud | Supported on |
+|---|---|
+| 115200 | All. The RN41/RN42 default and the fallback |
+| 1200, 230400, 460800, 921600 | RN42 only |
+| 1000000 | **RN4678 v1.23 only** — v1.13.5 and v1.22 have known problems |
+| 2000000 | CYW20820 only |
+
+> `Comms/shimmer_bt_uart.h:323-338`. The 1000000 row is the reason §5.1 insists
+> on recording the banner: a unit that reports "RN4678" but is running v1.22 will
+> accept the baud and then misbehave under load, which looks like a firmware
+> regression and is not one.
+
+Sampling rate is stored as a tick divider — the packet rate is
+`32768 / samplingRateTicks` — so the ladder is not linear in the configured
+value. [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md)
+§3.1 has the encoding.
+
+### 5.6 Logging and streaming
+
+| # | Step | Expected |
+|---|---|---|
+| 5.6.1 | Log 10 min, all channels, max rate | No gaps; timestamps monotonic |
+| 5.6.2 | Stream 10 min, all channels, max rate | No dropped packets |
+| 5.6.3 | **Log and stream simultaneously, max rate** | Both intact — this is the headline feature and the hardest case |
+| 5.6.4 | Log across a file-split boundary | Files continuous, no lost samples at the join |
+| 5.6.5 | Pull the card mid-log | Clean stop; the file up to that point is readable |
+| 5.6.6 | Start/stop 20 times | No leak, no drift, no stuck state |
+
+Check 5.6.1–5.6.3 in Consensys, not just for file size. **A packet with a zero
 timestamp reads as a 24-bit roll-over worth 512 s** — that is the DEV-1023
-signature, and `test_packet_ring` covers the mechanism, but only a real
-long-run recording covers the whole path.
+signature, and `test_packet_ring` covers the mechanism, but only a real long-run
+recording covers the whole path.
 
-### 5.4 Battery and charging
+### 5.7 Battery and charging
 
 `test_battery` covers the classification logic exhaustively; what it cannot do
 is confirm the ADC actually reads what the cell is doing.
 
 | # | Step | Expected |
 |---|---|---|
-| 5.4.1 | Dock a part-charged unit | Steady red, then green at full |
-| 5.4.2 | Undock at each charge band | LED colour matches the band |
-| 5.4.3 | Run to the auto-stop threshold with the option enabled | Logging stops; the card is readable |
-| 5.4.4 | The same with it disabled | Logging continues |
+| 5.7.1 | Dock a part-charged unit | Steady red, then green at full |
+| 5.7.2 | Undock at each charge band | LED colour matches the band |
+| 5.7.3 | Run to the auto-stop threshold with the option enabled | Logging stops; the card is readable |
+| 5.7.4 | The same with it disabled | Logging continues |
 
-### 5.5 Bluetooth
-
-| # | Step | Expected |
-|---|---|---|
-| 5.5.1 | Pair, connect, disconnect, reconnect ×5 | Reliable, no reset needed |
-| 5.5.2 | Walk to the edge of range while streaming | Degrades and recovers; no lockup |
-| 5.5.3 | Power off the host mid-stream | Device returns to idle by itself |
-| 5.5.4 | BLE, where supported (S3 RN4678, S3R CYW20820) | Connects and streams |
-
-### 5.6 Multi-device, if SD sync is in the release
+### 5.8 Bluetooth link behaviour
 
 | # | Step | Expected |
 |---|---|---|
-| 5.6.1 | Three units, one centre, 30 min | All files carry usable offsets |
-| 5.6.2 | Power-cycle a node mid-session | Rejoins; the gap is visible in the data, not silent |
+| 5.8.1 | Pair, connect, disconnect, reconnect ×5 | Reliable, no reset needed |
+| 5.8.2 | Walk to the edge of range while streaming | Degrades and recovers; no lockup |
+| 5.8.3 | Power off the host mid-stream | Device returns to idle by itself |
+| 5.8.4 | BLE, where supported | Connects and streams |
 
-### 5.7 Power
+### 5.9 Multi-device, if SD sync is in the release
 
 | # | Step | Expected |
 |---|---|---|
-| 5.7.1 | Sleep current, undocked, idle | Within spec for the board |
-| 5.7.2 | Overnight idle undocked | Still responsive; battery drop as expected |
+| 5.9.1 | Three units, one centre, 30 min | All files carry usable offsets |
+| 5.9.2 | Power-cycle a node mid-session | Rejoins; the gap is visible in the data, not silent |
+
+### 5.10 Power
+
+| # | Step | Expected |
+|---|---|---|
+| 5.10.1 | Sleep current, undocked, idle | Within spec for the board |
+| 5.10.2 | Overnight idle undocked | Still responsive; battery drop as expected |
+
+### 5.11 Soak, and the counters that survive it
+
+The faults worth soaking for are intermittent by definition, and the firmware
+already keeps a persistent tally of the four that matter. `gEepromSensorSettings`
+carries, in EEPROM and across power cycles:
+
+| Counter | What it records |
+|---|---|
+| `btCntDisconnectWhileStreaming` | The link dropped mid-stream |
+| `btCntUnsolicitedReboot` | The radio rebooted on its own |
+| `btCntRtsLockup` | Flow control locked up |
+| `btCntDataRateTestBlockage` | The data rate test stalled |
+
+> `EEPROM/shimmer_eeprom.{h,c}`;
+> [SHIMMER3_EEPROM_MEMORY_MAP.md](SHIMMER3_EEPROM_MEMORY_MAP.md).
+
+**Read them before the soak, reset them, and read them again after.** A soak that
+ends with a device still streaming has told you very little on its own; the same
+soak with a delta of zero on all four counters has told you a great deal, and a
+non-zero delta names which mechanism to chase.
+
+| # | Step | Expected |
+|---|---|---|
+| 5.11.1 | Reset the counters, stream + log overnight, read them back | All four still zero |
+| 5.11.2 | Repeat on one unit per radio firmware from §5.1 | As above — this is where a bad radio build shows itself |
 
 ---
 
@@ -385,12 +668,13 @@ case earns a permanent place here.
 
 | Case | Symptom | Covered by |
 |---|---|---|
-| DEV-1023 | Zero timestamp in a logged packet, read as a 512 s jump | `test_packet_ring` — plus 5.3.1 |
-| DEV-1019 | Unprogrammed EEPROM reported as a real board, SR0-0-0 | `test_boards` |
+| DEV-1023 | Zero timestamp in a logged packet, read as a 512 s jump | `test_packet_ring` — plus §5.6.1 |
+| DEV-1019 | Unprogrammed EEPROM reported as a real board, SR0-0-0 | `test_boards` — plus §5.2.6 |
 | DEV-1003 | CubeMX regeneration deleted 165 lines of `main.c` | `check_cubemx_guards.sh` — plus §3.3 |
-| DEV-1026 | I2C bus completion flags stale between gathers | 5.3.1, all channels |
-| DEV-866 | A board with a dead LSE hangs at boot | 5.1.1 on an affected unit |
+| DEV-1026 | I2C bus completion flags stale between gathers | §5.6.1, all channels |
+| DEV-866 | A board with a dead LSE hangs at boot | §5.2.1 on an affected unit |
 | DEV-818 | BMP581 / BMP390 fitted per revision | `test_boards`, `crosscheck_board_revisions.py` |
+| Radio bring-up | A unit halts at boot, yellow at 5 Hz, on some radio-firmware combinations | §5.1 — nothing automated reaches this |
 | BMP581 SR48 window | A plain `>= 7.2` wrongly claims SR48-8-0 and 8-1 | `test_boards` — both layers catch it |
 
 **When a fault escapes, add its case here and a test for it in the same PR.** A
@@ -413,7 +697,9 @@ is what has to be true before you trigger it.
 - [ ] **The other platform still builds** against that submodule commit (§1)
 - [ ] On-device suites pass (§4)
 - [ ] Factory self-test read and checked against the board revision (§4.1)
-- [ ] §5 walked on at least one unit, results recorded
+- [ ] **§5.1 boot matrix** walked — one unit per radio firmware, banner strings recorded
+- [ ] §5.4 walked on the models the release's changes actually touch (§5.4.5), rows recorded
+- [ ] Rest of §5 walked on at least one unit, results recorded
 - [ ] §6 regression cases considered against what changed
 - [ ] `version.h` — all four values changed together, string zero-padded
 - [ ] `FirmwareIdentifierList.txt` in step, if a build was added
@@ -503,9 +789,24 @@ The suites in §2.2 follow four habits worth keeping:
 
 ## Still unverified / not found in code
 
-- **Sleep-current figures (§5.7.1).** The acceptance limits are per board and
+- **Sleep-current figures (§5.10.1).** The acceptance limits are per board and
   live in the hardware documentation, not in this repository. The step is listed
   without a number deliberately.
+- **Throughput acceptance figures (§5.5).** `SET_DATA_RATE_TEST` and the
+  `SpeedTest/` scripts measure a rate, but no expected rate is recorded anywhere
+  in the firmware or docs, per module or per baud. The steps therefore say
+  "record and compare with the previous release" rather than naming a threshold.
+  **Capturing one release's numbers would turn §5.5 from a trend check into a
+  pass/fail gate**, and is the single cheapest improvement available to this
+  section.
+- **Which CYW20820 / EZ-Serial firmware versions are qualified (§5.1).** The
+  Shimmer3 side names six RN4678 versions and three RN41/RN42 versions in code,
+  so the matrix rows are exact. The Shimmer3R side has no equivalent version
+  list in the firmware — `Extras/WsOtaUpgrade/` carries one EZ-Serial build
+  (`v1.4.16.16`), but whether others are supported is not recorded here.
+- **The maximum sampling rate per board and channel set (§5.5.4).** The ladder
+  step asks where packets start dropping; no documented ceiling exists to check
+  it against.
 - **Bluetooth range expectations (§5.5.2).** No documented pass criterion; the
   step checks graceful degradation and recovery, not a distance.
 - **SD sync accuracy (§5.6).** [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md)

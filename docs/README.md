@@ -95,6 +95,8 @@ something that "should work".
 | Headless Shimmer3R build fails with `no file system for scheme: C` | `-import` needs backslashes — [build](SHIMMER3_BUILD_AND_PROGRAMMING.md) §5.1 |
 | Shimmer3 Release configuration will not build | Known and parked; releases ship from **Debug** — [build](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
 | Arithmetic correct on Shimmer3R, wrong on Shimmer3 | The MSP430's `int` is 16 bits, so `uint8 * 3600` overflows where `uint8 * 32768` does not. Host tests cannot see it — [test procedure](SHIMMER3_TEST_PROCEDURE.md) §3.2 |
+| A unit halts at boot flashing yellow at 5 Hz | The radio never came up: the baud ladder exhausted and the firmware parked in LPM3. Usually a radio-firmware version the bring-up does not handle — [test procedure](SHIMMER3_TEST_PROCEDURE.md) §5.1 |
+| A unit boots but the radio behaves oddly under load | The module was not recognised, so it runs as `BT_FW_VER_UNKNOWN` and every version-gated decision is a guess — [test procedure](SHIMMER3_TEST_PROCEDURE.md) §5.1 |
 
 ## No Shimmer3/3R counterpart, by design
 
