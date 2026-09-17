@@ -327,7 +327,12 @@ ShimBtn_init, ShimRtc_init
    `PACKET_TIMESTAMP_IDX` for `dataLen - 1` bytes.
 5. If streaming, the CRC is appended per the session mode and the packet is
    handed to the Bluetooth writer.
-6. When an SD buffer fills, `TASK_SDWRITE` flushes it.
+6. A record that does not fit the SD buffer in progress closes it: the buffer
+   is queued, `TASK_SDWRITE` is set to write it, and the record begins the next
+   buffer. If every buffer is already queued the record is dropped and counted.
+   The buffer state machine is `SDCard/shimmer_sd_write_buf.c` — task-loop
+   context only, and exercised by a host test. See
+   [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §4.1.
 
 > **The ring refuses more than it used to, on purpose.** A tick whose slot is
 > still being gathered is skipped; a gather queued for a released packet is

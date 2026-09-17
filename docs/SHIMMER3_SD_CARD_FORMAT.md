@@ -167,6 +167,34 @@ and §5.
 > [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1
 > for which unwrapping rules survive it and which do not.
 
+Records are not written one at a time. They accumulate into a 512-byte buffer
+which is handed to `f_write` when the next record will not fit (§4.1), so the
+file after the header is a sequence of blocks. Each block holds
+
+```
+recordsPerBlock = floor((512 - syncHeadBytes) / recordLength)
+blockBytes      = syncHeadBytes + recordsPerBlock * recordLength
+```
+
+where `syncHeadBytes` is 9 when SD sync is enabled for the trial and 0
+otherwise. Records never straddle a block.
+
+> **A block is not 512 bytes.** Only the bytes actually used are written, so
+> `blockBytes` is 512 rounded *down* to a whole number of records — for
+> example 504 for a 21-byte record with no sync head, or 500 with one. There is
+> no padding between blocks, so a parser that steps 512 bytes at a time will
+> drift.
+
+Only the last block of a file is shorter still, because it is written when
+logging stops, with however many records the buffer held.
+
+> **The 9-byte sync offset leads every block, not just the file.** When the
+> trial has sync enabled (`SDH_TRIAL_CONFIG0` bit `SDH_TIME_SYNC`), the node's
+> current offset is written at the start of each block before its first record.
+> Its layout is in [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md) §5. A parser that
+> reads the file as a flat array of records without accounting for it will
+> misalign after the first block.
+
 ### 2.2 Header size differs by generation
 
 | Platform | `SD_HEAD_SIZE` |
@@ -348,13 +376,35 @@ sample records using the header alone.
 | Constant | Value | Meaning |
 |---|---:|---|
 | `SD_WRITE_BUF_SIZE` | 512 | One write buffer |
-| `NUM_SDWRBUF` | S3: 1, S3R: 4 | Number of buffers |
+| `NUM_SDWRBUF` | 4 | Number of buffers, both platforms |
 | `BIN_FILE_SYNC_TIME_TICKS` | 32768 × 60 | `f_sync` every 60 s |
 | `BIN_FILE_SPLIT_TIME_TICKS` | 32768 × 3600 | New file every 3600 s |
 
-Samples accumulate into a 512-byte buffer; when full it is written with
-`f_write`. Shimmer3R rotates four buffers so sensing can continue during a
-write, Shimmer3 has one.
+Samples accumulate into a 512-byte buffer. A record that does not fit the
+buffer in progress closes it: the full buffer is queued for `TASK_SDWRITE`,
+which writes it with one `f_write`, and the record begins the next buffer.
+Buffers therefore end on record boundaries, and a write is never more than 512
+bytes. Both platforms rotate four buffers, so sensing continues into a fresh one
+while the previous waits for the card.
+
+That is what sets how long a card may stall without costing a sample. One buffer
+takes `recordsPerBlock / sampleRate` to fill — about 46 ms at 504 Hz with a
+21-byte record — and four of them absorb roughly four times that.
+
+If every buffer is waiting — the card has stalled for longer than the rest take
+to fill — the record is dropped and counted in `sdWrBuf.diag.putsRefusedFull`.
+That counter is cleared when logging starts and never while it runs, so a bench
+run can be read out afterwards. The file then shows a gap of whole sample
+periods at a block boundary; it never shows a partial record.
+
+When logging stops, the partially filled buffer is queued and every queued
+buffer is written before the file is closed.
+
+> **Earlier Shimmer3 firmware had a single buffer**, so there was nowhere for a
+> record to go between a buffer filling and its write reaching the card, and
+> every record offered in that window was dropped silently. A file from that
+> firmware can show a gap of several consecutive samples at roughly every block
+> boundary. Those are real missing samples, not a parsing artefact.
 
 Behind that sits the sample ring (`Sensing/shimmer_packet_ring.c`): eight slots,
 six usable, with one packet being filled at a time. A sample tick starts a

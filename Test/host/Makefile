@@ -49,6 +49,15 @@ INCLUDES := -I . \
 # nothing but the C library.
 STANDALONE_SUITES := test_swcrc test_packet_ring test_util
 
+# Suites built once per SD write-buffer count. That count is a compile-time
+# constant because the buffers are a fixed array, so covering more than one
+# means building more than once. 4 is what both platforms ship; 1 is what
+# Shimmer3 shipped before, and that build asserts the record loss it caused, so
+# the count cannot be quietly reduced again; 2 sits between them and catches an
+# off-by-one that 1 and 4 would both hide.
+SD_WRBUF_SUITES := test_sd_write_buf
+SD_WRBUF_COUNTS := 1 2 4
+
 # Suites built once, against the stub platform.
 SINGLE_PLATFORM_SUITES := test_crc
 
@@ -62,6 +71,8 @@ PLATFORMS := SHIMMER3 SHIMMER3R
 SRC_test_swcrc       := test_swcrc.c $(REPO)/CRC/shimmer_swCrc.c
 SRC_test_packet_ring := test_packet_ring.c $(REPO)/Sensing/shimmer_packet_ring.c
 SRC_test_util        := test_util.c $(REPO)/Util/shimmer_util.c
+SRC_test_sd_write_buf := test_sd_write_buf.c \
+                        $(REPO)/SDCard/shimmer_sd_write_buf.c
 SRC_test_crc         := test_crc.c $(REPO)/CRC/shimmer_crc.c \
                         $(REPO)/CRC/shimmer_swCrc.c $(REPO)/Platform/platform_api.c
 SRC_test_rtc         := test_rtc.c $(REPO)/RTC/shimmer_rtc.c
@@ -73,8 +84,10 @@ SRC_test_boards      := test_boards.c $(REPO)/Boards/shimmer_boards.c
 INC_test_swcrc       := -I $(REPO)/CRC
 INC_test_packet_ring := -I $(REPO)
 INC_test_util        := -I . -I $(REPO)
+INC_test_sd_write_buf := -I . -I $(REPO)
 
-ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) $(DUAL_PLATFORM_SUITES)
+ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) \
+              $(DUAL_PLATFORM_SUITES) $(SD_WRBUF_SUITES)
 
 .PHONY: all build test clean help platform-check host-constants $(ALL_SUITES)
 
@@ -115,9 +128,19 @@ endef
 $(foreach s,$(DUAL_PLATFORM_SUITES),\
   $(foreach p,$(PLATFORMS),$(eval $(call DUAL_RULE,$(s),$(p)))))
 
+# Same shape as DUAL_RULE, keyed on the buffer count instead of the platform.
+define SD_WRBUF_RULE
+$(BUILD)/$(1).n$(2): $$(SRC_$(1)) | $(BUILD)
+	$$(CC) $$(CFLAGS) -DNUM_SDWRBUF=$(2) $$(INC_$(1)) $$(SRC_$(1)) -o $$@
+endef
+$(foreach s,$(SD_WRBUF_SUITES),\
+  $(foreach n,$(SD_WRBUF_COUNTS),$(eval $(call SD_WRBUF_RULE,$(s),$(n)))))
+
 BINARIES := $(foreach s,$(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES),$(BUILD)/$(s)) \
             $(foreach s,$(DUAL_PLATFORM_SUITES),\
-              $(foreach p,$(PLATFORMS),$(BUILD)/$(s).$(p)))
+              $(foreach p,$(PLATFORMS),$(BUILD)/$(s).$(p))) \
+            $(foreach s,$(SD_WRBUF_SUITES),\
+              $(foreach n,$(SD_WRBUF_COUNTS),$(BUILD)/$(s).n$(n)))
 
 build: $(BINARIES)
 
@@ -168,6 +191,9 @@ $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES): %: $(BUILD)/%
 $(DUAL_PLATFORM_SUITES): %: $(foreach p,$(PLATFORMS),$(BUILD)/%.$(p))
 	@for p in $(PLATFORMS); do $(BUILD)/$@.$$p || exit 1; done
 
+$(SD_WRBUF_SUITES): %: $(foreach n,$(SD_WRBUF_COUNTS),$(BUILD)/%.n$(n))
+	@for n in $(SD_WRBUF_COUNTS); do $(BUILD)/$@.n$$n || exit 1; done
+
 # --- cross-platform compile check -------------------------------------------
 #
 # Every module below is compiled twice, once per platform, and only compiled -
@@ -199,6 +225,7 @@ DUAL_COMPILE_MODULES := \
   CRC/shimmer_swCrc.c \
   Platform/platform_api.c \
   RTC/shimmer_rtc.c \
+  SDCard/shimmer_sd_write_buf.c \
   Sensing/shimmer_packet_ring.c \
   Util/shimmer_util.c
 

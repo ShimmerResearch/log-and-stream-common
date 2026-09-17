@@ -12,14 +12,9 @@
 
 #include "ff.h"
 
-//sd card write buffer size
-#define SD_WRITE_BUF_SIZE 512
-
-#if defined(SHIMMER3)
-#define NUM_SDWRBUF 1
-#elif defined(SHIMMER3R)
-#define NUM_SDWRBUF 4
-#endif
+/* SD_WRITE_BUF_SIZE and NUM_SDWRBUF live with the buffers themselves, and are
+ * re-exported here for everything that used to get them from this header. */
+#include "SDCard/shimmer_sd_write_buf.h"
 
 #define BIN_FILE_SPLIT_TIME_TICKS (32768 * 3600) //1 hr
 #define BIN_FILE_SYNC_TIME_TICKS  (32768 * 60)   //1 minute
@@ -35,13 +30,11 @@ void ShimSdDataFile_close(void);
 void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len);
 void ShimSdDataFile_writeToCard(void);
 void ShimSdDataFile_writeAllBufsToSd(void);
-void ShimSdDataFile_advanceSensingBuf(void);
 uint8_t ShimSdDataFile_getNumberOfFullBuffers(void);
 uint16_t ShimSdDataFile_getBytesInCurrentSensingBuffer(void);
 
 uint8_t ShimSdDataFile_isFileStatusOk(void);
 
 uint8_t *ShimSdDataFile_fileNamePtrGet(void);
-void ShimSdDataFile_prepareSDBuffHead(void);
 
 #endif /* SHIMMER_SD_H_ */
