@@ -21,9 +21,27 @@ state (`shimmerStatus`, `batteryStatus`). Subsystems are one directory each: `Co
 `Sensing/`, `Calibration/`, `Battery/`, `Button/`, `LEDs/`, `RTC/`, `EEPROM/`, `SDSync/`, `TaskList/`.
 
 ## Read the docs first
-`docs/` holds 21 reference documents covering both platforms — protocol, memory maps, calibration,
+`docs/` holds 22 reference documents covering both platforms — protocol, memory maps, calibration,
 SD format, timekeeping, board revisions. Consult them before reading code. Note the naming split:
 `SHIMMER3_*` is shared or Shimmer3-specific, `SHIMMER3R_*` is Shimmer3R-only.
+
+## Test before you push
+`make -C Test/host` builds and runs the whole host suite in about ten seconds, with no cross-compiler
+and no device. CI runs the same Makefile, so green locally is green there.
+
+`make -C Test/host platform-check` is the one to run first. It compiles every host-clean module for
+**both** MCUs, which is the cheapest guard there is against the hazard at the top of this file — and
+the only one that acts at edit time rather than at release time.
+
+The suite covers the CRC, the sample ring, the string/number helpers, the RTC conversions, the
+battery classification and the board revision gates; three of those are additionally cross-checked
+against references that share no code with the firmware. `Test/host/README.md` has the mechanics and
+`docs/SHIMMER3_TEST_PROCEDURE.md` §8 lists the next modules worth covering.
+
+**What it cannot catch:** the host's `int` is 32 bits and the MSP430's is 16, so an expression that
+overflows on Shimmer3 passes here every time. Add a test *and* build for the target.
+
+When you fix a bug, add the case that would have caught it, in the same PR.
 
 ## Versioning
 `scripts/increment_version.sh` is called by the *consuming* firmware's release workflow, not by this
@@ -49,7 +67,7 @@ The mapping is the directory name: most subsystem folders have a doc named after
 | `RTC/` | `SHIMMER3_TIMEKEEPING.md` |
 | `SDCard/`, `Sensing/` | `SHIMMER3_SD_CARD_FORMAT.md`, `SHIMMER3_STREAMING_DATA_FORMAT.md` |
 | `SDSync/` | `SHIMMER3_SD_SYNC.md` |
-| `Test/` | `SHIMMER3R_FACTORY_TEST_REPORT.md` |
+| `Test/` | `SHIMMER3R_FACTORY_TEST_REPORT.md`, `SHIMMER3_TEST_PROCEDURE.md` |
 | `Platform/` | `SHIMMER3R_PERIPHERAL_ALLOCATION.md` |
 
 Change behaviour in a subsystem, update its doc **in the same PR**. Scope this to behaviour —
