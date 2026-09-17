@@ -111,10 +111,29 @@ comments by hand. Three consequences worth knowing before a release:
 It fires often — roughly **15% of commits in `log-and-stream-common`** are
 auto-format commits, and they consistently touch a subset of the files the
 preceding commit touched. That is the formatter not being run before pushing,
-not a tooling fault. Formatting locally removes the round-trip entirely:
+not a tooling fault.
 
-- Shimmer3 / Shimmer3R: `Extras/clang-format-all-win64/LogAndStream-Shimmer3*.bat`,
-  whose exclusion lists match the workflows'
+**The fix is the checked-in `pre-commit` hook.** One command per clone —
+`.githooks/install.sh`, or `.githooks\install.bat` on Windows — after which the
+`.c`/`.h` files staged for a commit are clang-formatted and re-staged as part of
+that commit. The bot commit never appears, your branch never moves under you,
+and the diff that is reviewed is the diff that ships. It needs nothing installed
+on Windows: Git for Windows supplies the shell and the formatter is already in
+the clone at `Extras/clang-format-all-win64/clang-format.exe`.
+
+It is a convenience, not a gate — it never blocks a commit, `--no-verify`
+bypasses it, and a fresh clone has it off until someone runs the installer.
+**That is why the CI auto-fix stays**: the hook removes the round-trip for the
+common case, CI catches everyone else, including the fork PRs the hook cannot
+reach. `.githooks/README.md` has the rest, including why a partly staged file
+(`git add -p`) is deliberately left alone.
+
+Three places now encode the same exclusion list — the workflow, the
+`.bat`, and the hook's `EXCLUDE_RE`. **Change one and change all three in the
+same commit**, or they will format different sets of files and fight over the
+difference.
+
+- Shimmer3 / Shimmer3R whole-project format: `Extras/clang-format-all-win64/LogAndStream-Shimmer3*.bat`
 - Shimmer3R IDE profile: `STM32CubeIDE_Format_Profile.xml` at the repo root
 - `.clang-format` lives in each project directory, not at the repo root
 

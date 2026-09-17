@@ -61,8 +61,16 @@ pushes a commit on top of your branch. Two consequences:
 
 It fires often — around 15% of commits in this repo are auto-format commits, and they consistently
 touch a subset of the files the preceding commit touched. That is not a tooling fault, it is the
-formatter not being run before pushing. Run `Extras/clang-format-all-win64/` (the Shimmer3 and
-Shimmer3R repos each carry a `.bat`) or your IDE's format-on-save and the commit never appears.
+formatter not being run before pushing.
+
+**Run `.githooks/install.sh` (or `.githooks\install.bat`) once per clone and the bot commit never
+appears.** The `pre-commit` hook clang-formats the `.c`/`.h` files staged for the commit and re-stages
+them, so what you commit is already correct. Only staged files, so it is sub-second. It never blocks a
+commit: no formatter on the machine, or a file only partly staged, and it says so and lets the commit
+through. `git commit --no-verify` bypasses it. `.githooks/README.md` has the details.
+
+From a firmware checkout the installer configures this repository too — commits made inside the
+submodule are its commits, so it needs its own hook configuration.
 
 > CI pins clang-format **17**; the bundled `clang-format.exe` is **18.1.8**. They currently produce
 > byte-identical output on this codebase — reformatting `main` with 18 changes 0 of 60 files — so the
