@@ -34,6 +34,7 @@ The documents a host application needs to talk to a device or read its data.
 | [SHIMMER3R_SD_FILE_TRANSFER.md](SHIMMER3R_SD_FILE_TRANSFER.md) | Retrieving logged files over Bluetooth (Shimmer3R only) |
 | [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md) | The three clocks, the UTC contract, and placing a recording on an absolute timeline |
 | [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md) | Multi-device synchronisation and how to apply the recorded offsets |
+| [`Test/conformance/timestamp_unwrap.json`](../Test/conformance/timestamp_unwrap.json) | Machine-readable vectors for the timestamp-unwrap rule of [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1. Run your port against them; [`Test/host/crosscheck_timestamp_unwrap.py`](../Test/host/crosscheck_timestamp_unwrap.py) is the reference implementation |
 
 ## Device behaviour
 
@@ -78,6 +79,8 @@ something that "should work".
 | Device not discoverable over classic Bluetooth | The EEPROM radio-enable bits, which nothing corrects — [EEPROM](SHIMMER3_EEPROM_MEMORY_MAP.md) §4.2 |
 | Timestamps wrong by the local UTC offset | The real-world clock is **UTC** — [timekeeping](SHIMMER3_TIMEKEEPING.md) |
 | A recording reads minutes or hours longer than it ran, in exact multiples of 512 s | A record with a `00 00 00` timestamp, counted as a wrap — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1 |
+| A Bluetooth stream loses exactly 2 s after a dropout of about that length | A reorder window sized as a fraction of the modulo reads a wrap-spanning gap as a reordered packet — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1 |
+| One late packet costs 512 s, and the sample after it costs another | The rollover test compares unwrapped values instead of modular distances — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1 |
 | A Shimmer3R recording cannot be placed in absolute time | The RTC-diff bytes are repurposed on Shimmer3R — [SD card](SHIMMER3_SD_CARD_FORMAT.md) §3.3 |
 | No sync offset recorded for a node | The first sync round is deliberately discarded — [SD sync](SHIMMER3_SD_SYNC.md) §4.3 |
 | Repeated identical GSR samples | The 80 ms settling hold after a range change — [GSR](SHIMMER3_GSR_AUTORANGE.md) §5.1 |

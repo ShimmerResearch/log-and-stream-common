@@ -40,11 +40,27 @@ Three kinds of fault are cheap here and expensive or impossible on a bench:
 | `test_*.c` | The suites |
 | `crosscheck_*.py` | Comparisons against references that share no code with the firmware |
 
-`crosscheck_host_constants.py` is the odd one out: it needs no compiler and no
-binary, so it runs from a bare checkout with `make host-constants`. It compares
-the firmware headers against the protocol document and the Python host reference
-in `Extras/`, and it is the only automated check in the repository that looks at
-host compatibility at all — see `docs/SHIMMER3_TEST_PROCEDURE.md` §6.
+Two of them are the odd ones out: they need no compiler and no binary, so they
+run from a bare checkout.
+
+`crosscheck_host_constants.py` (`make host-constants`) compares the firmware
+headers against the protocol document and the Python host reference in
+`Extras/` — see `docs/SHIMMER3_TEST_PROCEDURE.md` §6.
+
+`crosscheck_timestamp_unwrap.py` (`make timestamp-unwrap`) is the reference
+implementation of the host timestamp-unwrap rule
+([SHIMMER3_STREAMING_DATA_FORMAT.md](../../docs/SHIMMER3_STREAMING_DATA_FORMAT.md)
+§2.1), and recomputes every expectation in
+`Test/conformance/timestamp_unwrap.json` from it. Nothing in the firmware
+unwraps that counter — hosts do — so this is the one check here whose subject
+lies outside this repository entirely. The Java, C#, Python and TypeScript APIs
+all run that same vector file, which is what stops four implementations of one
+wire format drifting apart again. It also regenerates the vectors (`--write`)
+and emits them as a C# array (`--emit csharp`) for a host whose test project
+cannot load a data file.
+
+Between them, those two are the only automated checks in the repository that
+look at host compatibility at all.
 
 ## The platform seam
 
