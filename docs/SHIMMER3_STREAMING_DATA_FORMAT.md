@@ -174,7 +174,7 @@ W(rateHz, modulo) = 0                        if the rate is unknown, NaN, infini
                         modulo / 8)
 ```
 
-Four things about that are easy to get wrong.
+Five things about that are easy to get wrong.
 
 **Compare modular distances, not unwrapped values.** A host that asks "is the new
 unwrapped candidate below the last one?" misses a packet arriving late from
@@ -202,6 +202,18 @@ wrap.
 gives infinity in most languages, which classifies every backward step as a
 reorder and loses every wrap — a silent return to worse-than-naive behaviour.
 Disable the branch instead; rejecting unstamped records does not need a rate.
+
+**"No sample yet" must not be confusable with a sample.** The rule above keeps
+`lastRaw`, but a host that instead keeps `lastUnwrapped` and a cycle count —
+deriving `lastRaw = lastUnwrapped - modulo * cycle` — still needs to say
+somewhere that no sample has arrived, and `(0, 0)` is the obvious encoding. It is
+also a state the rule can reach: a reorder that lands exactly on the origin
+produces `lastUnwrapped = 0, cycle = 0` mid stream, after which the next packet
+is treated as the first one and passed through. A packet from just before the
+origin is then placed a whole modulo late instead of slightly behind. Keep a
+separate flag, or a value the counter cannot produce. The vector
+`reorder-onto-origin-then-earlier-packet-24bit` is the smallest case, and it is
+also the only one whose final cycle is negative — a real state, not an error.
 
 Two limits are worth stating to a user rather than hiding: a packet more than
 eight sample periods late is indistinguishable from a rollover and is read as

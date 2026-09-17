@@ -203,6 +203,14 @@ VECTOR_INPUTS = [
      "A packet more than eight sample periods late is indistinguishable from a "
      "roll-over and is read as one. This is the limit of what a counter can say.",
      24, 256, [5000, 5288, 5000]),
+    ("reorder-onto-origin-then-earlier-packet-24bit",
+     "A reorder that lands exactly on the counter's origin, followed by a packet "
+     "from just before it. A host that keeps an unwrapped value and a cycle count "
+     "rather than the previous raw value has to encode 'no sample yet' somehow, "
+     "and (0, 0) is the obvious choice - but this sequence reaches (0, 0) mid "
+     "stream, so that host reads the third packet as a first sample and places it "
+     "a whole modulo late. The state has to be distinguishable from the value.",
+     24, 520, [520, 0, (1 << 24) - 16]),
 ]
 
 # (samplingRateHz, timestampBits, tolerance)
