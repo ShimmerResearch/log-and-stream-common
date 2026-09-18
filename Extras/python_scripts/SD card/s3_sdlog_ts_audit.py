@@ -220,6 +220,50 @@ def read_samples(body, row, sync_head):
     return samples, heads, per_block, block_bytes, warning
 
 
+def report_gap_profile(boundary_gaps, mid_gaps, period, minutes):
+    """Gap sizes, split by what caused them.
+
+    Pooling the two populations hides the most useful thing in them. Firmware
+    that gives up on a stalled packet after a fixed number of sample periods
+    puts a hard ceiling on its mid-block gaps; firmware that waits a wall-clock
+    timeout instead has no ceiling and a long tail. Those two look identical in
+    a combined histogram and obviously different side by side, so the largest
+    gap in each population is always reported, even when the histogram below it
+    is truncated.
+    """
+    populations = [("block boundary", boundary_gaps), ("mid-block", mid_gaps)]
+    if not any(group for _, group in populations):
+        return
+
+    print("  gap profile by cause:")
+    print("      %-15s %6s %8s %7s %7s %6s %9s"
+          % ("", "gaps", "samples", "mean", "median", "max", "per min"))
+    for name, group in populations:
+        if not group:
+            print("      %-15s %6d" % (name, 0))
+            continue
+        sizes = sorted(g[5] for g in group)
+        middle = len(sizes) // 2
+        median = (sizes[middle] if len(sizes) % 2
+                  else (sizes[middle - 1] + sizes[middle]) / 2.0)
+        print("      %-15s %6d %8d %7.1f %7.1f %6d %9.2f"
+              % (name, len(sizes), sum(sizes), sum(sizes) / float(len(sizes)),
+                 median, sizes[-1], len(sizes) / minutes if minutes else 0.0))
+
+    for name, group in populations:
+        if not group:
+            continue
+        histogram = sorted(Counter(g[5] for g in group).items())
+        print("  samples lost per gap, %s:" % name)
+        for lost, count in histogram[:12]:
+            print("      %6d samples (%8.3f s) x %d"
+                  % (lost, lost * period / RTC, count))
+        if len(histogram) > 12:
+            rest = sum(count for _, count in histogram[12:])
+            print("      ... and %d more, in sizes up to %d samples"
+                  % (rest, histogram[-1][0]))
+
+
 def report_loss_over_time(gaps, total_ticks, period, buckets=10):
     """Where in the recording the loss happened. Steady loss and a burst have
     very different causes, and a total hides the difference."""
@@ -361,11 +405,8 @@ def audit(path, options, session):
 
     if gaps:
         report_loss_over_time(gaps, unwrapped[-1] - unwrapped[0], period)
-        histogram = Counter(g[5] for g in gaps)
-        print("  samples lost per gap:")
-        for lost, count in sorted(histogram.items())[:10]:
-            print("      %6d samples (%8.3f s) x %d"
-                  % (lost, lost * period / RTC, count))
+        report_gap_profile(boundary_gaps, mid_gaps, period,
+                           true_seconds / 60.0 if true_seconds else 0.0)
 
     if not options["quiet"]:
         for index, step, block, position, previous, lost in gaps[:40]:
