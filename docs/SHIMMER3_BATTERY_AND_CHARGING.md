@@ -12,6 +12,8 @@ the cell is nearly flat.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `8f800952` — the ADC sampling and charger-chip
 >   pin reads that feed `ShimBatt_updateStatus`.
+> - **Cell capacities:** hardware facts, not in the firmware; recorded
+>   2026-09-24.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =
 > Shimmer3R (STM32U5). LogAndStream only.
@@ -25,6 +27,23 @@ the cell is nearly flat.
 | LED priority and display | [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §4.4 |
 | Reporting to a host | [SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) |
 | Configuration bits | [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §8 |
+
+### The cell
+
+Both platforms run from one rechargeable Li-ion cell. Its capacity is a
+hardware fact the firmware does not hold — everything below works in raw ADC
+counts and millivolts — so it is recorded here for anyone estimating battery
+life, where it is the number everything else divides into.
+
+| Platform | Capacity |
+|---|---|
+| S3 | **400 mAh** |
+| S3, earlier units | 450 mAh |
+| S3R | **400 mAh** |
+
+S3 moved from its original 450 mAh cell to the 400 mAh one some years ago,
+because the newer cell came with the certifications required. The date of the
+change is not recorded here.
 
 ---
 
