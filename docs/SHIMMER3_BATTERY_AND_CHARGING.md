@@ -42,8 +42,8 @@ life, where it is the number everything else divides into.
 | S3R | **400 mAh** |
 
 S3 moved from its original 450 mAh cell to the 400 mAh one some years ago,
-because the newer cell came with the certifications required. The date of the
-change is not recorded here.
+because the newer cell came with the certifications required. S3R uses that
+same 400 mAh cell. The date of the change is not recorded here.
 
 ---
 
