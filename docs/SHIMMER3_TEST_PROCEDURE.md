@@ -128,10 +128,11 @@ common case, CI catches everyone else, including the fork PRs the hook cannot
 reach. `.githooks/README.md` has the rest, including why a partly staged file
 (`git add -p`) is deliberately left alone.
 
-**The exclusion list lives in one file.** `.clang-format-exclude` at each
-repository root names the source directory and the paths clang-format must not
-touch; the workflow and the hook read it through
-`scripts/clang-format-exclude.sh`, and the `.bat` reads it directly. It replaced
+**What is formatted, and by which clang-format, lives in one file.**
+`.clang-format-exclude` at each repository root names the clang-format version,
+the source directory and the paths clang-format must not touch; the workflow
+and the hook read it through `scripts/clang-format-exclude.sh`, and the `.bat`
+reads it directly. It replaced
 three hand-maintained copies that had already drifted — the workflow and the
 `.bat` disagreed about `lis303ah-pid` and about how `ezsapi` was spelled. The
 conversion was checked by comparing the excluded file set before and after over
@@ -142,12 +143,16 @@ Shimmer3.
 - Shimmer3R IDE profile: `STM32CubeIDE_Format_Profile.xml` at the repo root
 - `.clang-format` lives in each project directory, not at the repo root
 
-> **The version pins differ and it does not currently matter.** CI pins
-> clang-format **17**; the bundled `clang-format.exe` is **18.1.8**. Reformatting
-> `log-and-stream-common`'s `main` with 18 changes **0 of 60 files**, so the two
-> agree on this codebase and the difference is not a cause of churn. Recorded so
-> that it is not blamed for churn it does not cause, and so that a future bump on
-> either side is known to need checking.
+> **One clang-format version, pinned in one place.** CI and the hook both run
+> **18.1.8**, the `clang-format-version:` line of `.clang-format-exclude`, and the
+> bundled `clang-format.exe` is that version. CI used to pin 17 while the hook
+> ran 18.1.8; the two happened to agree on this codebase, but nothing kept them
+> agreeing. Now the hook refuses to format with any version but the pinned one,
+> so a bump made on one side only costs round-trips, not churn.
+>
+> The hook, its installers, `scripts/clang-format-exclude.sh` and the workflow
+> are byte-identical here, in both firmware repositories and in
+> `verisense-firmware`. Change them in all four.
 
 ### 2.2 Host tests
 
