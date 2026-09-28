@@ -90,14 +90,21 @@ if [[ ! -d "$HEADER_DIR" ]]; then
     mkdir -p "$HEADER_DIR"
 fi
 
+# No trailing comments on the #defines. clang-format aligns trailing comments on
+# consecutive lines to the widest value, so a fixed gap before them is right for
+# some versions only - patch 9 and patch 10 need different spacing - and every
+# release that got it wrong was reformatted by CI on the next push. The values
+# are aligned to the longest macro name, which never changes, so the two spaces
+# below are always what clang-format would write.
 cat <<EOF > "$HEADER_FILE" || { echo "Failed to write $HEADER_FILE"; exit 1; }
 /* Auto-generated version header */
 #ifndef VERSION_H
 #define VERSION_H
 
-#define FW_VERSION_MAJOR  $MAJOR //16-bit
-#define FW_VERSION_MINOR  $MINOR //8-bit
-#define FW_VERSION_PATCH  $PATCH //8-bit
+/* MAJOR is 16-bit, MINOR and PATCH 8-bit, as in firmware_version_t below. */
+#define FW_VERSION_MAJOR  $MAJOR
+#define FW_VERSION_MINOR  $MINOR
+#define FW_VERSION_PATCH  $PATCH
 #define FW_VERSION_STRING "v$NEW_VERSION"
 
 #include <stdint.h>

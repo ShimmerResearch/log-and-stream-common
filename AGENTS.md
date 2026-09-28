@@ -87,7 +87,12 @@ than format a line one way for CI to format it back. The hook, its installers,
 
 ## Versioning
 `scripts/increment_version.sh` is called by the *consuming* firmware's release workflow, not by this
-repo. There is no release pipeline here.
+repo. There is no release pipeline here. A consumer runs the script from the submodule commit it pins,
+so a change to it reaches a firmware's releases only once that firmware bumps the submodule.
+
+The `version.h` it writes must be exactly what clang-format would write, or the first push after
+every release reformats it in a bot commit. Hence no trailing comments on its `#define`s: clang-format
+aligns those to the widest value, so their spacing would depend on how many digits the version has.
 
 ## Keep the docs in step with the code
 These docs are the authoritative source, and this file tells you to consult them before reading code.
