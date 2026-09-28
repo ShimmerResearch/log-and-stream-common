@@ -113,4 +113,4 @@ Version management is handled by the scripts in `scripts/`. See [`scripts/README
 
 ## Code Style
 
-C and H source files are automatically formatted using **clang-format** (version 17, style defined in `.clang-format`) via a GitHub Actions workflow that runs on every push.
+C and H source files are formatted with **clang-format 18.1.8** (style defined in `.clang-format`, version pinned in `.clang-format-exclude`). Run `.githooks/install.sh` — or `.githooks\install.bat` on Windows — once per clone and each commit is formatted as it is made; a GitHub Actions workflow formats anything pushed without it. See `.githooks/README.md`.

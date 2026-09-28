@@ -66,22 +66,24 @@ formatter not being run before pushing.
 **Run `.githooks/install.sh` (or `.githooks\install.bat`) once per clone and the bot commit never
 appears.** The `pre-commit` hook clang-formats the `.c`/`.h` files staged for the commit and re-stages
 them, so what you commit is already correct. Only staged files, so it is sub-second. It never blocks a
-commit: no formatter on the machine, or a file only partly staged, and it says so and lets the commit
-through. `git commit --no-verify` bypasses it. `.githooks/README.md` has the details.
+commit: no formatter on the machine, the wrong version of one, or a file only partly staged, and it
+says so and lets the commit through. `git commit --no-verify` bypasses it. `.githooks/README.md` has
+the details.
 
 From a firmware checkout the installer configures this repository too — commits made inside the
 submodule are its commits, so it needs its own hook configuration.
 
-**Which files get formatted is decided by `.clang-format-exclude` at the repository root, and only
-there.** The workflow, the hook and the Windows `.bat` all read it, the first two through
-`scripts/clang-format-exclude.sh`. Nothing is excluded here — every `.c`/`.h` in this repository is
-ours — but the file exists so the three repositories are configured identically, and so a vendor
-directory added later is excluded everywhere at once.
+**Which files get formatted, and by which clang-format, is decided by `.clang-format-exclude` at the
+repository root, and only there.** The workflow, the hook and the Windows `.bat` all read it, the
+first two through `scripts/clang-format-exclude.sh`. Nothing is excluded here — every `.c`/`.h` in
+this repository is ours — but the file exists so every firmware repository is configured the same way,
+and so a vendor directory added later is excluded everywhere at once.
 
-> CI pins clang-format **17**; the bundled `clang-format.exe` is **18.1.8**. They currently produce
-> byte-identical output on this codebase — reformatting `main` with 18 changes 0 of 60 files — so the
-> difference is not a live problem. It is recorded because a future version bump on either side could
-> make it one, and because it is otherwise the obvious thing to blame for churn it does not cause.
+The same file pins the clang-format CI runs, **18.1.8** — the bundled `clang-format.exe`. The hook
+formats with exactly that version or not at all: given any other binary it skips and says so, rather
+than format a line one way for CI to format it back. The hook, its installers,
+`scripts/clang-format-exclude.sh` and the workflow are byte-identical in `verisense-firmware`,
+`shimmer3-firmware` and `shimmer3r-firmware`; change them in all four.
 
 ## Versioning
 `scripts/increment_version.sh` is called by the *consuming* firmware's release workflow, not by this
