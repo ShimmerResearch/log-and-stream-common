@@ -268,7 +268,7 @@ self-describing; this table is for reading the source or planning a change.
 |---|---|---|---|
 | ADC reference (`VREF`) | `VREF_EXTERNAL_SUPPLY_MV − 80` | `+ 80` | 3000 mV on product hardware, 3300 mV on the Nucleo build (`hal_Board.h`) |
 | MCU core voltage (`VCORE`) | 900 mV | 1800 mV | measured on ADC4's `VCORE` channel |
-| `VBATT` pin (1.8 V regulator boards) | 1750 mV | 1850 mV | |
+| `VBATT` pin (1.8 V regulator boards) | 1710 mV | 1890 mV | ±5 %, the rated error of the MCU's internal ÷4 VBAT bridge (DEV-1113) |
 | `VBATT` pin (SR48-6-0, 1.9 V regulator) | 1850 mV | 1950 mV | |
 | MCU die temperature | 10 °C | 40 °C | |
 | Battery voltage | 2980 mV | 4750 mV | |
