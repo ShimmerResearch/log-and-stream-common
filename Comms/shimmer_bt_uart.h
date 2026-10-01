@@ -292,6 +292,13 @@ enum
   SD_LOG_CMD_STATE_STOP = 2
 };
 
+/* Pressure sensor IDs. This is the single registry for the ID byte of the
+ * 0xA7/0xA6 Bluetooth reply AND for the SD header's SDH_PRESSURE_SENSOR_ID
+ * (DEV-1123), so the two always agree and hosts share one table. A new sensor
+ * takes the next free value - 4 is next. The header stores the ID in 7 bits
+ * (see SDCard/shimmer_sd_pressure_id.h), so values above 0x7D, and 0x7E/0x7F
+ * in particular, must never be allocated. Never renumber an existing entry:
+ * recordings already on SD cards carry these values. */
 enum
 {
   PRESSURE_SENSOR_BMP180 = 0,

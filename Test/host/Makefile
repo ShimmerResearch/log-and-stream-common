@@ -47,7 +47,7 @@ INCLUDES := -I . \
 
 # Suites that need no stub platform at all - the modules under them include
 # nothing but the C library.
-STANDALONE_SUITES := test_swcrc test_packet_ring test_util
+STANDALONE_SUITES := test_swcrc test_packet_ring test_util test_sd_pressure_id
 
 # Suites built once per SD write-buffer count. That count is a compile-time
 # constant because the buffers are a fixed array, so covering more than one
@@ -71,6 +71,8 @@ PLATFORMS := SHIMMER3 SHIMMER3R
 SRC_test_swcrc       := test_swcrc.c $(REPO)/CRC/shimmer_swCrc.c
 SRC_test_packet_ring := test_packet_ring.c $(REPO)/Sensing/shimmer_packet_ring.c
 SRC_test_util        := test_util.c $(REPO)/Util/shimmer_util.c
+SRC_test_sd_pressure_id := test_sd_pressure_id.c \
+                        $(REPO)/SDCard/shimmer_sd_pressure_id.c
 SRC_test_sd_write_buf := test_sd_write_buf.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c
 SRC_test_crc         := test_crc.c $(REPO)/CRC/shimmer_crc.c \
@@ -85,6 +87,7 @@ INC_test_swcrc       := -I $(REPO)/CRC
 INC_test_packet_ring := -I $(REPO)
 INC_test_util        := -I . -I $(REPO)
 INC_test_sd_write_buf := -I . -I $(REPO)
+INC_test_sd_pressure_id := -I . -I $(REPO)
 
 ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) \
               $(DUAL_PLATFORM_SUITES) $(SD_WRBUF_SUITES)

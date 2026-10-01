@@ -259,6 +259,8 @@ Appendix A and is not repeated here. What follows is the header's own layout.
 | 214-216 | `SDH_DAUGHTER_CARD_ID_BYTE0` | 3 | Expansion board ID |
 | 217-221 | `SDH_DERIVED_CHANNELS_3..7` | 5 | |
 | 222-223 | `SDH_TEMP_PRES_EXTRA_CALIB_BYTES` | 2 | BMP280 only |
+| 224 | `SDH_PRESSURE_SENSOR_ID` | 1 | Fitted pressure sensor and how it was identified — see §3.4. `0xFF` before S3R v1.01.018 / S3 v1.01.006 |
+| 225-250 | — | 26 | Unused (`0xFF`) |
 | 251 | `SDH_INITIAL_TIMESTAMP_4` | 1 | **Most significant of the 5** |
 | 252-255 | `SDH_INITIAL_TIMESTAMP_0..3` | 4 | Lower 4 bytes, LSB order |
 | **256-276** | `SDH_ALT_ACCEL_CALIBRATION` | 21 | S3R only |
@@ -352,6 +354,62 @@ Pressure coefficients are written by
 A BMP581 device therefore has an all-`0xFF` pressure calibration block, which
 is correct: that part outputs pre-compensated data. A parser must not treat
 that as a missing-calibration error.
+
+#### Which pressure sensor is fitted: `SDH_PRESSURE_SENSOR_ID` (offset 224)
+
+Until DEV-1123 the header did not name the pressure part, and every parser
+inferred it from the expansion board's SR number — rules that drifted between
+the Java, C#, Python and TypeScript hosts. The firmware detects the part at boot
+regardless, so it now records the result. `ShimSdHead_savePressureSensorIdToSdHeader`
+writes the byte, using `ShimSdHead_encodePressureSensorId`
+(`SDCard/shimmer_sd_pressure_id.h`).
+
+Bits 0-6 hold the sensor ID from the `PRESSURE_SENSOR_*` registry
+(`Comms/shimmer_bt_uart.h`) that the 0xA7 Bluetooth reply also uses; bit 7 says
+the ID was **inferred, not confirmed**.
+
+| Value | Meaning |
+|---|---|
+| `0x00` / `0x01` / `0x02` / `0x03` | BMP180 / BMP280 / BMP390 / BMP581, identified by chip ID |
+| `0x04`-`0x7D` | Reserved for future pressure sensors — the next registry entries |
+| `0x80`-`0xFD` | The same IDs, **inferred from the SR number**: the chip-ID check was inconclusive |
+| `0xFE` | No pressure sensor fitted |
+| `0xFF` | Not recorded — firmware older than the field, whose pre-fill left it `0xFF` |
+
+`0x7E` and `0x7F` are never allocated: with bit 7 set they would read as
+`0xFE` and `0xFF`.
+
+- **Shimmer3** detects the part by which I2C address answers (`detectI2cSlaves()`),
+  so its byte is always `0x00`, `0x01` or `0xFE`.
+- **Shimmer3R** reads both chip IDs (`PressureSensor_detect()`). If exactly one
+  answers, that part is used and recorded as identified. If neither answers, or
+  both do, the firmware falls back to the SR rule and sets bit 7. That is the
+  signature of a sensor that is damaged or not fitted — a recording made on such a
+  board is identifiable from the file alone.
+
+**Parsing.** The firmware carries no compatibility logic
+([SHIMMER3_RELEASE_AND_VERSIONING.md](SHIMMER3_RELEASE_AND_VERSIONING.md) §6),
+so a host gates on the version, and the version numbers of the two platforms
+overlap — the gate has to check the hardware version (offsets 30-31) as well:
+
+| Hardware | Firmware | First version that writes the byte |
+|---|---|---|
+| Shimmer3R (`DEVICE_VER` 10) | LogAndStream (3) | v1.01.018 |
+| Shimmer3 (`DEVICE_VER` 3) | LogAndStream (3) | v1.01.006 |
+
+Trust the byte when that gate passes and the value is not `0xFF`:
+
+- **Known ID** — use it, in preference to the SR rule. Where the two disagree,
+  the byte is right: it is what the firmware actually drove.
+- **Bit 7 set** — use the ID, but warn that the part was not confirmed.
+- **Unknown ID** (a sensor newer than the host) — leave the pressure and
+  temperature channels uncalibrated and warn. Do **not** fall back to the SR
+  rule: it only knows the older parts and would mislabel the data.
+- **`0xFE`** — no sensor; any pressure channels in the file are meaningless.
+
+Below the gate, or on `0xFF`, keep inferring from the SR number as before. The
+`0xFF` pre-fill makes that safe in both directions: a release at or above the gate
+that somehow lacked this change still reads as "not recorded".
 
 ### 3.5 Channel order on Shimmer3R
 

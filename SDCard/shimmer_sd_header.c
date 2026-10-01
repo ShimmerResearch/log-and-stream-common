@@ -13,6 +13,7 @@
 #include <Calibration/shimmer_calibration.h>
 #include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd_header.h>
+#include <SDCard/shimmer_sd_pressure_id.h>
 
 #if defined(SHIMMER3)
 #include "../BMPX80/bmpX80.h"
@@ -214,4 +215,41 @@ void ShimSdHead_saveBmpCalibrationToSdHeader(void)
     memcpy(&sdHeadText[SDH_TEMP_PRES_CALIBRATION], bmpCalibPtr, BMP3_LEN_CALIB_DATA);
   }
 #endif
+
+  ShimSdHead_savePressureSensorIdToSdHeader();
+}
+
+/* Records which pressure sensor is fitted, and whether its chip confirmed it,
+ * so a parser need not infer it from the SR number (DEV-1123). Detection runs
+ * once at boot, before any header is built. */
+void ShimSdHead_savePressureSensorIdToSdHeader(void)
+{
+  uint8_t sensorId;
+  uint8_t identifiedByChipId;
+
+#if defined(SHIMMER3)
+  /* detectI2cSlaves() decides by which I2C address answers, so a sensor that
+   * is reported was always found on the bus. */
+  if (isBmp180InUse())
+  {
+    sensorId = PRESSURE_SENSOR_BMP180;
+  }
+  else if (isBmp280InUse())
+  {
+    sensorId = PRESSURE_SENSOR_BMP280;
+  }
+  else
+  {
+    sensorId = SDH_PRESSURE_SENSOR_NONE;
+  }
+  identifiedByChipId = 1;
+#elif defined(SHIMMER3R)
+  /* PressureSensor_detect() falls back to the SR number when the chip-ID
+   * check is inconclusive - neither chip answers, or both do. */
+  sensorId = isBmp581InUse() ? PRESSURE_SENSOR_BMP581 : PRESSURE_SENSOR_BMP390;
+  identifiedByChipId = PressureSensor_wasIdentifiedByChipId();
+#endif
+
+  sdHeadText[SDH_PRESSURE_SENSOR_ID]
+      = ShimSdHead_encodePressureSensorId(sensorId, identifiedByChipId);
 }

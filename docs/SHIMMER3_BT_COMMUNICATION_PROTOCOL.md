@@ -1707,7 +1707,7 @@ sensor-agnostic command and two legacy per-part ones.
 | `3` | BMP581 | **0** |
 
 > `Comms/shimmer_bt_uart.c:1988-2024`; the `PRESSURE_SENSOR_*` enumeration at
-> `Comms/shimmer_bt_uart.h:280-286`. Lengths from
+> `Comms/shimmer_bt_uart.h:302-308`. Lengths from
 > `shimmer3-firmware` `Shimmer_Driver/BMPX80/bmpX80.h:99-100` (22, 24) and
 > `shimmer3r-firmware` `Shimmer_Driver/BMP3/BMP3_SensorAPI/bmp3_defs.h:439`
 > (`BMP3_LEN_CALIB_DATA` 21).
@@ -1724,6 +1724,13 @@ identify the fitted part.
 On Shimmer3 only BMP180 and BMP280 drivers exist, so `sensorId` is 0 or 1 in
 practice; the `PRESSURE_SENSOR_BMP390` fall-through is reachable but that
 platform has no BMP390 driver and would report `n = 0`.
+
+The same `PRESSURE_SENSOR_*` IDs are written into every SD data file's header at
+offset 224 (`SDH_PRESSURE_SENSOR_ID`, DEV-1123), so SD and Bluetooth hosts share
+one table. The header form differs in two ways: "no sensor fitted" is `0xFE`
+there rather than this command's BMP390 fall-through, and bit 7 marks an ID the
+firmware inferred from the SR number instead of confirming by chip ID. See
+[SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.4.
 
 The payload is `2 + bmpCalibByteLen` on **both** generations: one length byte and
 one sensor-ID byte ahead of the coefficients. Shimmer3 selects the ID from three
