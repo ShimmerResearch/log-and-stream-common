@@ -945,8 +945,8 @@ derived-sensor extension, which requires SDLog 0.13.1 or later; and the
 Shimmer3R-only fields, gated on the hardware identifier alone.
 
 The SD header adds one gate of its own: `SDH_PRESSURE_SENSOR_ID` at offset 224
-(DEV-1123) is written from Shimmer3R LogAndStream v1.01.018 and Shimmer3
-LogAndStream v1.01.006. The two platforms' version numbers overlap, so this gate
+is written from Shimmer3R LogAndStream v1.01.018 and Shimmer3 LogAndStream
+v1.01.006. The two platforms' version numbers overlap, so this gate
 is one of those that must compare the hardware identifier too — see
 [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.4.
 
@@ -1049,7 +1049,7 @@ file-creation time:
 | 160-181 | `SDH_TEMP_PRES_CALIBRATION` | Pressure coefficients read from the part |
 | 222-223 | `SDH_TEMP_PRES_EXTRA_CALIB_BYTES` | BMP280 only — its 24 bytes do not fit the 22-byte field |
 | 214-216 | `SDH_DAUGHTER_CARD_ID_BYTE0` +3 | Expansion board ID |
-| 224 | `SDH_PRESSURE_SENSOR_ID` | Pressure part detected at boot, plus whether its chip ID confirmed it ([SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.4). S3R v1.01.018 and S3 v1.01.006 onwards; `0xFF` before |
+| 224 | `SDH_PRESSURE_SENSOR_ID` | Pressure part detected at boot, plus whether it was detected on the hardware or inferred from the SR number ([SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.4). S3R v1.01.018 and S3 v1.01.006 onwards; `0xFF` before |
 | 251-255 | `SDH_INITIAL_TIMESTAMP_*` | Written when logging starts |
 | 314 | `SDH_NUM_ENABLED_CHANNELS` | S3R only |
 | 315+ | `SDH_CHANNEL_ID_BYTE_0` +50 | S3R only — the resolved channel order |

@@ -1,11 +1,13 @@
 /*
  * Host-side test for SDCard/shimmer_sd_pressure_id.c (DEV-1123).
  *
- * The byte this encodes is the SD header's SDH_PRESSURE_SENSOR_ID: every host
- * parser (Java, C#, Python, the web SDK) reads it to name the pressure sensor a
- * recording came from, and a recording outlives the firmware that wrote it. So
- * the values pinned here are a file-format contract, not an implementation
- * detail - change one and every parser has to change with it, and SD cards
+ * The byte this encodes is the SD header's SDH_PRESSURE_SENSOR_ID. It exists so
+ * that host parsers (Java, C#, Python, the web SDK) can name the pressure
+ * sensor a recording came from instead of inferring it from the board's SR
+ * number; parsers adopt it in their own releases, and until they do they ignore
+ * it. A recording outlives the firmware that wrote it, so the values pinned
+ * here are a file-format contract, not an implementation detail - change one
+ * and every parser that reads the byte has to change with it, and SD cards
  * already in the field still carry the old meaning.
  *
  * shimmer_sd_pressure_id.c includes nothing but <stdint.h>, so this needs no
@@ -33,42 +35,50 @@ enum
   BMP581 = 3
 };
 
-static void test_identified_by_chip_id(void)
+/* Second argument of ShimSdHead_encodePressureSensorId(). */
+enum
 {
-  testCase("a sensor confirmed by its chip ID is stored as its bare ID");
-  expectX("BMP180", ShimSdHead_encodePressureSensorId(BMP180, 1), 0x00);
-  expectX("BMP280", ShimSdHead_encodePressureSensorId(BMP280, 1), 0x01);
-  expectX("BMP390", ShimSdHead_encodePressureSensorId(BMP390, 1), 0x02);
-  expectX("BMP581", ShimSdHead_encodePressureSensorId(BMP581, 1), 0x03);
-  /* Any non-zero value counts as confirmed, as the firmware passes a flag. */
-  expectX("identified flag is boolean", ShimSdHead_encodePressureSensorId(BMP581, 7), 0x03);
+  DETECTED = 0,
+  INFERRED = 1
+};
+
+static void test_detected_on_hardware(void)
+{
+  testCase("a sensor detected on the hardware is stored as its bare ID");
+  expectX("BMP180", ShimSdHead_encodePressureSensorId(BMP180, DETECTED), 0x00);
+  expectX("BMP280", ShimSdHead_encodePressureSensorId(BMP280, DETECTED), 0x01);
+  expectX("BMP390", ShimSdHead_encodePressureSensorId(BMP390, DETECTED), 0x02);
+  expectX("BMP581", ShimSdHead_encodePressureSensorId(BMP581, DETECTED), 0x03);
 }
 
 static void test_inferred_from_sr_number(void)
 {
   /* Shimmer3R's PressureSensor_detect() falls back to the SR number when
-   * neither chip answers or both do - the damaged-board case this flag is for. */
+   * neither chip answers its ID check or both do - the damaged-board case this
+   * flag is for. Shimmer3 never infers. */
   testCase("a sensor inferred from the SR number sets bit 7");
-  expectX("BMP390 inferred", ShimSdHead_encodePressureSensorId(BMP390, 0), 0x82);
-  expectX("BMP581 inferred", ShimSdHead_encodePressureSensorId(BMP581, 0), 0x83);
-  expectX("BMP180 inferred", ShimSdHead_encodePressureSensorId(BMP180, 0), 0x80);
+  expectX("BMP390 inferred", ShimSdHead_encodePressureSensorId(BMP390, INFERRED), 0x82);
+  expectX("BMP581 inferred", ShimSdHead_encodePressureSensorId(BMP581, INFERRED), 0x83);
+  expectX("BMP180 inferred", ShimSdHead_encodePressureSensorId(BMP180, INFERRED), 0x80);
+  /* Any non-zero value counts, as the firmware passes a flag. */
+  expectX("inferred flag is boolean", ShimSdHead_encodePressureSensorId(BMP581, 7), 0x83);
 }
 
 static void test_none_fitted(void)
 {
-  testCase("no sensor fitted is 0xFE whether or not it was 'identified'");
-  expectX("none, identified",
-      ShimSdHead_encodePressureSensorId(SDH_PRESSURE_SENSOR_NONE, 1), 0xFE);
+  testCase("no sensor fitted is 0xFE whether or not it was inferred");
+  expectX("none, detected",
+      ShimSdHead_encodePressureSensorId(SDH_PRESSURE_SENSOR_NONE, DETECTED), 0xFE);
   expectX("none, inferred",
-      ShimSdHead_encodePressureSensorId(SDH_PRESSURE_SENSOR_NONE, 0), 0xFE);
+      ShimSdHead_encodePressureSensorId(SDH_PRESSURE_SENSOR_NONE, INFERRED), 0xFE);
 }
 
 static void test_future_sensor_ids(void)
 {
   testCase("IDs up to 0x7D are encodable for future sensors");
-  expectX("next free ID", ShimSdHead_encodePressureSensorId(4, 1), 0x04);
-  expectX("highest ID", ShimSdHead_encodePressureSensorId(0x7D, 1), 0x7D);
-  expectX("highest ID inferred", ShimSdHead_encodePressureSensorId(0x7D, 0), 0xFD);
+  expectX("next free ID", ShimSdHead_encodePressureSensorId(4, DETECTED), 0x04);
+  expectX("highest ID", ShimSdHead_encodePressureSensorId(0x7D, DETECTED), 0x7D);
+  expectX("highest ID inferred", ShimSdHead_encodePressureSensorId(0x7D, INFERRED), 0xFD);
 }
 
 static void test_out_of_range_ids(void)
@@ -77,12 +87,12 @@ static void test_out_of_range_ids(void)
    * does not fit in 7 bits. None is allocatable, so the firmware writes
    * "not recorded" and every parser falls back to its own inference. */
   testCase("an ID no registry entry can back is written as not recorded");
-  expectX("0x7E, identified", ShimSdHead_encodePressureSensorId(0x7E, 1), 0xFF);
-  expectX("0x7E, inferred", ShimSdHead_encodePressureSensorId(0x7E, 0), 0xFF);
-  expectX("0x7F, inferred", ShimSdHead_encodePressureSensorId(0x7F, 0), 0xFF);
-  expectX("0x80", ShimSdHead_encodePressureSensorId(0x80, 1), 0xFF);
-  expectX("0xFD", ShimSdHead_encodePressureSensorId(0xFD, 0), 0xFF);
-  expectX("0xFF", ShimSdHead_encodePressureSensorId(0xFF, 1), 0xFF);
+  expectX("0x7E, detected", ShimSdHead_encodePressureSensorId(0x7E, DETECTED), 0xFF);
+  expectX("0x7E, inferred", ShimSdHead_encodePressureSensorId(0x7E, INFERRED), 0xFF);
+  expectX("0x7F, inferred", ShimSdHead_encodePressureSensorId(0x7F, INFERRED), 0xFF);
+  expectX("0x80", ShimSdHead_encodePressureSensorId(0x80, DETECTED), 0xFF);
+  expectX("0xFD", ShimSdHead_encodePressureSensorId(0xFD, INFERRED), 0xFF);
+  expectX("0xFF", ShimSdHead_encodePressureSensorId(0xFF, DETECTED), 0xFF);
 }
 
 static void test_constants(void)
@@ -91,7 +101,7 @@ static void test_constants(void)
   expectX("inferred bit", SDH_PRESSURE_SENSOR_INFERRED, 0x80);
   expectX("none", SDH_PRESSURE_SENSOR_NONE, 0xFE);
   /* Must equal the pre-fill of ShimSdHead_config2SdHead(): that is what makes
-   * every pre-DEV-1123 header read as "not recorded" with no version check. */
+   * every header from firmware before this field read as "not recorded". */
   expectX("not recorded", SDH_PRESSURE_SENSOR_UNRECORDED, 0xFF);
   expectX("highest ID", SDH_PRESSURE_SENSOR_ID_MAX, 0x7D);
 }
@@ -101,7 +111,7 @@ int main(void)
   printf("shimmer_sd_pressure_id host tests\n\n");
   hostTestSilenceUnused();
 
-  test_identified_by_chip_id();
+  test_detected_on_hardware();
   test_inferred_from_sr_number();
   test_none_fitted();
   test_future_sensor_ids();

@@ -357,7 +357,7 @@ that as a missing-calibration error.
 
 #### Which pressure sensor is fitted: `SDH_PRESSURE_SENSOR_ID` (offset 224)
 
-Until DEV-1123 the header did not name the pressure part, and every parser
+Before this field the header did not name the pressure part, and every parser
 inferred it from the expansion board's SR number — rules that drifted between
 the Java, C#, Python and TypeScript hosts. The firmware detects the part at boot
 regardless, so it now records the result. `ShimSdHead_savePressureSensorIdToSdHeader`
@@ -366,26 +366,30 @@ writes the byte, using `ShimSdHead_encodePressureSensorId`
 
 Bits 0-6 hold the sensor ID from the `PRESSURE_SENSOR_*` registry
 (`Comms/shimmer_bt_uart.h`) that the 0xA7 Bluetooth reply also uses; bit 7 says
-the ID was **inferred, not confirmed**.
+the ID was **inferred from the SR number, not detected on the hardware**.
 
 | Value | Meaning |
 |---|---|
-| `0x00` / `0x01` / `0x02` / `0x03` | BMP180 / BMP280 / BMP390 / BMP581, identified by chip ID |
+| `0x00` / `0x01` / `0x02` / `0x03` | BMP180 / BMP280 / BMP390 / BMP581, detected on the hardware (see below for what that means per platform) |
 | `0x04`-`0x7D` | Reserved for future pressure sensors — the next registry entries |
-| `0x80`-`0xFD` | The same IDs, **inferred from the SR number**: the chip-ID check was inconclusive |
+| `0x80`-`0xFD` | The same IDs, **inferred from the SR number**: detection was inconclusive |
 | `0xFE` | No pressure sensor fitted |
 | `0xFF` | Not recorded — firmware older than the field, whose pre-fill left it `0xFF` |
 
 `0x7E` and `0x7F` are never allocated: with bit 7 set they would read as
 `0xFE` and `0xFF`.
 
-- **Shimmer3** detects the part by which I2C address answers (`detectI2cSlaves()`),
-  so its byte is always `0x00`, `0x01` or `0xFE`.
-- **Shimmer3R** reads both chip IDs (`PressureSensor_detect()`). If exactly one
-  answers, that part is used and recorded as identified. If neither answers, or
-  both do, the firmware falls back to the SR rule and sets bit 7. That is the
-  signature of a sensor that is damaged or not fitted — a recording made on such a
-  board is identifiable from the file alone.
+"Detected on the hardware" is a weaker guarantee on Shimmer3 than on Shimmer3R:
+
+- **Shimmer3** decides by which I2C address answers (`detectI2cSlaves()`). It
+  reads **no chip-ID register**, so the byte says which address responded, not
+  that the part there was confirmed to be what its address implies. It never
+  falls back to the SR number, so its byte is always `0x00`, `0x01` or `0xFE`.
+- **Shimmer3R** reads both parts' chip-ID registers (`PressureSensor_detect()`).
+  If exactly one answers, that part is used and the byte carries its bare ID.
+  If neither answers, or both do, the firmware falls back to the SR rule and sets
+  bit 7. That is the signature of a sensor that is damaged or not fitted — a
+  recording made on such a board is identifiable from the file alone.
 
 **Parsing.** The firmware carries no compatibility logic
 ([SHIMMER3_RELEASE_AND_VERSIONING.md](SHIMMER3_RELEASE_AND_VERSIONING.md) §6),

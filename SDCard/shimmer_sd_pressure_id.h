@@ -8,10 +8,16 @@
  *
  * Bits 0-6 hold the sensor ID, drawn from the PRESSURE_SENSOR_* registry in
  * Comms/shimmer_bt_uart.h, which the 0xA7/0xA6 Bluetooth reply also uses.
- * Bit 7 is set when the firmware could not confirm the chip by its ID and fell
- * back to the SR number. See docs/SHIMMER3_SD_CARD_FORMAT.md.
+ * Bit 7 is set when the firmware did not detect the part on the hardware and
+ * inferred it from the SR number instead. See docs/SHIMMER3_SD_CARD_FORMAT.md.
  *
- *    0x00-0x7D  sensor ID, identified by chip ID (0x04 onwards: future sensors)
+ * "Detected" means something different on each platform. Shimmer3R reads each
+ * candidate's chip-ID register and accepts the part only if exactly one
+ * answers. Shimmer3 reads no chip-ID register: it decides by which I2C address
+ * answers, which tells the parts apart but does not confirm what answered.
+ *
+ *    0x00-0x7D  sensor ID, detected on the hardware (0x04 onwards: future
+ *               sensors)
  *    0x80-0xFD  the same IDs, inferred from the SR number
  *    0xFE       no pressure sensor fitted
  *    0xFF       not recorded - every header from firmware before this field,
@@ -34,12 +40,13 @@
 /* Returns the byte to write at SDH_PRESSURE_SENSOR_ID.
  *
  * sensorId is a PRESSURE_SENSOR_* value, or SDH_PRESSURE_SENSOR_NONE when no
- * sensor is fitted. identifiedByChipId is non-zero when the chip answered its
- * ID check unambiguously; zero when the firmware fell back to the SR number.
+ * sensor is fitted. inferredFromSrNumber is non-zero when the part was not
+ * detected on the hardware and the firmware fell back to the SR number; it sets
+ * bit 7.
  *
  * An ID outside the allocatable range returns SDH_PRESSURE_SENSOR_UNRECORDED,
  * so a parser falls back to its own inference rather than trusting a value no
  * registry entry backs. */
-uint8_t ShimSdHead_encodePressureSensorId(uint8_t sensorId, uint8_t identifiedByChipId);
+uint8_t ShimSdHead_encodePressureSensorId(uint8_t sensorId, uint8_t inferredFromSrNumber);
 
 #endif /* LOG_AND_STREAM_COMMON_SDCARD_SHIMMER_SD_PRESSURE_ID_H_ */

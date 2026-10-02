@@ -219,17 +219,18 @@ void ShimSdHead_saveBmpCalibrationToSdHeader(void)
   ShimSdHead_savePressureSensorIdToSdHeader();
 }
 
-/* Records which pressure sensor is fitted, and whether its chip confirmed it,
- * so a parser need not infer it from the SR number (DEV-1123). Detection runs
- * once at boot, before any header is built. */
+/* Records which pressure sensor is fitted, and whether it was detected on the
+ * hardware or inferred from the SR number, so a parser need not infer it
+ * itself (DEV-1123). Detection runs once at boot, before any header is built. */
 void ShimSdHead_savePressureSensorIdToSdHeader(void)
 {
   uint8_t sensorId;
-  uint8_t identifiedByChipId;
+  uint8_t inferredFromSrNumber;
 
 #if defined(SHIMMER3)
-  /* detectI2cSlaves() decides by which I2C address answers, so a sensor that
-   * is reported was always found on the bus. */
+  /* detectI2cSlaves() decides by which I2C address answers. It reads no
+   * chip-ID register, so this is detection on the bus rather than a chip-ID
+   * confirmation - but it never falls back to the SR number either. */
   if (isBmp180InUse())
   {
     sensorId = PRESSURE_SENSOR_BMP180;
@@ -242,14 +243,14 @@ void ShimSdHead_savePressureSensorIdToSdHeader(void)
   {
     sensorId = SDH_PRESSURE_SENSOR_NONE;
   }
-  identifiedByChipId = 1;
+  inferredFromSrNumber = 0;
 #elif defined(SHIMMER3R)
-  /* PressureSensor_detect() falls back to the SR number when the chip-ID
-   * check is inconclusive - neither chip answers, or both do. */
+  /* PressureSensor_detect() reads both chip-ID registers and falls back to the
+   * SR number when that is inconclusive - neither chip answers, or both do. */
   sensorId = isBmp581InUse() ? PRESSURE_SENSOR_BMP581 : PRESSURE_SENSOR_BMP390;
-  identifiedByChipId = PressureSensor_wasIdentifiedByChipId();
+  inferredFromSrNumber = !PressureSensor_wasIdentifiedByChipId();
 #endif
 
   sdHeadText[SDH_PRESSURE_SENSOR_ID]
-      = ShimSdHead_encodePressureSensorId(sensorId, identifiedByChipId);
+      = ShimSdHead_encodePressureSensorId(sensorId, inferredFromSrNumber);
 }

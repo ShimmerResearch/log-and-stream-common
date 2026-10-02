@@ -1726,10 +1726,11 @@ practice; the `PRESSURE_SENSOR_BMP390` fall-through is reachable but that
 platform has no BMP390 driver and would report `n = 0`.
 
 The same `PRESSURE_SENSOR_*` IDs are written into every SD data file's header at
-offset 224 (`SDH_PRESSURE_SENSOR_ID`, DEV-1123), so SD and Bluetooth hosts share
-one table. The header form differs in two ways: "no sensor fitted" is `0xFE`
-there rather than this command's BMP390 fall-through, and bit 7 marks an ID the
-firmware inferred from the SR number instead of confirming by chip ID. See
+offset 224 (`SDH_PRESSURE_SENSOR_ID`), so SD and Bluetooth hosts share one
+table. The header form differs in two ways: "no sensor fitted" is `0xFE` there
+rather than this command's BMP390 fall-through, and bit 7 marks an ID the
+firmware inferred from the SR number instead of detecting it on the hardware.
+See
 [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.4.
 
 The payload is `2 + bmpCalibByteLen` on **both** generations: one length byte and

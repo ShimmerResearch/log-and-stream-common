@@ -8,7 +8,7 @@
 
 #include "shimmer_sd_pressure_id.h"
 
-uint8_t ShimSdHead_encodePressureSensorId(uint8_t sensorId, uint8_t identifiedByChipId)
+uint8_t ShimSdHead_encodePressureSensorId(uint8_t sensorId, uint8_t inferredFromSrNumber)
 {
   if (sensorId == SDH_PRESSURE_SENSOR_NONE)
   {
@@ -18,5 +18,5 @@ uint8_t ShimSdHead_encodePressureSensorId(uint8_t sensorId, uint8_t identifiedBy
   {
     return SDH_PRESSURE_SENSOR_UNRECORDED;
   }
-  return identifiedByChipId ? sensorId : (uint8_t) (sensorId | SDH_PRESSURE_SENSOR_INFERRED);
+  return inferredFromSrNumber ? (uint8_t) (sensorId | SDH_PRESSURE_SENSOR_INFERRED) : sensorId;
 }

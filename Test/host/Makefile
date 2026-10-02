@@ -232,6 +232,7 @@ DUAL_COMPILE_MODULES := \
   CRC/shimmer_swCrc.c \
   Platform/platform_api.c \
   RTC/shimmer_rtc.c \
+  SDCard/shimmer_sd_pressure_id.c \
   SDCard/shimmer_sd_write_buf.c \
   Sensing/shimmer_packet_ring.c \
   Util/shimmer_util.c
