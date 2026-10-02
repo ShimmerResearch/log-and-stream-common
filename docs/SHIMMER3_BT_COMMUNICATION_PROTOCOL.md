@@ -40,6 +40,12 @@ BLE, and over the dock's serial link.
 >   `shimmer-web-sdk` @ `8f78313` — `devices/shimmer3r/constants.ts`,
 >   `devices/shimmer3/protocol.ts`, `devices/shimmer3r/sdTransfer/protocol.ts`;
 >   `Extras/python_scripts/` in this repository.
+> - **One later value, and one bench measurement:** the Shimmer3R transmit
+>   hand-off of 300 bytes in [§2.2](#22-ble) is `BT_TX_MAX_DMA_CHUNK` at
+>   `log-and-stream-common` @ `9559a34`, which postdates the pin above (it is 1024
+>   there). The number itself comes from a bench measurement of the Bluetooth
+>   module, not from source; its method and limits are recorded under
+>   [Still unverified](#still-unverified--not-found-in-code).
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). The **Gen** column in the opcode tables says
@@ -234,13 +240,22 @@ one protocol message. Conversely, it must not assume the opposite either: the
 module is free to coalesce, and a single notification may contain the tail of one
 message and the head of the next.
 
-Because the transmit ring is much deeper on Shimmer3R (4096 bytes versus 256) and
-a single hand-off to the UART is capped at 1024 bytes
-(`BT_TX_MAX_DMA_CHUNK`), a Shimmer3R response can be produced faster than the
-link drains it — which is the situation the SD file transfer's 256-byte reserve
-exists to protect.
+Because the transmit ring is much deeper on Shimmer3R (4096 bytes versus 256)
+than a single hand-off to the UART (300 bytes, `BT_TX_MAX_DMA_CHUNK`), a
+Shimmer3R response can be produced faster than the link drains it — which is the
+situation the SD file transfer's 256-byte reserve exists to protect.
 
-> `Comms/shimmer_bt_uart.h:25-41`.
+The 300-byte hand-off is set by the Bluetooth module, not by the ring. In
+non-transparent SPP mode each hand-off is sent as one EZ-Serial `SPP_SEND`
+command, and IF820 module firmware v1.4.18.18 rejects every `SPP_SEND` carrying
+more than 300 data bytes (bench-tested: 300 accepted, 301 rejected with
+`EVT_SYSTEM_ERROR 0x0209`), which stops all data. A host never sees the hand-off
+size directly, since frames are reassembled from the byte stream either way, but
+it bounds throughput on that path to roughly 64 KB/s.
+
+> `Comms/shimmer_bt_uart.h:25-58` @ `9559a34`, not the revision pinned at the top.
+> The 300-byte limit is bench-measured; see
+> [Still unverified](#still-unverified--not-found-in-code).
 
 **Reserved first bytes on Shimmer3R.** The CYW20820's UART receive path is
 demultiplexed in firmware between EZ-Serial module traffic and Shimmer command
@@ -521,9 +536,9 @@ as a mode.
 | Maximum response frame | **133** bytes | **1024** bytes | `RESPONSE_PACKET_SIZE` |
 | Maximum command arguments | 131 | 131 | `MAX_COMMAND_ARG_SIZE` |
 | Bluetooth transmit ring | 256 bytes | 4096 bytes | `BT_TX_BUF_SIZE` |
-| Single UART hand-off | 256 bytes | 1024 bytes | `BT_TX_MAX_DMA_CHUNK` |
+| Single UART hand-off | 256 bytes | 300 bytes | `BT_TX_MAX_DMA_CHUNK` |
 
-> `log_and_stream_definitions.h:28-32`; `Comms/shimmer_bt_uart.h:25-45`. The
+> `log_and_stream_definitions.h:28-32`; `Comms/shimmer_bt_uart.h:25-58`. The
 > response buffer is declared as `RESPONSE_PACKET_SIZE + 2` to leave room for
 > two CRC bytes (`Comms/shimmer_bt_uart.c:1757`).
 
@@ -3196,13 +3211,27 @@ genuinely usable commands a Java-based host has to send as raw bytes:
 
 ## Still unverified / not found in code
 
-Everything above is derived from source. The following statements are either
-absent from the code, or present in a form that only bench measurement can
-settle. They are listed so that a host author knows where the document stops
-being authoritative, and so that a later pass can close them.
+Everything above is derived from source, except the Shimmer3R 300-byte transmit
+hand-off in [§2.2](#22-ble), which is bench-measured and listed first below. The
+following statements are either absent from the code, or present in a form that
+only bench measurement can settle. They are listed so that a host author knows
+where the document stops being authoritative, and so that a later pass can close
+them.
 
 **Transport and framing**
 
+- **The Shimmer3R 300-byte transmit hand-off is a measured module limit.**
+  Source only records the chosen value. It was measured on IF820 module
+  firmware v1.4.18.18 in October 2026, sweeping the `SPP_SEND` payload from 255
+  to 400 bytes, and byte by byte from 300 to 305, while checking the data
+  stream end to end. Up to 300 data bytes (308 on the wire) every frame was
+  accepted; from 301 every frame was rejected with `EVT_SYSTEM_ERROR 0x0209`
+  and nothing was sent. Not measured on v1.4.17, which would also use
+  `SPP_SEND` but is fitted to no Shimmer3R: the module arrives on v1.4.12.12
+  and is updated to v1.4.16.16 in production, and both use the transparent
+  bridge, which never sends `SPP_SEND`. **Needs re-measuring** before any other
+  `SPP_SEND`-path module firmware is used, since a limit set even one byte too
+  high stops all data.
 - **BLE GATT service and characteristic UUIDs, and the negotiated ATT MTU.**
   Nothing in `log-and-stream-common` or either platform repository declares a
   GATT service: the Bluetooth module terminates GATT itself and hands the
