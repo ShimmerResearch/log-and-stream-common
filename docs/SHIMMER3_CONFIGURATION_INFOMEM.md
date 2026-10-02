@@ -23,6 +23,14 @@ and mirrored into the SD-card file header.
 >   `LogAndStream_Shimmer3/Shimmer_Driver/5xx_HAL/hal_InfoMem.h`;
 >   `shimmer3r-firmware` @ `8f800952` —
 >   `LogAndStream_Shimmer3R/Shimmer_Driver/hal_Infomem.h`.
+> - **SD header pressure sensor ID (offset 224):** `log-and-stream-common` @
+>   `f0af855` — `SDCard/shimmer_sd_pressure_id.{h,c}`,
+>   `ShimSdHead_savePressureSensorIdToSdHeader`, the `PRESSURE_SENSOR_*` registry;
+>   `shimmer3-firmware` @ `510b65e` — `i2c.c` `detectI2cSlaves()`;
+>   `shimmer3r-firmware` @ `2423263b` — `Shimmer_Driver/hal_pressure.c`
+>   `PressureSensor_detect()`, `PressureSensor_wasIdentifiedByChipId()`. Only
+>   the claims about that field were checked at these revisions; the rest of
+>   this document stays pinned as above.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/shimmer2r3/ConfigByteLayoutShimmer3.java`,
 >   `driver/ConfigByteLayout.java`; `shimmer-web-sdk` @ `8f78313` —

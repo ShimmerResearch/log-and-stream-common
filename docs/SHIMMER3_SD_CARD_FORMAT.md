@@ -24,6 +24,14 @@ channel encodings are identical, only the framing around them differs.
 >   `Sensing/shimmer_sensing.c` (what is handed to the SD writer per sample).
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
+> - **SD header pressure sensor ID (offset 224):** `log-and-stream-common` @
+>   `f0af855` — `SDCard/shimmer_sd_pressure_id.{h,c}`,
+>   `ShimSdHead_savePressureSensorIdToSdHeader`, the `PRESSURE_SENSOR_*` registry;
+>   `shimmer3-firmware` @ `510b65e` — `i2c.c` `detectI2cSlaves()`;
+>   `shimmer3r-firmware` @ `2423263b` — `Shimmer_Driver/hal_pressure.c`
+>   `PressureSensor_detect()`, `PressureSensor_wasIdentifiedByChipId()`. Only
+>   the claims about that field were checked at these revisions; the rest of
+>   this document stays pinned as above.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). Where the two generations differ, both are
