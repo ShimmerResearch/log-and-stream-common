@@ -226,13 +226,20 @@ one protocol message. Conversely, it must not assume the opposite either: the
 module is free to coalesce, and a single notification may contain the tail of one
 message and the head of the next.
 
-Because the transmit ring is much deeper on Shimmer3R (4096 bytes versus 256) and
-a single hand-off to the UART is capped at 1024 bytes
-(`BT_TX_MAX_DMA_CHUNK`), a Shimmer3R response can be produced faster than the
-link drains it — which is the situation the SD file transfer's 256-byte reserve
-exists to protect.
+Because the transmit ring is much deeper on Shimmer3R (4096 bytes versus 256)
+than a single hand-off to the UART (300 bytes, `BT_TX_MAX_DMA_CHUNK`), a
+Shimmer3R response can be produced faster than the link drains it — which is the
+situation the SD file transfer's 256-byte reserve exists to protect.
 
-> `Comms/shimmer_bt_uart.h:25-41`.
+The 300-byte hand-off is set by the Bluetooth module, not by the ring. In
+non-transparent SPP mode each hand-off is sent as one EZ-Serial `SPP_SEND`
+command, and IF820 module firmware v1.4.18.18 rejects every `SPP_SEND` carrying
+more than 300 data bytes (bench-tested: 300 accepted, 301 rejected with
+`EVT_SYSTEM_ERROR 0x0209`), which stops all data. A host never sees the hand-off
+size directly, since frames are reassembled from the byte stream either way, but
+it bounds throughput on that path to roughly 64 KB/s.
+
+> `Comms/shimmer_bt_uart.h:25-58`.
 
 **Reserved first bytes on Shimmer3R.** The CYW20820's UART receive path is
 demultiplexed in firmware between EZ-Serial module traffic and Shimmer command
@@ -513,9 +520,9 @@ as a mode.
 | Maximum response frame | **133** bytes | **1024** bytes | `RESPONSE_PACKET_SIZE` |
 | Maximum command arguments | 131 | 131 | `MAX_COMMAND_ARG_SIZE` |
 | Bluetooth transmit ring | 256 bytes | 4096 bytes | `BT_TX_BUF_SIZE` |
-| Single UART hand-off | 256 bytes | 1024 bytes | `BT_TX_MAX_DMA_CHUNK` |
+| Single UART hand-off | 256 bytes | 300 bytes | `BT_TX_MAX_DMA_CHUNK` |
 
-> `log_and_stream_definitions.h:28-32`; `Comms/shimmer_bt_uart.h:25-45`. The
+> `log_and_stream_definitions.h:28-32`; `Comms/shimmer_bt_uart.h:25-58`. The
 > response buffer is declared as `RESPONSE_PACKET_SIZE + 2` to leave room for
 > two CRC bytes (`Comms/shimmer_bt_uart.c:1757`).
 

@@ -33,14 +33,24 @@
 /* Upper bound on a single transfer handed to the BT driver, independent of
  * the ring depth. In non-transparent SPP mode every chunk is one EZ-Serial
  * SPP_SEND command/response round trip, so throughput is chunk_size / RTT
- * and bigger chunks amortize the fixed per-command cost. 252 is the module's
- * real ceiling: IF820 FW v1.4.18.18 parses only the 8-bit length field on
- * inbound commands (bench-tested 2026-08-25 - a 1020-byte SPP_SEND raised
- * EVT_SYSTEM_ERROR 0x0209/0x0207 and wedged TX), so the largest payload is
- * 255 = conn_handle + 2-byte length prefix + 252 data. Cross-checked against
+ * and bigger chunks amortize the fixed per-command cost.
+ *
+ * 300 is exactly the module's limit, bench-measured on IF820 FW v1.4.18.18
+ * (release image; a vendor test image agrees) on 2026-10-01/02. An SPP_SEND
+ * carrying 300 data bytes - 308 bytes on the wire: 4-byte header,
+ * conn_handle, 2-byte length prefix, data, checksum - is accepted every time;
+ * from 301 data bytes (309 on the wire) up, the module rejects every frame
+ * with EVT_SYSTEM_ERROR 0x0209 (invalid checksum) and sends nothing. The
+ * module does honour the 11-bit length field - 258- and 303-byte payloads
+ * are accepted - so this is its command-length limit, not the 8-bit field.
+ * (An earlier 1020-byte test that failed the same way was misread as the
+ * module ignoring the length MSBs; that is why this was once 252.)
+ *
+ * Exceeding the limit silences the link completely, so raise this only after
+ * re-testing on every module firmware in use. Cross-checked against
  * EZS_SPP_SEND_MAX_DATA_BYTES by a static assert in hal_CYW20820.c. Must not
  * exceed BT_TX_BUF_SIZE. */
-#define BT_TX_MAX_DMA_CHUNK 252U
+#define BT_TX_MAX_DMA_CHUNK 300U
 #else
 #define BT_TX_BUF_SIZE      256U /* serial buffer in bytes (power 2)  */
 /* No cap needed: a transfer can never exceed the ring itself */
