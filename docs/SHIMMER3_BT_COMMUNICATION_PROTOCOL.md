@@ -3210,9 +3210,12 @@ them.
   to 400 bytes, and byte by byte from 300 to 305, while checking the data
   stream end to end. Up to 300 data bytes (308 on the wire) every frame was
   accepted; from 301 every frame was rejected with `EVT_SYSTEM_ERROR 0x0209`
-  and nothing was sent. **Not measured** on v1.4.17, the other module firmware
-  that uses `SPP_SEND`, and **needs re-measuring** after any module firmware
-  change, since a limit set even one byte too high stops all data.
+  and nothing was sent. Not measured on v1.4.17, which would also use
+  `SPP_SEND` but is fitted to no Shimmer3R: the module arrives on v1.4.12.12
+  and is updated to v1.4.16.16 in production, and both use the transparent
+  bridge, which never sends `SPP_SEND`. **Needs re-measuring** before any other
+  `SPP_SEND`-path module firmware is used, since a limit set even one byte too
+  high stops all data.
 - **BLE GATT service and characteristic UUIDs, and the negotiated ATT MTU.**
   Nothing in `log-and-stream-common` or either platform repository declares a
   GATT service: the Bluetooth module terminates GATT itself and hands the
