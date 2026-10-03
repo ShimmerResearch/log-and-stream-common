@@ -207,7 +207,7 @@ machine treats a leading `0x25` as the start of a status string and hands the
 following bytes to `RN4678_parseStatusString` rather than to the command parser.
 
 > `Comms/shimmer_bt_uart.c:537-542, 756-763`;
-> `shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.h:201-241` for the separator and
+> `shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.h:201-240` for the separator and
 > every status-string length.
 
 `0x25` is `DEVICE_VERSION_RESPONSE` — a *response* opcode, never a command — so
@@ -375,8 +375,8 @@ boot rather than read from configuration: the firmware tries `BAUD_TO_USE`
 (2000000, or 115200 on an SR48-6.0 board) and, on repeated initialisation
 failure, walks a fallback ladder of 115200 → 460800 → 2000000 → 500000.
 
-> `shimmer3r-firmware` `Core/Src/main.c:645-720, 834-837`;
-> `Shimmer_Driver/CYW20820/CYW20820.h:21-25`.
+> `shimmer3r-firmware` `Core/Src/main.c:643-730, 842-845`;
+> `Shimmer_Driver/CYW20820/CYW20820.h:31,56-58`.
 
 Shimmer3 additionally overrides a stored `BAUD_1200` to `BAUD_2400` when the
 fitted module is an RN4678, which does not support 1200
@@ -532,7 +532,7 @@ The most readable statement of the algorithm is the host reference:
 > `calculateCrcAndInsert` / `checkCrc` in `CRC/shimmer_crc.c`, over the
 > platform's `platform_crcData()`; the MSP430 implementation and its odd-length
 > special case are in `shimmer3-firmware`
-> `Shimmer_Driver/5xx_HAL/hal_CRC.c:12-35`.
+> `Shimmer_Driver/5xx_HAL/hal_CRC.c:12-36`.
 
 `CRC_MAX_SUPPORTED_BYTES` (3) is a validation sentinel and **must not** be sent
 as a mode.
@@ -1567,7 +1567,8 @@ writes into the configuration image and then syncs the dump. The blob's internal
 structure is in [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md).
 
 Firmware calibration RAM is **1024** bytes (`SHIMMER_CALIB_RAM_MAX`,
-`Calibration/shimmer_calibration.h:17-21`).
+`Calibration/shimmer_calibration.h:17-21`; on Shimmer3R that is
+`INFOMEM_CALIB_SIZE`, `shimmer3r-firmware` `Shimmer_Driver/hal_Infomem.h:122`).
 
 #### `GET_CALIB_DUMP_COMMAND` (0x9A)
 
@@ -2021,7 +2022,7 @@ Milliseconds = ticks / 32.768.
 > `Comms/shimmer_bt_uart.c:1500-1514` (set), `:2236-2245` (get). The Java driver
 > encodes with `UtilShimmer.convertMilliSecondsToShimmerRtcDataBytesLSB`
 > (`bluetooth/ShimmerBluetooth.java:691-696`) and decodes by reversing the eight
-> bytes and dividing by 32.768 (`:1721-1728`).
+> bytes and dividing by 32.768 (`:1721-1731`).
 
 Setting the clock has three side effects beyond the clock itself: it sets the
 `rtcSetByBt` bit in InfoMem 217 and flushes that byte, re-runs the real-world
@@ -2933,8 +2934,8 @@ version gate — the status, the battery and the Bluetooth version string; then 
 calibration dump; and finally either a fixed-configuration write or
 `inquiry()`.
 
-> `bluetooth/ShimmerBluetooth.java:2547-2561` (`initialize`) and `:2629-2751`
-> (`initializeShimmer3`).
+> `bluetooth/ShimmerBluetooth.java:2547-2562` (`initialize`) and `:2629-2753`
+> (`initializeShimmer3` and the `initializeShimmer3or3R` it calls).
 
 Note one hardware-driven exception the Java driver encodes: it skips the
 calibration-dump read on a **docked Shimmer3**, because that platform cannot
@@ -3316,7 +3317,7 @@ them.
   `tcxo` configuration bit behind `#if !IS_SUPPORTED_TCXO`
   (`Configuration/shimmer_config.c:519-525`), and `samplingClockFreqGet()`
   returns a flat `32768.0f` on both platforms
-  (`shimmer3r-firmware` `Core/Src/main.c:829-832`). The sampling-rate divider in
+  (`shimmer3r-firmware` `Core/Src/main.c:837-840`). The sampling-rate divider in
   [§7.1](#71-inquiry) and [§7.8](#78-sensor-settings) therefore assumes 32768 Hz
   unconditionally, which is correct for every build in the available source:
   `IS_SUPPORTED_TCXO` is defined (as `0`) only in Shimmer3's `main.c` and not at
