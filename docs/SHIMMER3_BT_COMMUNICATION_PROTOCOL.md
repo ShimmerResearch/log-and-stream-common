@@ -33,6 +33,11 @@ BLE, and over the dock's serial link.
 >   `PressureSensor_detect()`, `PressureSensor_wasIdentifiedByChipId()`. Only
 >   the claims about that field were checked at these revisions; the rest of
 >   this document stays pinned as above.
+> - **Status-byte history ([§5.3](#53-the-status-bytes),
+>   [Appendix A](#appendix-a-firmware-version-gates)):** read at the
+>   `log-and-stream-common` revision each `LogAndStream_Shimmer3R_v1.00.0xx` tag
+>   pins — `git ls-tree <tag> -- S3R_Production/log-and-stream-common`, the
+>   submodule's path at those tags (it is `LogAndStream_Shimmer3R/` now).
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/ShimmerObject.java`,
 >   `bluetooth/ShimmerBluetooth.java`, `bluetooth/BtCommandDetails.java`,
@@ -910,7 +915,8 @@ is the single most important thing for a host implementer to internalise:
 
 `ShimBt_assembleStatusBytes` produces the payload used by both
 `GET_STATUS_COMMAND` and the unsolicited push. **One byte on Shimmer3, two on
-Shimmer3R** (`STATUS_BYTE_COUNT`).
+Shimmer3R from `LogAndStream_Shimmer3R_v1.00.024`** (LogAndStream 1.0.24,
+`STATUS_BYTE_COUNT`). Earlier Shimmer3R firmware sends one.
 
 **Byte 0** — bit field, both generations:
 
@@ -932,11 +938,21 @@ Shimmer3R** (`STATUS_BYTE_COUNT`).
 | 0 | `usbPluggedIn` |
 | 1-7 | zero |
 
-> `Comms/shimmer_bt_uart.c:2920-2932`. Byte 1 is written inside
-> `#if defined(SHIMMER3R)` at `:2927-2929`, so on Shimmer3 it is not merely zero
+> `Comms/shimmer_bt_uart.c:2995-3007`. Byte 1 is written inside
+> `#if defined(SHIMMER3R)` at `:3002-3004`, so on Shimmer3 it is not merely zero
 > — it is **not transmitted**. `STATUS_BYTE_COUNT` at
 > `Comms/shimmer_bt_uart.h:260-264`. The underlying flags are the
 > `STATTypeDef` bitfields at `log_and_stream_definitions.h:79-133`.
+>
+> `STATUS_BYTE_COUNT` is younger than the second byte: it arrived with `cbf4e6f`,
+> first in `LogAndStream_Shimmer3R_v1.00.050`, and names the count that
+> `ShimBt_assembleStatusBytes` had returned since `v1.00.024`
+> (`Comms/shimmer_bt_uart.c:3000-3014` @ `2f21036`), so it does not mark the
+> width change. That release also enlarged the unsolicited push's buffer
+> (`89f40e7`, `cbf4e6f`). From `v1.00.024` to `v1.00.049` it was `selfcmd[6]`
+> (`:2262` @ `f39be8c`), but a push with the ACK prefix (the default) and 2-byte
+> CRC is seven bytes — `ACK`, `0x8A 0x71`, two status bytes, two CRC bytes — so
+> it overran the buffer by one.
 
 Bits 7, 6, 5 and 2, and the second byte, were added over time; the Java driver
 gates each on a firmware version
@@ -1310,10 +1326,12 @@ The reply is wrapped in `INSTREAM_CMD_RESPONSE` (0x8A) because the firmware also
 pushes this exact frame unsolicited while streaming — see
 [§5](#5-status-acknack-and-in-stream-responses) for the byte layout, the bit
 field, and the unsolicited-push rules. `STATUS_BYTE_COUNT` is **1** on Shimmer3
-and **2** on Shimmer3R.
+and **2** on Shimmer3R. Shimmer3R firmware before
+`LogAndStream_Shimmer3R_v1.00.024` sends **1** — see
+[§5.3](#53-the-status-bytes).
 
-> `Comms/shimmer_bt_uart.c:1841-1847`; `ShimBt_assembleStatusBytes` at
-> `:2920-2932`; `STATUS_BYTE_COUNT` at `Comms/shimmer_bt_uart.h:260-264`.
+> `Comms/shimmer_bt_uart.c:1909-1915`; `ShimBt_assembleStatusBytes` at
+> `:2995-3007`; `STATUS_BYTE_COUNT` at `Comms/shimmer_bt_uart.h:260-264`.
 
 #### `GET_DIR_COMMAND` (0x89)
 
@@ -3093,7 +3111,7 @@ LogAndStream version threshold it applies.
 
 The final column is corroborating evidence only, obtained by locating the commit
 that changed the corresponding firmware symbol earliest (`git log -S`) and taking
-the earliest release tag per lineage that contains it. Read it with three
+the earliest release tag per lineage that contains it. Read it with four
 caveats:
 
 - **`≤` means inconclusive.** The introducing commit predates that lineage's
@@ -3102,6 +3120,11 @@ caveats:
 - **A symbol's earliest commit can be a rename, not the feature's birth.** Where
   the date is much later than the host threshold suggests, the symbol was
   probably renamed or moved into the shared module at that commit.
+- **A symbol can also be older than the feature.** `usbPluggedIn` was set
+  internally from `LogAndStream_Shimmer3R_v1.00.019` (shimmer3r-firmware
+  d1f311cf, 2025-02-28), five releases before the second status byte began to
+  carry it. The second-status-byte row therefore keys on
+  `ShimBt_assembleStatusBytes`, the function that started sending it.
 - **Tag lineages are separate product lines.** `LogAndStream_Shimmer3`,
   `LogAndStream_Shimmer3_BLE`, `LogAndStream_Shimmer3R` and the legacy
   unprefixed `LogAndStream` version numbers are not comparable with each other.
@@ -3116,7 +3139,7 @@ exist nowhere else, which are exactly the ones added after the extraction.
 | Status response | status bit 7 carries the red-LED toggle state | `isSupportedRedLedStateInStatus`<br>LogAndStream 0.7.10 | `toggleLedRedCmd` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.011`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit c42e0f6, 2024-10-07)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 65aa6176, 2023-11-09) |
 | Status response | status bits 6 and 5 carry SD bad-file / SD-inserted | `isSupportedSdInfoInStatus`<br>LogAndStream 0.7.12 | `sdBadFile` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.012`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit ed662e8, 2024-11-05)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 42a86589, 2024-11-05) |
 | Status response | status bit 2 carries "real-world clock has been set" | `isSupportedRtcStateInStatus`<br>LogAndStream 0.7.14 | `RTC_isRwcTimeSet` | Shimmer3: `LogAndStream_Shimmer3_BLE_v1.00.000`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit e501346, 2025-06-30)<br>Shimmer3R: `LogAndStream_Shimmer3R_v1.00.027` (introducing commit b4964c95, 2025-06-30) |
-| Status response | a SECOND status byte carrying USB-plugged-in (STATUS_BYTE_COUNT 2) | `isSupportedUSBPluggedInStatus`<br>LogAndStream 1.0.24 (Shimmer3R) | `usbPluggedIn` | Shimmer3R: `LogAndStream_Shimmer3R_v1.00.019` (introducing commit d1f311cf, 2025-02-28) |
+| Status response | a SECOND status byte carrying USB-plugged-in | `isSupportedUSBPluggedInStatus`<br>LogAndStream 1.0.24 (Shimmer3R) | `ShimBt_assembleStatusBytes` | shared module: `LogAndStream_Shimmer3R_v1.00.024` (introducing commit 8377afc, 2025-06-04) |
 | Commands | GET_BT_VERSION_STR_COMMAND (Bluetooth module firmware string) | `isSupportedBtFwVerRequest`<br>_no version threshold (hardware-keyed or unconditional)_ | `GET_BT_VERSION_STR_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000` (introducing commit 372a4de, 2023-02-08)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | Commands | GET_STATUS_COMMAND | `isSupportedBtStatusRequest`<br>LogAndStream 0.5.2 (Shimmer3) | `GET_STATUS_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 8b7e616, 2014-07-22)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | Commands | GET_VBATT_COMMAND | `isSupportedBtBatteryRequest`<br>LogAndStream 0.5.9 (Shimmer3) | `GET_VBATT_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 15dd04c, 2016-02-11)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
