@@ -40,6 +40,10 @@ BLE, and over the dock's serial link.
 >   `log-and-stream-common` revision each `LogAndStream_Shimmer3R_v1.00.0xx` tag
 >   pins — `git ls-tree <tag> -- S3R_Production/log-and-stream-common`, the
 >   submodule's path at those tags (it is `LogAndStream_Shimmer3R/` now).
+> - **Link-CRC reset history ([§3.3](#33-crc-modes)):** read at every
+>   `LogAndStream*` release tag in `shimmer3-firmware` and `shimmer3r-firmware`,
+>   and at the `log-and-stream-common` revision each one pins. A reference marked
+>   `@ <tag>` is read at that tag.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/ShimmerObject.java`,
 >   `bluetooth/ShimmerBluetooth.java`, `bluetooth/BtCommandDetails.java`,
@@ -510,25 +514,31 @@ again (`:2618`). The connect branch (`:2556-2599`) calls only
 `ShimBt_resetBtRxVariablesOnConnect` (`:2558`), which clears the receive parser
 and leaves the CRC alone (`:203-209`).
 
-A link therefore starts with the CRC off only if the firmware saw the previous
-one end, and a host can reconnect over a link the firmware never saw drop
-([§8.1](#81-what-a-connect-and-a-disconnect-reset)). The device then still has
-the previous session's mode, and its first replies carry that mode's CRC bytes.
-A host cannot count on the mode being off when it connects, which is why a reset
-to off is allowed before the version reads; any other mode waits until the
-version is known ([§8.2](#82-recommended-session-sequence)). There is no way to
-make the setting sticky.
+So a new link starts with the CRC off only if the firmware saw the last one go
+down, or has rebooted since. A host can reconnect over a link the firmware never
+saw drop ([§8.1](#81-what-a-connect-and-a-disconnect-reset)). The device then
+still has the previous session's mode, and its first replies carry that mode's
+CRC bytes. A host therefore cannot count on the mode being off when it connects.
+That is why a reset to off is allowed before the version reads, while any other
+mode waits until the version is known ([§8.2](#82-recommended-session-sequence)).
+There is no way to make the setting sticky.
 
 > No tagged release resets the mode on connect. That was checked at every
 > LogAndStream release tag in both platform repositories, and at the
-> shared-module revision each one pins. Some older releases reset it less, and
+> shared-module revision each one pins. `LogAndStream_Shimmer3R_v1.00.049` reads
+> as above (`:108`, `:2349` @ `f39be8c`, the revision it pins), and so did
+> Shimmer3R before the shared module existed (`btCommsProtocolInit` and
+> `HandleBtRfCommStateChange`, `shimmer3r-firmware`
+> `S3R_Production/Shimmer_Driver/Bluetooth/shimmer_bt_comms.c:1068, 2543` @
+> `LogAndStream_Shimmer3R_v1.00.010`). Some older releases reset it less, and
 > some reset it more:
 >
 > - The legacy unprefixed `LogAndStream` releases, up to `LogAndStream_v0.11.0`,
 >   cleared it only at boot (`crcChecksum = 0` in `Init()`, `shimmer3-firmware`
 >   `LogAndStream/main.c:581` @ `LogAndStream_v0.11.0`). On those releases it
 >   outlived even a disconnect the firmware saw. The disconnect reset is present
->   by `LogAndStream_Shimmer3_v0.15.000` (`LogAndStream/main.c:2218`).
+>   by `LogAndStream_Shimmer3_v0.15.000` (`LogAndStream/main.c:2218` at that
+>   tag).
 > - Shimmer3R releases up to `LogAndStream_Shimmer3R_v1.00.010` also turned it
 >   off whenever streaming or sensing stopped, without telling the host
 >   (`S4Sens_checkStartStreamingConditions` and `S4Sens_stopSensing`,
@@ -2929,6 +2939,11 @@ The two columns are the two branches of `ShimBt_handleBtRfCommStateChange`
 Bluetooth module reports the link coming up or going down. Nothing in the
 configuration image is affected.
 
+> The platform call sites are `shimmer3r-firmware` `Core/Src/main.c:746-760`
+> (`setBtConnectionState`, fed by the module's connected event and its
+> connection pins), and `shimmer3-firmware` `main.c:502, 510` (the connection-pin
+> interrupt) and `Shimmer_Driver/RN4X/RN4678.c` (the module's status strings).
+
 **The session settings reset on a disconnect, not on a connect.** After a
 disconnect the firmware saw, nothing in the right-hand column survives, so a host
 that wants a CRC must ask again. But a host can reconnect over a link the
@@ -2978,19 +2993,22 @@ document, are:
 3. **A CRC is turned on only after the version read**, so the version exchange
    itself is not subject to a CRC the host has not confirmed the firmware
    supports. **A reset to off (mode `0`) may go first, and a host that sends one
-   should keep it.** The firmware turns the CRC off only at boot and on a
-   disconnect it sees ([§8.1](#81-what-a-connect-and-a-disconnect-reset)), so
-   after a link drop it did not see, the version replies would carry the previous
-   session's CRC bytes. The reset is safe before the version is known. Mode `0`
-   means off in every release that has the command, and the ACK is built after
-   the new mode is applied, so it is a bare `0xFF` whatever mode was in force
-   ([§7.12](#712-control-and-test)). A release without the command discards both
-   bytes unanswered ([§2.3](#23-framing-guarantees-per-transport)), which costs
-   the host one response timeout ([§8.4](#84-timeouts-and-error-recovery)). That
-   cannot happen over BLE. LogAndStream has served `0x8B` on Shimmer3 since 2015
-   (`392f693`), and its first BLE-capable module, the RN4678, appears in 2023
-   (`372a4de`). Shimmer3R answered no host command at all before the commit that
-   added `0x8B` (`39041ebe`).
+   should keep it.** After a link drop the firmware did not see, the device still
+   has the previous session's mode
+   ([§8.1](#81-what-a-connect-and-a-disconnect-reset)), and the version replies
+   would carry its CRC bytes. The reset is safe before the version is known. Mode
+   `0` means off in every release that has the command, and the ACK is built
+   after the new mode is applied, so it is a bare `0xFF` whatever mode was in
+   force ([§7.12](#712-control-and-test)). A release without the command discards
+   both bytes unanswered ([§2.3](#23-framing-guarantees-per-transport)), which
+   costs the host one response timeout ([§8.4](#84-timeouts-and-error-recovery)).
+   Over BLE that never happens: every release without the command is either
+   classic-Bluetooth-only or answers no host command at all.
+
+   > Shimmer3 LogAndStream has served `0x8B` since 2015 (`shimmer3-firmware`
+   > `392f693`), and its first BLE-capable module, the RN4678, appears in 2023
+   > (`372a4de`). Shimmer3R answered no host command at all before the commit
+   > that added `0x8B` (`shimmer3r-firmware` `39041ebe`).
 4. **`INQUIRY_COMMAND` last, after every write** ([§6.2](#62-fixing-the-packet-layout)).
 5. **Read back after every write.** The whole-image correction pass runs on each
    InfoMem chunk and each single-setting write, and every setter clamps silently
@@ -2998,8 +3016,9 @@ document, are:
 6. **Confirm a start with the status bits**, because the start commands are
    conditional ([§6.1](#61-the-six-startstop-commands)).
 
-For comparison, the Java driver's own connect state machine runs: a CRC-mode
-reset, a dummy sampling-rate read to flush the write buffer, then
+For comparison, the Java driver's own connect state machine runs: a reset of its
+own record of the CRC mode to off, a dummy sampling-rate read to flush the write
+buffer, then
 `readShimmerVersionNew()`; on the Shimmer3 path it reads the configuration bytes
 and pressure coefficients if `getFirmwareVersionCode() >= 6`, else falls back to
 reading each setting individually; then the LED command, and — each behind its
@@ -3008,7 +3027,12 @@ calibration dump; and finally either a fixed-configuration write or
 `inquiry()`.
 
 > `bluetooth/ShimmerBluetooth.java:2547-2562` (`initialize`) and `:2629-2753`
-> (`initializeShimmer3` and the `initializeShimmer3or3R` it calls).
+> (`initializeShimmer3` and the `initializeShimmer3or3R` it calls). The CRC step
+> sends nothing to the device: `resetCurrentCrcMode` (`:5014-5016`) changes only
+> what the driver expects, so the driver assumes the firmware saw the last
+> disconnect. The driver sends `SET_CRC_COMMAND` only after the version read, and
+> only for firmware version code 8 or later (`writeBtCommsCrcMode`, `:4964-4970`,
+> called at `:2646-2647`).
 
 Note one hardware-driven exception the Java driver encodes: it skips the
 calibration-dump read on a **docked Shimmer3**, because that platform cannot
@@ -3359,12 +3383,18 @@ them.
 
 - **The default state of the `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE` (0xA3)
   prefix as observed by a host.** The firmware defaults
-  `useAckPrefixForInstreamResponses` to 1 and resets it on every disconnect
-  (`Comms/shimmer_bt_uart.c:196`, `:2620`), which is what
+  `useAckPrefixForInstreamResponses` to 1 and resets it on every disconnect it
+  sees (`Comms/shimmer_bt_uart.c:196`, `:2620`), which is what
   [§5.4](#54-in-stream-responses) states. What has **not** been verified is
-  whether any shipped host relies on the opposite, and whether the reset is
-  reliably observed across a BLE reconnection that the module handles without the
-  firmware seeing a disconnect event.
+  whether any shipped host relies on the opposite.
+- **How often a host reconnects over a link the firmware never saw drop.** From
+  source, the disconnect resets, the CRC mode and this prefix among them, run
+  only when the module reports the disconnect
+  ([§8.1](#81-what-a-connect-and-a-disconnect-reset)). iOS and Web Bluetooth both
+  document that a host's disconnect can leave the physical link up. Which host
+  stacks do that in practice, and whether either module then reports anything to
+  the firmware, has not been measured. **Needs bench observation** on both
+  generations.
 - **Unsolicited-push timing.** The four triggers are known
   ([§5.4](#54-in-stream-responses)); the latency between the physical event and
   the push, and whether two pushes can be queued back to back (dock immediately
