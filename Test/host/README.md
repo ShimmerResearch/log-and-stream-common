@@ -62,6 +62,14 @@ cannot load a data file.
 Between them, those two are the only automated checks in the repository that
 look at host compatibility at all.
 
+Both also run on Windows, where there may be no `make`: from this directory,
+`python crosscheck_host_constants.py`. Every file the Python checks read is
+UTF-8, and every read says so. Left to the locale, the same read decodes UTF-8
+on Linux but the ANSI code page on Windows — cp1252 on most Western machines,
+which cannot decode the protocol document. The `Makefile` therefore makes a
+read that leaves the encoding to the locale an error on every platform (Python
+3.10 and later), because CI's own locale is UTF-8 and would never show it.
+
 ## The platform seam
 
 `log_and_stream_externs.h` declares what each platform firmware must implement.

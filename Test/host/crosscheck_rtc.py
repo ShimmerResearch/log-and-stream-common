@@ -30,7 +30,7 @@ def main():
         print(__doc__)
         return 2
 
-    out = subprocess.run([sys.argv[1], "--dump"], capture_output=True, text=True, check=True)
+    out = subprocess.run([sys.argv[1], "--dump"], capture_output=True, encoding="utf-8", check=True)
     lines = [ln for ln in out.stdout.splitlines() if ln.strip() and not ln.startswith("#")]
     if not lines:
         print("FAIL: the C test produced no output")
