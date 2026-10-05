@@ -28,6 +28,18 @@
 CC      ?= gcc
 PYTHON  ?= python3
 
+# ENCODINGS ARE NAMED, NEVER INHERITED. Every file the Python checks read is
+# UTF-8 and every read says so, because the locale's default is UTF-8 on Linux
+# but usually cp1252 on Windows, which cannot decode the protocol document. A
+# read that leaves the encoding out therefore passes CI and crashes on a
+# Windows desk before checking anything. These two make it fail everywhere:
+# Python raises EncodingWarning for an open() or read_text() that falls back to
+# the locale, and from 3.11 for subprocess output that does. Exported, so every
+# script run from here is covered, including the next one added. Python 3.9
+# and older skip the check and print one line saying so.
+export PYTHONWARNDEFAULTENCODING := 1
+export PYTHONWARNINGS := error::EncodingWarning
+
 REPO    := ../..
 BUILD   := out
 
