@@ -57,7 +57,7 @@ SR_RE = re.compile(r"\bSR(\d+)-(\d+)-(\d+)\b")
 
 def load_gate_matrix(binary):
     """{(srId, major, minor): [gate flags]} straight from the firmware."""
-    out = subprocess.run([binary, "--dump"], capture_output=True, text=True, check=True)
+    out = subprocess.run([binary, "--dump"], capture_output=True, encoding="utf-8", check=True)
     matrix = {}
     for line in out.stdout.splitlines():
         line = line.strip()

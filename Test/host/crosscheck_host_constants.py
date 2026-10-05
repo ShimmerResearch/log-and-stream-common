@@ -47,7 +47,7 @@ def firmware_opcodes():
     """{value: {names}} from #define NAME 0xNN - opcode-shaped only, so buffer
     sizes and bitmasks with a U suffix are excluded."""
     out = {}
-    for line in (REPO / "Comms" / "shimmer_bt_uart.h").read_text().splitlines():
+    for line in (REPO / "Comms" / "shimmer_bt_uart.h").read_text(encoding="utf-8").splitlines():
         m = re.match(r"#define\s+([A-Z][A-Z0-9_]*)\s+0x([0-9A-Fa-f]{1,2})\s*(?://.*)?$", line)
         if m:
             out.setdefault(int(m.group(2), 16), set()).add(m.group(1))
@@ -75,7 +75,7 @@ def documented_opcodes():
     out = {}
     in_table = False
     saw_header = False
-    for line in PROTOCOL_DOC.read_text().splitlines():
+    for line in PROTOCOL_DOC.read_text(encoding="utf-8").splitlines():
         if line.strip() == OPCODE_TABLE_HEADER:
             in_table, saw_header = True, True
             continue
@@ -112,7 +112,7 @@ def documented_opcodes():
 
 
 def firmware_enum(path, name):
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     m = re.search(r"enum\s+" + re.escape(name) + r"\s*\{(.*?)\}", text, re.S)
     if not m:
         raise SystemExit(f"FAIL: enum {name} not found in {path.name} - renamed?")
@@ -120,7 +120,7 @@ def firmware_enum(path, name):
 
 
 def python_class_constants(path, class_name):
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     m = re.search(r"^class\s+" + re.escape(class_name) + r"\b.*?:\n(.*?)(?=^\S)", text, re.S | re.M)
     if not m:
         raise SystemExit(f"FAIL: class {class_name} not found in {path.name}")
