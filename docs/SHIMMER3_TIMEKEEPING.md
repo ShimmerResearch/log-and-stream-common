@@ -18,10 +18,9 @@ has to be right for a recording to be placeable on a real timeline.
 >   (`PACKET_TIMESTAMP_LEN`); `SDCard/shimmer_sd_data_file.{h,c}`
 >   (`BIN_FILE_SPLIT_TIME_TICKS`, `ShimSdDataFile_writeSdHeaderToFile`);
 >   `SDCard/shimmer_sd_header.c` (`SDH_RTC_DIFF_*`). §7.1's
->   `RTC_get32`/`RTC_get64` description postdates `8f800952`. It was
->   re-checked against a `shimmer3r-firmware` `Core/Src/rtc.c` in which
->   `RTC_get64` reads `RTC->SSR`, `TR` and `DR` directly and `RTC_get32`
->   truncates it.
+>   `RTC_get32`/`RTC_get64` description is newer still. In it, `RTC_get64`
+>   reads `RTC->SSR`, `TR` and `DR` directly and `RTC_get32` truncates it.
+>   That is not yet in a release, so it is listed under *Still unverified*.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `8f800952` — `RTC_get64`,
 >   `RTC_getRwcTimeDiffPtr`, `RTC_isRwcTimeSet`. The older Shimmer3R
@@ -461,6 +460,13 @@ that has one, and is forced off elsewhere
   after `LogAndStream_Shimmer3R_v1.01.020` that has no release tag yet. Pin the
   **Verified against** block to the first release that carries it, and
   re-check §3 and §6 against that revision.
+
+- **The register-level Shimmer3R `RTC_get64` is not yet pinned to a release.**
+  The §7.1 statement that `RTC_get64` reads `RTC->SSR`, `TR` and `DR` with
+  interrupts masked, and that `RTC_get32` is `RTC_get64` truncated, was read
+  from a firmware change that has no release tag yet. It returns the same
+  ticks as the `HAL_RTC_GetTime`/`GetDate` path it replaces. Pin it to the
+  first release that carries it.
 
 - **Where the UTC convention is enforced.** The firmware treats the RWC as an
   opaque 64-bit tick count since the Unix epoch and never applies a timezone,
