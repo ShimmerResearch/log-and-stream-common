@@ -119,7 +119,10 @@ got it wrong — see §6.
 > Shimmer3R the calendar is written in whole seconds, and leaving the RTC's
 > init mode restarts it at the top of that second. `RTC_setDateTime` then
 > reads the clock back and advances it onto the requested fraction with an
-> `RTC_SHIFTR` synchronisation shift: `ADD1S = 0`, `SUBFS = 32768 − delta`. Firmware
+> `RTC_SHIFTR` synchronisation shift: `ADD1S = 0`, `SUBFS = 32768 − delta`,
+> for `0 < delta < 32768` ticks, so `SUBFS` stays within its 15 bits. When
+> `delta ≤ 0` no shift is made. That covers a requested fraction of zero, and
+> a target that falls within the few ticks the set itself took. Firmware
 > `v1.01.020` and earlier instead wrote the fraction to `RTC_SSR`, which is read-only
 > on the STM32U5, so **every set was truncated to the whole second** — up to
 > 1 s early, by a different amount on each device. Two Shimmer3R units set
