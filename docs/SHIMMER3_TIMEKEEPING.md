@@ -121,15 +121,40 @@ got it wrong — see §6.
 > **The whole set value is applied, sub-second fraction included.** On
 > Shimmer3R the calendar is written in whole seconds, and leaving the RTC's
 > init mode restarts it at the top of that second. `RTC_setDateTime` then
-> reads the clock back and moves it onto the requested fraction with an
-> `RTC_SHIFTR` synchronisation shift (RM0456, RTC synchronization): a delay of
-> `SUBFS` ticks, or an advance of `32768 − SUBFS` ticks with `ADD1S`. Firmware
+> reads the clock back and advances it onto the requested fraction with an
+> `RTC_SHIFTR` synchronisation shift: `ADD1S = 0`, `SUBFS = 32768 − delta`,
+> for `0 < delta < 32768` ticks, so `SUBFS` stays within its 15 bits. When
+> `delta ≤ 0` no shift is made. That covers a requested fraction of zero, and
+> a target that falls within the few ticks the set itself took. Firmware
 > `v1.01.020` and earlier instead wrote the fraction to `RTC_SSR`, which is read-only
 > on the STM32U5, so **every set was truncated to the whole second** — up to
 > 1 s early, by a different amount on each device. Two Shimmer3R units set
 > one after another by those builds can disagree by up to a second, and so can
 > the absolute timestamps they recorded. Shimmer3 never had this problem: its
 > stored offset carries the full 64-bit tick value.
+
+> **On this part a shift does not do what RM0456's formula says.** RM0456
+> gives `SUBFS` as a delay of `SUBFS` ticks, and `ADD1S` + `SUBFS` as an
+> advance of `32768 − SUBFS`. With `PREDIV_S = 0x7FFF`, as Shimmer3R
+> configures it, the synchronous prescaler is `SS[14:0]` only:
+>
+> - A shift adds `SUBFS` to `RTC_SSR`, which sets `SS[15]`.
+> - When `SS[14:0]` next wraps, the RTC counts a second: `RTC_TR` increments
+>   and `SS[15]` clears.
+> - Net, `SUBFS` alone **advances** the clock by `32768 − SUBFS` ticks.
+>   `ADD1S` adds a whole second on top.
+>
+> This was observed by sampling `RTC_TR` and `RTC_SSR` every 50 ms after a
+> shift. Two consequences:
+>
+> - Advance-only shifts are used. The clock restarts at the top of the
+>   target's second, so the fraction always has to be added, never removed.
+> - `RTC_getDateTime` computes ticks from `SS[14:0]`. Counting `SS[15]` reads
+>   the clock one second slow until the wrap.
+>
+> The first implementation of the sub-second set followed RM0456's formula
+> with `ADD1S` and left every set clock exactly one second fast. It never
+> reached a release.
 
 `ShimRtc_isTimeSet()` looks like a second way to ask, and is not: it is
 declared in `RTC/shimmer_rtc.h` and defined nowhere in this repository or
@@ -455,7 +480,8 @@ that has one, and is forced off elsewhere
 ## Still unverified / not found in code
 
 - **The newer Shimmer3R time-set behaviour is not yet pinned to a release.**
-  The sub-second `RTC_SHIFTR` shift, the 2000-01-01 reset date and the
+  The sub-second `RTC_SHIFTR` shift (advance-only, `SS[14:0]` reads), the
+  2000-01-01 reset date and the
   backup-register `RTC_isRwcTimeSet` (§3, §6) were read from a firmware change
   after `LogAndStream_Shimmer3R_v1.01.020` that has no release tag yet. Pin the
   **Verified against** block to the first release that carries it, and
