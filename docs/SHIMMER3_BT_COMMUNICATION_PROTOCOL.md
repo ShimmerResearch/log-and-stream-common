@@ -972,7 +972,7 @@ Shimmer3R from `LogAndStream_Shimmer3R_v1.00.024`** (LogAndStream 1.0.24,
 | 5 | `0x20` | `sdInserted` | A card is present in the slot |
 | 4 | `0x10` | `btStreaming` | Streaming over Bluetooth |
 | 3 | `0x08` | `sdLogging` | Logging to SD |
-| 2 | `0x04` | `RTC_isRwcTimeSet()` | The real-world clock has been set this power cycle |
+| 2 | `0x04` | `RTC_isRwcTimeSet()` | The real-world clock has been set since it last lost its time ([SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md) §3; meaningless after a backup-domain power loss on Shimmer3R `v1.01.020` and earlier, §6) |
 | 1 | `0x02` | `sensing` | Sensing (either or both of the two above) |
 | 0 | `0x01` | `docked` | Sitting in a dock |
 
