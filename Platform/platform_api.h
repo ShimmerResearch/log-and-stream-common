@@ -48,6 +48,13 @@ extern "C"
   PLATFORM_WEAK bool platform_isDockUartInitialised(void);
   PLATFORM_WEAK bool platform_isUsbUartInitialised(void);
   PLATFORM_WEAK void platform_sleepWhenNoTask(void);
+  /* LED phase lock (LEDs/shimmer_leds.c). The first returns the time since the
+   * LED blink timer last fired, in 32768 Hz ticks; the second moves its next
+   * firing later (positive) or earlier (negative) by that many ticks. The
+   * defaults report 0 and do nothing, which still aligns the blink frame to
+   * the clock but leaves the tick itself up to 100 ms off. */
+  PLATFORM_WEAK uint16_t platform_ledTickElapsedRtcTicks(void);
+  PLATFORM_WEAK void platform_ledTickShift(int16_t rtcTicks);
 
 #ifdef __cplusplus
 }

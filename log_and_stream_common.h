@@ -31,7 +31,9 @@ boot_stage_t LogAndStream_getBootStage(void);
 void LogAndStream_syncConfigAndCalibOnSd(void);
 uint8_t LogAndStream_isSdInfoSyncDelayed(void);
 void LogAndStream_setSdInfoSyncDelayed(uint8_t state);
-void LogAndStream_blinkTimerCommon(void);
+/* Returns non-zero when it queued a task that needs the MCU awake to run it -
+ * Shimmer3's blink ISR exits LPM3 on that. */
+uint8_t LogAndStream_blinkTimerCommon(void);
 uint8_t LogAndStream_isDockedOrUsbIn(void);
 void LogAndStream_dockedStateChange(void);
 void LogAndStream_infomemUpdate(void);

@@ -12,7 +12,9 @@ read before adding a subsystem.
 > - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
 >   `log_and_stream_common.c`, `log_and_stream_definitions.h`,
 >   `log_and_stream_externs.h`, `TaskList/shimmer_taskList.{h,c}`,
->   `Platform/platform_api.c`, `Sensing/shimmer_sensing.c`.
+>   `Platform/platform_api.c`, `Sensing/shimmer_sensing.c`. Task bit 24,
+>   `TASK_LED_PHASE_SYNC`, postdates `f3cf73e`. It was read from
+>   `TaskList/shimmer_taskList.{h,c}` with the LED phase lock in place.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
 
@@ -171,6 +173,7 @@ uint32_t taskList;   // one bit per task
 | 21 | `TASK_JUMP_TO_BOOT_LOADER` | S3R |
 | 22 | `TASK_WRITE_RADIO_DETAILS` | S3 |
 | 23 | `TASK_SD_FILE_TRANSFER` | S3R |
+| 24 | `TASK_LED_PHASE_SYNC` | both; queued once a second ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1) |
 
 > **Bit 5 means two different things.** `TASK_USB_PROCESS_CMD` on Shimmer3R,
 > `TASK_CFGCH` on Shimmer3. The bit numbers are not a stable cross-platform

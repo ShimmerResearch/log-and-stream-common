@@ -5,15 +5,20 @@ Multi-device time synchronisation for SD logging. One device acts as the
 exchange clock readings; each node records its own offset from the centre so
 that separately logged files can be aligned afterwards.
 
-The offset is **recorded, never applied**. No device adjusts its clock. Sync
-produces a per-node correction that host software applies when combining files.
+The offset is **recorded, never applied to any clock or timestamp**. No device
+adjusts its clock, and logged timestamps are left as read. Sync produces a
+per-node correction that host software applies when combining files. The
+firmware's only use of it is to phase its LEDs with the centre's (§7).
 
 > **Verified against** — the revisions these claims were read from. A pinned
 > commit is a citation, not a claim of currency.
 >
 > - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
 >   `SDSync/shimmer_sd_sync.{h,c}` in full, plus `log_and_stream_definitions.h`
->   (`MAX_NODES`, `MAX_CHARS`).
+>   (`MAX_NODES`, `MAX_CHARS`). The LED use of the offset in §7, and the
+>   `ledPhaseOffset` copy it reads, postdate `f3cf73e`. They were read from
+>   `ShimSdSync_ledPhaseOffsetPtrGet` in `SDSync/shimmer_sd_sync.c` and
+>   `ShimLeds_getLedTime` in `LEDs/shimmer_leds.c`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
 
@@ -326,6 +331,19 @@ below the limit, so a node in active conversation keeps its window open.
 Absolute time still comes from the real-world clock; sync only relates the
 devices to each other. See
 [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
+
+The firmware's one use of the offset is the LEDs. Once `rcFirstOffsetRxed` is
+set, a node converts the clock reading its blink phase is taken from into the
+centre's time, so the whole group flashes in step
+([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1). The clock itself
+is still left alone.
+
+> **The LEDs read a copy, not `myTimeDiff`.** `myTimeDiff` is a one-shot slot.
+> The SD writer puts it at the head of the next fresh buffer, then marks it
+> consumed by filling it with `0xFF` (`ShimSdSync_resetMyTimeDiff`), so between
+> sync rounds it holds no offset. `ledPhaseOffset` is written from it at the same
+> moment it is published and is never consumed;
+> `ShimSdSync_ledPhaseOffsetPtrGet()` returns it.
 
 ## 8. Diagnostics
 

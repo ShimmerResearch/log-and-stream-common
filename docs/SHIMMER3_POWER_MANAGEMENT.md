@@ -11,7 +11,9 @@ document is about consumption.
 >   `Platform/platform_api.{h,c}`, `TaskList/shimmer_taskList.c`,
 >   `log_and_stream_common.c`, `Configuration/shimmer_config.c`,
 >   `Battery/shimmer_battery.{h,c}`, `Sensing/shimmer_sensing.c`,
->   `Comms/shimmer_sd_file_transfer.c`.
+>   `Comms/shimmer_sd_file_transfer.c`. The once-a-second LED phase-sync
+>   wake in §2 postdates `ff242a6`. It was read from
+>   `LogAndStream_blinkTimerCommon` and `TASK_LED_PHASE_SYNC`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `8f800952`.
 
@@ -72,7 +74,7 @@ Anything that keeps queuing tasks:
 |---|---|
 | Sample timer | The configured sampling rate |
 | Battery read | 60 s undocked, 2 s docked |
-| LED blink timer | Every 0.1 s |
+| LED blink timer | Every 0.1 s, in the interrupt; the main loop once a second for `TASK_LED_PHASE_SYNC` |
 | Bluetooth activity | Per packet |
 | SD sync | Once per second while running |
 | Dock/USB detection | Polled |

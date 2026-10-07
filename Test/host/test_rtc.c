@@ -92,6 +92,11 @@ static void test_known_instants(void)
   setRtc(&t, 99, 12, 31, 23, 59, 59, 4);
   expectU("2099-12-31 23:59:59", ShimRtc_rtc2Unix(&t), UNIX_2099_12_31);
 
+  /* What a Shimmer3R calendar reads after losing power: rtc.c initialises it
+   * to year 0x70, which this struct's 2000-based year makes 2070. */
+  setRtc(&t, 70, 1, 1, 0, 0, 0, 3);
+  expectU("2070-01-01 00:00:00", ShimRtc_rtc2Unix(&t), 3155760000U);
+
   /* The hours term specifically. On a 16-bit-int target the product
    * hours * RTC_SECONDS_PER_HOUR overflows a plain int from 10:00 onwards, so
    * these three are the cases that would diverge if the widening cast in

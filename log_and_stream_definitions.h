@@ -16,6 +16,9 @@
 #define TEST_TASK_MONITOR         0
 
 #define IS_SUPPORTED_SINGLE_TOUCH 0
+/* 1: the LED blink phase follows the real-world clock (on an SD-sync node, the
+ * centre's clock), so sensors flash in step. 0: free-running blink timer. */
+#define LED_PHASE_LOCK_TO_RWC     1
 #define USE_FATFS                 1
 #define USE_SD                    1
 #define USE_BT                    1

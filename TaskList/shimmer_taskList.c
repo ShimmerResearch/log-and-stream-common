@@ -194,6 +194,12 @@ void ShimTask_NORM_manage(void)
         break;
 #endif
 
+#if LED_PHASE_LOCK_TO_RWC
+      case TASK_LED_PHASE_SYNC:
+        ShimLeds_phaseSync();
+        break;
+#endif
+
       default:
         break;
     }
