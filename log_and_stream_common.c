@@ -112,8 +112,9 @@ void LogAndStream_setSdInfoSyncDelayed(uint8_t state)
   sdInfoSyncDelayed = state;
 }
 
-void LogAndStream_blinkTimerCommon(void)
+uint8_t LogAndStream_blinkTimerCommon(void)
 {
+  uint8_t wakeMcu = 0;
 #if TEST_TASK_MONITOR
   static uint8_t stuckCount = 0;
 #endif //TEST_TASK_MONITOR
@@ -158,7 +159,7 @@ void LogAndStream_blinkTimerCommon(void)
         }
 
         /* do not run normal blink processing while stuck */
-        return;
+        return wakeMcu;
       }
       else
       {
@@ -167,6 +168,11 @@ void LogAndStream_blinkTimerCommon(void)
       }
     }
 #endif //TEST_TASK_MONITOR
+
+    if (ShimLeds_isPhaseSyncDue())
+    {
+      wakeMcu = ShimTask_set(TASK_LED_PHASE_SYNC);
+    }
 
     if (ShimLeds_isBlinkTimerCnt1s() && ShimSens_checkAutostopLoggingCondition())
     {
@@ -179,6 +185,7 @@ void LogAndStream_blinkTimerCommon(void)
       ShimLeds_blink();
     }
   }
+  return wakeMcu;
 }
 
 uint8_t LogAndStream_isDockedOrUsbIn(void)

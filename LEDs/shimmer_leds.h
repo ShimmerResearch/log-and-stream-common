@@ -26,6 +26,8 @@
 
 void ShimLeds_varsInit(void);
 void ShimLeds_incrementCounters(void);
+uint8_t ShimLeds_isPhaseSyncDue(void);
+void ShimLeds_phaseSync(void);
 void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent);
 void ShimLeds_blink(void);
 uint8_t ShimLeds_isBlinkTimerCnt200ms(void);

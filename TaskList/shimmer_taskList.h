@@ -124,6 +124,10 @@ typedef enum TaskId_Tag
    * logging and SD-ownership handovers always pre-empt a file transfer */
   TASK_SD_FILE_TRANSFER = (0x00000001UL << 23U),
 #endif
+  /* Re-phases the LED blink against the real-world clock once a second. Last,
+   * because it measures how long ago the blink timer fired and so does not
+   * mind waiting behind any other task. */
+  TASK_LED_PHASE_SYNC = (0x00000001UL << 24U),
 } TaskId_t;
 //return the task id of the current task
 

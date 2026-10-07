@@ -41,26 +41,26 @@ uint64_t ShimRtc_getRwcConfigTime(void)
 
 uint32_t ShimRtc_rtc2Unix(SHIM_RTC_t *data)
 {
-  uint32_t days = 0, seconds = 0;
-  uint16_t i;
-  uint16_t year = (uint16_t) (data->year + 2000);
+  uint32_t days, seconds;
+  uint32_t year = (uint32_t) data->year + 2000U;
+  uint32_t month = data->month;
   /* Year is below offset year */
   if (year < RTC_OFFSET_YEAR)
   {
     return 0;
   }
-  /* Days in back years */
-  for (i = RTC_OFFSET_YEAR; i < year; i++)
+  /* Days since 1970-01-01 in constant time, rather than a loop over every year
+   * since 1970: Shimmer3R reads the clock this way for every sample timestamp.
+   * Counting the year from March puts the leap day last, so the days before
+   * each month follow one linear formula and the leap rule applies to the
+   * whole years only. 719468 is the day number of 1970-01-01 on that count. */
+  if (month <= 2U)
   {
-    days += RTC_DAYS_IN_YEAR(i);
+    year--;
+    month += 12U;
   }
-  /* Days in current year */
-  for (i = 1; i < data->month; i++)
-  {
-    days += RTC_Months[RTC_LEAP_YEAR(year)][i - 1];
-  }
-  /* Day starts with 1 */
-  days += data->date - 1;
+  days = 365U * year + year / 4U - year / 100U + year / 400U
+      + (153U * (month - 3U) + 2U) / 5U + (uint32_t) data->date - 1U - 719468U;
   seconds = days * RTC_SECONDS_PER_DAY;
   /* The cast is load-bearing on Shimmer3. data->hours is a uint8_t and
    * RTC_SECONDS_PER_HOUR is 3600, which fits an int - so on MSP430, where int

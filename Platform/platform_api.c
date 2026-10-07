@@ -83,3 +83,14 @@ PLATFORM_WEAK void platform_sleepWhenNoTask(void)
 {
   //default no-op
 }
+
+PLATFORM_WEAK uint16_t platform_ledTickElapsedRtcTicks(void)
+{
+  return 0;
+}
+
+PLATFORM_WEAK void platform_ledTickShift(int16_t rtcTicks)
+{
+  //default no-op
+  (void) rtcTicks;
+}

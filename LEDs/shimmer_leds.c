@@ -7,6 +7,7 @@
 
 #include "shimmer_leds.h"
 #include "log_and_stream_includes.h"
+#include "shimmer_leds_phase.h"
 
 #if defined(SHIMMER3)
 #include "../5xx_HAL/hal_RTC.h"
@@ -15,8 +16,15 @@
 #else
 #endif
 
-uint16_t blinkCnt20, blinkCnt50;
-uint8_t lastLedToggleUpr, lastLedToggleCnt, lastLedToggleLwr;
+/* Tenth of the 60 s LED frame, 0-599, advanced by the 100 ms blink timer.
+ * Every pattern below is a function of it. With LED_PHASE_LOCK_TO_RWC it is
+ * re-phased against the real-world clock once a second, so sensors whose
+ * clocks agree show the same frame; without, it simply free-runs. */
+static volatile uint16_t blinkCntFrame;
+#define blinkCnt20 (blinkCntFrame % 20U) /* 2 s cycle */
+#define blinkCnt50 (blinkCntFrame % 50U) /* 5 s cycle */
+
+uint8_t lastLedToggleLwr;
 volatile uint8_t rwcErrorFlash;
 
 static int bootLedIndex = 0;
@@ -49,9 +57,7 @@ void ShimLeds_blinkSetLwrEnteringBslMode(void);
 
 void ShimLeds_varsInit(void)
 {
-  blinkCnt20 = blinkCnt50 = 0;
-  lastLedToggleUpr = 0;
-  lastLedToggleCnt = 0;
+  blinkCntFrame = 0;
   lastLedToggleLwr = 0;
   rwcErrorFlash = 0;
   ShimLeds_setRtcErrorFlash(0);
@@ -63,15 +69,79 @@ void ShimLeds_varsInit(void)
 void ShimLeds_incrementCounters(void)
 {
   //Note: each count is 0.1s
-  if (blinkCnt50++ == 49)
+  uint16_t next = (uint16_t) (blinkCntFrame + 1U);
+  blinkCntFrame = (next >= LED_PHASE_TENTHS_PER_FRAME) ? 0U : next;
+}
+
+uint8_t ShimLeds_isPhaseSyncDue(void)
+{
+#if LED_PHASE_LOCK_TO_RWC
+  return (uint8_t) (blinkCntFrame % 10U == 0U);
+#else
+  return 0;
+#endif
+}
+
+#if LED_PHASE_LOCK_TO_RWC
+/* The clock the LEDs follow. An SD-sync node follows its centre: sync has
+ * measured the node's offset from the centre's clock, and it is applied here
+ * rather than to the node's clock, because logged timestamps and the recorded
+ * offset both depend on that clock being left alone. */
+static uint64_t ShimLeds_getLedTime(void)
+{
+  uint64_t ticks = RTC_getRwcTime();
+
+  if (shimmerStatus.sdSyncEnabled && ShimSdSync_rcFirstOffsetRxedGet()
+      && !(ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER))
   {
-    blinkCnt50 = 0;
+    ticks = ShimLedsPhase_toCentreTime(ticks, ShimSdSync_myTimeDiffPtrGet());
+  }
+  return ticks;
+}
+#endif
+
+/* Runs as a task once a second. Works out which tenth of the frame the last
+ * blink tick fell in by reading the clock now and subtracting how long ago the
+ * tick fired, so it does not matter how long the task waited to run. Then
+ * corrects the counter if it disagrees (the clock was set, or a sync offset
+ * arrived) and nudges the blink timer so its ticks land mid-tenth. */
+void ShimLeds_phaseSync(void)
+{
+#if LED_PHASE_LOCK_TO_RWC
+  uint16_t cntBefore, elapsedBefore, elapsedAfter;
+  uint64_t now, tickTime;
+  uint16_t wanted;
+  int16_t late;
+
+  cntBefore = blinkCntFrame;
+  elapsedBefore = platform_ledTickElapsedRtcTicks();
+  now = ShimLeds_getLedTime();
+  elapsedAfter = platform_ledTickElapsedRtcTicks();
+
+  /* A blink tick between the two timer reads changes which tick is being
+   * measured. Leave it to next second rather than correct against the wrong
+   * one. */
+  if (blinkCntFrame != cntBefore || elapsedAfter < elapsedBefore)
+  {
+    return;
   }
 
-  if (blinkCnt20++ == 19)
+  tickTime = now - (uint64_t) (((uint32_t) elapsedBefore + elapsedAfter) / 2U);
+  wanted = ShimLedsPhase_frameTenth(tickTime);
+  late = ShimLedsPhase_ticksPastMidTenth(tickTime);
+
+  if (wanted != cntBefore)
   {
-    blinkCnt20 = 0;
+    /* A blink tick landing between the check above and this write would be
+     * overwritten and lose one tenth. Next second's sync puts it back. */
+    blinkCntFrame = wanted;
   }
+
+  if (late > LED_PHASE_DEADBAND_TICKS || late < -LED_PHASE_DEADBAND_TICKS)
+  {
+    platform_ledTickShift((int16_t) -late);
+  }
+#endif
 }
 
 void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
@@ -184,9 +254,13 @@ void ShimLeds_blinkSetUprRtcNotSet(void)
 
 void ShimLeds_blinkSetUprConfiguring(void)
 {
-  if (ShimLeds_isBlinkTimerCnt200ms())
+  if (ShimLedsPhase_isOnAlternate200ms(blinkCntFrame))
   {
-    Board_ledToggle(LED_UPR_GREEN);
+    Board_ledOn(LED_UPR_GREEN);
+  }
+  else
+  {
+    Board_ledOff(LED_UPR_GREEN);
   }
 }
 
@@ -244,67 +318,68 @@ void ShimLeds_blinkSetUpLogAndStreamMode(void)
   }
 }
 
+/* The patterns below were toggles, whose phase depended on when the state was
+ * entered. Each is now a level read from the frame counter, so two sensors in
+ * the same state show the same thing at the same time. */
 void ShimLeds_blinkSetUprStreamingOnly(void)
 {
-  if (ShimLeds_isBlinkTimerCnt1s())
+  //1 s on, 1 s off
+  if (ShimLedsPhase_isOnAlternateSecond(blinkCntFrame))
   {
-    Board_ledToggle(LED_UPR_BLUE);
+    Board_ledOn(LED_UPR_BLUE);
+  }
+  else
+  {
+    Board_ledOff(LED_UPR_BLUE);
   }
   Board_ledOff(LED_UPR_GREEN); //nothing to show
 }
 
 void ShimLeds_blinkSetUprConnectedAndLogging(void)
 {
-  if (ShimLeds_isBlinkTimerCnt1s())
+  //Blue for 2 s, green for 1 s
+  if (ShimLedsPhase_isGreenConnectedAndLogging(blinkCntFrame))
   {
-    lastLedToggleCnt++;
-    if (lastLedToggleCnt >= 3)
-    {
-      lastLedToggleCnt = 0;
-    }
-
-    if (lastLedToggleCnt == 2)
-    {
-      Board_ledOn(LED_UPR_GREEN);
-      Board_ledOff(LED_UPR_BLUE);
-    }
-    else
-    {
-      Board_ledOff(LED_UPR_GREEN);
-      Board_ledOn(LED_UPR_BLUE);
-    }
+    Board_ledOn(LED_UPR_GREEN);
+    Board_ledOff(LED_UPR_BLUE);
+  }
+  else
+  {
+    Board_ledOff(LED_UPR_GREEN);
+    Board_ledOn(LED_UPR_BLUE);
   }
 }
 
 void ShimLeds_blinkSetUprLoggingOnly(void)
 {
-  if (ShimLeds_isBlinkTimerCnt1s())
+  //1 s on, 1 s off
+  if (ShimLedsPhase_isOnAlternateSecond(blinkCntFrame))
   {
-    Board_ledToggle(LED_UPR_GREEN);
+    Board_ledOn(LED_UPR_GREEN);
+  }
+  else
+  {
+    Board_ledOff(LED_UPR_GREEN);
   }
   Board_ledOff(LED_UPR_BLUE); //nothing to show
 }
 
 void ShimLeds_blinkSetUprLoggingAndStreaming(void)
 {
-  if (ShimLeds_isBlinkTimerCnt1s())
+  //Green, off, blue, off - 1 s each
+  switch (ShimLedsPhase_loggingAndStreamingColour(blinkCntFrame))
   {
-    if (Board_isLedOnUprBlue() || Board_isLedOnUprGreen())
-    {
+    case LED_PHASE_COLOUR_GREEN:
+      Board_ledOff(LED_UPR_BLUE);
+      Board_ledOn(LED_UPR_GREEN);
+      break;
+    case LED_PHASE_COLOUR_BLUE:
+      Board_ledOff(LED_UPR_GREEN);
+      Board_ledOn(LED_UPR_BLUE);
+      break;
+    default:
       Board_ledOff(LED_UPR_BLUE + LED_UPR_GREEN);
-    }
-    else
-    {
-      if (lastLedToggleUpr)
-      {
-        Board_ledOn(LED_UPR_BLUE);
-      }
-      else
-      {
-        Board_ledOn(LED_UPR_GREEN);
-      }
-      lastLedToggleUpr ^= 1;
-    }
+      break;
   }
 }
 
