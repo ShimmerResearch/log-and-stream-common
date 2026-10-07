@@ -440,7 +440,9 @@ that has one, and is forced off elsewhere
 5. **Branch on hardware generation** before interpreting `SDH_RTC_DIFF_*`.
 6. **Check `RTC_isRwcTimeSet` before trusting a recording's absolute time.** A
    device that logged with an unset clock produces files whose timestamps start
-   near the epoch.
+   near the Unix epoch on Shimmer3, but near **2000-01-01** on Shimmer3R (2070-01-01
+   before DEV-1161, §6) — its calendar cannot express a year before 2000 (§3). Do not detect an unset
+   clock by comparing against 1970.
 7. **Do not assume file boundaries mean anything in wall-clock terms.**
 
 ## Still unverified / not found in code
