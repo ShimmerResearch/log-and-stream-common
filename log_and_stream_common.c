@@ -178,6 +178,9 @@ uint8_t LogAndStream_blinkTimerCommon(void)
     {
       ShimTask_setStopLogging();
       ShimTask_setStopSensing();
+      /* Both queue TASK_STOPSENSING but report nothing, so wake explicitly
+       * rather than leave the stop until the next unrelated wake-up */
+      wakeMcu = 1;
     }
 
     if (shimmerStatus.timerBlinkEnabled)
