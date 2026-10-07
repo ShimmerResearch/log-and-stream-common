@@ -55,6 +55,12 @@ uint8_t myTimeDiffLongFlag;
 uint8_t myTimeDiffLongFlagMin;
 uint8_t syncResp[SYNC_PACKET_MAX_SIZE], btSdSyncIsRunning;
 uint8_t myTimeDiff[SYNC_PACKET_PAYLOAD_SIZE];
+/* A copy of the last published offset for the LED phase lock. myTimeDiff is
+ * a one-shot slot: the SD writer puts it at the head of the next fresh buffer
+ * and then marks it consumed with 0xFF, so the LEDs cannot read it there. This
+ * copy is written at the same moment and never consumed. All zeros, the
+ * initial value, is a zero offset. */
+static uint8_t ledPhaseOffset[SYNC_PACKET_PAYLOAD_SIZE];
 uint8_t iAmSyncCenter;
 
 void (*btStartCb)(void);
@@ -104,6 +110,11 @@ void ShimSdSync_resetMyTimeDiffLongMin(void)
 uint8_t *ShimSdSync_myTimeDiffPtrGet(void)
 {
   return &myTimeDiff[0];
+}
+
+uint8_t *ShimSdSync_ledPhaseOffsetPtrGet(void)
+{
+  return &ledPhaseOffset[0];
 }
 
 void ShimSdSync_syncRespSet(uint8_t *args, uint8_t count)
@@ -540,6 +551,7 @@ void ShimSdSync_nodeR10(void)
         ShimSdSync_rcFindSmallest();
         myTimeDiff[0] = myTimeDiffLongFlagMin;
         memcpy(myTimeDiff + 1, (uint8_t *) &myTimeDiffLongMin, 8);
+        memcpy(ledPhaseOffset, myTimeDiff, sizeof(ledPhaseOffset));
       }
       ShimSdSync_resetMyTimeDiffLongMin();
       ShimSdSync_resetSyncRcNodeR10Cnt();

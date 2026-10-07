@@ -94,7 +94,9 @@ static uint64_t ShimLeds_getLedTime(void)
   if (shimmerStatus.sdSyncEnabled && ShimSdSync_rcFirstOffsetRxedGet()
       && !(ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0) & SDH_IAMMASTER))
   {
-    ticks = ShimLedsPhase_toCentreTime(ticks, ShimSdSync_myTimeDiffPtrGet());
+    /* Not ShimSdSync_myTimeDiffPtrGet(): that slot is consumed, and set to
+     * 0xFF, by the first SD buffer written after each sync */
+    ticks = ShimLedsPhase_toCentreTime(ticks, ShimSdSync_ledPhaseOffsetPtrGet());
   }
   return ticks;
 }

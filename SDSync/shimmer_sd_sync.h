@@ -66,6 +66,7 @@ void ShimSdSync_resetMyTimeDiff(void);
 void ShimSdSync_resetMyTimeDiffArrays(void);
 void ShimSdSync_resetMyTimeDiffLongMin(void);
 uint8_t *ShimSdSync_myTimeDiffPtrGet(void);
+uint8_t *ShimSdSync_ledPhaseOffsetPtrGet(void);
 void ShimSdSync_syncRespSet(uint8_t *args, uint8_t count);
 uint8_t ShimSdSync_isBtSdSyncRunning(void);
 uint8_t ShimSdSync_syncNodeNumGet(void);

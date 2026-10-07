@@ -5,15 +5,19 @@ Multi-device time synchronisation for SD logging. One device acts as the
 exchange clock readings; each node records its own offset from the centre so
 that separately logged files can be aligned afterwards.
 
-The offset is **recorded, never applied**. No device adjusts its clock. Sync
-produces a per-node correction that host software applies when combining files.
+The offset is **recorded, never applied to any clock or timestamp**. No device
+adjusts its clock, and logged timestamps are left as read. Sync produces a
+per-node correction that host software applies when combining files. The
+firmware's only use of it is to phase its LEDs with the centre's (§7).
 
 > **Verified against** — the revisions these claims were read from. A pinned
 > commit is a citation, not a claim of currency.
 >
 > - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
 >   `SDSync/shimmer_sd_sync.{h,c}` in full, plus `log_and_stream_definitions.h`
->   (`MAX_NODES`, `MAX_CHARS`).
+>   (`MAX_NODES`, `MAX_CHARS`). The LED use of the offset in §7, and the
+>   `ledPhaseOffset` copy it reads, are as added by log-and-stream-common
+>   PR #148 (`SDSync/shimmer_sd_sync.c`, `LEDs/shimmer_leds.c`, at its head).
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
 
@@ -332,6 +336,13 @@ set, a node converts the clock reading its blink phase is taken from into the
 centre's time, so the whole group flashes in step
 ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1). The clock itself
 is still left alone.
+
+> **The LEDs read a copy, not `myTimeDiff`.** `myTimeDiff` is a one-shot slot.
+> The SD writer puts it at the head of the next fresh buffer, then marks it
+> consumed by filling it with `0xFF` (`ShimSdSync_resetMyTimeDiff`), so between
+> sync rounds it holds no offset. `ledPhaseOffset` is written from it at the same
+> moment it is published and is never consumed;
+> `ShimSdSync_ledPhaseOffsetPtrGet()` returns it.
 
 ## 8. Diagnostics
 
