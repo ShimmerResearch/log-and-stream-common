@@ -298,14 +298,15 @@ The upper LED then flashes cyan (Shimmer3R) or green-plus-blue (Shimmer3) at
 > it starts producing files with wrong timestamps, and then stops warning.
 
 > **Shimmer3R firmware `v1.01.020` and earlier could never show this warning
-> after a power loss.** Its `RTC_isRwcTimeSet` was `RTC_get64() > 1735689600000`,
-> commented as *"the timestamp for 2025-01-01T00:00:00Z"* — a millisecond
-> constant compared against **32768 Hz ticks**, so the threshold was
-> really about 1971-09. And when the backup domain lost power `MX_RTC_Init`
+> after a backup-domain power loss.** Its `RTC_isRwcTimeSet` was
+> `RTC_get64() > 1735689600000`, commented as *"the timestamp for
+> 2025-01-01T00:00:00Z"* — a millisecond constant compared against
+> **32768 Hz ticks**, so the threshold was really about 1971-09. And when the backup domain lost power `MX_RTC_Init`
 > restarted the calendar at `Year = 0x70`, which `ShimRtc_rtc2Unix` reads as
 > **2070**-01-01. A device that had never been set therefore reported "set":
 > status bit 2 was 1 and the cyan flash never appeared. Hosts reading that bit
-> from those builds should treat it as meaningless after a battery removal.
+> from those builds should treat it as meaningless after a backup-domain
+> power loss.
 >
 > In later firmware the reset date is 2000-01-01 and the test is the backup-register
 > marker (§3), which is the same question Shimmer3 answers with
