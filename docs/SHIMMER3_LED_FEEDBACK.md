@@ -13,8 +13,8 @@ two generations' very different LED hardware.
 >   (`ShimBatt_determineChargingLedState`,
 >   `ShimBatt_determineUndockedLedState` — the battery colours the lower LED
 >   displays), `Test/shimmer_test_leds_states.c` (diagnostic sequences).
->   §2's frame counter, §2.1 and the four level patterns in §3.3 are as
->   changed by log-and-stream-common PR #148, read at its head:
+>   §2's frame counter, §2.1 and the four level patterns in §3.3 postdate
+>   `f3cf73e`. They were read from the phase-lock change:
 >   `LEDs/shimmer_leds_phase.{h,c}`, `ShimLeds_phaseSync` and
 >   `ShimLeds_getLedTime` in `LEDs/shimmer_leds.c`, `TaskList/shimmer_taskList.h`
 >   (`TASK_LED_PHASE_SYNC`), `SDSync/shimmer_sd_sync.c`

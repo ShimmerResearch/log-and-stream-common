@@ -12,8 +12,8 @@ document is about consumption.
 >   `log_and_stream_common.c`, `Configuration/shimmer_config.c`,
 >   `Battery/shimmer_battery.{h,c}`, `Sensing/shimmer_sensing.c`,
 >   `Comms/shimmer_sd_file_transfer.c`. The once-a-second LED phase-sync
->   wake in §2 is as added by log-and-stream-common PR #148
->   (`LogAndStream_blinkTimerCommon`, `TASK_LED_PHASE_SYNC`, at its head).
+>   wake in §2 postdates `ff242a6`. It was read from
+>   `LogAndStream_blinkTimerCommon` and `TASK_LED_PHASE_SYNC`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `8f800952`.
 

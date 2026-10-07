@@ -16,8 +16,9 @@ firmware's only use of it is to phase its LEDs with the centre's (§7).
 > - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
 >   `SDSync/shimmer_sd_sync.{h,c}` in full, plus `log_and_stream_definitions.h`
 >   (`MAX_NODES`, `MAX_CHARS`). The LED use of the offset in §7, and the
->   `ledPhaseOffset` copy it reads, are as added by log-and-stream-common
->   PR #148 (`SDSync/shimmer_sd_sync.c`, `LEDs/shimmer_leds.c`, at its head).
+>   `ledPhaseOffset` copy it reads, postdate `f3cf73e`. They were read from
+>   `ShimSdSync_ledPhaseOffsetPtrGet` in `SDSync/shimmer_sd_sync.c` and
+>   `ShimLeds_getLedTime` in `LEDs/shimmer_leds.c`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
 

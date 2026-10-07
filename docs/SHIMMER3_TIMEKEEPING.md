@@ -18,9 +18,10 @@ has to be right for a recording to be placeable on a real timeline.
 >   (`PACKET_TIMESTAMP_LEN`); `SDCard/shimmer_sd_data_file.{h,c}`
 >   (`BIN_FILE_SPLIT_TIME_TICKS`, `ShimSdDataFile_writeSdHeaderToFile`);
 >   `SDCard/shimmer_sd_header.c` (`SDH_RTC_DIFF_*`). §7.1's
->   `RTC_get32`/`RTC_get64` description is re-checked against
->   `shimmer3r-firmware` PR #276, where `RTC_get64` reads the calendar
->   registers directly and `RTC_get32` truncates it.
+>   `RTC_get32`/`RTC_get64` description postdates `8f800952`. It was
+>   re-checked against a `shimmer3r-firmware` `Core/Src/rtc.c` in which
+>   `RTC_get64` reads `RTC->SSR`, `TR` and `DR` directly and `RTC_get32`
+>   truncates it.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `8f800952` — `RTC_get64`,
 >   `RTC_getRwcTimeDiffPtr`, `RTC_isRwcTimeSet`.

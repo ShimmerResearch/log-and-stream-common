@@ -13,8 +13,8 @@ read before adding a subsystem.
 >   `log_and_stream_common.c`, `log_and_stream_definitions.h`,
 >   `log_and_stream_externs.h`, `TaskList/shimmer_taskList.{h,c}`,
 >   `Platform/platform_api.c`, `Sensing/shimmer_sensing.c`. Task bit 24,
->   `TASK_LED_PHASE_SYNC`, is as added by log-and-stream-common PR #148
->   (`TaskList/shimmer_taskList.{h,c}` at its head).
+>   `TASK_LED_PHASE_SYNC`, postdates `f3cf73e`. It was read from
+>   `TaskList/shimmer_taskList.{h,c}` with the LED phase lock in place.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
 
