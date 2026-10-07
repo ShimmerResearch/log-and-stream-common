@@ -24,7 +24,12 @@ has to be right for a recording to be placeable on a real timeline.
 >   truncates it.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `8f800952` — `RTC_get64`,
->   `RTC_getRwcTimeDiffPtr`, `RTC_isRwcTimeSet`.
+>   `RTC_getRwcTimeDiffPtr`, `RTC_isRwcTimeSet`. The older Shimmer3R
+>   time-set and `RTC_isRwcTimeSet` behaviour described in §3 and §6 is as of
+>   `LogAndStream_Shimmer3R_v1.01.020` (`5867df58`). The newer behaviour there
+>   (`RTC_setDateTime`, `RTC_shiftToTicks`, `MX_RTC_Init`) is not yet in a
+>   release and is listed under *Still unverified* until it can be pinned.
+>   Line references into `rtc.c` elsewhere remain at `8f800952`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =
 > Shimmer3R (STM32U5). LogAndStream only.
@@ -101,16 +106,40 @@ dock (`UART_PROP_RWC_CFG_TIME`). The value is 64-bit ticks since the Unix
 epoch, **UTC**.
 
 The platform's `RTC_isRwcTimeSet()` reports whether the clock has been set
-this power cycle. It is declared in `log_and_stream_externs.h` and implemented
-by each platform, so it is the one to call.
+since it last lost its time. It is declared in `log_and_stream_externs.h` and
+implemented by each platform, so it is the one to call. What "lost its time"
+means differs by generation:
+
+| | Shimmer3 | Shimmer3R |
+|---|---|---|
+| Test | `rwcTimeDiff64 != 0` | backup register `RTC_STATUS_REG` (DR19) holds `RTC_STATUS_TIME_OK`, written by `RTC_setDateTime` |
+| Cleared by | any MCU reset — the offset lives in RAM | a backup-domain reset only — the RTC and its backup registers survive an MCU reset |
+| Calendar after the clear | counter + zero offset, so near the Unix epoch | `MX_RTC_Init` restarts it at **2000-01-01 00:00:00** |
+
+Shimmer3R `v1.01.020` and earlier answered from a date threshold instead, and
+got it wrong — see §6.
+
+> **The whole set value is applied, sub-second fraction included.** On
+> Shimmer3R the calendar is written in whole seconds, and leaving the RTC's
+> init mode restarts it at the top of that second. `RTC_setDateTime` then
+> reads the clock back and moves it onto the requested fraction with an
+> `RTC_SHIFTR` synchronisation shift (RM0456, RTC synchronization): a delay of
+> `SUBFS` ticks, or an advance of `32768 − SUBFS` ticks with `ADD1S`. Firmware
+> `v1.01.020` and earlier instead wrote the fraction to `RTC_SSR`, which is read-only
+> on the STM32U5, so **every set was truncated to the whole second** — up to
+> 1 s early, by a different amount on each device. Two Shimmer3R units set
+> one after another by those builds can disagree by up to a second, and so can
+> the absolute timestamps they recorded. Shimmer3 never had this problem: its
+> stored offset carries the full 64-bit tick value.
 
 `ShimRtc_isTimeSet()` looks like a second way to ask, and is not: it is
 declared in `RTC/shimmer_rtc.h` and defined nowhere in this repository or
 either platform, so a caller would fail to link. Ignore it.
 
-> **The clock does not survive a power cycle on either generation** unless the
-> hardware has a backup supply. A host should set it on every connection rather
-> than assuming it is still valid.
+> **Do not assume the clock is still valid.** Shimmer3 loses it at every
+> reset; Shimmer3R keeps it across a reset but loses it whenever its backup
+> domain loses power. A host should set it on every connection rather than
+> assuming it survived.
 
 ### 3.1 Configuration time is separate
 
@@ -272,19 +301,23 @@ The upper LED then flashes cyan (Shimmer3R) or green-plus-blue (Shimmer3) at
 > starts logging with an unset clock shows the warning right up to the moment
 > it starts producing files with wrong timestamps, and then stops warning.
 
-> **`RTC_isRwcTimeSet` compares ticks against a millisecond constant on
-> Shimmer3R.** The body is
+> **Shimmer3R firmware `v1.01.020` and earlier could never show this warning
+> after a backup-domain power loss.** Its `RTC_isRwcTimeSet` was
 > `RTC_get64() > 1735689600000`, commented as *"the timestamp for
-> 2025-01-01T00:00:00Z"* (`shimmer3r-firmware` `Core/Src/rtc.c:707-710`) —
-> but `RTC_get64` returns **32768 Hz ticks**, and 2025-01-01 in ticks is
-> 56,875,076,812,800, some 32768× larger. As written the threshold is crossed
-> once the counter passes about 613 days, so it still distinguishes a
-> never-set clock from a set one — a device that has just booted reads near
-> zero — but it does not do what its comment says, and it would accept a clock
-> set to any date after 1971. Shimmer3 has no such problem: there the test is
+> 2025-01-01T00:00:00Z"* — a millisecond constant compared against
+> **32768 Hz ticks**, so the threshold was really about 1971-09. And when the backup domain lost power `MX_RTC_Init`
+> restarted the calendar at `Year = 0x70`, which `ShimRtc_rtc2Unix` reads as
+> **2070**-01-01. A device that had never been set therefore reported "set":
+> status bit 2 was 1 and the cyan flash never appeared. Hosts reading that bit
+> from those builds should treat it as meaningless after a backup-domain
+> power loss.
+>
+> In later firmware the reset date is 2000-01-01 and the test is the backup-register
+> marker (§3), which is the same question Shimmer3 answers with
 > `rwcTimeDiff64 != 0`
-> (`shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_RTC.c:98-101`). Treat the
-> flag as "probably set", not as a validity check on the value.
+> (`shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_RTC.c:98-101`): has a host
+> set this clock since it lost its time. It is not a check that the value set
+> was plausible — no generation checks that.
 
 ## 7. Placing a recording on an absolute timeline
 
@@ -407,16 +440,27 @@ that has one, and is forced off elsewhere
 
 1. **Write UTC.** Convert from local time before setting the clock.
 2. **Read as UTC.** Convert to local time for display only.
-3. **Set the clock on every connection.** It does not survive a power cycle.
+3. **Set the clock on every connection.** It does not survive a reset on
+   Shimmer3, nor a backup-domain power loss on Shimmer3R (§3).
 4. **Set the same configuration time on every device in a trial**, or their SD
    directories will not match.
 5. **Branch on hardware generation** before interpreting `SDH_RTC_DIFF_*`.
 6. **Check `RTC_isRwcTimeSet` before trusting a recording's absolute time.** A
    device that logged with an unset clock produces files whose timestamps start
-   near the epoch.
+   near the Unix epoch on Shimmer3, but near **2000-01-01** on Shimmer3R
+   (2070-01-01 on `v1.01.020` and earlier, §6) — its calendar cannot express a
+   year before 2000 (§3). Do not detect an unset clock by comparing against
+   1970.
 7. **Do not assume file boundaries mean anything in wall-clock terms.**
 
 ## Still unverified / not found in code
+
+- **The newer Shimmer3R time-set behaviour is not yet pinned to a release.**
+  The sub-second `RTC_SHIFTR` shift, the 2000-01-01 reset date and the
+  backup-register `RTC_isRwcTimeSet` (§3, §6) were read from a firmware change
+  after `LogAndStream_Shimmer3R_v1.01.020` that has no release tag yet. Pin the
+  **Verified against** block to the first release that carries it, and
+  re-check §3 and §6 against that revision.
 
 - **Where the UTC convention is enforced.** The firmware treats the RWC as an
   opaque 64-bit tick count since the Unix epoch and never applies a timezone,
@@ -424,10 +468,12 @@ that has one, and is forced off elsewhere
   constant in `log-and-stream-common` states it. The statement at the head of
   this document is a contract inferred from the absence of any offset handling,
   and from the failure mode observed when a host wrote local civil time.
-- **Whether either platform has a backup supply for the RTC.** The claim that
-  the clock does not survive a power cycle follows from `ShimRtc_init` setting
-  the configuration time to zero and from `RTC_isRwcTimeSet` existing at all,
-  but the hardware question was not checked.
+- **What powers the Shimmer3R backup domain when the device is off.** The
+  firmware side is settled (§3): the RTC and its backup registers survive an
+  MCU reset and are lost on a backup-domain reset. Which physical events cause
+  the latter — battery removal certainly, a fully flat battery presumably —
+  was not checked against the schematic. Shimmer3 has no such question: its
+  offset is in RAM.
 - ~~`RTC_SYNC_PREDIV`~~ — resolved: the symbol exists on neither platform and
   the `0x3FF` in the comment is stale. Shimmer3R `rtc.c` configures
   `AsynchPrediv = 0`, `SynchPrediv = 32767`, so the sub-second register counts
