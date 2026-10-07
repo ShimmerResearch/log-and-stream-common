@@ -72,7 +72,7 @@ Anything that keeps queuing tasks:
 |---|---|
 | Sample timer | The configured sampling rate |
 | Battery read | 60 s undocked, 2 s docked |
-| LED blink timer | Every 0.1 s |
+| LED blink timer | Every 0.1 s, in the interrupt; the main loop once a second for `TASK_LED_PHASE_SYNC` |
 | Bluetooth activity | Per packet |
 | SD sync | Once per second while running |
 | Dock/USB detection | Polled |

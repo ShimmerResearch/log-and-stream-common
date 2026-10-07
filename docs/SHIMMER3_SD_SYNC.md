@@ -327,6 +327,12 @@ Absolute time still comes from the real-world clock; sync only relates the
 devices to each other. See
 [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
 
+The firmware's one use of the offset is the LEDs. Once `rcFirstOffsetRxed` is
+set, a node converts the clock reading its blink phase is taken from into the
+centre's time, so the whole group flashes in step
+([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1). The clock itself
+is still left alone.
+
 ## 8. Diagnostics
 
 | Accessor | Reports |

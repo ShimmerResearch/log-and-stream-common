@@ -298,8 +298,8 @@ timestamp is a slice of the real-world clock, the other's is not.
 
 **Shimmer3R — exact.** The packet takes `RTC_get32()` and the clock
 `RTC_get64()`, and on this platform `RTC_getRwcTime` *is* `RTC_get64`
-(`RTC/shimmer_rtc.h:25-28`; the two functions have identical bodies in
-`shimmer3r-firmware` `Core/Src/rtc.c:374-408`, and the packet is filled at
+(`RTC/shimmer_rtc.h:25-28`; in `shimmer3r-firmware` `Core/Src/rtc.c`,
+`RTC_get32` is `RTC_get64` truncated to 32 bits, and the packet is filled at
 `Sensing/shimmer_sensing.c:445-476`). The three bytes in the packet are
 therefore the **low 24 bits of the value `GET_RWC` returns**. So:
 

@@ -24,6 +24,7 @@ two generations' very different LED hardware.
 | Layer | File |
 |---|---|
 | State machine, priorities, timers | `LEDs/shimmer_leds.c` |
+| Frame and phase arithmetic | `LEDs/shimmer_leds_phase.c` |
 | LED bit masks | `LEDs/shimmer_leds.h` |
 | Battery and charging colours | `Battery/shimmer_battery.c` |
 | Diagnostic sequences | `Test/shimmer_test_leds_states.c` |
@@ -81,15 +82,21 @@ named 24-bit colours from `hal_Board.h` — `LED_RGB_RED` `0xFF0000`,
 
 All blinking is derived from one periodic tick,
 `SHIMMER_BLINK_TIMER_PERIOD_MS` (100 ms, `LEDs/shimmer_leds.h`), driving
-`ShimLeds_incrementCounters`. Two
-free-running counters advance **once every 0.1 s**:
+`ShimLeds_incrementCounters`. It advances one counter, `blinkCntFrame`, through
+the 600 tenths of a **60-second frame**. The two cycles the patterns use are
+read from it:
 
 | Counter | Wraps at | Period |
 |---|---:|---|
-| `blinkCnt20` | 20 | 2 s |
-| `blinkCnt50` | 50 | 5 s |
+| `blinkCntFrame` | 600 | 60 s |
+| `blinkCnt20` = `blinkCntFrame % 20` | 20 | 2 s |
+| `blinkCnt50` = `blinkCntFrame % 50` | 50 | 5 s |
 
-Five predicates are built on them:
+60 s is a multiple of every pattern period in this document (0.2, 0.4, 1, 2,
+3, 4 and 5 s), so every pattern is a function of `blinkCntFrame` alone and
+repeats cleanly across the frame's wrap.
+
+Five predicates are built on the counters:
 
 | Predicate | Expression | True when |
 |---|---|---|
@@ -109,6 +116,59 @@ Five predicates are built on them:
 > **`...2s` and `...5s` are single-tick pulses used for a "still alive" blip.**
 > Idle indications light the LED for 0.1 s every 2 s or every 5 s. That is
 > intentionally brief and easy to miss.
+
+### 2.1 Phase-locked to the real-world clock
+
+With `LED_PHASE_LOCK_TO_RWC` set (`log_and_stream_definitions.h`, on by
+default), the frame is tied to the real-world clock: `blinkCntFrame` is the
+tenth of the current minute. Every sensor whose clock was set from the same
+source shows the same frame, so sensors in the same state flash together,
+the 5-second battery blip included.
+
+Once a second the blink tick queues `TASK_LED_PHASE_SYNC`, the lowest-priority
+task, which runs `ShimLeds_phaseSync`:
+
+1. It reads the clock, and subtracts how long ago the blink tick fired
+   (`platform_ledTickElapsedRtcTicks`). That gives the time of the tick itself,
+   however long the task waited behind others.
+2. If `blinkCntFrame` disagrees with the tenth that time falls in, it is
+   corrected. That happens after the clock is set, and when an SD-sync offset
+   first arrives.
+3. If the tick fired more than about 5 ms from the middle of its tenth, the
+   next tick is moved (`platform_ledTickShift`). Ticks are aimed mid-tenth so
+   interrupt latency never pushes one across a boundary.
+
+| Platform | Blink timer | Correction |
+|---|---|---|
+| S3 | TB0 CCR3 on ACLK, the RTC's own crystal | Exact: CCR3 is moved by whole ticks |
+| S3R | TIM6, 800 Hz from APB1, independent of the LSE | In 1.25 ms steps; the once-a-second correction keeps it within the deadband |
+
+**On an SD-sync node the LEDs follow the centre's clock**, not their own. Once
+`rcFirstOffsetRxed` is set, the offset sync measured
+([SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md) §5) is applied to the clock reading
+the LEDs use. It is never applied to the clock itself, which logged timestamps
+and the recorded offset both depend on. Until the first offset arrives a node
+follows its own clock.
+
+> **How closely sensors agree depends on how their clocks were set, not on this
+> code.** Two sensors set over Bluetooth in turn differ by the latency of each
+> set command. SD-sync nodes differ by the error in their measured offset, and
+> by drift since the last sync round. Uncompensated drift of 20 ppm moves two
+> sensors apart by about 70 ms an hour in the worst case, so a fleet set once
+> drifts visibly apart over a day; re-setting the clocks on each connection
+> pulls it back.
+
+> **A clock set or a new offset is a step, not a stall.** The frame jumps to the
+> right tenth on the next sync, so a pattern can skip or repeat part of a cycle
+> once. Setting the clock repeatedly, as a host does while docked, causes
+> nothing worse.
+
+> **Shimmer3 before its clock is set follows time since boot**, so it is in step
+> with nothing. Shimmer3R keeps its calendar across a reset but not a power
+> cycle.
+
+With `LED_PHASE_LOCK_TO_RWC` at 0 the frame free-runs from boot, as it did
+before.
 
 ## 3. Upper LED — activity
 
@@ -138,8 +198,9 @@ Set and cleared through `ShimLeds_setRtcErrorFlash`. Gated by the
 
 ### 3.2 Configuring
 
-Upper green toggles on every `...200ms` tick, so it alternates at 5 Hz. Blue is
-not touched, so whatever it was showing persists underneath.
+Upper green is on for 0.2 s and off for 0.2 s, read from the frame
+(`ShimLedsPhase_isOnAlternate200ms`). Blue is not touched, so whatever it was
+showing persists underneath.
 
 ### 3.3 Log-and-stream mode
 
@@ -148,9 +209,9 @@ tested:
 
 | Condition | Appearance |
 |---|---|
-| Sensing, **streaming only** | Blue toggles on each `...1s` tick → 0.5 Hz square wave. Green off |
+| Sensing, **streaming only** | Blue 1 s on, 1 s off → 0.5 Hz square wave. Green off |
 | Sensing, **logging only, BT connected** | Green and blue alternate on a three-slot rotation, one slot green and two blue |
-| Sensing, **logging only, not connected** | Green toggles on each `...1s` tick → 0.5 Hz. Blue off |
+| Sensing, **logging only, not connected** | Green 1 s on, 1 s off → 0.5 Hz. Blue off |
 | Sensing, **logging and streaming** | Green and blue alternate with an off phase between: off → green → off → blue → … |
 | Sensing, neither ready | Both off |
 | Not sensing, **BT connected** | Blue solid on, green off |
@@ -158,14 +219,19 @@ tested:
 | Not sensing, **advertising / idle** | Green off; blue pulses for 0.1 s every 2 s if Bluetooth is powered |
 
 > **"Connected and logging" is a three-slot rotation, not a 50/50 alternation.**
-> `lastLedToggleCnt` counts 0, 1, 2 and only slot 2 shows green — so the pattern
-> is blue, blue, green, repeating at 1-second slots. It reads as "mostly blue
-> with a green heartbeat".
+> The second of the frame, modulo 3, picks the slot, and only slot 2 shows
+> green, so the pattern is blue, blue, green, repeating at 1-second slots. It
+> reads as "mostly blue with a green heartbeat".
 
-> **"Logging and streaming" inserts an off phase.** The code turns both off if
-> either is on, otherwise lights one. So the sequence is
-> off, green, off, blue, off, green, … at 1-second slots — distinguishably
+> **"Logging and streaming" inserts an off phase.** The second of the frame,
+> modulo 4, gives green, off, blue, off at 1-second slots — distinguishably
 > slower and gappier than the connected-and-logging pattern.
+
+> **These four patterns used to be toggles**, so their phase depended on when
+> the state was entered, and two sensors in the same state could be out of
+> step. They are now levels read from the frame (`LEDs/shimmer_leds_phase.c`).
+> The 10 Hz blue toggles (RN4678 link up, and connected in SD-sync mode) remain
+> toggles: they look the same at any phase.
 
 ### 3.4 Logging / SD-sync mode
 

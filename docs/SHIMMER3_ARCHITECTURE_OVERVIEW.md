@@ -171,6 +171,7 @@ uint32_t taskList;   // one bit per task
 | 21 | `TASK_JUMP_TO_BOOT_LOADER` | S3R |
 | 22 | `TASK_WRITE_RADIO_DETAILS` | S3 |
 | 23 | `TASK_SD_FILE_TRANSFER` | S3R |
+| 24 | `TASK_LED_PHASE_SYNC` | both; queued once a second ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1) |
 
 > **Bit 5 means two different things.** `TASK_USB_PROCESS_CMD` on Shimmer3R,
 > `TASK_CFGCH` on Shimmer3. The bit numbers are not a stable cross-platform
