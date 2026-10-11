@@ -2,7 +2,9 @@
 
 The CAT24C16 serial EEPROM holds three things the configuration bytes do not:
 the expansion-board identity, the Bluetooth radio settings, and the custom
-branding record that decides what name the device advertises under.
+branding record that decides what name the device advertises under. On
+Shimmer3R it also holds a backup of the Bluetooth MAC, used only while the
+radio module is factory reset (§7).
 
 Unlike the configuration bytes, this content is **not** part of a trial's
 configuration — it describes the hardware and survives a configuration reset.
@@ -52,7 +54,8 @@ brand record moved nothing else:
 | Start | End | Size | Constant | Content |
 |---:|---:|---:|---|---|
 | 0 | 15 | 16 | `EEPROM_ADDRESS_HW_DETAILS` | Expansion-board ID page (§3) |
-| 16 | 1951 | 1936 | — | General expansion-board storage, host-writable |
+| 16 | 1935 | 1920 | — | General expansion-board storage, host-writable |
+| 1936 | 1951 | 16 | `EEPROM_ADDRESS_BT_MAC_BACKUP` | Bluetooth MAC backup record, **S3R only** (§7). Unused on S3, where it stays general storage |
 | 1952 | 2031 | 80 | `EEPROM_ADDRESS_BRAND_DETAILS` | Brand record, 5 pages (§5) |
 | 2032 | 2047 | 16 | `EEPROM_ADDRESS_BLUETOOTH_DETAILS` | Radio settings page (§4) |
 
@@ -63,6 +66,7 @@ EEPROM_ADDRESS_BLUETOOTH_DETAILS = CAT24C16_TOTAL_SIZE - CAT24C16_PAGE_SIZE
                                  = 2048 - 16 = 2032
 EEPROM_BRAND_DETAILS_SIZE        = 5 * CAT24C16_PAGE_SIZE = 80
 EEPROM_ADDRESS_BRAND_DETAILS     = 2032 - 80 = 1952
+EEPROM_ADDRESS_BT_MAC_BACKUP     = 1952 - 16 = 1936   (S3R only)
 EEPROM_AVAILABLE_SIZE            = 2048 - 16 = 2032
 ```
 
@@ -337,9 +341,57 @@ Two protections exist, and neither is complete:
 > `ShimEeprom_areRadioDetailsIncorrect` may or may not catch it depending on
 > which field was damaged (§4.2).
 
+## 7. Bluetooth MAC backup record (1936-1951, Shimmer3R only)
+
+A factory reset of the CYW20820 (EZ-Serial `/RFAC`) wipes the Bluetooth
+address the module was given. The firmware-driven reset (`btFactoryResetViaFw`
+in the platform firmware) saves the MAC here before the reset and restores it
+from here afterwards. Nothing else reads or writes this page, and nothing runs
+the reset automatically.
+
+`gEepromBtMacBackup`, one 16-byte page (host offset 1920):
+
+| Offset | Field | Type | Notes |
+|---:|---|---|---|
+| 0-1 | `magic` | `uint16` LE | `EEPROM_BT_MAC_BACKUP_MAGIC` = `0x4D42`; a raw dump reads `42 4D` |
+| 2 | `layoutVer` | `uint8` | `EEPROM_BT_MAC_BACKUP_LAYOUT_VER` = 1 |
+| 3 | `state` | `uint8` | 0 = `BT_MAC_BACKUP_IDLE`, 1 = `BT_MAC_BACKUP_FR_PENDING` |
+| 4-9 | `mac` | 6 bytes | Module byte order, as the CYW20820 returns it |
+| 10-13 | Padding | 4 bytes | `0xFF` |
+| 14-15 | `crc` | 2 bytes | Comms CRC over bytes 0-13 |
+
+`ShimEeprom_readBtMacBackup` accepts the record only if the magic, layout
+version and CRC all match **and** the MAC is valid: not all `0x00`, which a
+fresh module can report, and not all `0xFF`, which is erased EEPROM.
+`ShimEeprom_writeBtMacBackup` reads the record back and reports success only
+on a match.
+
+The reset sequence:
+
+1. Read the module's MAC.
+2. If the record is valid and `FR_PENDING`, an earlier reset never confirmed
+   its restore, so the module may already be on its post-reset address. The
+   saved MAC is used and the record is left alone.
+3. Otherwise the module's MAC must be valid and must verify in the record as
+   `FR_PENDING`. If either fails, the module is **not** reset.
+4. `/RFAC`, then restore the saved MAC with flash-scoped `SBA`.
+5. Read the MAC back. On a match the state returns to `IDLE`. On a mismatch
+   it stays `FR_PENDING`, so the next reset restores it.
+
+The two EEPROM steps run from main context, never from the UART receive
+interrupt that drives the rest of the sequence. The I2C transfer waits out
+the EEPROM write cycle with `HAL_Delay`.
+
+> **The page sits inside the host-writable window.** A host write to host
+> offsets 1920-1935 overwrites the record. The CRC means a damaged record is
+> simply ignored: the reset then falls back to the module's own MAC, or
+> refuses to run if that is invalid too. The reverse risk is that a reset
+> overwrites whatever a host stored in this page. Before this record existed,
+> the page was general expansion-board storage.
+
 ## Still unverified / not found in code
 
-- **What occupies bytes 16-1951.** Confirmed: no firmware structure claims
+- **What occupies bytes 16-1935.** Confirmed: no firmware structure claims
   the range and no default content is written. What *is* now established is
   the host access rule: `CARD_MEM` reads address `offset + 16` with
   `offset ≤ 2031`, so the host window is bytes 16-2047, and writes go through

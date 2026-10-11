@@ -30,6 +30,27 @@
 #define EEPROM_ADDRESS_BRAND_DETAILS \
   (EEPROM_ADDRESS_BLUETOOTH_DETAILS - EEPROM_BRAND_DETAILS_SIZE)
 
+#if defined(SHIMMER3R)
+/* Bluetooth MAC backup record, one page directly below the brand record.
+ * Absolute bytes 1936-1951 (host offset 1920). Written only by a
+ * firmware-driven factory reset of the CYW20820, which wipes the address the
+ * module was given: the MAC is saved here before the reset and restored from
+ * here afterwards, so an interrupted reset can still be recovered. */
+#define EEPROM_ADDRESS_BT_MAC_BACKUP \
+  (EEPROM_ADDRESS_BRAND_DETAILS - CAT24C16_PAGE_SIZE)
+#define EEPROM_BT_MAC_BACKUP_MAGIC \
+  0x4D42 /* "BM"; stored little-endian, so a raw hexdump reads 0x42,0x4D */
+#define EEPROM_BT_MAC_BACKUP_LAYOUT_VER 1
+
+enum EEPROM_BT_MAC_BACKUP_STATE
+{
+  /* The saved MAC is the module's current address */
+  BT_MAC_BACKUP_IDLE = 0,
+  /* A factory reset started and the MAC has not been confirmed restored */
+  BT_MAC_BACKUP_FR_PENDING = 1,
+};
+#endif //SHIMMER3R
+
 #define EEPROM_BRAND_MAGIC \
   0x5342 /* "SB"; stored little-endian, so a raw hexdump reads 0x42,0x53 ("BS") */
 /* v2 split the single USB field into separate product and manufacturer names.
@@ -191,6 +212,27 @@ typedef union
   };
 } gEepromBrandDetails;
 
+#if defined(SHIMMER3R)
+/* Bluetooth MAC backup record (16 bytes, one page):
+ *   0  2  magic          2  1  layoutVer      3  1  state
+ *   4  6  mac (module byte order, as returned by the CYW20820)
+ *  10  4  padding       14  2  crc (over bytes 0..13) */
+typedef union
+{
+  uint8_t rawBytes[CAT24C16_PAGE_SIZE];
+
+  struct __attribute__((packed))
+  {
+    uint16_t magic;    /* EEPROM_BT_MAC_BACKUP_MAGIC */
+    uint8_t layoutVer; /* EEPROM_BT_MAC_BACKUP_LAYOUT_VER */
+    uint8_t state;     /* enum EEPROM_BT_MAC_BACKUP_STATE */
+    uint8_t mac[6];
+    uint8_t padding[4];
+    uint8_t crc[2]; /* 2-byte CRC over rawBytes[0..13] (comms CRC) */
+  };
+} gEepromBtMacBackup;
+#endif //SHIMMER3R
+
 void ShimEeprom_init(void);
 void ShimEeprom_setIsPresent(uint8_t eeprom_is_preset);
 uint8_t ShimEeprom_isPresent(void);
@@ -215,5 +257,10 @@ uint8_t ShimEeprom_isBleEnabled(void);
 uint8_t ShimEeprom_isBtClassicEnabled(void);
 enum RADIO_HARDWARE_VERSION ShimEeprom_getRadioHwVersion(void);
 uint8_t ShimEeprom_writeDaughterCardMem(uint16_t memOffset, uint8_t memLength, uint8_t *buf);
+#if defined(SHIMMER3R)
+uint8_t ShimEeprom_isBtMacValid(const uint8_t *mac);
+uint8_t ShimEeprom_readBtMacBackup(uint8_t *macOut, uint8_t *stateOut);
+uint8_t ShimEeprom_writeBtMacBackup(const uint8_t *mac, uint8_t state);
+#endif //SHIMMER3R
 
 #endif /* LOG_AND_STREAM_COMMON_COMMS_SHIMMER_EEPROM_H_ */

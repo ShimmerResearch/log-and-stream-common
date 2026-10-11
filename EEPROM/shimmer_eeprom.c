@@ -426,3 +426,81 @@ uint8_t ShimEeprom_writeDaughterCardMem(uint16_t memOffset, uint8_t memLength, u
   }
   return 0;
 }
+
+#if defined(SHIMMER3R)
+/* A usable Bluetooth MAC is neither all-0x00 (what a fresh module can report
+ * before it has been given an address) nor all-0xFF (erased EEPROM). */
+uint8_t ShimEeprom_isBtMacValid(const uint8_t *mac)
+{
+  uint8_t i;
+  uint8_t allZero = 1;
+  uint8_t allFf = 1;
+  for (i = 0; i < 6; i++)
+  {
+    if (mac[i] != 0x00)
+    {
+      allZero = 0;
+    }
+    if (mac[i] != 0xFF)
+    {
+      allFf = 0;
+    }
+  }
+  return !allZero && !allFf;
+}
+
+/* Reads the Bluetooth MAC backup record. Returns 1, with the MAC and state
+ * copied out, only if the record is intact (magic, layout version, CRC) and
+ * holds a valid MAC; returns 0 otherwise, including when the page holds
+ * something a host wrote there. */
+uint8_t ShimEeprom_readBtMacBackup(uint8_t *macOut, uint8_t *stateOut)
+{
+  gEepromBtMacBackup record;
+
+  if (!ShimEeprom_isPresent())
+  {
+    return 0;
+  }
+
+  eepromRead(EEPROM_ADDRESS_BT_MAC_BACKUP, sizeof(record.rawBytes), &record.rawBytes[0]);
+
+  if (record.magic != EEPROM_BT_MAC_BACKUP_MAGIC || record.layoutVer != EEPROM_BT_MAC_BACKUP_LAYOUT_VER
+      || !checkCrc(CRC_2BYTES_ENABLED, &record.rawBytes[0], sizeof(record.rawBytes) - 2U)
+      || !ShimEeprom_isBtMacValid(&record.mac[0]))
+  {
+    return 0;
+  }
+
+  memcpy(macOut, &record.mac[0], sizeof(record.mac));
+  *stateOut = record.state;
+  return 1;
+}
+
+/* Writes the Bluetooth MAC backup record and reads it back. Returns 1 only if
+ * the read-back matches, so a caller about to factory reset the module knows
+ * the MAC is genuinely safe in non-volatile storage first. */
+uint8_t ShimEeprom_writeBtMacBackup(const uint8_t *mac, uint8_t state)
+{
+  gEepromBtMacBackup record;
+  uint8_t macReadBack[6];
+  uint8_t stateReadBack;
+
+  if (!ShimEeprom_isPresent() || !ShimEeprom_isBtMacValid(mac))
+  {
+    return 0;
+  }
+
+  memset(&record.rawBytes[0], 0xFF, sizeof(record.rawBytes));
+  record.magic = EEPROM_BT_MAC_BACKUP_MAGIC;
+  record.layoutVer = EEPROM_BT_MAC_BACKUP_LAYOUT_VER;
+  record.state = state;
+  memcpy(&record.mac[0], mac, sizeof(record.mac));
+  calculateCrcAndInsert(
+      CRC_2BYTES_ENABLED, &record.rawBytes[0], sizeof(record.rawBytes) - 2U);
+
+  eepromWrite(EEPROM_ADDRESS_BT_MAC_BACKUP, sizeof(record.rawBytes), &record.rawBytes[0]);
+
+  return ShimEeprom_readBtMacBackup(&macReadBack[0], &stateReadBack)
+      && memcmp(&macReadBack[0], mac, sizeof(macReadBack)) == 0 && stateReadBack == state;
+}
+#endif //SHIMMER3R
