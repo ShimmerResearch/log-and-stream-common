@@ -1076,6 +1076,31 @@ manual item can then be retired. Change a list in the same pull request as the
 tests that cover the new items, and never weaken it in the pull request that
 needs it weakened.
 
+### 10.4 The automated suite
+
+`Test/hil/` is also a pytest suite that runs on a bench and writes the same
+report (`kind: automated`). `run_rc.py <tag>` downloads a candidate, flashes it
+(Shimmer3R, over USB DFU or SWD), runs a tier and writes
+`hil-report-<bench>.json`. Each bench describes its hardware in a `rig.toml`.
+A test the bench cannot run is reported `not_covered` rather than passed, so
+the gate knows another bench must supply it. Setup and layout are in
+`Test/hil/README.md`.
+
+The **smoke** tier, Shimmer3R over USB-C:
+
+| Item | Checks |
+|---|---|
+| `smoke.boot_identity` | Hardware 10, LogAndStream identifier, the candidate's version, the MAC that `rig.toml` names |
+| `smoke.config_roundtrip` | The configuration reads back exactly as written, and a rate change round-trips; byte 230 bit 0 is self-set by design |
+| `smoke.bt_identity` | Version over Bluetooth, an SD card present and usable |
+| `smoke.bt_stream` | 10 s stream: packet framing, no lost or duplicate samples, the rate on the device clock |
+| `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
+| `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
+
+Smoke items are not yet on the required lists. They join once they have run
+clean across a few candidates, so a flaky check never blocks a release on its
+first day.
+
 ---
 
 ## Still unverified / not found in code

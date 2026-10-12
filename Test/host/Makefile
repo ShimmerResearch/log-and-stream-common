@@ -119,7 +119,7 @@ help:
 	@echo "make platform-check   compile every host-clean module for BOTH MCUs"
 	@echo "make host-constants   check the Python host reference against the firmware"
 	@echo "make timestamp-unwrap check the shared unwrap vectors against their reference"
-	@echo "make hil-gate         test the release gate's rules"
+	@echo "make hil-gate         test the release gate and report rules"
 	@echo ""
 	@echo "Suites: $(ALL_SUITES)"
 	@echo "Run one with e.g. 'make test_rtc'."
@@ -198,6 +198,8 @@ test: build
 	  failed="$$failed crosscheck_timestamp_unwrap.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_gate.py; then \
 	  failed="$$failed test_hil_gate.py"; fi; \
+	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_report.py; then \
+	  failed="$$failed test_hil_report.py"; fi; \
 	echo ""; \
 	echo "=============================================================="; \
 	if [ -n "$$failed" ]; then \
@@ -299,6 +301,7 @@ timestamp-unwrap:
 # like everything else it guards.
 hil-gate:
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_gate.py
+	@$(PYTHON) $(REPO)/Test/hil/test_hil_report.py
 
 clean:
 	rm -rf $(BUILD)

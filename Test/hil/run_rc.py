@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""Test a release candidate on this bench: download, flash, run, report.
+
+    python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022
+    python Test/hil/run_rc.py <tag> --tier smoke --upload       # attach the report to the pre-release
+    python Test/hil/run_rc.py <tag> --no-flash                  # unit already runs the candidate
+
+1. Downloads the image and build-info.json from the GitHub release with gh.
+   Releases made before build-info.json existed get one synthesised from the
+   tag, so older builds can be measured too (their report is still bound to
+   the tag's commit).
+2. Flashes every rig unit of the candidate's platform (rig.toml: flash method
+   "dfu" by default, "swd" when an ST-Link serial is named), and confirms each
+   reports the candidate's version.
+3. Runs the tier with pytest, which writes hil-report-<bench>.json.
+4. With --upload, attaches the report and the pytest log to the release.
+
+Everything lands in Test/hil/out/<tag>/<time>/ (git-ignored), which is what
+to archive alongside the report.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+
+from rig import config as rig_config  # noqa: E402
+from rig import flash as rig_flash  # noqa: E402
+
+REPOS = {"LogAndStream_Shimmer3R_v": ("shimmer3r", "ShimmerResearch/shimmer3r-firmware", "*.hex"),
+         "LogAndStream_Shimmer3_v": ("shimmer3", "ShimmerResearch/shimmer3-firmware", "*.txt")}
+
+
+def gh(*args, **kw) -> str:
+    return subprocess.run(["gh", *args], check=True, capture_output=True, text=True,
+                          encoding="utf-8", **kw).stdout.strip()
+
+
+def parse_tag(tag: str):
+    for prefix, (platform, repo, pattern) in sorted(REPOS.items(), key=lambda kv: -len(kv[0])):
+        if tag.startswith(prefix):
+            return platform, repo, pattern, tag[len(prefix):]
+    raise SystemExit(f"{tag}: not a Shimmer3 or Shimmer3R release tag")
+
+
+def tag_commit(repo: str, tag: str) -> str:
+    obj = json.loads(gh("api", f"repos/{repo}/git/ref/tags/{tag}"))["object"]
+    while obj["type"] == "tag":
+        obj = json.loads(gh("api", f"repos/{repo}/git/tags/{obj['sha']}"))["object"]
+    return obj["sha"]
+
+
+def fetch(tag: str, out: Path) -> tuple[dict, Path]:
+    platform, repo, pattern, version = parse_tag(tag)
+    gh("release", "download", tag, "-R", repo, "-p", pattern, "-D", str(out), "--clobber")
+    images = sorted(out.glob(pattern))
+    if len(images) != 1:
+        raise SystemExit(f"{tag}: expected one {pattern} image on the release, found {len(images)}")
+    info_path = out / "build-info.json"
+    try:
+        gh("release", "download", tag, "-R", repo, "-p", "build-info.json", "-D", str(out), "--clobber")
+        info = json.loads(info_path.read_text(encoding="utf-8"))
+    except subprocess.CalledProcessError:
+        info = {"schema": "shimmer-build-info/1", "platform": platform, "tag": tag,
+                "firmware_version": version, "commit": tag_commit(repo, tag),
+                "image": images[0].name, "synthesised": True}
+        info_path.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
+    if info["platform"] != platform or info["firmware_version"].lstrip("vV") != version:
+        raise SystemExit(f"build-info.json does not match the tag: {info}")
+    return info, images[0]
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("tag")
+    ap.add_argument("--tier", default="smoke", help="pytest -m expression (default: smoke)")
+    ap.add_argument("--rig", default=None)
+    ap.add_argument("--no-flash", action="store_true", help="test what is on the units now")
+    ap.add_argument("--upload", action="store_true", help="attach the report to the GitHub release")
+    ap.add_argument("pytest_args", nargs="*", help="extra pytest arguments, after --")
+    a = ap.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    rig = rig_config.load(a.rig)
+    platform, repo, _, version = parse_tag(a.tag)
+    stamp = dt.datetime.now().strftime("%Y%m%dT%H%M%S")
+    out = HERE / "out" / a.tag / stamp
+    out.mkdir(parents=True, exist_ok=True)
+
+    info, image = fetch(a.tag, out)
+    print(f"candidate {a.tag}: commit {info['commit'][:12]}, image {image.name}")
+
+    units = rig.units_for(platform)
+    if not units:
+        print(f"rig {rig.bench} has no {platform} unit - nothing to test")
+        return 1
+    if not a.no_flash:
+        if platform != "shimmer3r":
+            raise SystemExit("automatic flashing is Shimmer3R only so far; use --no-flash")
+        if not rig.stm32_programmer:
+            raise SystemExit("rig.toml names no stm32_programmer")
+        for u in units:
+            if not u.usb_serial:
+                print(f"{u.name}: no usb_serial, not flashed")
+                continue
+            method = "swd" if rig.stlink_serial else "dfu"
+            print(f"{u.name}: flashing {image.name} by {method} ...", flush=True)
+            v = rig_flash.flash(rig.stm32_programmer, image, u.usb_serial, method,
+                                rig.stlink_serial, expect_version=version)
+            print(f"{u.name}: now v{v.text}")
+
+    report = out / f"hil-report-{rig.bench}.json"
+    cmd = [sys.executable, "-m", "pytest", str(HERE / "tests"), "-m", a.tier,
+           "--rig", str(rig.path), "--candidate", str(out / "build-info.json"),
+           "--hil-report", str(report), "-p", "no:cacheprovider", "-rA", *a.pytest_args]
+    log = out / "pytest.log"
+    with open(log, "w", encoding="utf-8") as f:
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             text=True, encoding="utf-8", errors="replace")
+        for line in p.stdout:
+            sys.stdout.write(line)
+            f.write(line)
+        rc = p.wait()
+
+    if not report.exists():
+        print("no report was written")
+        return rc or 1
+    gate = subprocess.run([sys.executable, str(HERE / "hil_gate.py"), "--platform", platform,
+                           "--commit", info["commit"], "--version", version,
+                           "--required", str(HERE / "required" / f"{platform}.json"), str(report)],
+                          capture_output=True, text=True, encoding="utf-8")
+    print("\nThis report alone, against the required list:\n" + gate.stdout)
+
+    if a.upload:
+        gh("release", "upload", a.tag, str(report), "-R", repo, "--clobber")
+        print(f"attached {report.name} to {repo} {a.tag}")
+    else:
+        print(f"report: {report}\nattach with: gh release upload {a.tag} \"{report}\" -R {repo}")
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())
