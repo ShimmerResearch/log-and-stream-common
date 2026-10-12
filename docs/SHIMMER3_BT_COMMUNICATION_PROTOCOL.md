@@ -3368,8 +3368,13 @@ genuinely usable commands a Java-based host has to send as raw bytes:
 
 ## Still unverified / not found in code
 
-Everything above is derived from source, except the Shimmer3R 300-byte transmit
-hand-off in [§2.2](#22-ble), which is bench-measured and listed first below. The
+Everything above is derived from source, with two exceptions, both listed below:
+the Shimmer3R 300-byte transmit hand-off in [§2.2](#22-ble), which is
+bench-measured and listed first; and the `SET_FEATURE` warning not to arm
+reboot-on-disconnect for a Bluetooth module update
+([§7.12](#712-control-and-test)), which rests on a bench reproduction and
+describes Shimmer3R handling read at a revision later than the pin (listed
+under **Firmware provenance**). The
 following statements are either absent from the code, or present in a form that
 only bench measurement can settle. They are listed so that a host author knows
 where the document stops being authoritative, and so that a later pass can close
