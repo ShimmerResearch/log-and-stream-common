@@ -2547,6 +2547,32 @@ way, so it never lingers into a later disconnect.
 
 > `ShimBt_handleBtRfCommStateChange`, `Comms/shimmer_bt_uart.c:2637-2652`.
 
+**Do not arm it for a Bluetooth module firmware update (Shimmer3R).** A host
+can update the Shimmer3R's IF820 module over BLE, through the module's own OTA
+firmware upgrade service; the MCU cannot reflash the module itself. Once the
+module has verified a new image it resets onto it, which drops the link. With
+reboot-on-disconnect armed, the MCU on the transparent data path (modules below
+v1.4.17, which is every module shipped so far) sees that drop at once and
+reboots. Its start-up powers the module off and on while the module is still
+switching images, and the module comes back on its **old** image although the
+update was accepted.
+
+Shimmer3R firmware handles the module's restart itself instead. A module boot
+after Bluetooth initialisation has finished - its boot event, its text boot
+banner, or a framing error on the module UART when it comes back on another
+baud - arms an RTC alarm, and the MCU reboots ten seconds after the last such
+sign. That re-reads the module version, which the firmware reads only at boot,
+selects the matching data path and re-provisions the module. Like
+reboot-on-disconnect, the reboot is skipped while sensing. A deliberate stop or
+restart of Bluetooth in the meantime (SD sync, the start-up baud retries)
+supersedes it. Firmware without this keeps the old module version and
+provisioning until the sensor is power-cycled.
+
+> Shimmer3R platform code, not this repository: `BT_handleUnexpectedModuleBoot`,
+> `BT_serviceModuleRestart` and `BT_rebootAfterModuleRestart` in
+> `Shimmer_Driver/CYW20820/CYW20820.c`, the banner watcher and UART error
+> callback in `Shimmer_Driver/CYW20820/hal_CYW20820.c`.
+
 #### `RESET_BT_ERROR_COUNTS` (0xB6)
 
 - **Request:** `[0xB6]`
