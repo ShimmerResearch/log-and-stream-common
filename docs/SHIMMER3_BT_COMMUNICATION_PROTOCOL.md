@@ -231,6 +231,25 @@ re-pairing is needed.
 > (v1.4.18.x on the transparent bridge); before them every v1.4.17+ module used
 > `SPP_SEND`.
 
+**Link role on classic connections.** When a host opens a classic connection,
+the IF820 asks for the master role by default. The host then becomes slave in a
+separate piconet for each sensor, and a host controller that allows only a few
+piconets refuses further sensors. On an Intel AX201 the 4th connection was
+refused with HCI status `0x09` (Connection Limit Exceeded). On module firmware
+v1.4.17 and later, Shimmer3R firmware sets EZ-Serial's `SBTP` flags to `0x03`:
+F=1 disables sniff mode, and F=2 asks the module to accept incoming classic
+connections as slave. The host then stays master, and its controller can hold
+more sensors: 6 instead of 3 on the AX201. Modules below v1.4.17 receive flags 0,
+as before. Only module builds that implement F=2 change role; builds without it
+(the v1.4.18.18 public release, for example) accept and store the bit but still
+take the master role. The flags are written to module flash once, when they
+differ from the stored value.
+
+> `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`, the
+> `START_BT_ADVERTISING` boot stage (`bt_set_parameters`). Introduced by
+> `shimmer3r-firmware` PR #280; before it the flags were 1 (sniff disable only)
+> on v1.4.17+.
+
 **Module status strings (Shimmer3).** The RN41/RN42/RN4678 modules can be
 configured to announce link events in band — `%CONNECT,001BDC06A3D5%`,
 `%DISCONN%`, `%REBOOT%` and so on — delimited by
