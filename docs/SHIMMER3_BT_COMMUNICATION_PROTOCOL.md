@@ -211,9 +211,11 @@ classic-SPP data paths, chosen at boot from its firmware version:
 | v1.4.17.x (bench only, never fitted) | Non-transparent: one EZ-Serial `SPP_SEND` command per hand-off |
 | v1.4.18.x and later | Transparent UART-to-SPP bridge |
 
-The byte stream a host sees is the same on either path. The difference is
-throughput, and on v1.4.18.x `SPP_SEND` also holds back the last two frames of a
-burst until more data is sent.
+The byte stream a host sees is the same on either path; the difference is
+throughput. One reason v1.4.18.x is not on `SPP_SEND`: on those modules,
+`SPP_SEND` holds back the last two frames of a burst until more data is sent.
+Shimmer3R firmware does not use `SPP_SEND` on v1.4.18.x, so a host does not see
+this.
 
 **SPP MTU repair after a module update.** v1.4.18.18 checks a stored SPP MTU
 before each classic send. A module updated over the air from v1.4.16.16 or
@@ -227,9 +229,8 @@ re-pairing is needed.
 
 > `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`: `BT_selectDataPath()`
 > for the path, and `btSppMtuRepairStep()` with the `SPP_MTU_*` boot stages for
-> the repair. Introduced by `shimmer3r-firmware` PRs #282 (MTU repair) and #283
-> (v1.4.18.x on the transparent bridge); before them every v1.4.17+ module used
-> `SPP_SEND`.
+> the repair. Earlier Shimmer3R firmware has no MTU repair and puts every
+> v1.4.17+ module, v1.4.18.x included, on `SPP_SEND`.
 
 **Link role on classic connections.** When a host opens a classic connection,
 the IF820 asks for the master role by default. The host then becomes slave in a
@@ -246,9 +247,8 @@ take the master role. The flags are written to module flash once, when they
 differ from the stored value.
 
 > `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`, the
-> `START_BT_ADVERTISING` boot stage (`bt_set_parameters`). Introduced by
-> `shimmer3r-firmware` PR #280; before it the flags were 1 (sniff disable only)
-> on v1.4.17+.
+> `START_BT_ADVERTISING` boot stage (`bt_set_parameters`). Earlier Shimmer3R
+> firmware sets the flags to 1 (sniff disable only) on v1.4.17+.
 
 **Module status strings (Shimmer3).** The RN41/RN42/RN4678 modules can be
 configured to announce link events in band — `%CONNECT,001BDC06A3D5%`,
