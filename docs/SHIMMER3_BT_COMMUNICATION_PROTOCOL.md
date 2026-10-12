@@ -2568,10 +2568,13 @@ restart of Bluetooth in the meantime (SD sync, the start-up baud retries)
 supersedes it. Firmware without this keeps the old module version and
 provisioning until the sensor is power-cycled.
 
-> Shimmer3R platform code, not this repository: `BT_handleUnexpectedModuleBoot`,
+> Shimmer3R platform code, not this repository, and **not yet at the pinned
+> revision**: `shimmer3r-firmware` @ `52d8161b` — `BT_handleUnexpectedModuleBoot`,
 > `BT_serviceModuleRestart` and `BT_rebootAfterModuleRestart` in
 > `Shimmer_Driver/CYW20820/CYW20820.c`, the banner watcher and UART error
-> callback in `Shimmer_Driver/CYW20820/hal_CYW20820.c`.
+> callback in `Shimmer_Driver/CYW20820/hal_CYW20820.c`. Listed under
+> [Still unverified](#still-unverified--not-found-in-code) until that change is
+> on the firmware's `main` and pinned above.
 
 #### `RESET_BT_ERROR_COUNTS` (0xB6)
 
@@ -3480,6 +3483,15 @@ them.
 
 **Firmware provenance**
 
+- **Shimmer3R's recovery from a Bluetooth module restart.** The handling
+  described under `SET_FEATURE` / reboot-on-disconnect ([§7.12](#712-control-and-test))
+  — the delayed MCU reboot after a module boot event, text boot banner or UART
+  framing error — was read from `shimmer3r-firmware` @ `52d8161b`, a change not
+  yet merged to that repository's `main`, not from the `a8f105e5` pin in
+  **Verified against**. The warning not to arm reboot-on-disconnect for a module
+  update rests on a bench reproduction (SWO log, October 2026), not on source.
+  **Re-check against source and move under Verified against** once that change
+  is merged and the Shimmer3R pin is bumped to include it.
 - **The first firmware tag for several version gates.** Where
   [Appendix A](#appendix-a-firmware-version-gates) shows a `≤` marker, the
   introducing commit predates the earliest tag in that lineage, so the tag shown
