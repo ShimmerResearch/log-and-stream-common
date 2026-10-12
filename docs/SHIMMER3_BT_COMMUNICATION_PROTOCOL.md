@@ -202,6 +202,35 @@ the bytes are grouped.
 > state (`:378-383`). The version string is readable with
 > `GET_BT_VERSION_STR_COMMAND` ([§7.2](#72-version-information)).
 
+**Shimmer3R classic data path, by module firmware.** The IF820 runs one of two
+classic-SPP data paths, chosen at boot from its firmware version:
+
+| IF820 module firmware | Classic data path |
+|---|---|
+| below v1.4.17 (v1.4.12.12, v1.4.16.16) | Transparent UART-to-SPP bridge |
+| v1.4.17.x (bench only, never fitted) | Non-transparent: one EZ-Serial `SPP_SEND` command per hand-off |
+| v1.4.18.x and later | Transparent UART-to-SPP bridge |
+
+The byte stream a host sees is the same on either path. The difference is
+throughput, and on v1.4.18.x `SPP_SEND` also holds back the last two frames of a
+burst until more data is sent.
+
+**SPP MTU repair after a module update.** v1.4.18.18 checks a stored SPP MTU
+before each classic send. A module updated over the air from v1.4.16.16 or
+earlier keeps its old configuration, where that field is 0, and then sends one
+byte per RFCOMM frame (under 1 KB/s). At power-up, Shimmer3R firmware reads the
+field on the v1.4.18.18 builds it recognises by boot banner (the public release
+and two Infineon test builds) and, only if it is 0, writes the value Infineon
+supplied and stores it in module flash. This happens on the first boot after the update
+and never again. The module's Bluetooth address and bonds are unchanged, so no
+re-pairing is needed.
+
+> `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`: `BT_selectDataPath()`
+> for the path, and `btSppMtuRepairStep()` with the `SPP_MTU_*` boot stages for
+> the repair. Introduced by `shimmer3r-firmware` PRs #282 (MTU repair) and #283
+> (v1.4.18.x on the transparent bridge); before them every v1.4.17+ module used
+> `SPP_SEND`.
+
 **Module status strings (Shimmer3).** The RN41/RN42/RN4678 modules can be
 configured to announce link events in band — `%CONNECT,001BDC06A3D5%`,
 `%DISCONN%`, `%REBOOT%` and so on — delimited by
@@ -263,7 +292,9 @@ command, and IF820 module firmware v1.4.18.18 rejects every `SPP_SEND` carrying
 more than 300 data bytes (bench-tested: 300 accepted, 301 rejected with
 `EVT_SYSTEM_ERROR 0x0209`), which stops all data. A host never sees the hand-off
 size directly, since frames are reassembled from the byte stream either way, but
-it bounds throughput on that path to roughly 64 KB/s.
+it bounds throughput on that path to roughly 64–75 KB/s. Only v1.4.17.x modules
+use that path now (see [§2.1](#21-classic-bluetooth-spp)); on the transparent
+bridge the hand-off is a plain UART transfer.
 
 > `Comms/shimmer_bt_uart.h:25-58` @ `9559a34`, not the revision pinned at the top.
 > The 300-byte limit is bench-measured; see
@@ -3354,12 +3385,12 @@ them.
   to 400 bytes, and byte by byte from 300 to 305, while checking the data
   stream end to end. Up to 300 data bytes (308 on the wire) every frame was
   accepted; from 301 every frame was rejected with `EVT_SYSTEM_ERROR 0x0209`
-  and nothing was sent. Not measured on v1.4.17, which would also use
-  `SPP_SEND` but is fitted to no Shimmer3R: the module arrives on v1.4.12.12
-  and is updated to v1.4.16.16 in production, and both use the transparent
-  bridge, which never sends `SPP_SEND`. **Needs re-measuring** before any other
-  `SPP_SEND`-path module firmware is used, since a limit set even one byte too
-  high stops all data.
+  and nothing was sent. Not measured on v1.4.17, the only release that still
+  uses `SPP_SEND`, which is fitted to no Shimmer3R. The module arrives on
+  v1.4.12.12 and is updated to v1.4.16.16 in production, and those versions and
+  v1.4.18.x all use the transparent bridge, which never sends `SPP_SEND`.
+  **Needs re-measuring** before any other `SPP_SEND`-path module firmware is
+  used, since a limit set even one byte too high stops all data.
 - **BLE GATT service and characteristic UUIDs, and the negotiated ATT MTU.**
   Nothing in `log-and-stream-common` or either platform repository declares a
   GATT service: the Bluetooth module terminates GATT itself and hands the
