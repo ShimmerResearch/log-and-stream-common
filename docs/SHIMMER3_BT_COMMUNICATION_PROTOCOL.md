@@ -230,7 +230,9 @@ re-pairing is needed.
 > `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`: `BT_selectDataPath()`
 > for the path, and `btSppMtuRepairStep()` with the `SPP_MTU_*` boot stages for
 > the repair. Earlier Shimmer3R firmware has no MTU repair and puts every
-> v1.4.17+ module, v1.4.18.x included, on `SPP_SEND`.
+> v1.4.17+ module, v1.4.18.x included, on `SPP_SEND`. **Not in the pinned
+> `shimmer3r-firmware` revision**: see
+> [Still unverified](#still-unverified--not-found-in-code).
 
 **Link role on classic connections.** When a host opens a classic connection,
 the IF820 asks for the master role by default. The host then becomes slave in a
@@ -248,7 +250,9 @@ differ from the stored value.
 
 > `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`, the
 > `START_BT_ADVERTISING` boot stage (`bt_set_parameters`). Earlier Shimmer3R
-> firmware sets the flags to 1 (sniff disable only) on v1.4.17+.
+> firmware sets the flags to 1 (sniff disable only) on v1.4.17+. **Not in the
+> pinned `shimmer3r-firmware` revision**: see
+> [Still unverified](#still-unverified--not-found-in-code).
 
 **Module status strings (Shimmer3).** The RN41/RN42/RN4678 modules can be
 configured to announce link events in band — `%CONNECT,001BDC06A3D5%`,
@@ -3398,6 +3402,15 @@ them.
 
 **Transport and framing**
 
+- **The Shimmer3R classic data path, SPP MTU repair and link-role flags
+  ([§2.1](#21-classic-bluetooth-spp)) are not yet in a pinned revision.** They
+  describe `shimmer3r-firmware` changes that were in review when written:
+  `BT_selectDataPath()`, `btSppMtuRepairStep()` and the `SPP_MTU_*` boot stages,
+  and `SBTP` flags `0x03` on v1.4.17+. None of them is present at `a8f105e5`. The
+  behaviour was bench-tested on IF820 v1.4.16.16, the v1.4.18.18 release and two
+  Infineon test builds of it. **To do:** once the changes are on
+  `shimmer3r-firmware`'s main branch, move the **Verified against** pin to that
+  commit, add line ranges to the §2.1 citations, and remove this entry.
 - **The Shimmer3R 300-byte transmit hand-off is a measured module limit.**
   Source only records the chosen value. It was measured on IF820 module
   firmware v1.4.18.18 in October 2026, sweeping the `SPP_SEND` payload from 255
