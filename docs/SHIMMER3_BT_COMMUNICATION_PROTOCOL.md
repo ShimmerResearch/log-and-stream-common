@@ -2601,6 +2601,35 @@ way, so it never lingers into a later disconnect.
 
 > `ShimBt_handleBtRfCommStateChange`, `Comms/shimmer_bt_uart.c:2637-2652`.
 
+**Do not arm it for a Bluetooth module firmware update (Shimmer3R).** A host
+can update the Shimmer3R's IF820 module over BLE, through the module's own OTA
+firmware upgrade service; the MCU cannot reflash the module itself. Once the
+module has verified a new image it resets onto it, which drops the link. With
+reboot-on-disconnect armed, the MCU on the transparent data path (modules below
+v1.4.17, which is every module shipped so far) sees that drop at once and
+reboots. Its start-up powers the module off and on while the module is still
+switching images, and the module comes back on its **old** image although the
+update was accepted.
+
+Shimmer3R firmware handles the module's restart itself instead. A module boot
+after Bluetooth initialisation has finished - its boot event, its text boot
+banner, or a framing error on the module UART when it comes back on another
+baud - arms an RTC alarm, and the MCU reboots ten seconds after the last such
+sign. That re-reads the module version, which the firmware reads only at boot,
+selects the matching data path and re-provisions the module. Like
+reboot-on-disconnect, the reboot is skipped while sensing. A deliberate stop or
+restart of Bluetooth in the meantime (SD sync, the start-up baud retries)
+supersedes it. Firmware without this keeps the old module version and
+provisioning until the sensor is power-cycled.
+
+> Shimmer3R platform code, not this repository, and **not yet at the pinned
+> revision**: `shimmer3r-firmware` @ `52d8161b` — `BT_handleUnexpectedModuleBoot`,
+> `BT_serviceModuleRestart` and `BT_rebootAfterModuleRestart` in
+> `Shimmer_Driver/CYW20820/CYW20820.c`, the banner watcher and UART error
+> callback in `Shimmer_Driver/CYW20820/hal_CYW20820.c`. Listed under
+> [Still unverified](#still-unverified--not-found-in-code) until that change is
+> on the firmware's `main` and pinned above.
+
 #### `RESET_BT_ERROR_COUNTS` (0xB6)
 
 - **Request:** `[0xB6]`
@@ -3393,8 +3422,13 @@ genuinely usable commands a Java-based host has to send as raw bytes:
 
 ## Still unverified / not found in code
 
-Everything above is derived from source, except the Shimmer3R 300-byte transmit
-hand-off in [§2.2](#22-ble), which is bench-measured and listed first below. The
+Everything above is derived from source, with two exceptions, both listed below:
+the Shimmer3R 300-byte transmit hand-off in [§2.2](#22-ble), which is
+bench-measured and listed first; and the `SET_FEATURE` warning not to arm
+reboot-on-disconnect for a Bluetooth module update
+([§7.12](#712-control-and-test)), which rests on a bench reproduction and
+describes Shimmer3R handling read at a revision later than the pin (listed
+under **Firmware provenance**). The
 following statements are either absent from the code, or present in a form that
 only bench measurement can settle. They are listed so that a host author knows
 where the document stops being authoritative, and so that a later pass can close
@@ -3517,6 +3551,15 @@ them.
 
 **Firmware provenance**
 
+- **Shimmer3R's recovery from a Bluetooth module restart.** The handling
+  described under `SET_FEATURE` / reboot-on-disconnect ([§7.12](#712-control-and-test))
+  — the delayed MCU reboot after a module boot event, text boot banner or UART
+  framing error — was read from `shimmer3r-firmware` @ `52d8161b`, a change not
+  yet merged to that repository's `main`, not from the `a8f105e5` pin in
+  **Verified against**. The warning not to arm reboot-on-disconnect for a module
+  update rests on a bench reproduction (SWO log, October 2026), not on source.
+  **Re-check against source and move under Verified against** once that change
+  is merged and the Shimmer3R pin is bumped to include it.
 - **The first firmware tag for several version gates.** Where
   [Appendix A](#appendix-a-firmware-version-gates) shows a `≤` marker, the
   introducing commit predates the earliest tag in that lineage, so the tag shown
