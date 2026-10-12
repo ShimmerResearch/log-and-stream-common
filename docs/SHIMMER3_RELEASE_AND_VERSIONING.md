@@ -171,13 +171,47 @@ the TypeScript SDK. Details and the current gates are in
 
 ## 7. Release checklist
 
-1. Update all four values in the platform's `version.h` together.
-2. Confirm the submodule pin is the intended `log-and-stream-common` revision.
-3. Build **both** platforms if `common` changed — see
-   [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md).
-4. Confirm `fw_version_struct` survives into the binary (§3).
-5. Run the factory self-test and check the version line in the report matches.
-6. Tag the platform repository.
+A release is two workflow runs in the platform repository, with testing in
+between. The test side is
+[SHIMMER3_TEST_PROCEDURE.md](SHIMMER3_TEST_PROCEDURE.md) §8 and §10.
+
+**Before the candidate**
+
+1. Confirm the submodule pin is the intended `log-and-stream-common` revision.
+2. Confirm the other platform still builds against it if `common` changed. Every
+   pull request now builds its own platform in CI (`build-check.yml`); the other
+   platform needs its own pull request bumping the pin.
+
+**Candidate — `build-release-firmware.yml`**, by workflow_dispatch:
+
+3. It runs the host tests, bumps all four values in `version.h` together
+   (`scripts/increment_version.sh`), builds the shipping configuration, commits
+   the bump, tags the platform repository and this one, and publishes a GitHub
+   **pre-release** with the image and `build-info.json`.
+   The Jira fix version is created **unreleased**.
+4. `dry_run: true` builds and uploads the image as a workflow artifact without
+   committing, tagging, releasing or touching Jira. Use it to check a release
+   build before cutting one.
+
+**Test the candidate**
+
+5. Flash the image from the pre-release, never a local build.
+6. Confirm `fw_version_struct` survives into the binary (§3), and run the
+   factory self-test and check that its version line matches.
+7. Cover the required items and attach the reports to the pre-release
+   (`Test/hil/hil_signoff.py --tag <tag> --upload` for a manual sign-off).
+
+**Promote — `promote-release.yml`**, by workflow_dispatch with the tag:
+
+8. The gate checks the attached reports against the tag's commit and version.
+   If it passes, the workflow makes the release public, here and in this
+   repository, marks the Jira fix version released, and appends the gate's
+   summary to the release notes. If it is blocked, nothing changes and the job
+   summary says why.
+
+A candidate that fails is not deleted. It stays a pre-release, and the fix goes
+out as the next version. That keeps every image that left the building
+traceable to a tag.
 
 ## Still unverified / not found in code
 
@@ -193,8 +227,9 @@ the TypeScript SDK. Details and the current gates are in
   the address from the `.map` file of the specific build, or search the image
   for the record; no constant offset exists to document.
 - **Whether a release process document exists elsewhere.** The checklist in §7
-  is assembled from the constraints found in the source, not transcribed from
-  an existing procedure.
+  was originally assembled from the constraints found in the source. Its
+  candidate → test → promote shape is now enforced by the workflows themselves,
+  so the workflows are the authority if the two ever disagree.
 - ~~Anti-rollback or version-downgrade protection~~ — resolved: **none**.
   Shimmer3R boots into ST's system-memory bootloader (see
   [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md)),

@@ -1,0 +1,15 @@
+{
+  "schema": "shimmer-hil-required/1",
+  "platform": "shimmer3",
+  "comment": "Every item must be covered by a passing result, or carry a waiver, in at least one report attached to the release candidate. Section numbers refer to docs/SHIMMER3_TEST_PROCEDURE.md. Gates 1 and 2 are not listed: CI proves them on the tagged commit. The boot matrix row covers each radio firmware that shipped to customers.",
+  "items": [
+    {"id": "gate3.on_device_suites",    "title": "On-device suites pass",                                      "ref": "§4"},
+    {"id": "gate4.boot_matrix",         "title": "Boot matrix: one unit per shipped radio firmware (RN42 v4.77, RN42 v6.15, RN4678 v1.00.5, RN4678 v1.23.0), banners recorded", "ref": "§5.1"},
+    {"id": "gate4.per_model",           "title": "Per-model behaviour walked on the models the change touches", "ref": "§5.4"},
+    {"id": "gate4.stream_and_log",      "title": "Streaming, logging, and both together",                      "ref": "§5.5, §5.6"},
+    {"id": "gate4.functional_other",    "title": "Rest of gate 4 walked on at least one unit",                  "ref": "§5.7 to §5.11"},
+    {"id": "gate5.host_stack",          "title": "Shipping host stack against the release candidate",          "ref": "§6.4"},
+    {"id": "gate5.previous_recording",  "title": "A recording from the previous release still imports",        "ref": "§6.4.5"},
+    {"id": "gate5.version_skew",        "title": "Version skew walked in both directions",                     "ref": "§6.5"}
+  ]
+}
