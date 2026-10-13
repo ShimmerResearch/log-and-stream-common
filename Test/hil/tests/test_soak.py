@@ -35,6 +35,7 @@ DOCK_CYCLES = max(2, round(50 * SCALE))
 RECONNECTS = max(2, round(50 * SCALE))
 SOAK_RATE_HZ = 256                 # long log and long stream
 RECONNECT_RATE_HZ = 51.2           # the rate every shipped radio sustains
+RESET_RECOVERY_S = 60              # how long a reset unit gets to answer Bluetooth again
 IMU = {"ln_accel", "gyro", "mag", "vbatt"}
 
 
@@ -121,7 +122,9 @@ def test_long_log(unit, power, hil_note):
     if sc.zero_ts:
         problems.append(f"{sc.zero_ts} zero timestamps")
     if sc.gaps or sc.dupes:
-        problems.append(f"{sc.missing} samples lost in {sc.gaps} gaps ({sc.loss_fraction():.3%}), "
+        problems.append(f"{sc.missing} samples lost in {sc.gaps} gaps ({sc.loss_fraction():.3%}, "
+                        f"{sc.missing / sc.hours if sc.hours else 0:.0f}/h over {sc.hours:.2f} h), "
+                        f"largest stall {sc.max_gap_ticks} ticks ({sc.max_gap_ticks / 32.768:.0f} ms), "
                         f"{sc.dupes} duplicates; first gaps at {sc.gap_times_s[:10]} s")
     assert not problems, "; ".join(problems)
 
@@ -182,13 +185,25 @@ def _reconnect_loop(unit, n, reset=None) -> tuple[dict, list]:
             first.append(f"{i + 1}: connect {str(e)[:80]}")
             if reset and fails_in_row >= 2:
                 reset()
-                time.sleep(5)
-                try:
-                    bt.BtLink(port, connect_timeout_s=20).close()
+                # Retry for up to RESET_RECOVERY_S rather than once: the unit
+                # must boot and bring its radio up before a page can succeed,
+                # and a single early try would call a slow boot "dead".
+                t0, err = time.monotonic(), None
+                while time.monotonic() - t0 < RESET_RECOVERY_S:
+                    time.sleep(3)
+                    try:
+                        bt.BtLink(port, connect_timeout_s=20).close()
+                        err = None
+                        break
+                    except Exception as e:
+                        err = e
+                if err is None:
                     counts["recovered_by_reset"] += 1
-                    first.append(f"{i + 1}: reset brought Bluetooth back")
-                except Exception:
+                    first.append(f"{i + 1}: reset brought Bluetooth back after "
+                                 f"{time.monotonic() - t0:.0f} s")
+                else:
                     counts["dead_after_reset"] += 1
+                    first.append(f"{i + 1}: still no Bluetooth {RESET_RECOVERY_S} s after reset: {str(err)[:80]}")
                 fails_in_row = 0
             else:
                 time.sleep(10)
@@ -203,6 +218,8 @@ def _reconnect_loop(unit, n, reset=None) -> tuple[dict, list]:
             st = link.stream(3, link.inquiry())
             if st.gaps or st.dupes or st.resyncs:
                 counts["stream_loss"] += 1
+                first.append(f"{i + 1}: stream {st.missing} lost in {st.gaps} gaps, {st.dupes} dupes, "
+                             f"{st.resyncs} resyncs, largest step {st.max_gap_ticks} ticks")
             if not st.stop_ack:
                 counts["stop_unacked"] += 1
             try:
