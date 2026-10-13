@@ -15,6 +15,12 @@ bench = "my-bench"            # appears in the report; one name per physical ben
 # docking then prompts the operator instead.
 serial = "ABCD1234"
 
+[base6]
+# Base6 dock (FT4232) for Shimmer3 units: its FTDI serial without the channel
+# letter (`python -m serial.tools.list_ports -v` lists <serial>A..D). Omit
+# without one: the fleet tier then reports its items not_covered.
+serial = "ABCDEFGH"
+
 [tools]
 bench_tools = "C:/dev/bench-tools"     # checkout providing hub/hubctl.py
 stm32_programmer = "C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe"
@@ -30,8 +36,11 @@ radio = "IF820 v1.4.16.16"
 board = ""
 notes = ""
 
-# [[unit]]
-# name = "s3-rn42"
-# platform = "shimmer3"
-# mac = "000666AABBCC"
-# radio = "RN42 v6.15"
+# One Shimmer3 per radio firmware that shipped: RN42 v4.77, RN42 v6.15,
+# RN4678 v1.00.5, RN4678 v1.23. Pair each one's classic side in Windows.
+[[unit]]
+name = "s3-rn42-615"
+platform = "shimmer3"
+mac = "000666AABBCC"
+base6_slot = 3
+radio = "RN42 Ver 6.15"

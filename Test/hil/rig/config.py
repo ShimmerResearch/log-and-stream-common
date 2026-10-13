@@ -35,6 +35,7 @@ class Unit:
     mac: str | None = None          # Bluetooth MAC, 12 hex digits, no separators
     usb_serial: str | None = None   # Shimmer3R USB iSerial (CDC + MSC)
     hub_port: int | None = None     # Exsys hub port that powers its USB-C
+    base6_slot: int | None = None   # Shimmer3: Base6 slot (1-6) it sits in
     radio: str | None = None        # e.g. "RN42 v6.15", "IF820 v1.4.16.16"
     board: str | None = None        # SR number / revision, free text
     notes: str = ""
@@ -47,6 +48,8 @@ class Unit:
             caps.add("usb")
         if self.hub_port:
             caps.add("hub_port")
+        if self.base6_slot:
+            caps.add("dock")
         return caps
 
 
@@ -56,6 +59,7 @@ class Rig:
     bench: str
     units: list[Unit]
     hub_serial: str | None = None
+    base6_serial: str | None = None  # FT4232 serial without the channel letter
     bench_tools: Path | None = None
     stm32_programmer: Path | None = None
     stlink_serial: str | None = None
@@ -72,6 +76,8 @@ class Rig:
             # Power-switching a unit needs both a hub and a port to switch.
             if "hub" not in caps or "hub_port" not in caps:
                 caps.discard("hub_port")
+            if not self.base6_serial:
+                caps.discard("dock")
         return caps
 
     def units_for(self, platform: str) -> list[Unit]:
@@ -112,6 +118,7 @@ def load(path: str | os.PathLike | None = None) -> Rig:
             mac=_normalise_mac(u["mac"]) if u.get("mac") else None,
             usb_serial=u.get("usb_serial") or None,
             hub_port=int(u["hub_port"]) if u.get("hub_port") else None,
+            base6_slot=int(u["base6_slot"]) if u.get("base6_slot") else None,
             radio=u.get("radio"), board=u.get("board"), notes=u.get("notes", ""),
         ))
     names = [u.name for u in units]
@@ -123,8 +130,9 @@ def load(path: str | os.PathLike | None = None) -> Rig:
     return Rig(
         path=p, bench=bench, units=units,
         hub_serial=hub.get("serial") or None,
+        base6_serial=data.get("base6", {}).get("serial") or None,
         bench_tools=Path(tools["bench_tools"]) if tools.get("bench_tools") else None,
         stm32_programmer=Path(tools["stm32_programmer"]) if tools.get("stm32_programmer") else None,
         stlink_serial=tools.get("stlink_serial") or None,
-        extra={k: v for k, v in data.items() if k not in ("bench", "unit", "hub", "tools")},
+        extra={k: v for k, v in data.items() if k not in ("bench", "unit", "hub", "tools", "base6")},
     )

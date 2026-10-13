@@ -52,6 +52,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "hil(item_id, needs=[]): report item and required bench capabilities")
     config.addinivalue_line("markers", "smoke: the smoke tier - required for every release candidate")
     config.addinivalue_line("markers", "release: the release tier")
+    config.addinivalue_line("markers", "fleet: one unit per shipped radio firmware (Shimmer3)")
     config.addinivalue_line("markers", "soak: long-running, advisory")
     config._hil_collector = hil_report.Collector()
 

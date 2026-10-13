@@ -32,7 +32,14 @@ For the items no rig covers yet, a person records a sign-off with
 1. `pip install pytest pyserial tomli` (Python 3.10+; `tomli` only before 3.11).
 2. Copy `rig.example.toml` to `rig.toml` (git-ignored), or keep it anywhere and
    set `HIL_RIG`. Describe each unit by MAC and USB serial, never by COM number.
-3. Pair each unit's Bluetooth once in Windows.
+3. Pair each unit's Bluetooth once in Windows. Current LogAndStream asks for
+   no PIN; only a unit with SD sync enabled uses the legacy "1234". The tests
+   need the **classic** side, which creates a "Standard Serial over Bluetooth
+   link" COM port. An RN4678 is dual-mode and Windows lists it twice under the
+   same name; the BLE entry is the one shown with a **PC** icon. Pairing that
+   one creates GATT services and no COM port, and the Bluetooth tests then
+   report not_covered. `python -m serial.tools.list_ports -v` should show a
+   BTHENUM port whose hardware ID contains the unit's MAC.
 4. Close STM32CubeIDE and Consensys before a release run. The suite warns if
    they are open: the IDE pages every Bluetooth COM port when USB devices
    arrive, which distorts Bluetooth timing for most of a minute.
@@ -57,7 +64,10 @@ plug and unplug.
 | `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial |
 | `rig/sdfile.py` | Reads a Shimmer3R SD data file and checks its records |
 | `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version |
-| `tests/` | The tests, marked `smoke`, `release` or `soak` |
+| `rig/base6.py` | Base6 slot mux: which slots are occupied, select one, mask its BSL lines |
+| `rig/msp430_bsl.py` | MSP430 ROM bootloader client (port of Consensys's): erase, write, CRC-verify |
+| `rig/s3_flash.py` | Flashes a Shimmer3 in a Base6 slot, backing up and restoring its InfoMem |
+| `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` or `soak` |
 | `test_hil_*.py` | Unit tests for the above that need no hardware; run by `make -C Test/host` |
 
 ## What a timestamp check counts
