@@ -200,6 +200,8 @@ test: build
 	  failed="$$failed test_hil_gate.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_report.py; then \
 	  failed="$$failed test_hil_report.py"; fi; \
+	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_timing.py; then \
+	  failed="$$failed test_hil_timing.py"; fi; \
 	echo ""; \
 	echo "=============================================================="; \
 	if [ -n "$$failed" ]; then \
@@ -302,6 +304,7 @@ timestamp-unwrap:
 hil-gate:
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_gate.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_report.py
+	@$(PYTHON) $(REPO)/Test/hil/test_hil_timing.py
 
 clean:
 	rm -rf $(BUILD)

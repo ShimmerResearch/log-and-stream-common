@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -85,6 +86,8 @@ def main(argv=None) -> int:
     ap.add_argument("--rig", default=None)
     ap.add_argument("--no-flash", action="store_true", help="test what is on the units now")
     ap.add_argument("--upload", action="store_true", help="attach the report to the GitHub release")
+    ap.add_argument("--triage", action="store_true",
+                    help="if anything did not pass, ask Claude to triage it (triage.py; costs model usage)")
     ap.add_argument("pytest_args", nargs="*", help="extra pytest arguments, after --")
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
@@ -131,6 +134,8 @@ def main(argv=None) -> int:
             print(f"{u.name}: now v{v.text}")
 
     report = out / f"hil-report-{rig.bench}.json"
+    # A release report always runs the committed matrix, never an experiment's.
+    os.environ.pop("HIL_MATRIX", None)
     cmd = [sys.executable, "-m", "pytest", str(HERE / "tests"), "-m", a.tier,
            "--rig", str(rig.path), "--candidate", str(out / "build-info.json"),
            "--hil-report", str(report), "-p", "no:cacheprovider", "-rA", *a.pytest_args]
@@ -152,9 +157,21 @@ def main(argv=None) -> int:
                           capture_output=True, text=True, encoding="utf-8")
     print("\nThis report alone, against the required list:\n" + gate.stdout)
 
+    triage_md = out / "triage.md"
+    if a.triage:
+        rep = json.loads(report.read_text(encoding="utf-8"))
+        if any(r["status"] != "pass" for r in rep["results"]):
+            print("\nAsking Claude to triage the items that did not pass ...", flush=True)
+            subprocess.run([sys.executable, str(HERE / "triage.py"), str(out), "--rig", str(rig.path)])
+        else:
+            print("every item passed - no triage needed")
+
     if a.upload:
         gh("release", "upload", a.tag, str(report), "-R", repo, "--clobber")
         print(f"attached {report.name} to {repo} {a.tag}")
+        if triage_md.exists():
+            gh("release", "upload", a.tag, str(triage_md), "-R", repo, "--clobber")
+            print(f"attached {triage_md.name} to {repo} {a.tag}")
     else:
         print(f"report: {report}\nattach with: gh release upload {a.tag} \"{report}\" -R {repo}")
     return rc
