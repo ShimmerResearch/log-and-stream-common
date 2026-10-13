@@ -1112,7 +1112,42 @@ flash.
 | `fleet.reboot` | Five resets through the RST line; every boot answers the dock with the same radio banner (§5.1.5) |
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 
-Smoke and fleet items are not yet on the required lists. They join once they have run
+The **release** tier (Shimmer3R so far) runs the configuration matrix in
+`Test/hil/matrix/s3r_release.toml`. There are about 22 rows, chosen so every
+pair of the following appears in at least one row: rate (51.2 to 1024 Hz),
+sensor set, mode (Bluetooth stream; SD log, with the hub port acting as the
+undock; or both together) and Bluetooth CRC mode. Two of them are five-minute
+logs. Each row is its own item, `release.<row>`:
+
+- **Configuration.** The rate, sensor bits and ranges are written as raw
+  InfoMem and must read back exactly. Every enabled sensor's ODR must then
+  cover the packet rate, because the firmware raises it (§10.6 of the InfoMem
+  document); a part already at its ceiling is accepted there. Sensors the board
+  does not have are left out (`rig/s3r_boards.py`).
+- **Timing and framing.** No lost or duplicate samples, jitter within a quarter
+  period, and the rate measured on the device clock. Every frame is confirmed
+  before it is accepted: its CRC when a mode is on, a plausible timestamp step
+  when not.
+- **Signals at rest.** LN and WR accel read |a| ≈ 1 g, the gyro mean is ≈ 0,
+  no axis is stuck, staircased or saturated, and VBatt is 3.0-4.3 V.
+  Calibration comes from where a host would take it: `GET_ALL_CALIBRATION` for
+  a stream, the file's own header for a log. The calibration blocks stored in
+  InfoMem do not follow a range written straight to InfoMem until the next log
+  start or reboot; the other two sources do.
+- **Stream and log together.** Every streamed packet must be in the SD log,
+  byte for byte.
+
+Two observations are kept as their own items so they do not fail every row
+they touch: `release.sd_log_start` (samples lost in the first second of a log)
+and `release.stop_ack` (a stream stop that goes unACKed, or leaves the link
+silent until a reconnect).
+
+Run release-tier rows with STM32CubeIDE and Consensys closed. The suite warns
+when they are open. On USB arrival the IDE pages every Bluetooth COM port,
+which holds classic throughput near 20 KB/s for most of a minute, below what
+the high-rate rows need.
+
+Smoke, fleet and release items are not yet on the required lists. They join once they have run
 clean across a few candidates, so a flaky check never blocks a release on its
 first day.
 

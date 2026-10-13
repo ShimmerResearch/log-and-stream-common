@@ -1,0 +1,250 @@
+# Shimmer3R release matrix. One [[row]] per configuration; each is a report
+# item release.<id>. Generated to cover every pair of (rate, sensor set),
+# (rate, mode), (set, mode) and (mode, CRC), then hand-extended with long logs.
+#
+#   mode    stream = Bluetooth only, docked; log = SD only, undocked by the hub
+#           port; both = START_SDBT undocked, stream checked against the log
+#   crc     Bluetooth CRC mode 0/1/2 (stream and both only)
+#   ranges  configuration codes (INFOMEM §4): ln_accel 0-3 = ±2/4/8/16 g,
+#           gyro 0-5 = ±125/250/500/1000/2000/4000 dps, wr_accel 0-3 = ±2/4/8/16 g
+
+[sets]
+imu = ["ln_accel", "gyro", "mag", "vbatt"]
+imu_wr = ["ln_accel", "gyro", "mag", "vbatt", "wr_accel"]
+imu_press = ["ln_accel", "gyro", "mag", "vbatt", "pressure"]
+full = ["ln_accel", "gyro", "mag", "vbatt", "wr_accel", "alt_accel", "alt_mag", "pressure", "gsr"]
+
+[[row]]
+id = "imu_51p2hz_stream"
+rate_hz = 51.2
+sensors = "imu"
+mode = "stream"
+crc = 0
+seconds = 20
+ln_accel_range = 0
+gyro_range = 0
+wr_accel_range = 0
+
+[[row]]
+id = "imu_wr_51p2hz_log"
+rate_hz = 51.2
+sensors = "imu_wr"
+mode = "log"
+seconds = 30
+ln_accel_range = 1
+gyro_range = 1
+wr_accel_range = 1
+
+[[row]]
+id = "imu_press_51p2hz_both"
+rate_hz = 51.2
+sensors = "imu_press"
+mode = "both"
+crc = 1
+seconds = 30
+ln_accel_range = 2
+gyro_range = 2
+wr_accel_range = 2
+
+[[row]]
+id = "full_51p2hz_stream"
+rate_hz = 51.2
+sensors = "full"
+mode = "stream"
+crc = 0
+seconds = 20
+ln_accel_range = 3
+gyro_range = 3
+wr_accel_range = 3
+
+[[row]]
+id = "imu_128hz_log"
+rate_hz = 128
+sensors = "imu"
+mode = "log"
+seconds = 30
+ln_accel_range = 1
+gyro_range = 2
+wr_accel_range = 0
+
+[[row]]
+id = "imu_wr_128hz_both"
+rate_hz = 128
+sensors = "imu_wr"
+mode = "both"
+crc = 0
+seconds = 30
+ln_accel_range = 2
+gyro_range = 3
+wr_accel_range = 1
+
+[[row]]
+id = "imu_press_128hz_stream"
+rate_hz = 128
+sensors = "imu_press"
+mode = "stream"
+crc = 2
+seconds = 20
+ln_accel_range = 3
+gyro_range = 4
+wr_accel_range = 2
+
+[[row]]
+id = "full_128hz_log"
+rate_hz = 128
+sensors = "full"
+mode = "log"
+seconds = 30
+ln_accel_range = 0
+gyro_range = 5
+wr_accel_range = 3
+
+[[row]]
+id = "imu_256hz_both"
+rate_hz = 256
+sensors = "imu"
+mode = "both"
+crc = 2
+seconds = 30
+ln_accel_range = 2
+gyro_range = 4
+wr_accel_range = 0
+
+[[row]]
+id = "imu_wr_256hz_stream"
+rate_hz = 256
+sensors = "imu_wr"
+mode = "stream"
+crc = 1
+seconds = 20
+ln_accel_range = 3
+gyro_range = 5
+wr_accel_range = 1
+
+[[row]]
+id = "imu_press_256hz_log"
+rate_hz = 256
+sensors = "imu_press"
+mode = "log"
+seconds = 30
+ln_accel_range = 0
+gyro_range = 0
+wr_accel_range = 2
+
+[[row]]
+id = "full_256hz_both"
+rate_hz = 256
+sensors = "full"
+mode = "both"
+crc = 2
+seconds = 30
+ln_accel_range = 1
+gyro_range = 1
+wr_accel_range = 3
+
+[[row]]
+id = "imu_512hz_stream"
+rate_hz = 512
+sensors = "imu"
+mode = "stream"
+crc = 0
+seconds = 20
+ln_accel_range = 3
+gyro_range = 0
+wr_accel_range = 0
+
+[[row]]
+id = "imu_wr_512hz_log"
+rate_hz = 512
+sensors = "imu_wr"
+mode = "log"
+seconds = 30
+ln_accel_range = 0
+gyro_range = 1
+wr_accel_range = 1
+
+[[row]]
+id = "imu_press_512hz_both"
+rate_hz = 512
+sensors = "imu_press"
+mode = "both"
+crc = 1
+seconds = 30
+ln_accel_range = 1
+gyro_range = 2
+wr_accel_range = 2
+
+[[row]]
+id = "full_512hz_stream"
+rate_hz = 512
+sensors = "full"
+mode = "stream"
+crc = 0
+seconds = 20
+ln_accel_range = 2
+gyro_range = 3
+wr_accel_range = 3
+
+[[row]]
+id = "imu_1024hz_log"
+rate_hz = 1024
+sensors = "imu"
+mode = "log"
+seconds = 30
+ln_accel_range = 0
+gyro_range = 2
+wr_accel_range = 0
+
+[[row]]
+id = "imu_wr_1024hz_both"
+rate_hz = 1024
+sensors = "imu_wr"
+mode = "both"
+crc = 0
+seconds = 30
+ln_accel_range = 1
+gyro_range = 3
+wr_accel_range = 1
+
+[[row]]
+id = "imu_press_1024hz_stream"
+rate_hz = 1024
+sensors = "imu_press"
+mode = "stream"
+crc = 2
+seconds = 20
+ln_accel_range = 2
+gyro_range = 4
+wr_accel_range = 2
+
+[[row]]
+id = "full_1024hz_log"
+rate_hz = 1024
+sensors = "full"
+mode = "log"
+seconds = 30
+ln_accel_range = 3
+gyro_range = 5
+wr_accel_range = 3
+
+# Long logs at the top rates, for periodic stalls (card busy time, flushes)
+# that a 30 s log rarely meets.
+[[row]]
+id = "imu_1024hz_log_5min"
+rate_hz = 1024
+sensors = "imu"
+mode = "log"
+seconds = 300
+ln_accel_range = 0
+gyro_range = 1
+wr_accel_range = 0
+
+[[row]]
+id = "full_512hz_log_5min"
+rate_hz = 512
+sensors = "full"
+mode = "log"
+seconds = 300
+ln_accel_range = 2
+gyro_range = 2
+wr_accel_range = 2
