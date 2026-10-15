@@ -345,6 +345,29 @@ opcode, so it never appears as a first byte from a host. The demultiplexer is
 bypassed whenever the parser is mid-command (`ShimBt_isWaitingForArgs()`), so
 these values are unrestricted **inside** an argument payload.
 
+**A module frame is never split between the two parsers.** The module signals
+data mode on its CYSPP pin, and the firmware routes received bytes to the
+command parser only while that pin says data mode *and* no EZ-Serial frame is
+part-received. A frame that starts in command mode is finished by the module's
+parser, even if the pin drops partway through it. A host therefore receives
+nothing on connect until it sends a command.
+
+> Firmware without this rule can send a host an **unsolicited ACK or NACK about
+> 0.1 s after it opens the classic port with DTR/RTS raised**, the default for
+> pyserial and most serial software. Seen with IF820 v1.4.16.16, not with
+> v1.4.18.18. The module entered data mode while its `bt_connected` event was
+> still arriving, and the rest of that frame, which is the host's own
+> Bluetooth address, went to the command parser and ran as whatever command it
+> spelled. On one bench host it ran `SET_GYRO_SAMPLING_RATE_COMMAND` and
+> changed the stored configuration. A host that sees a byte it did not ask for
+> straight after connecting should not take it as the reply to its first
+> command. Opening the port with DTR/RTS low avoids it.
+>
+> `shimmer3r-firmware` `Shimmer_Driver/CYW20820/hal_CYW20820.c`,
+> `btUartDmaRxCpltCallback()`, the `getEzsPacketLength() == 0U` guard. Not yet
+> in a pinned revision; see
+> [Still unverified](#still-unverified--not-found-in-code).
+
 ### 2.3 Framing guarantees per transport
 
 **There is no framing.** No length prefix, no delimiter, no escape, no
@@ -3560,6 +3583,13 @@ them.
   update rests on a bench reproduction (SWO log, October 2026), not on source.
   **Re-check against source and move under Verified against** once that change
   is merged and the Shimmer3R pin is bumped to include it.
+- **Shimmer3R never splits a module frame between the two parsers.** The rule in
+  [§2.2](#22-ble) is in a `shimmer3r-firmware` change that was in review when
+  written, not in the `a8f105e5` pin. The unsolicited ACK/NACK it prevents was
+  reproduced on the bench in October 2026: IF820 v1.4.16.16 with LogAndStream
+  v1.01.021, on every open with DTR/RTS raised (6 of 6). With the change it
+  stopped (0 of 10). **Re-check against source and move under Verified
+  against** once the change is merged and the Shimmer3R pin includes it.
 - **The first firmware tag for several version gates.** Where
   [Appendix A](#appendix-a-firmware-version-gates) shows a `≤` marker, the
   introducing commit predates the earliest tag in that lineage, so the tag shown
