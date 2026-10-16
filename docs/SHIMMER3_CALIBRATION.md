@@ -396,7 +396,13 @@ byte-for-byte image of the blob, with no additional framing.
 `ShimCalib_file2Ram` reads it back and returns 1 (failure) if neither directory
 exists or the file is absent, leaving the RAM blob as the firmware defaults. It
 reads at most the 1024 bytes of calibration RAM (`SHIMMER_CALIB_RAM_MAX`), so a
-longer file is truncated to that, and it stops early if a read fails.
+longer file is truncated to that.
+
+If a read fails partway, the RAM is rebuilt from the configuration bytes
+(`ShimCalib_init` + `ShimCalib_initFromConfigBytesAll`, as at boot) instead of
+being left half-filled, and the function still returns 0. That matters because
+both callers answer a non-zero return by writing the RAM back to the card,
+which here would replace a file that may read cleanly next time.
 
 ## 5. Pressure sensor coefficient blocks
 

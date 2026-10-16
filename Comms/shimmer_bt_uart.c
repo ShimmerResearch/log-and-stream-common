@@ -217,6 +217,10 @@ void ShimBt_resetBtRxVariablesOnConnect(void)
   gAction = ACK_COMMAND_PROCESSED - 1U;
   waitingForArgs = 0;
   waitingForArgsLength = 0;
+  /* A link can drop while an oversized payload is still being dropped, after
+   * argsPayloadTruncated was raised but before its command was processed.
+   * Clear both here, or the first command of the new connection is NACKed. */
+  argsPayloadTruncated = 0;
   argsPayloadDropLen = 0;
   argsPayloadDropping = 0;
 }
