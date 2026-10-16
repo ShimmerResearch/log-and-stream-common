@@ -441,6 +441,13 @@ not start and stop logging repeatedly. Dock/USB state changes are debounced at
   | `platform_isDockUartInitialised` | yes | yes | false |
   | `platform_isUsbUartInitialised` | **no** (no USB) | yes | false |
   | `platform_sleepWhenNoTask` | yes (LPM3) | yes (Sleep / WFI) | no-op (busy loop) |
+  | `platform_ledTickElapsedRtcTicks` | yes (`main.c`) | yes (`tim.c`) | 0 |
+  | `platform_ledTickShift` | yes (`main.c`) | yes (`tim.c`) | no-op |
+
+  The last two rows were checked at `shimmer3-firmware` @ `5e31618` and
+  `shimmer3r-firmware` @ `58c29980`. Since the weak attribute moved off the
+  prototypes, each override in the table is a strong symbol, and `nm` shows it
+  as `T` in the platform's object.
 
   Two consequences worth knowing. First, **Shimmer3R runs the software CRC**
   for every Bluetooth, dock and SD-transfer checksum, and does so deliberately.
