@@ -183,6 +183,12 @@ What the suites cover today:
 | `test_rtc` | `RTC/shimmer_rtc.c` | ×2 | Every day from 2000 to 2099 round-trips; leap years; date validation |
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
 | `test_boards` | `Boards/shimmer_boards.c` | ×2 | Every revision gate, across 25 board revisions |
+| `test_platform_seam` | `Platform/platform_api.c`, `Boards/shimmer_boards.c` | ×2 | A platform's override of a weak hook beats the default even when the default links first; `log_and_stream_globals.h` declares its globals rather than defining them |
+
+`check_weak_decls.py` (`make -C Test/host weak-decls`) is the text-only half of
+`test_platform_seam`: it fails if any header in the repository puts a weak
+attribute on a declaration, which covers the hook headers the host build cannot
+include yet.
 
 Three of them are additionally cross-checked against a reference that shares no
 code with the firmware — an oracle, not a restatement:

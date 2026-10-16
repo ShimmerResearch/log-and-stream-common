@@ -116,10 +116,18 @@ Grouped by what they cover:
 | Platform-specific sensors | `MPU9150_startMagMeasurement`, `BMPX80_startMeasurement` (Shimmer3 only) |
 | Fault handling | `triggerShimmerErrorState` |
 
-`Platform/platform_api.h` adds a second, softer boundary: eleven
-`PLATFORM_WEAK` functions with default implementations in `platform_api.c`, so
-a platform overrides only what it needs. `PLATFORM_WEAK` resolves to the right
-attribute for GCC/Clang, IAR and ARMCC.
+`Platform/platform_api.h` adds a second, softer boundary: thirteen hooks whose
+default implementations in `platform_api.c` are `PLATFORM_WEAK`, so a platform
+overrides only what it needs. `PLATFORM_WEAK` resolves to the right attribute
+for GCC/Clang, IAR and ARMCC.
+
+> **The weak attribute goes on the default definition, never on the
+> prototype.** A weak prototype makes every definition that sees it weak, the
+> platform's override included, and the linker then keeps whichever weak copy
+> it meets first. The same holds for the library's other `__weak` hooks
+> (`ShimBrd_doesDeviceSupportBle`, `BT_setBtMode`, `ADC_gatherDataStart`,
+> `ShimFactoryTest_sendReportImpl` and the rest). `test_platform_seam` and
+> `check_weak_decls.py` under `Test/host/` hold both halves of that rule.
 
 > **The two boundaries fail differently.** A missing `extern` from
 > `log_and_stream_externs.h` is a link error. A missing `platform_*` override
