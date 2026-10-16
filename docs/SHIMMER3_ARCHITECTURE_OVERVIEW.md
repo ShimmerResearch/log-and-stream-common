@@ -179,8 +179,8 @@ uint32_t taskList;   // one bit per task
 | 17 | `TASK_FACTORY_TEST` | both |
 | 18 | `TASK_DOCK_OR_USB_STATE_CHANGE` | both |
 | 19 | `TASK_BT_TX_BUF_CLEAR` | both |
-| 20 | `TASK_BT_TURN_ON_AFTER_BOOT` | both |
-| 21 | `TASK_JUMP_TO_BOOT_LOADER` | S3R |
+| 20 | `TASK_BT_TURN_ON_AFTER_BOOT` | both; SD sync's start callback queues it, so the radio is started from the main loop and not from the sync timer interrupt |
+| 21 | `TASK_JUMP_TO_BOOT_LOADER` / `TASK_BT_MODE_CHECK` | S3R / S3; on Shimmer3 the disconnect handler, which runs in an interrupt, queues the radio check that can stop and start the module |
 | 22 | `TASK_WRITE_RADIO_DETAILS` | S3 |
 | 23 | `TASK_SD_FILE_TRANSFER` | S3R |
 | 24 | `TASK_LED_PHASE_SYNC` | both; queued once a second ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1) |
@@ -193,9 +193,10 @@ uint32_t taskList;   // one bit per task
 > nothing above it is starved. The retry is not driven from the TX-complete
 > interrupt because, on Shimmer3, that runs once per byte sent.
 
-> **Bit 5 means two different things.** `TASK_USB_PROCESS_CMD` on Shimmer3R,
-> `TASK_CFGCH` on Shimmer3. The bit numbers are not a stable cross-platform
-> identifier.
+> **Bits 5 and 21 mean two different things.** Bit 5 is `TASK_USB_PROCESS_CMD`
+> on Shimmer3R and `TASK_CFGCH` on Shimmer3; bit 21 is
+> `TASK_JUMP_TO_BOOT_LOADER` and `TASK_BT_MODE_CHECK`. The bit numbers are not a
+> stable cross-platform identifier.
 
 ### 4.1 Priority is bit order
 

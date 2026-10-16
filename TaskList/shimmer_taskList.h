@@ -117,6 +117,10 @@ typedef enum TaskId_Tag
   TASK_JUMP_TO_BOOT_LOADER = (0x00000001UL << 21U),
 #endif
 #if defined(SHIMMER3)
+  /* Re-checks the radio against the configuration after a disconnect. The
+   * disconnect is seen in an interrupt on Shimmer3, so the check, which can
+   * stop and start the module, is queued here rather than run there. */
+  TASK_BT_MODE_CHECK = (0x00000001UL << 21U),
   TASK_WRITE_RADIO_DETAILS = (0x00000001UL << 22U),
 #endif
 #if defined(SHIMMER3R)

@@ -144,24 +144,38 @@ Both configurations link with `--stack_size=2200` and compile with
 `--printf_support=nofloat`.
 
 **The stack size comes from a measured worst case.** Figures are for the `-O0`
-image at the time the size was set:
+image:
 
 | Path | Bytes |
 |---|---|
 | Deepest from `main`: the factory test's SD check, `ShimSd_test1()` → FatFs → SD driver | 1,070 |
-| Deepest interrupt: `DMA_ISR`, Bluetooth RX → status-string handling → `snprintf` | 462 |
-| Next deepest interrupt: `TIMER1_A0_ISR`, the millisecond clock's callbacks → RN4x bring-up → `sprintf` | 450 |
-| `main` plus two nested interrupts | 1,982 |
-| `--stack_size` (218 B of margin) | 2,200 |
+| Deepest interrupt: `TIMER1_A0_ISR`, the millisecond clock's callbacks → RN4x bring-up → `sprintf` | 450 |
+| Next deepest interrupt: `DMA_ISR`, Bluetooth RX → RN4x command response → `sprintf` | 446 |
+| `main` plus one interrupt | 1,520 |
+| `--stack_size` (680 B of margin) | 2,200 |
 
-Two interrupts are counted because they can nest. Starting the Bluetooth
-module calls `msp430_clock_init()`, which sets GIE, and the RN4x baud-change
-step in `runSetCommands()` can call `msp430_clock_enable()`, which does the
-same. `DMA_ISR`, `Port1_ISR`, `TIMER0_A1_ISR` and `TIMER1_A0_ISR` can all reach
-one of them, and SD sync starts the module from `TIMER0_A1_ISR` in normal
-operation. A third level cannot happen: `btInit()` powers the module before it
-starts the clock, and once the clock is running, a nested handler that reaches
-either call returns without touching GIE.
+**One interrupt is counted because handlers do not nest.** The MSP430 clears
+GIE on entry to a handler, and nothing a handler can reach sets it again.
+Starting the Bluetooth module is what used to: it starts the millisecond clock,
+and `msp430_clock_enable()` set GIE. Two changes keep that out of interrupt
+context:
+
+- **Bluetooth start runs from the main loop.** SD sync's start callback only
+  queues `TASK_BT_TURN_ON_AFTER_BOOT`, and the disconnect handler queues
+  `TASK_BT_MODE_CHECK` instead of re-checking the radio itself.
+- **`msp430_clock_enable()` leaves GIE as its caller had it.** The RN4x
+  set-up still calls it from `DMA_ISR` and `TIMER1_A0_ISR`, at the baud-change
+  step of `runSetCommands()`. That set-up is a state machine driven by those
+  two interrupts, and the main loop already runs with GIE set.
+
+Handlers do reach one GIE write: the `__set_interrupt_state()` in the Bluetooth
+TX ring's push. It restores the state saved a few lines earlier, so inside a
+handler it leaves GIE clear.
+
+**The size could now come down.** It was set while two nested handlers had to
+fit on top of `main`. It stays at 2,200 B until the run-time high-water mark
+below has been read on units and the image has been re-measured at the
+optimisation level that ships.
 
 A frame that holds a FatFs `FIL` costs over 500 bytes, because each `FIL`
 carries a sector buffer. The `sdlog.cfg` parser keeps its `FIL` and its
@@ -188,6 +202,12 @@ buffer, a new call made from an interrupt, or a different optimisation level.
    empty leaf.
 5. Count `send_cmd()` in the SD driver twice. It calls itself once, because an
    application command (ACMD) is preceded by CMD55.
+6. Check that no handler can reach an instruction that turns interrupts on.
+   Build with `--keep_asm` and look for `EINT`, and for `BIS` or `MOV` of an
+   immediate into `SR` with bit 3 (GIE) set. A write of a saved register value
+   restores the caller's state and is fine. If a handler can reach one of the
+   others, handlers can nest, and `main` plus one handler is no longer the
+   bound.
 
 The ceiling is the RAM the map shows unused below `.stack`. When the size was
 set, that was 2,456 B, leaving 256 B unallocated.

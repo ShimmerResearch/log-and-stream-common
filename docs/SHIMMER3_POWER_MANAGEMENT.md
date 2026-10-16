@@ -103,6 +103,13 @@ disagrees with the current state, or when the EEPROM's BLE / classic enables
 disagree with what is running. It starts the radio when normal log-and-stream
 mode is enabled and the radio is off.
 
+It runs whenever the configuration is re-read, from InfoMem or `sdlog.cfg`, and
+after every Bluetooth disconnect. On Shimmer3 the disconnect is seen in an
+interrupt, so the handler queues `TASK_BT_MODE_CHECK` and the check runs from
+the main loop. Starting the radio is kept out of interrupt handlers on
+Shimmer3 ([SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md)
+§4.5).
+
 > **In SD-sync mode the radio is cycled per node**, not left on. The centre
 > starts Bluetooth, attempts one node, and stops it again before the next —
 > which is the dominant cost of a sync round and the reason a round takes
