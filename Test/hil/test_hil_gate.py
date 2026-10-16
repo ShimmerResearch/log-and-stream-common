@@ -6,6 +6,7 @@ so each rule it enforces has a case here that would pass a bad candidate if the
 rule were removed.
 """
 
+import contextlib
 import copy
 import io
 import json
@@ -192,9 +193,15 @@ class Files(unittest.TestCase):
         end = next(i for i, ln in enumerate(lines) if "§7 regression cases" in ln)
         cited = [re.search(r"§\d+(?:\.\d+)*", ln).group() for ln in lines[start:end + 1]]
         self.assertGreaterEqual(len(cited), 10)
+        # And the two gate 2 checks read off the candidate's build. The
+        # warnings line is a Shimmer3 item.
+        size = next(ln for ln in lines if "Flash and RAM" in ln)
+        warnings = next(ln for ln in lines if "build warnings read" in ln)
+        self.assertIn("§3.4", size)
+        self.assertTrue(warnings.startswith("- [ ] Shimmer3 build") and "§3.2" in warnings)
         for p in hil_gate.PLATFORMS:
             refs = re.findall(r"§\d+(?:\.\d+)*", " ".join(i.get("ref", "") for i in hil_gate.load_required(p)))
-            for c in cited:
+            for c in cited + ["§3.4"] + (["§3.2"] if p == "shimmer3" else []):
                 self.assertTrue(any(r == c or r.startswith(c + ".") for r in refs),
                                 f"{p}: §8 has a gate item for {c}, but nothing in required/{p}.json cites it")
 
@@ -220,6 +227,13 @@ class Files(unittest.TestCase):
             Path(d, "broken.json").write_text("{", encoding="utf-8")
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(hil_gate.main(args + [str(Path(d, "broken.json"))]), 2)
+
+    def test_signoff_refuses_a_report_name_the_gate_would_not_read(self):
+        import hil_signoff
+        with redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as e:
+                hil_signoff.main(["--tag", "LogAndStream_Shimmer3R_v1.01.022", "--out", "evidence.json", "--upload"])
+        self.assertEqual(e.exception.code, 2)
 
     def test_unusable_inputs_are_exit_2_not_a_traceback(self):
         with tempfile.TemporaryDirectory() as d:

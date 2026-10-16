@@ -936,9 +936,11 @@ The release itself happens in two steps, and the checklist splits across them
    `promote-release.yml`. The gate reads the reports and makes the release
    public only if every required item is covered on that exact commit.
 
-The items above from "On-device suites pass" through "§7 regression cases" are
-the ones the gate checks. They are listed in `Test/hil/required/`, and
-`Test/hil/hil_signoff.py` records them as a report.
+The gate checks the items a person can read off the candidate: the Shimmer3
+build warnings (§3.2), flash and RAM (§3.4), and everything from "On-device
+suites pass" through "§7 regression cases". They are listed in
+`Test/hil/required/`, and `Test/hil/hil_signoff.py` records them as a report.
+The rest are settled before the build is triggered, or are CI's (§2).
 
 ### 8.1 A shared-library change spans two releases
 
@@ -1140,9 +1142,13 @@ needs it weakened.
   offsets be usable.
 - ~~**Which on-device suites are run per release today.**~~ — resolved going
   forward: each release now carries its test reports as assets on the GitHub
-  release (§10), which name the items covered, the bench, the operator and the
-  units. Releases made before the gate existed have no such record.
-- **Shimmer3 factory self-test.** §4.1 covers the Shimmer3R report, which is
-  what [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md)
-  documents. `hal_FactoryTest.h` exists on both platforms; the Shimmer3 report
-  format is not documented here.
+  release (§10), which name the items covered, the bench and the operator.
+  Releases made before the gate existed have no such record.
+- **Which units a release was tested on.** A report has no field for them. A
+  result's note can name them, and `hil_signoff.py` asks for that, but nothing
+  requires it.
+- **Shimmer3 factory self-test report format.** §4.1 lists what the Shimmer3
+  report contains, from the test functions in shimmer3-firmware's
+  `hal_FactoryTest.c`. Its line format is not documented here, as
+  [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) does for
+  the Shimmer3R, so the report is checked by eye.
