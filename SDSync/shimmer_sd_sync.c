@@ -910,13 +910,12 @@ void ShimSdSync_handleSyncTimerTriggerNode(void)
   }
 }
 
+/* Called from the sync timer interrupt. Both platforms register a start
+ * callback that only queues TASK_BT_TURN_ON_AFTER_BOOT, so the module starts
+ * from the main loop, well inside the one-second tick. On Shimmer3 the RN4x
+ * driver set-up (BT_init) is part of InitialiseBtAfterBoot(), in that task. */
 void ShimSdSync_startBtForSync(void)
 {
-#if defined(SHIMMER3)
-  BT_init();
-  BT_rn4xDisableRemoteConfig(1);
-  BT_setUpdateBaudDuringBoot(1);
-#endif
   btStartCb();
 }
 
@@ -995,6 +994,12 @@ __interrupt void TIMER0_A1_ISR(void)
 
       ShimSdSync_handleSyncTimerTrigger();
 
+      /* Wake the main loop for anything the tick queued: the Bluetooth start
+       * above, or a stop-logging request */
+      if (ShimTask_getList())
+      {
+        __bic_SR_register_on_exit(LPM3_bits);
+      }
       break;
     case 4:
       break; //TA0CCR2 not used
