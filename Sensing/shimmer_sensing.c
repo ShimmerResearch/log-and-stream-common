@@ -685,12 +685,12 @@ void ShimSens_saveData(void)
   while (budget--)
   {
 #if defined(SHIMMER3R) && USE_SD
-    /* Back-pressure: with every SD buffer queued for the card, a record put
-     * now would be refused and lost, so leave the packets in the ring - deep
-     * enough on Shimmer3R to wait out a write-busy card. TASK_SDWRITE re-queues
-     * this task as each buffer is released. No re-queue here: TASK_SAVEDATA
-     * outranks TASK_SDWRITE, so it would starve the write it is waiting for. */
-    if (shimmerStatus.sdLogging && (ShimSdDataFile_getNumberOfFullBuffers() >= NUM_SDWRBUF))
+    /* Back-pressure: when the SD buffers would refuse this record, leave the
+     * packets in the ring - deep enough on Shimmer3R to wait out a write-busy
+     * card - rather than lose it. TASK_SDWRITE re-queues this task as each
+     * buffer is released. No re-queue here: TASK_SAVEDATA outranks
+     * TASK_SDWRITE, so it would starve the write it is waiting for. */
+    if (shimmerStatus.sdLogging && !ShimSdDataFile_canAcceptRecord(sensing.dataLen - 1))
     {
       break;
     }

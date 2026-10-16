@@ -451,6 +451,11 @@ uint8_t ShimSdDataFile_getNumberOfFullBuffers(void)
   return SdWrBuf_numQueued(&sdWrBuf);
 }
 
+uint8_t ShimSdDataFile_canAcceptRecord(uint16_t len)
+{
+  return SdWrBuf_canAccept(&sdWrBuf, len);
+}
+
 uint16_t ShimSdDataFile_getBytesInCurrentSensingBuffer(void)
 {
   return SdWrBuf_bytesInCurrent(&sdWrBuf);

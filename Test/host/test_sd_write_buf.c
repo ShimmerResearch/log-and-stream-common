@@ -408,6 +408,64 @@ static void test_refusal_is_counted_and_recovers(void)
   expectU("a new logging session clears it", sim.w.diag.putsRefusedFull, 0);
 }
 
+/* SdWrBuf_canAccept is the drain's back-pressure test (DEV-1098), so it must
+ * predict SdWrBuf_put exactly - in particular the case numQueued alone misses:
+ * one buffer free, and the record that closes the open buffer is refused. A
+ * caller that holds records back while canAccept says no must never see a
+ * refusal. */
+static void test_can_accept_predicts_put(void)
+{
+  Sim sim;
+  uint32_t i;
+  uint32_t mispredicted = 0;
+  uint32_t heldBack = 0;
+  uint16_t recLen;
+  uint8_t can;
+  SdWrBufPutResult r;
+
+  testCase("canAccept predicts every put, full or not");
+  sim_init(&sim, 0);
+  for (i = 0; i < 4000; i++)
+  {
+    /* Alternate a card that keeps up with one that stalls for 200 records -
+     * long enough to queue every buffer - so every fill level is visited. */
+    if ((((i / 200U) % 2U) == 0U) && ((i % 5U) == 0U))
+    {
+      sim_taskSdWrite(&sim);
+    }
+    recLen = (uint16_t) (FIELD_REC_LEN + (i % 3));
+    can = SdWrBuf_canAccept(&sim.w, recLen);
+    if (!can)
+    {
+      heldBack++;
+    }
+    r = sim_put(&sim, recLen);
+    if ((r == SDWRBUF_PUT_REFUSED) == (can != 0))
+    {
+      mispredicted++;
+    }
+  }
+  expectTrue("the full case was reached", heldBack > 0);
+  expectU("canAccept agreed with put every time", mispredicted, 0);
+
+  testCase("a drain that obeys canAccept loses nothing");
+  sim_init(&sim, 0);
+  for (i = 0; i < 4000; i++)
+  {
+    if ((((i / 200U) % 2U) == 0U) && ((i % 5U) == 0U))
+    {
+      sim_taskSdWrite(&sim);
+    }
+    if (SdWrBuf_canAccept(&sim.w, FIELD_REC_LEN))
+    {
+      sim_put(&sim, FIELD_REC_LEN);
+    }
+  }
+  expectU("no refusal", sim.w.diag.putsRefusedFull, 0);
+  sim_stop(&sim);
+  sim_checkNothingLost(&sim);
+}
+
 /* Both indices wrap. Long enough to lap the buffers many times, with the write
  * lagging by a different amount each cycle. */
 static void test_indices_wrap(void)
@@ -639,6 +697,7 @@ int main(void)
   test_normal_cycle();
   test_batch_crossing_boundary();
   test_refusal_is_counted_and_recovers();
+  test_can_accept_predicts_put();
   test_indices_wrap();
   test_variable_record_lengths();
   test_stop_flush_terminates();

@@ -164,6 +164,21 @@ uint8_t SdWrBuf_numQueued(const SdWriteBuf *bufsPtr)
   return bufsPtr->numQueued;
 }
 
+uint8_t SdWrBuf_canAccept(const SdWriteBuf *bufsPtr, uint16_t recLen)
+{
+  /* The same two refusals SdWrBuf_put makes for a full set of buffers. */
+  if (bufsPtr->numQueued >= NUM_SDWRBUF)
+  {
+    return 0;
+  }
+  if ((bufsPtr->len[bufsPtr->sensIdx] > 0) && (recLen > roomInCurrent(bufsPtr))
+      && ((bufsPtr->numQueued + 1U) >= NUM_SDWRBUF))
+  {
+    return 0;
+  }
+  return 1;
+}
+
 /* 0 when every buffer is queued: there is no open buffer then, and sensIdx is
  * aliased onto a queued one whose length would be a lie. */
 uint16_t SdWrBuf_bytesInCurrent(const SdWriteBuf *bufsPtr)
