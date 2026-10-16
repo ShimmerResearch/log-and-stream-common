@@ -205,7 +205,7 @@ configuration:
 | `USE_FREERTOS` | Selects the RTOS task-list variant (neither generation uses it) |
 | `TEST_TASK_MONITOR` | Enables the stuck-task watchdog |
 | `TEST_RTC_ERR_FLASH_OFF` | Suppresses the RTC-not-set LED warning |
-| `TEST_LOG_WITH_USB` | **Bench builds only, never ship.** Shimmer3R: allows SD logging with USB-C in but not docked, so a battery-less unit can log and be read back without undocking. Starting a log takes the card from USB MSC; stopping gives it back. Default 0 |
+| `TEST_LOG_WITH_USB` | **Bench builds only, never ship.** Shimmer3R: allows SD logging with USB-C in but not docked, so a battery-less unit can log and be read back without undocking. Starting a log takes the card from USB MSC; it goes back when sensing stops, so with a stream still running after the log, only once that stream ends too. Default 0 |
 | `IS_SUPPORTED_TCXO`, `IS_SUPPORTED_SINGLE_TOUCH` | Capability gates enforced in configuration validation |
 
 > **`TEST_*` symbols are not test-only.** `TEST_TASK_MONITOR` gates the
