@@ -230,6 +230,8 @@ static struct
    * returns failWith with nothing read - the card has gone away. */
   uint32_t failFromRead;
   FRESULT failWith;
+  /* f_stat() fails, leaving a size that is not the file's (Shimmer3R). */
+  uint8_t failStat;
   uint32_t reads;
   uint32_t closes;
   /* Opens for writing, and f_write calls: ShimCalib_ram2File() at work. */
@@ -301,6 +303,12 @@ FRESULT f_open(FIL *fp, const TCHAR *path, BYTE mode)
 FRESULT f_stat(const TCHAR *path, FILINFO *fno)
 {
   (void) path;
+  if (card.failStat)
+  {
+    /* What a caller that ignores the result would then read as the size. */
+    fno->fsize = 0x7FFFFFFF;
+    return FR_DISK_ERR;
+  }
   fno->fsize = card.fileLen;
   return card.present ? FR_OK : FR_NO_FILE;
 }
@@ -862,6 +870,41 @@ static void test_single_sensor_write_stored_length(void)
 }
 
 /*
+ * singleSensorWrite, the RAM end. With the dump declaring the whole 1024-byte
+ * RAM, its declared end is the RAM end, so a record whose payload runs off the
+ * end is updated up to the last RAM byte and no further. This pins the bound at
+ * the boundary where the two ends coincide. A write past the RAM itself cannot
+ * be watched here - what lies after the array is the toolchain's choice - so
+ * the bound is pinned against regression by test_single_sensor_declared_end,
+ * where the declared end falls inside the RAM and an overrun shows in it.
+ */
+static void test_single_sensor_write_ram_end(void)
+{
+  guarded_sc_t g;
+  const uint16_t at = 1000; /* payload at 1012-1032; the RAM ends at 1023 */
+  unsigned i;
+
+  testCase("test_single_sensor_write_ram_end");
+  reset();
+  ramEmpty();
+  fillTo(ram(), at);
+  putRecord(ram(), at, TEST_SENSOR, 0, IMU_LEN, 0x40);
+  setLenField(ram(), RAM_MAX - 2);
+
+  guardInit(&g, IMU_LEN);
+  for (i = 0; i < sizeof(g.sc.data.raw); i++)
+  {
+    g.sc.data.raw[i] = (uint8_t) (0xC0 + i);
+  }
+  expectU("a record running off the RAM is updated",
+      ShimCalib_singleSensorWrite(&g.sc), 0);
+  expectTrue("up to the last RAM byte",
+      isRamp(ram() + at + HDR, RAM_MAX - (at + HDR), 0xC0));
+  expectTrue("with the record's header left as it was",
+      ram()[at + SC_OFFSET_SENSOR_LENGTH] == IMU_LEN);
+}
+
+/*
  * file2Ram, a file larger than the RAM. The size is whatever is on the card,
  * and the read used to run on to the end of the file, past the calibration
  * RAM. It stops at the RAM's 1024 bytes.
@@ -989,6 +1032,36 @@ static void test_file2ram_short_header(void)
 
 #if defined(SHIMMER3R)
 /*
+ * file2Ram on Shimmer3R, f_stat() failing. The read loop runs to the size
+ * f_stat() reports, and the result was not checked, so a failure left the
+ * loop running to whatever FILINFO held - here 2 GB. It is handled like a
+ * failed read: nothing is read, the RAM is rebuilt as boot builds it, the
+ * call still reports success, and the card is left alone.
+ */
+static void test_file2ram_stat_fails(void)
+{
+  static uint8_t booted[RAM_MAX];
+
+  testCase("test_file2ram_stat_fails");
+  reset();
+  ShimCalib_init();
+  ShimCalib_initFromConfigBytesAll();
+  memcpy(booted, ram(), RAM_MAX);
+
+  cardInsert(300);
+  card.failStat = 1;
+
+  expectU("file2Ram reports success", ShimCalib_file2Ram(), 0);
+  expectU("nothing is read to a size f_stat() did not give", card.reads, 0);
+  expectFalse("and the read loop does not spin", card.stuck);
+  expectU("the file is closed", card.closes, 1);
+  expectTrue("the RAM is rebuilt as boot builds it", memcmp(booted, ram(), RAM_MAX) == 0);
+  expectU("nothing is opened for writing on the card", card.writeOpens, 0);
+}
+#endif
+
+#if defined(SHIMMER3R)
+/*
  * dump to config bytes and SD header, a sensor with no slot. On Shimmer3R the
  * switch that picks the destination offsets had an empty default, so an
  * unlisted sensor was copied using offsets nobody had set. It now copies
@@ -1033,9 +1106,13 @@ int main(void)
   test_single_sensor_read_missing();
   test_single_sensor_write_full_ram();
   test_single_sensor_write_stored_length();
+  test_single_sensor_write_ram_end();
   test_file2ram_truncates();
   test_file2ram_failed_read();
   test_file2ram_short_header();
+#if defined(SHIMMER3R)
+  test_file2ram_stat_fails();
+#endif
 #if defined(SHIMMER3R)
   test_dump_to_config_unknown_sensor();
 #endif

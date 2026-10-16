@@ -225,7 +225,13 @@ uint8_t ShimCalib_file2Ram(void)
   memset(shimmerCalib_ram, 0, SHIMMER_CALIB_RAM_MAX);
 
 #if defined(SHIMMER3R)
-  f_stat(cal_file_name, &calibFileInfo);
+  /* The read loop below runs to the size f_stat() reports. If it fails there
+   * is no size, only whatever calibFileInfo held, so it is handled like a
+   * failed read. */
+  if (f_stat(cal_file_name, &calibFileInfo) != FR_OK)
+  {
+    readFailed = 1;
+  }
 #endif
 
 #if defined(SHIMMER3)
@@ -233,7 +239,7 @@ uint8_t ShimCalib_file2Ram(void)
   {
     this_read_size = min(gfc.fsize - gfc.fptr, SHIMMER_CALIB_COPY_SIZE);
 #elif defined(SHIMMER3R)
-  while (gfc.fptr != calibFileInfo.fsize)
+  while (!readFailed && (gfc.fptr != calibFileInfo.fsize))
   {
     this_read_size = min(calibFileInfo.fsize - gfc.fptr, SHIMMER_CALIB_COPY_SIZE);
 #endif

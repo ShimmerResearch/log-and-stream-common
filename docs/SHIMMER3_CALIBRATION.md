@@ -411,7 +411,8 @@ reads at most the 1024 bytes of calibration RAM (`SHIMMER_CALIB_RAM_MAX`), so a
 longer file is truncated to that.
 
 If a read fails partway, or the file's length field declares fewer than the 8
-bytes of its own version header, the RAM is rebuilt from the configuration bytes
+bytes of its own version header, or (on Shimmer3R, which takes the file's size
+from `f_stat`) `f_stat` fails, the RAM is rebuilt from the configuration bytes
 (`ShimCalib_init` + `ShimCalib_initFromConfigBytesAll`, as at boot) instead of
 being left as read, and the function still returns 0. That matters because
 both callers answer a non-zero return by writing the RAM back to the card,
