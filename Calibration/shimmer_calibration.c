@@ -149,7 +149,7 @@ void ShimCalib_ram2File(void)
       return;
     }
 
-    while (gfc.fptr < shimmerCalib_ramLen + 2)
+    while (gfc.fptr < shimmerCalib_ramLen + 2U)
     {
       this_write_size = min(shimmerCalib_ramLen + 2 - gfc.fptr, SHIMMER_CALIB_COPY_SIZE);
       f_write(&gfc, shimmerCalib_ram + gfc.fptr, this_write_size, &bw);
@@ -1031,6 +1031,8 @@ void ShimCalib_configBytes128To255ToCalibDumpBytes(uint8_t setCalibTsZero)
 #if defined(SHIMMER3R)
   ShimCalib_configBytesToCalibDump(SC_SENSOR_ADXL371_ACCEL, setCalibTsZero);
   ShimCalib_configBytesToCalibDump(SC_SENSOR_LIS3MDL_MAG, setCalibTsZero);
+#else
+  (void) setCalibTsZero; //Shimmer3 keeps no calibration in config bytes 128-255
 #endif
 }
 
@@ -1241,7 +1243,8 @@ void ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(uint8_t sensor, uin
       sc1.range = configBytes->altMagRange;
       break;
     default:
-      break;
+      //No slot in the config bytes or the SD header to copy into
+      return;
 #endif
   }
 

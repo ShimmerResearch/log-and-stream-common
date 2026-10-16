@@ -92,8 +92,10 @@ wrong.
 This repository is a submodule of both `shimmer3-firmware` (MSP430) and
 `shimmer3r-firmware` (STM32U5), and every change here ships to both.
 
-`test_rtc`, `test_battery` and `test_boards` are therefore built and run
-**twice**, once with `-DSHIMMER3` and once with `-DSHIMMER3R`. `make
+The suites in the Makefile's `DUAL_PLATFORM_SUITES` (`test_rtc`,
+`test_battery`, `test_boards`, `test_bt_reply` and `test_calibration`) are
+therefore built and run **twice**, once with `-DSHIMMER3` and once with
+`-DSHIMMER3R`. `make
 platform-check` goes further and compiles every host-clean module both ways
 without running it. That is the cheapest check there is that a change has not
 broken the platform you were not looking at.
