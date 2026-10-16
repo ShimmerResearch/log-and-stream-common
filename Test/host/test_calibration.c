@@ -525,6 +525,61 @@ static void test_ram_write_no_transfer(void)
   expectTrue("or the calibration RAM", memcmp(ramBefore, ram(), RAM_MAX) == 0);
 }
 
+/*
+ * SET_CALIB_DUMP, a start without its whole length header. The dump's first
+ * two bytes are its declared length. A start that does not carry both - length
+ * 0 or 1 at offset 0, or any start at offset 1 - used to take the missing byte
+ * from the staging buffer, which still holds the previous transfer, and open a
+ * transfer of that stale length. Such a start is refused, and it closes any
+ * transfer in progress.
+ *
+ * A start that does carry the header clears what the previous transfer left in
+ * the staging buffer. Completion counts bytes received, not bytes covered, so a
+ * host that repeats a chunk can complete a transfer with a gap in it, and that
+ * gap used to commit the previous dump's bytes.
+ */
+static void test_ram_write_start_header(void)
+{
+  static uint8_t image[RAM_MAX];
+  uint8_t chunk[CHUNK];
+  const uint16_t total = 300; /* declared 298 + the 2 length bytes */
+
+  testCase("test_ram_write_start_header");
+  reset();
+  memset(chunk, 0x66, sizeof(chunk));
+
+  /* Leave a 300-byte transfer open, with its header in the staging buffer. */
+  memset(image, 0x55, sizeof(image));
+  setLenField(image, total - 2);
+  expectU("a 300-byte transfer starts", ShimCalib_ramWrite(image, CHUNK, 0), 0);
+
+  expectX("a zero-length start is refused", ShimCalib_ramWrite(chunk, 0, 0), 0xFF);
+  expectX("and it closes the open transfer",
+      ShimCalib_ramWrite(image + CHUNK, CHUNK, CHUNK), 0xFF);
+  expectX("a one-byte start is refused", ShimCalib_ramWrite(chunk, 1, 0), 0xFF);
+  expectX("so is a start at offset 1", ShimCalib_ramWrite(chunk, CHUNK, 1), 0xFF);
+
+  /* A whole 300-byte dump of 0x55 goes through... */
+  expectU("chunk 1 of the 0x55 dump", ShimCalib_ramWrite(image, CHUNK, 0), 0);
+  expectU("chunk 2", ShimCalib_ramWrite(image + CHUNK, CHUNK, CHUNK), 0);
+  expectU("chunk 3 completes it",
+      ShimCalib_ramWrite(image + 2 * CHUNK, total - 2 * CHUNK, 2 * CHUNK), 1);
+  expectTrue("its tail is in the RAM", allBytes(ram() + 2 * CHUNK, total - 2 * CHUNK, 0x55));
+
+  /* ...then a 300-byte dump of 0x66 whose second chunk is sent twice and whose
+   * third never is. It completes on byte count, and its unwritten tail is zero,
+   * not the 0x55 dump's. */
+  memset(image, 0x66, sizeof(image));
+  setLenField(image, total - 2);
+  expectU("chunk 1 of the 0x66 dump", ShimCalib_ramWrite(image, CHUNK, 0), 0);
+  expectU("chunk 2", ShimCalib_ramWrite(image + CHUNK, CHUNK, CHUNK), 0);
+  expectU("chunk 2 again completes it on count",
+      ShimCalib_ramWrite(image + CHUNK, CHUNK, CHUNK), 1);
+  expectTrue("its second chunk is in the RAM", allBytes(ram() + CHUNK, CHUNK, 0x66));
+  expectTrue("and the tail it never sent is zero, not the old dump's",
+      allBytes(ram() + 2 * CHUNK, total - 2 * CHUNK, 0));
+}
+
 /* SET_CALIB_DUMP, the transfer that should go through: chunks at increasing
  * offsets, committed when the declared length has arrived. */
 static void test_ram_write_multi_chunk(void)
@@ -888,6 +943,7 @@ int main(void)
   test_ram_read_bounds();
   test_ram_write_declared_length();
   test_ram_write_no_transfer();
+  test_ram_write_start_header();
   test_ram_write_multi_chunk();
   test_single_sensor_read_slot();
   test_single_sensor_read_ram_end();

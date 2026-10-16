@@ -406,6 +406,18 @@ uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
   {
     return 0xff;
   }
+  /* A chunk at offset 0 or 1 starts a new transfer, and the dump's first two
+   * bytes are its declared length, which sizes the transfer and the final
+   * copy. So a start has to carry both bytes: offset 0, length 2 or more.
+   * Anything shorter, or an offset-1 start, would take the missing byte from
+   * the staging buffer, which still holds the previous transfer. A refused
+   * start ends any transfer in progress, so the chunks after it are refused
+   * too. */
+  if ((offset < 2) && ((offset != 0) || (length < 2)))
+  {
+    ShimCalib_ramTempInit();
+    return 0xff;
+  }
   /* A chunk past the start continues a transfer only if one was started and
    * has not finished. With none in progress, shimmerCalib_ramTempMax is 0 and
    * this chunk would "complete" a transfer that never began: an empty copy,
@@ -417,10 +429,10 @@ uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
   }
   memcpy(shimmerCalib_ramTemp + offset, buf, length);
 
-  //to start a new calib_dump transmission, the sw must use offset = 0 to setup the correct length.
-  //offset = 1 is not suggested, but will be considered.
-  //starting with offset > 2 is not accepted.
-  if (offset < 2)
+  //to start a new calib_dump transmission, the sw must use offset = 0 to setup
+  //the correct length. a start at offset 1, or one shorter than the 2 length
+  //bytes, is refused above. starting with offset >= 2 is not accepted.
+  if (offset == 0)
   {
     /* The declared length is the host's, and it sizes the copy below, so a
      * dump that would not fit the calibration RAM is refused at its start. */
@@ -429,6 +441,9 @@ uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
       ShimCalib_ramTempInit();
       return 0xff;
     }
+    /* Clear what the previous transfer left after this chunk, so any byte
+     * this transfer does not write commits as zero, not as the old dump. */
+    memset(shimmerCalib_ramTemp + length, 0, SHIMMER_CALIB_RAM_MAX - length);
     //+ 2 as length bytes in header are not included in the overall array length
     shimmerCalib_ramTempMax = (*(uint16_t *) shimmerCalib_ramTemp) + 2;
     shimmerCalib_ramTempLen = length;

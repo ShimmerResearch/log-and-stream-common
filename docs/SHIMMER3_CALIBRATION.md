@@ -226,17 +226,23 @@ hardware generation by the IDs it contains.
 `length > 128`, `offset > 1023`, or `length + offset > 1024`.
 
 A `SET_CALIB_DUMP` transfer is **stateful and must start at offset 0**. The
-first chunk (offset 0 or 1) is what tells the firmware the total size — it reads
-the length field out of the chunk itself and sets the expected byte count to
-`length + 2`. A first chunk declaring more than the 1024-byte RAM is refused,
-and opens no transfer. Chunks at offset 2 or beyond only accumulate a running
+first chunk is what tells the firmware the total size. It must be at offset 0
+and carry at least the two length bytes; the firmware reads the length field out
+of the chunk itself and sets the expected byte count to `length + 2`. A start
+that is shorter, is at offset 1, or declares more than the 1024-byte RAM is
+refused, and leaves no transfer open. Earlier firmware also took offset 1 as a
+start, and a start without both length bytes took the missing one from the
+previous transfer. A start also clears the rest of the staging buffer, so a byte
+the transfer never writes commits as zero, not as the previous dump's. Chunks at offset 2 or beyond only accumulate a running
 total, and only while a transfer is open. With none open, such a chunk is
 refused and the staging buffer is not written. That covers the time before the
 first transfer, after one completes, and after a refused start. A part-way
 start while an earlier transfer is still open accumulates against that
 transfer's expected size, and the firmware commits the blob as soon as the
-running total reaches it. On commit, `ShimCalib_ramWrite` re-stamps the version bytes, clears
-the staging buffer, and pushes the new values out to the configuration bytes and
+running total reaches it. The total counts bytes received, not bytes covered, so
+a repeated chunk can complete a transfer with a gap in it; the gap commits as
+zero. On commit, `ShimCalib_ramWrite` re-stamps the version bytes, closes the
+transfer, and pushes the new values out to the configuration bytes and
 the SD header via `ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1)` — which
 writes InfoMem.
 
