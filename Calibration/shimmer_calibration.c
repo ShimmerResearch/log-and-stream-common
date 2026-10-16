@@ -259,13 +259,14 @@ uint8_t ShimCalib_file2Ram(void)
   }
   shimmerCalib_ramLen = min(*(uint16_t *) shimmerCalib_ram, SHIMMER_CALIB_RAM_MAX - 2);
   f_close(&gfc);
-  if (readFailed)
+  if (readFailed || (shimmerCalib_ramLen < SC_OFFSET_FIRST_SENSOR - 2U))
   {
-    /* The RAM now holds part of the file, and the callers would apply it to
-     * the configuration. Rebuild it from the configuration instead, as the
-     * boot path does before reading the file. Report success all the same:
-     * on failure the callers write the RAM back to the card, which would
-     * replace a file that may read cleanly next time. */
+    /* The RAM now holds part of the file, or a file whose length field is
+     * too short for its own version header, and the callers would apply it
+     * to the configuration. Rebuild it from the configuration instead, as
+     * the boot path does before reading the file. Report success all the
+     * same: on failure the callers write the RAM back to the card, which
+     * would replace a file that may read cleanly next time. */
     ShimCalib_init();
     ShimCalib_initFromConfigBytesAll();
   }
@@ -446,8 +447,13 @@ uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
   if (offset == 0)
   {
     /* The declared length is the host's, and it sizes the copy below, so a
-     * dump that would not fit the calibration RAM is refused at its start. */
-    if ((uint32_t) (*(uint16_t *) shimmerCalib_ramTemp) + 2U > SHIMMER_CALIB_RAM_MAX)
+     * dump that would not fit the calibration RAM is refused at its start.
+     * So is one too short to hold the version header that follows the field:
+     * the commit stamps that header, the records start after it, and an
+     * append goes at the declared end, which would then land inside it. */
+    uint16_t declaredLen = *(uint16_t *) shimmerCalib_ramTemp;
+    if ((declaredLen < SC_OFFSET_FIRST_SENSOR - 2U)
+        || ((uint32_t) declaredLen + 2U > SHIMMER_CALIB_RAM_MAX))
     {
       ShimCalib_ramTempInit();
       return 0xff;

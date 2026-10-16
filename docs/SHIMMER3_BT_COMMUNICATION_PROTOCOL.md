@@ -1017,7 +1017,7 @@ the only per-command refusals in the protocol:
 |---|---|
 | `SET_DAUGHTER_CARD_MEM_COMMAND` 0x67 | The EEPROM write is out of bounds, or `len = 0` |
 | `GET_CALIB_DUMP_COMMAND` 0x9A | `len` is above 128 ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
-| `SET_CALIB_DUMP_COMMAND` 0x98 | The chunk is out of range; a start is at offset 1, is shorter than the 2-byte length header, or declares a dump larger than the calibration RAM; or a chunk at offset ≥ 2 arrives with no transfer in progress ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
+| `SET_CALIB_DUMP_COMMAND` 0x98 | The chunk is out of range; a start is at offset 1, is shorter than the 2-byte length header, or declares a dump larger than the calibration RAM or shorter than its 8-byte version header; or a chunk at offset ≥ 2 arrives with no transfer in progress ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
 | `RESET_BT_ERROR_COUNTS` 0xB6 | Shimmer3R always; Shimmer3 without an EEPROM |
 | `SET_FEATURE` 0xB7 | Unrecognised feature id |
 | `SET_SD_SYNC_COMMAND` 0xE0 | Not actually in a running sync session |
@@ -1756,7 +1756,7 @@ The offset is validated inside `ShimCalib_ramRead`, not in the command handler:
 well-formed response full of zeros.
 
 > `Comms/shimmer_bt_uart.c:1220-1240` (the length check) and `:2388-2396` (the
-> response); `Calibration/shimmer_calibration.c:472-488`.
+> response); `Calibration/shimmer_calibration.c:489-505`.
 
 The blob's first two bytes are its own total length (`uint16_le`, excluding those
 two bytes), which is how a host discovers how much to read. The Python reference
@@ -1790,16 +1790,17 @@ Writes are **accumulated**, not applied per chunk:
    so that nothing of the previous transfer can be committed. A start that is
    shorter than those two bytes, a chunk at offset 1, or a start declaring a
    total that would not fit the 1024-byte calibration RAM is refused: the chunk
-   is NACKed and no transfer is open afterwards. Earlier firmware also took
-   offset 1 as a start, and took a missing length byte from the previous
-   transfer.
+   is NACKed and no transfer is open afterwards. So is a start declaring fewer
+   than 8 bytes, which is too short to hold the version header that follows the
+   length field. Earlier firmware also took offset 1 as a start, and took a
+   missing length byte from the previous transfer.
 2. Every later chunk adds its own length to a running counter.
 3. When the running counter reaches the declared total, the staging buffer is
    promoted to live calibration RAM, the version header is stamped, and the
    configuration bytes plus SD header are regenerated from the new dump.
 
-> `Calibration/shimmer_calibration.c:402-469`. The staging-buffer semantics are
-> in the function's own comment at `:432-434`: "to start a new calib_dump
+> `Calibration/shimmer_calibration.c:414-486`. The staging-buffer semantics are
+> in the function's own comment at `:444-446`: "to start a new calib_dump
 > transmission, the sw must use offset = 0 to setup the correct length …
 > starting with offset >= 2 is not accepted."
 
@@ -1825,7 +1826,7 @@ Writes are **accumulated**, not applied per chunk:
 straight to `ShimCalib_ramWrite` (`:1180-1181`), which applies the equivalent test
 itself — `length <= 128`, `offset <= SHIMMER_CALIB_RAM_MAX - 1`,
 `length + offset <= SHIMMER_CALIB_RAM_MAX`, returning `0xFF` otherwise
-(`Calibration/shimmer_calibration.c:404-429`). With the 131-byte `args[]`
+(`Calibration/shimmer_calibration.c:416-441`). With the 131-byte `args[]`
 truncation clamp (`Comms/shimmer_bt_uart.c:607-639`) in front of both, an oversized or misaligned
 write is contained on either path. The difference is where the check lives, not
 whether there is one: a host reading only the handler will not find it.

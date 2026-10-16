@@ -439,7 +439,22 @@ static void test_ram_write_declared_length(void)
   setLenField(chunk, 0xFFFF);
   expectX("a dump declaring 65537 bytes is refused",
       ShimCalib_ramWrite(chunk, sizeof(chunk), 0), 0xFF);
+
+  /* The other end: the field has to cover the 8-byte version header after
+   * it. A shorter dump would have that header stamped outside it, and its
+   * next appended record written over it. */
+  setLenField(chunk, SC_OFFSET_FIRST_SENSOR - 3);
+  expectX("a dump declaring 7 bytes, short of its version header, is refused",
+      ShimCalib_ramWrite(chunk, sizeof(chunk), 0), 0xFF);
+  setLenField(chunk, 0);
+  expectX("and so is one declaring 0", ShimCalib_ramWrite(chunk, sizeof(chunk), 0), 0xFF);
   expectTrue("and the calibration RAM is untouched", memcmp(before, ram(), RAM_MAX) == 0);
+
+  setLenField(chunk, SC_OFFSET_FIRST_SENSOR - 2);
+  expectU(
+      "a dump of just the header, 8 bytes, is accepted and completes at once",
+      ShimCalib_ramWrite(chunk, SC_OFFSET_FIRST_SENSOR, 0), 1);
+  expectU("its length field reads back as 8", ramLenField(), SC_OFFSET_FIRST_SENSOR - 2);
 
   setLenField(chunk, RAM_MAX - 2);
   expectU("a dump declaring exactly 1024 bytes is accepted",
@@ -945,6 +960,33 @@ static void test_file2ram_failed_read(void)
   }
 }
 
+/*
+ * file2Ram, a file whose length field is too short for its own version
+ * header. The file reads cleanly, but a dump declaring fewer than 8 bytes has
+ * its header outside itself, so it is not a dump the firmware can use or save
+ * back. It is handled like a failed read: the RAM is rebuilt as boot builds
+ * it, the call still reports success, and the card is left alone.
+ */
+static void test_file2ram_short_header(void)
+{
+  static uint8_t booted[RAM_MAX];
+
+  testCase("test_file2ram_short_header");
+  reset();
+  ShimCalib_init();
+  ShimCalib_initFromConfigBytesAll();
+  memcpy(booted, ram(), RAM_MAX);
+
+  cardInsert(300);
+  setLenField(card.file, SC_OFFSET_FIRST_SENSOR - 3); /* 7, one short */
+
+  expectU("file2Ram reports success", ShimCalib_file2Ram(), 0);
+  expectTrue("the RAM is rebuilt as boot builds it", memcmp(booted, ram(), RAM_MAX) == 0);
+  expectU("with the rebuilt dump's length field, not the file's 7", ramLenField(),
+      (uint16_t) ((booted[SC_OFFSET_LENGTH_H] << 8) | booted[SC_OFFSET_LENGTH_L]));
+  expectU("nothing is opened for writing on the card", card.writeOpens, 0);
+}
+
 #if defined(SHIMMER3R)
 /*
  * dump to config bytes and SD header, a sensor with no slot. On Shimmer3R the
@@ -993,6 +1035,7 @@ int main(void)
   test_single_sensor_write_stored_length();
   test_file2ram_truncates();
   test_file2ram_failed_read();
+  test_file2ram_short_header();
 #if defined(SHIMMER3R)
   test_dump_to_config_unknown_sensor();
 #endif
