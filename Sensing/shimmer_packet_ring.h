@@ -37,23 +37,25 @@
 #include <stdint.h>
 
 #define DATA_BUF_SIZE 128U
-/* Ring depth: a power of two, at most 256 (slot indices and PktRing_count()
- * are 8-bit). The ring must outlast the longest SD write: sampling runs from
- * interrupts, but the drain waits on the main loop, which blocks for the whole
- * f_write. A card may stay write-busy for up to 250 ms (SD spec), and ~210 ms
- * stalls were measured at 1024 Hz (DEV-1098), so Shimmer3R holds 254 packets
- * (248 ms at 1024 Hz) for ~35 KB of RAM. Shimmer3 has no RAM for that. */
+/* Ring depth: a power of two, at most 32768 - the indices are free-running
+ * 16-bit counters, masked at use, so the depth must divide 65536. The ring
+ * must outlast the longest SD write: sampling runs from interrupts, but the
+ * drain waits on the main loop, which blocks for the whole f_write. At
+ * 1024 Hz single f_write calls were measured blocking for ~470 ms (DEV-1098)
+ * - a data write plus the file-system updates it can carry, each allowed
+ * 250 ms of card busy by the SD spec - so Shimmer3R holds 1022 packets
+ * (~1 s at 1024 Hz) for ~139 KB of RAM. Shimmer3 has no RAM for that. */
 #if defined(SHIMMER3R)
-#define DATA_BUF_QTY        256U
-#define DATA_BUF_QTY_IN_USE 254U /* must be < DATA_BUF_QTY */
+#define DATA_BUF_QTY        1024U
+#define DATA_BUF_QTY_IN_USE 1022U /* must be < DATA_BUF_QTY */
 #else
 #define DATA_BUF_QTY        8U
 #define DATA_BUF_QTY_IN_USE 6U /* must be < DATA_BUF_QTY */
 #endif
 #define DATA_BUF_MASK (DATA_BUF_QTY - 1UL)
 
-#if (DATA_BUF_QTY > 256U) || ((DATA_BUF_QTY & (DATA_BUF_QTY - 1U)) != 0U)
-#error "DATA_BUF_QTY must be a power of two no larger than 256"
+#if (DATA_BUF_QTY > 32768U) || ((DATA_BUF_QTY & (DATA_BUF_QTY - 1U)) != 0U)
+#error "DATA_BUF_QTY must be a power of two no larger than 32768"
 #endif
 #if DATA_BUF_QTY_IN_USE >= DATA_BUF_QTY
 #error "DATA_BUF_QTY_IN_USE must be less than DATA_BUF_QTY"
@@ -141,14 +143,14 @@ typedef struct
 
 void PktRing_init(PacketRing *ringPtr, uint8_t headerByte);
 void PktRing_reset(PacketRing *ringPtr);
-void PktRing_resetSlot(PacketRing *ringPtr, uint8_t index, uint8_t resetAll);
+void PktRing_resetSlot(PacketRing *ringPtr, uint16_t index, uint8_t resetAll);
 
 PACKETBufferTypeDef *PktRing_wrSlot(PacketRing *ringPtr);
 PACKETBufferTypeDef *PktRing_rdSlot(PacketRing *ringPtr);
 PACKETBufferTypeDef *PktRing_nextWrSlot(PacketRing *ringPtr);
 PACKETBufferTypeDef *PktRing_prevWrSlot(PacketRing *ringPtr);
 
-uint8_t PktRing_count(const PacketRing *ringPtr);
+uint16_t PktRing_count(const PacketRing *ringPtr);
 uint8_t PktRing_isEmpty(const PacketRing *ringPtr);
 uint8_t PktRing_isFull(const PacketRing *ringPtr);
 

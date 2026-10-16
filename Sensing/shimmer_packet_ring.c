@@ -19,20 +19,20 @@ void PktRing_init(PacketRing *ringPtr, uint8_t headerByte)
 
 void PktRing_reset(PacketRing *ringPtr)
 {
-  uint16_t i; /* not uint8_t: i < 256 would never be false */
+  uint16_t i; /* not uint8_t: i < DATA_BUF_QTY must be able to be false */
 
   ringPtr->rdIdx = ringPtr->wrIdx = 0;
   ringPtr->stallCount = 0;
   for (i = 0; i < DATA_BUF_QTY; i++)
   {
-    PktRing_resetSlot(ringPtr, (uint8_t) i, 1);
+    PktRing_resetSlot(ringPtr, i, 1);
   }
 }
 
 /* index must already be masked. resetAll clears the whole sensor payload as
  * well, which is only wanted when sampling is not running - the partial reset
  * leaves the payload alone because the slot is about to be refilled. */
-void PktRing_resetSlot(PacketRing *ringPtr, uint8_t index, uint8_t resetAll)
+void PktRing_resetSlot(PacketRing *ringPtr, uint16_t index, uint8_t resetAll)
 {
   PACKETBufferTypeDef *slotPtr = &ringPtr->slots[index];
 
@@ -77,11 +77,11 @@ PACKETBufferTypeDef *PktRing_prevWrSlot(PacketRing *ringPtr)
   return &ringPtr->slots[DATA_BUF_MASK & (ringPtr->wrIdx - 1)];
 }
 
-uint8_t PktRing_count(const PacketRing *ringPtr)
+uint16_t PktRing_count(const PacketRing *ringPtr)
 {
   uint16_t wrIdx = ringPtr->wrIdx;
   uint16_t rdIdx = ringPtr->rdIdx;
-  return (uint8_t) (DATA_BUF_MASK & (wrIdx - rdIdx));
+  return (uint16_t) (DATA_BUF_MASK & (wrIdx - rdIdx));
 }
 
 uint8_t PktRing_isEmpty(const PacketRing *ringPtr)
@@ -202,7 +202,7 @@ uint8_t PktRing_drainNext(PacketRing *ringPtr, PACKETBufferTypeDef **slotPtrOut)
      * tick counter is ticks-since-boot on Shimmer3 and the low 32 bits of the
      * real-world clock on Shimmer3R, and both pass through zero legitimately
      * every 2^32 ticks (36.4 hours). */
-    PktRing_resetSlot(ringPtr, (uint8_t) (DATA_BUF_MASK & ringPtr->rdIdx), 0);
+    PktRing_resetSlot(ringPtr, (uint16_t) (DATA_BUF_MASK & ringPtr->rdIdx), 0);
     ringPtr->rdIdx++;
     ringPtr->diag.drainSkipped++;
   }
@@ -211,6 +211,6 @@ uint8_t PktRing_drainNext(PacketRing *ringPtr, PACKETBufferTypeDef **slotPtrOut)
 
 void PktRing_drainDone(PacketRing *ringPtr)
 {
-  PktRing_resetSlot(ringPtr, (uint8_t) (DATA_BUF_MASK & ringPtr->rdIdx), 0);
+  PktRing_resetSlot(ringPtr, (uint16_t) (DATA_BUF_MASK & ringPtr->rdIdx), 0);
   ringPtr->rdIdx++;
 }

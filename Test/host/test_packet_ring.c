@@ -98,7 +98,7 @@ static uint8_t sim_gather_complete(Sim *sim)
  * SD and Bluetooth writers, which is exactly what ends up in a .bin file. */
 static uint8_t sim_drain(Sim *sim, uint32_t *emittedOut, uint8_t emittedMax)
 {
-  uint8_t budget = PktRing_count(&sim->ring);
+  uint16_t budget = PktRing_count(&sim->ring);
   uint8_t emitted = 0;
   PACKETBufferTypeDef *slotPtr;
 
