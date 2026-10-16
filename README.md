@@ -17,9 +17,9 @@ Shared C firmware library for Shimmer wearable sensor devices. This library prov
 ## Repository Structure
 
 ```
-log_and_stream_common.c/h   – Top-level init and device lifecycle logic
+log_and_stream_common.c/h   – Top-level init and device lifecycle logic; defines shimmerStatus, batteryStatus
 log_and_stream_definitions.h – Shared type definitions and macros
-log_and_stream_globals.h     – Global state variables (shimmerStatus, batteryStatus)
+log_and_stream_globals.h     – Declares the global state (shimmerStatus, batteryStatus) for the firmwares' main.c
 log_and_stream_externs.h     – External function declarations (implemented by platform)
 log_and_stream_includes.h    – Convenience header that includes all modules
 
@@ -49,7 +49,7 @@ scripts/        – Firmware version management scripts
 
 Hardware-specific behaviour is provided to the library via two mechanisms:
 
-1. **Weak function stubs** declared in `Platform/platform_api.h` — implement these in your platform project to supply tick counters, delays, hardware resets, GPIO setup, and peripheral initialisation checks.
+1. **Optional hooks** declared in `Platform/platform_api.h`, with weak default definitions in `Platform/platform_api.c`. Override the ones you need in your platform project with plain (non-weak) definitions, to supply tick counters, delays, hardware resets, GPIO setup, and peripheral initialisation checks. The weak attribute stays on the defaults only; on a prototype it would make your override weak as well.
 2. **External function declarations** in `log_and_stream_externs.h` — these must be implemented by the platform firmware (e.g. board GPIO, UART drivers, RTC, ADC/I2C/SPI sensing, Bluetooth).
 
 ## Supported Platforms
