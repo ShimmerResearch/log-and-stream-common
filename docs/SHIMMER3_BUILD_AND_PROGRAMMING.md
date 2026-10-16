@@ -187,9 +187,13 @@ TX ring's push. It restores the state saved a few lines earlier, so inside a
 handler it leaves GIE clear.
 
 **The size could now come down.** It was set while two nested handlers had to
-fit on top of `main`. It stays at 2,200 B until the run-time high-water mark
-below has been read on units and the image has been re-measured at the
-optimisation level that ships.
+fit on top of `main`: 1,070 B, plus 462 B for `DMA_ISR`, plus 450 B for
+`TIMER1_A0_ISR`, makes 1,982 B. `DMA_ISR`'s deepest path then ran through SD
+sync's Bluetooth start, which now runs from the main loop, so it is 446 B in
+the table above. A build without the two changes above still needs that
+1,982 B. The size stays at 2,200 B until the run-time high-water mark below has
+been read on units and the image has been re-measured at the optimisation level
+that ships.
 
 A frame that holds a FatFs `FIL` costs over 500 bytes, because each `FIL`
 carries a sector buffer. The `sdlog.cfg` parser keeps its `FIL` and its
