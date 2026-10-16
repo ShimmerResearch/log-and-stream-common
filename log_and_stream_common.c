@@ -212,7 +212,7 @@ void LogAndStream_dockedStateChange(void)
     time_newUnDockEvent = RTC_get64();
   }
 
-  if (shimmerStatus.docked || shimmerStatus.usbPluggedIn)
+  if (shimmerStatus.docked || (shimmerStatus.usbPluggedIn && !TEST_LOG_WITH_USB))
   {
     shimmerStatus.sdlogReady = 0;
   }
@@ -456,6 +456,13 @@ void LogAndStream_setupDock(void)
   shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
   shimmerStatus.sdlogReady = 0;
   ShimSens_stopSensing(0);
+#if TEST_LOG_WITH_USB
+  /* USB-C only, not docked: keep the card available for a log start. */
+  if (!shimmerStatus.docked)
+  {
+    shimmerStatus.sdlogReady = LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile;
+  }
+#endif
 
 #if defined(SHIMMER3R)
   /* --- SD ownership logic ---

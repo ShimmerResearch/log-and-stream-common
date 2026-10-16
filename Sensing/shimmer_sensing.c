@@ -124,7 +124,12 @@ void ShimSens_configureChannels(void)
 uint8_t ShimSens_checkStartLoggingConditions(void)
 {
   return shimmerStatus.sdInserted && !shimmerStatus.sdBadFile && shimmerStatus.sdlogReady
-      && !shimmerStatus.sdLogging && !LogAndStream_isDockedOrUsbIn();
+      && !shimmerStatus.sdLogging
+#if TEST_LOG_WITH_USB
+      && !shimmerStatus.docked;
+#else
+      && !LogAndStream_isDockedOrUsbIn();
+#endif
 }
 
 /* Check if the conditions are met to start streaming to BT.
@@ -225,6 +230,15 @@ void ShimSens_startSensing(void)
     if (shimmerStatus.usbPluggedIn)
     {
       USB_deinit();
+#if TEST_LOG_WITH_USB
+      /* The host may have written the card through MSC, so drop FatFs's
+       * cached view: power-cycle, re-init and remount, as an undock does.
+       * Done before the sample timer starts, so it costs no samples. */
+      if (sdLogPendingStart)
+      {
+        Board_sd2Mcu();
+      }
+#endif
     }
 #endif
     ShimSens_stepInit();
@@ -367,12 +381,18 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     if (enableDockUartIfDocked && shimmerStatus.usbPluggedIn && shimmerStatus.sdPeripheralInit)
     {
       USB_init();
+#if TEST_LOG_WITH_USB
+      shimmerStatus.sdOwner = SD_OWNER_USB;
+#endif
     }
 #endif
 
     ShimSens_stopSensingWrapup();
 
+    /* With TEST_LOG_WITH_USB the host may own the card again by now: never
+     * write it from here while USB-C is in. */
     if (LogAndStream_isSdInfoSyncDelayed() && !shimmerStatus.docked
+        && !(TEST_LOG_WITH_USB && shimmerStatus.usbPluggedIn)
         && LogAndStream_checkSdInSlot())
     {
       LogAndStream_syncConfigAndCalibOnSd();
