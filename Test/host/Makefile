@@ -168,7 +168,19 @@ endef
 $(foreach s,$(SD_WRBUF_SUITES),\
   $(foreach n,$(SD_WRBUF_COUNTS),$(eval $(call SD_WRBUF_RULE,$(s),$(n)))))
 
+# The packet ring is 8 slots on Shimmer3 and 1024 on Shimmer3R, set by the
+# platform define, so its suite also runs at the Shimmer3R depth: that is the
+# only build that exercises the 16-bit indices and the large-ring reset, count
+# and drain.
+RING_DEPTH_SUITES := test_packet_ring
+define RING_DEPTH_RULE
+$(BUILD)/$(1).SHIMMER3R: $$(SRC_$(1)) | $(BUILD)
+	$$(CC) $$(CFLAGS) -DSHIMMER3R $$(INC_$(1)) $$(SRC_$(1)) -o $$@
+endef
+$(foreach s,$(RING_DEPTH_SUITES),$(eval $(call RING_DEPTH_RULE,$(s))))
+
 BINARIES := $(foreach s,$(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES),$(BUILD)/$(s)) \
+            $(foreach s,$(RING_DEPTH_SUITES),$(BUILD)/$(s).SHIMMER3R) \
             $(foreach s,$(DUAL_PLATFORM_SUITES),\
               $(foreach p,$(PLATFORMS),$(BUILD)/$(s).$(p))) \
             $(foreach s,$(SD_WRBUF_SUITES),\

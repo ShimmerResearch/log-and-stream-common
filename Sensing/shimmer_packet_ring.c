@@ -19,13 +19,14 @@ void PktRing_init(PacketRing *ringPtr, uint8_t headerByte)
 
 void PktRing_reset(PacketRing *ringPtr)
 {
-  uint16_t i; /* not uint8_t: i < DATA_BUF_QTY must be able to be false */
+  uint32_t i; /* wider than any index: i < DATA_BUF_QTY must be able to be false,
+               * including at the 32768-slot maximum */
 
   ringPtr->rdIdx = ringPtr->wrIdx = 0;
   ringPtr->stallCount = 0;
   for (i = 0; i < DATA_BUF_QTY; i++)
   {
-    PktRing_resetSlot(ringPtr, i, 1);
+    PktRing_resetSlot(ringPtr, (uint16_t) i, 1);
   }
 }
 
