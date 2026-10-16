@@ -408,17 +408,19 @@ byte-for-byte image of the blob, with no additional framing.
 
 `ShimCalib_file2Ram` reads it back and returns 1 (failure) if neither directory
 exists or the file is absent, leaving the RAM blob as the firmware defaults. It
-reads at most the 1024 bytes of calibration RAM (`SHIMMER_CALIB_RAM_MAX`), so a
-longer file is truncated to that.
+reads at most the 1024 bytes of calibration RAM (`SHIMMER_CALIB_RAM_MAX`). From a
+longer file it keeps the dump the file's length field declares, as long as that
+dump fits the RAM; anything after the dump is ignored.
 
-If a read fails partway, or the file is shorter than the dump its own length
-field declares, or that field declares fewer than the 8 bytes of its own version
-header, or (on Shimmer3R, which takes the file's size from `f_stat`) `f_stat`
-fails, the RAM is rebuilt from the configuration bytes (`ShimCalib_init` +
-`ShimCalib_initFromConfigBytesAll`, as at boot) instead of being left as read,
-and the function still returns 0. That matters because both callers answer a
-non-zero return by writing the RAM back to the card, which here would replace a
-file that may read cleanly next time.
+If a read fails partway, the file is shorter than the dump its own length field
+declares, that field declares a dump larger than the 1024-byte RAM or fewer than
+the 8 bytes of its own version header (the field is checked as the file has it,
+before it is clamped to the RAM), or (on Shimmer3R, which takes the file's size
+from `f_stat`) `f_stat` fails, the RAM is rebuilt from the configuration bytes
+(`ShimCalib_init` + `ShimCalib_initFromConfigBytesAll`, as at boot) instead of
+being left as read, and the function still returns 0. That matters because both
+callers answer a non-zero return by writing the RAM back to the card, which here
+would replace a file that may read cleanly next time.
 
 ## 5. Pressure sensor coefficient blocks
 

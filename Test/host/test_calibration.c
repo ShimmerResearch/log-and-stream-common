@@ -914,11 +914,16 @@ static void test_single_sensor_write_ram_end(void)
 /*
  * file2Ram, a file larger than the RAM. The size is whatever is on the card,
  * and the read used to run on to the end of the file, past the calibration
- * RAM. It stops at the RAM's 1024 bytes.
+ * RAM. It stops at the RAM's 1024 bytes. What is then kept depends on the
+ * file's own length field, taken before it is clamped to the RAM: a dump that
+ * fits the RAM, with more bytes after it in the file, is read and kept; a
+ * dump declared larger than the RAM can only have been read in part, so the
+ * RAM is rebuilt as boot builds it instead, and the card is left alone.
  */
 static void test_file2ram_truncates(void)
 {
   static uint8_t before[RAM_MAX];
+  static uint8_t booted[RAM_MAX];
 
   testCase("test_file2ram_truncates");
   reset();
@@ -927,14 +932,36 @@ static void test_file2ram_truncates(void)
   expectU("a missing file is reported", ShimCalib_file2Ram(), 1);
   expectTrue("and leaves the defaults", memcmp(before, ram(), RAM_MAX) == 0);
 
+  /* A 1500-byte file holding a whole 1024-byte dump, then more. */
   cardInsert(1500);
+  setLenField(card.file, RAM_MAX - 2);
   expectU("a 1500-byte file is read", ShimCalib_file2Ram(), 0);
   expectStr("from the file named for the MAC", card.path, "/Calibration/calib_5A1C");
   expectU("no read reaches past the calibration RAM", card.pastRamEnd, 0);
   expectU("which takes eight 128-byte reads", card.reads, RAM_MAX / CHUNK);
-  expectTrue("and holds the file's first 1024 bytes",
+  expectTrue("and keeps the 1024-byte dump it declares",
       memcmp(ram(), card.file, RAM_MAX) == 0);
   expectU("the file is closed", card.closes, 1);
+
+  /* The same file declaring all 1500 of its bytes as the dump - and a field of
+   * 0xFFFF, which clamps to the same 1022 - is more than the RAM holds. */
+  reset();
+  ShimCalib_init();
+  ShimCalib_initFromConfigBytesAll();
+  memcpy(booted, ram(), RAM_MAX);
+  cardInsert(1500);
+  expectU("a file declaring a 1500-byte dump still reports success",
+      ShimCalib_file2Ram(), 0);
+  expectU("and still reads no further than the RAM", card.pastRamEnd, 0);
+  expectTrue("but the RAM is rebuilt as boot builds it",
+      memcmp(booted, ram(), RAM_MAX) == 0);
+  expectU("and nothing is written to the card", card.writeOpens, 0);
+
+  reset();
+  cardInsert(1500);
+  setLenField(card.file, 0xFFFF);
+  expectU("a file declaring 0xFFFF reports success", ShimCalib_file2Ram(), 0);
+  expectTrue("and is rebuilt the same way", memcmp(booted, ram(), RAM_MAX) == 0);
 }
 
 /*

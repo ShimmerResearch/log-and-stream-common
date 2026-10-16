@@ -185,6 +185,7 @@ uint8_t ShimCalib_file2Ram(void)
   uint8_t this_read_size;
   uint16_t offset = 0;
   uint8_t readFailed = 0;
+  uint16_t declaredLen;
 
   strcpy(cal_file_name, "/Calibration"); //"/Calibration/calibParams"
   if (f_opendir(&gdc, "/Calibration"))
@@ -263,22 +264,27 @@ uint8_t ShimCalib_file2Ram(void)
     }
     offset += bw;
   }
-  shimmerCalib_ramLen = min(*(uint16_t *) shimmerCalib_ram, SHIMMER_CALIB_RAM_MAX - 2);
+  /* The length field as the file has it, checked before it is clamped: a
+   * clamped length would make an oversized dump look like one that fits. */
+  declaredLen = *(uint16_t *) shimmerCalib_ram;
+  shimmerCalib_ramLen = min(declaredLen, SHIMMER_CALIB_RAM_MAX - 2);
   f_close(&gfc);
   /* offset is now the number of bytes actually read. A file shorter than the
    * dump its own length field declares (+ the 2 bytes of the field) was cut
    * short: the rest of the RAM is the zeros it was cleared to, not the
-   * file's, and a file of 0 or 1 bytes has not even supplied the field. */
-  if (readFailed || (shimmerCalib_ramLen < SC_OFFSET_FIRST_SENSOR - 2U)
-      || (offset < shimmerCalib_ramLen + 2U))
+   * file's, and a file of 0 or 1 bytes has not even supplied the field. A
+   * dump declared larger than the RAM can only have been read in part. */
+  if (readFailed || (declaredLen < SC_OFFSET_FIRST_SENSOR - 2U)
+      || ((uint32_t) declaredLen + 2U > SHIMMER_CALIB_RAM_MAX)
+      || (offset < declaredLen + 2U))
   {
     /* The RAM now holds part of the file, a file shorter than it declares,
-     * or one whose length field is too short for its own version header,
-     * and the callers would apply it to the configuration. Rebuild it from
-     * the configuration instead, as the boot path does before reading the
-     * file. Report success all the same: on failure the callers write the
-     * RAM back to the card, which would replace a file that may read
-     * cleanly next time. */
+     * one declaring more than the RAM holds, or one whose length field is
+     * too short for its own version header, and the callers would apply it
+     * to the configuration. Rebuild it from the configuration instead, as
+     * the boot path does before reading the file. Report success all the
+     * same: on failure the callers write the RAM back to the card, which
+     * would replace a file that may read cleanly next time. */
     ShimCalib_init();
     ShimCalib_initFromConfigBytesAll();
   }
