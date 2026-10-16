@@ -202,12 +202,15 @@ configuration:
 | `USE_FREERTOS` | Selects the RTOS task-list variant (neither generation uses it) |
 | `TEST_TASK_MONITOR` | Enables the stuck-task watchdog |
 | `TEST_RTC_ERR_FLASH_OFF` | Suppresses the RTC-not-set LED warning |
+| `TEST_LOG_WITH_USB` | **Bench builds only, never ship.** Shimmer3R: allows SD logging with USB-C in but not docked, so a battery-less unit can log and be read back without undocking. Starting a log takes the card from USB MSC; stopping gives it back. Default 0 (DEV-1098) |
 | `IS_SUPPORTED_TCXO`, `IS_SUPPORTED_SINGLE_TOUCH` | Capability gates enforced in configuration validation |
 
 > **`TEST_*` symbols are not test-only.** `TEST_TASK_MONITOR` gates the
 > stuck-task watchdog, so a build without it has no protection at all, and
 > `TEST_RTC_ERR_FLASH_OFF` removes a user-visible warning. Check what a shipping
 > build actually defines rather than assuming the names mean development-only.
+> `TEST_LOG_WITH_USB` is the exception: it is genuinely bench-only, and a
+> shipping build must leave it at 0.
 
 ## 8. Verifying a build on hardware
 

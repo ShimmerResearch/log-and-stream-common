@@ -446,20 +446,35 @@ sample records using the header alone.
 | Constant | Value | Meaning |
 |---|---:|---|
 | `SD_WRITE_BUF_SIZE` | 512 | One write buffer |
-| `NUM_SDWRBUF` | 4 | Number of buffers, both platforms |
+| `NUM_SDWRBUF` | 4 (Shimmer3), 32 (Shimmer3R) | Number of buffers |
+| `SD_WR_BATCH_BUFS` | 16 (Shimmer3R only) | Most queued buffers one `f_write` takes |
 | `BIN_FILE_SYNC_TIME_TICKS` | 32768 × 60 | `f_sync` every 60 s |
 | `BIN_FILE_SPLIT_TIME_TICKS` | 32768 × 3600 | New file every 3600 s |
 
 Samples accumulate into a 512-byte buffer. A record that does not fit the
 buffer in progress closes it: the full buffer is queued for `TASK_SDWRITE`,
-which writes it with one `f_write`, and the record begins the next buffer.
-Buffers therefore end on record boundaries, and a write is never more than 512
-bytes. Both platforms rotate four buffers, so sensing continues into a fresh one
-while the previous waits for the card.
+and the record begins the next buffer. Buffers therefore end on record
+boundaries. Sensing continues into a fresh buffer while earlier ones wait for
+the card.
 
-That is what sets how long a card may stall without costing a sample. One buffer
-takes `recordsPerBlock / sampleRate` to fill — about 46 ms at 504 Hz with a
-21-byte record — and four of them absorb roughly four times that.
+**How the queue is written differs by platform:**
+- **Shimmer3** writes one buffer per `f_write`, so a write is never more than
+  512 bytes.
+- **Shimmer3R** writes every queued buffer, up to `SD_WR_BATCH_BUFS`, in one
+  `f_write` of up to 8 KB, packed into a word-aligned staging buffer so the SD
+  driver takes its multi-block DMA path. While the card keeps up, only one
+  buffer is ever queued, so writes stay 512 bytes; a write grows only with the
+  backlog a slow card leaves (DEV-1098). A busy card costs about the same time
+  per write whatever its size, so this raises throughput exactly when the card
+  is slow.
+
+The bytes reaching the file are the same either way, sync heads included:
+buffers stay 512 bytes, the unit of the file layout.
+
+On Shimmer3, the buffers set how long a card may stall without costing a
+sample. One buffer takes `recordsPerBlock / sampleRate` to fill — about 46 ms
+at 504 Hz with a 21-byte record — and four of them absorb roughly four times
+that.
 
 If every buffer is waiting — the card has stalled for longer than the rest take
 to fill — the record is dropped and counted in `sdWrBuf.diag.putsRefusedFull`.
@@ -467,8 +482,15 @@ That counter is cleared when logging starts and never while it runs, so a bench
 run can be read out afterwards. The file then shows a gap of whole sample
 periods at a block boundary; it never shows a partial record.
 
+**On Shimmer3R the drain does not get that far.** Before handing a record on, it
+asks `SdWrBuf_canAccept()`; if the buffers would refuse it, the drain stops and
+leaves the packets in the sample ring, and `TASK_SDWRITE` restarts the drain
+once a buffer is released. The ring, not the SD buffers, absorbs a stall there.
+
 When logging stops, the partially filled buffer is queued and every queued
-buffer is written before the file is closed.
+buffer is written before the file is closed. On Shimmer3R the packets still in
+the sample ring are written first (`ShimSens_flushRingToSd`), so a stop that
+lands during a stall does not cut the end off the log.
 
 > **Earlier Shimmer3 firmware had a single buffer**, so there was nowhere for a
 > record to go between a buffer filling and its write reaching the card, and
@@ -476,8 +498,10 @@ buffer is written before the file is closed.
 > firmware can show a gap of several consecutive samples at roughly every block
 > boundary. Those are real missing samples, not a parsing artefact.
 
-Behind that sits the sample ring (`Sensing/shimmer_packet_ring.c`): eight slots,
-six usable, with one packet being filled at a time. A sample tick starts a
+Behind that sits the sample ring (`Sensing/shimmer_packet_ring.c`): on Shimmer3,
+eight slots, six usable; on Shimmer3R, 1024 slots, 1022 usable — about 1 s at
+1024 Hz, because a single blocking `f_write` was measured holding the main loop
+for up to ~470 ms (DEV-1098). One packet is filled at a time. A sample tick starts a
 packet and stamps it; the platform gathers the enabled channels; a completion
 closes the slot and the drain hands it to the SD and Bluetooth writers. Ticks
 are refused while the ring is full or while a gather is still outstanding, so

@@ -315,10 +315,18 @@ one protocol message. Conversely, it must not assume the opposite either: the
 module is free to coalesce, and a single notification may contain the tail of one
 message and the head of the next.
 
-Because the transmit ring is much deeper on Shimmer3R (4096 bytes versus 256)
+Because the transmit ring is much deeper on Shimmer3R (32768 bytes versus 256)
 than a single hand-off to the UART (300 bytes, `BT_TX_MAX_DMA_CHUNK`), a
 Shimmer3R response can be produced faster than the link drains it — which is the
 situation the SD file transfer's 256-byte reserve exists to protect.
+
+The Shimmer3R ring is that deep (DEV-1098; it was 4096) for stream + log. An SD
+write can hold the main loop for ~0.3–0.5 s, and when it returns the sample
+ring releases the backlog at once: about 9 KB at 1024 Hz with 30-byte packets.
+A sensor-data packet the ring cannot take is dropped and counted in
+`btTxSensorDataDropped`; the stream shows it as a gap. A host therefore sees a
+stall as delayed packets rather than missing ones — up to ~0.65 s late at
+1024 Hz on the bench — as long as the link keeps up on average.
 
 The 300-byte hand-off is set by the Bluetooth module, not by the ring. In
 non-transparent SPP mode each hand-off is sent as one EZ-Serial `SPP_SEND`
@@ -670,7 +678,7 @@ as a mode.
 |---|---|---|---|
 | Maximum response frame | **133** bytes | **1024** bytes | `RESPONSE_PACKET_SIZE` |
 | Maximum command arguments | 131 | 131 | `MAX_COMMAND_ARG_SIZE` |
-| Bluetooth transmit ring | 256 bytes | 4096 bytes | `BT_TX_BUF_SIZE` |
+| Bluetooth transmit ring | 256 bytes | 32768 bytes | `BT_TX_BUF_SIZE` |
 | Single UART hand-off | 256 bytes | 300 bytes | `BT_TX_MAX_DMA_CHUNK` |
 
 > `log_and_stream_definitions.h:28-32`; `Comms/shimmer_bt_uart.h:25-45`, except
