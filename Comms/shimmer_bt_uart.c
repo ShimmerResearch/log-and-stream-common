@@ -890,6 +890,17 @@ void ShimBt_processCmd(void)
   uint8_t fullSyncResp[SYNC_PACKET_MAX_SIZE] = { 0 };
   uint8_t sensorCalibId;
 
+  /* A command whose oversized payload is still being dropped is not complete
+   * yet (see ShimBt_armArgsPayload). It is processed, and NACKed through
+   * argsPayloadTruncated, once the last byte of its payload is in: that sets
+   * TASK_BT_PROCESS_CMD again. A run now can only be one left over from an
+   * earlier command, and gAction already names the new one, so it would NACK
+   * it, clear the flag, and leave that later run to dispatch it. */
+  if (argsPayloadDropping)
+  {
+    return;
+  }
+
   /* Block non-sync related commands if sync is enabled. Equally, block sync commands if sync is disabled. XOR condition will sendNack if only one is true. */
   if (storedConfigPtr->syncEnable ^ ShimBt_isCmdAllowedWhileSdSyncing(gAction))
   {

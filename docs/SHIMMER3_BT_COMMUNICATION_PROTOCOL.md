@@ -536,7 +536,7 @@ three fixed argument bytes.
 > clamped length would turn a malformed oversized request into an **accepted
 > partial write** of configuration, calibration or EEPROM.
 > `Comms/shimmer_bt_uart.c:607-639` (the clamp, with its reasoning) and
-> `:906-909` (the rejection).
+> `:917-920` (the rejection).
 >
 > **The whole oversized payload is still consumed before the NACK.** Only the
 > part that fits is received into the buffer; the rest follows in pieces of at
@@ -545,6 +545,11 @@ three fixed argument bytes.
 > (`ShimBt_armArgsPayload`, `Comms/shimmer_bt_uart.c:239-263`). Earlier Shimmer3
 > firmware armed its receive DMA for the full declared length, more than the
 > 131-byte receive buffer holds.
+>
+> The command is processed once, when the last byte of its payload is in, and
+> that one run sends the NACK. A processing run still pending from an earlier
+> command does nothing while the drop is under way (`ShimBt_processCmd`), so it
+> cannot NACK the new command early and leave it to be dispatched afterwards.
 
 ### 3.2 Response frame and ACK
 
@@ -1755,7 +1760,7 @@ The offset is validated inside `ShimCalib_ramRead`, not in the command handler:
 **zero-filled** rather than left unwritten, so an out-of-range read yields a
 well-formed response full of zeros.
 
-> `Comms/shimmer_bt_uart.c:1220-1240` (the length check) and `:2388-2396` (the
+> `Comms/shimmer_bt_uart.c:1231-1251` (the length check) and `:2399-2408` (the
 > response); `Calibration/shimmer_calibration.c:513-529`.
 
 The blob's first two bytes are its own total length (`uint16_le`, excluding those
