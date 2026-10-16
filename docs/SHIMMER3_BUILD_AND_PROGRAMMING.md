@@ -10,13 +10,20 @@ wire, not over the air.
 >   `shimmer3r-firmware` @ `a8f105e5`.
 > - Toolchain observations are from the build configurations present in those
 >   repositories at those revisions.
-> - §4.5 postdates these revisions. Its settings were read from the Shimmer3
->   project's `.cproject`. Its stack figures were measured with
->   `ofd430 --call_graph` on the `-O0` Debug image, built with Bluetooth start
->   already moved to the main loop. The interrupt-context claims were read from
->   `ShimBt_handleBtRfCommStateChange`, `ShimSdSync_startBtForSync`,
->   `TIMER0_A1_ISR`, and shimmer3-firmware's `msp430_clock_enable()` and
->   `BtStop()`.
+> - §4.5 is newer. Its settings were read from `shimmer3-firmware` @
+>   `a311203`, with this repository @ `cea18c2` as its submodule. The stack and
+>   printf settings arrive in `shimmer3-firmware` `641366c`, so a revision that
+>   does not contain that commit still has the old 1600-byte stack and full
+>   printf.
+> - §4.5's stack figures and its one-handler bound are newer again. They were
+>   measured with `ofd430 --call_graph` on the `-O0` Debug image of
+>   `shimmer3-firmware` @ `ac30299`, with this repository @ `94ac899` as its
+>   submodule, where Bluetooth start runs from the main loop. The
+>   interrupt-context claims were read from `ShimBt_handleBtRfCommStateChange`,
+>   `ShimSdSync_startBtForSync` and `TIMER0_A1_ISR` here, and from that
+>   revision's `msp430_clock_enable()` and `BtStop()`. A build that lacks either
+>   commit still lets interrupts nest, and needs room for `main` plus two
+>   handlers.
 
 **Source references:**
 
