@@ -22,7 +22,12 @@ firmware's only use of it is to phase its LEDs with the centre's (§7).
 >   it was read from `ShimSdSync_startBtForSync`, each platform's
 >   `ShimSdSync_init` call and its `BtStop()`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
->   `shimmer3r-firmware` @ `a8f105e5`.
+>   `shimmer3r-firmware` @ `a8f105e5`. §6.3's Shimmer3 side postdates `2765ff4`,
+>   whose `ShimSdSync_init` start callback is still `InitialiseBtAfterBoot`. It
+>   was read at `shimmer3-firmware` @ `ac30299`, where the callback is
+>   `ShimTask_setInitialiseBluetooth` and `BtStop()` clears a queued
+>   `TASK_BT_TURN_ON_AFTER_BOOT`. Shimmer3R already queues the start at
+>   `a8f105e5`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =
 > Shimmer3R (STM32U5). LogAndStream only. All times are in 32768 Hz ticks

@@ -17,7 +17,12 @@ document is about consumption.
 >   disconnect check in §3 also postdates `ff242a6`. It was read from
 >   `ShimBt_handleBtRfCommStateChange` and `TASK_BT_MODE_CHECK`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
->   `shimmer3r-firmware` @ `8f800952`.
+>   `shimmer3r-firmware` @ `8f800952`. §3's statement that Shimmer3 keeps radio
+>   start out of interrupt handlers postdates `2765ff4`. It depends on two
+>   `shimmer3-firmware` changes, both read at `ac30299`: SD sync's start
+>   callback becomes `ShimTask_setInitialiseBluetooth`, and
+>   `msp430_clock_enable()` no longer sets GIE. A Shimmer3 build without them
+>   still starts the radio from the sync timer interrupt.
 
 > **Scope.** The shared module decides *when* rails go on and off and when the
 > part may sleep; the actual low-power modes are platform code. This document

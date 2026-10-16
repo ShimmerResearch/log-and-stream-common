@@ -22,7 +22,11 @@ read before adding a subsystem.
 >   `ShimBt_handleBtRfCommStateChange` and `ShimSdSync_startBtForSync`, with
 >   each platform's `ShimSdSync_init` call.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
->   `shimmer3r-firmware` @ `a8f105e5`.
+>   `shimmer3r-firmware` @ `a8f105e5`. On Shimmer3, bit 20's use by SD sync
+>   postdates `2765ff4`, whose `main.c` still passes `InitialiseBtAfterBoot` to
+>   `ShimSdSync_init`. It was read at `shimmer3-firmware` @ `ac30299`, where
+>   the callback is `ShimTask_setInitialiseBluetooth`. Shimmer3R already passes
+>   that callback at `a8f105e5`.
 > - **Weak hooks:** the hook count and the rule that the weak attribute
 >   sits on the default definitions only were read at `log-and-stream-common`
 >   @ `f573f60`, from `Platform/platform_api.{h,c}`, `Boards/shimmer_boards.{h,c}`,
