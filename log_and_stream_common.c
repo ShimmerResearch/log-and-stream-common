@@ -542,6 +542,16 @@ void LogAndStream_setupUndock(void)
 {
   ShimBatt_setBatteryInterval(BATT_INTERVAL_SECS_UNDOCKED);
 
+#if TEST_LOG_WITH_USB && defined(SHIMMER3R)
+  /* A bench log started on USB-C already holds the card: unplugging the cable
+   * must not power-cycle and remount it under that log. A release build never
+   * gets here while logging - logging only starts undocked. */
+  if (shimmerStatus.sdLogging && (shimmerStatus.sdOwner == SD_OWNER_MCU))
+  {
+    return;
+  }
+#endif
+
   /* Release any external SD ownership before reclaiming for sensor recording */
   LogAndStream_releaseSdToMcu();
 
