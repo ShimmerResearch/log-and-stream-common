@@ -17,9 +17,9 @@ Shared C firmware library for Shimmer wearable sensor devices. This library prov
 ## Repository Structure
 
 ```
-log_and_stream_common.c/h   – Top-level init and device lifecycle logic
+log_and_stream_common.c/h   – Top-level init and device lifecycle logic; defines shimmerStatus, batteryStatus
 log_and_stream_definitions.h – Shared type definitions and macros
-log_and_stream_globals.h     – Global state variables (shimmerStatus, batteryStatus)
+log_and_stream_globals.h     – Declares the global state (shimmerStatus, batteryStatus) for the firmwares' main.c
 log_and_stream_externs.h     – External function declarations (implemented by platform)
 log_and_stream_includes.h    – Convenience header that includes all modules
 
