@@ -13,8 +13,9 @@ explains it).
 The commit and version are read from the release candidate itself with the gh
 CLI, so the report is bound to the build that was actually tested. Answer each
 item with p (pass), f (fail) or n (not covered). A fail or not-covered item can
-carry a waiver - the issue key under which someone accepted it - and only then
-will the gate let the release through.
+carry a waiver - the issue key under which someone accepted it. Without one, a
+fail blocks the release, and a not-covered item still needs another report to
+pass it.
 
 Standard library plus the gh CLI.
 """
@@ -101,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
             r["note"] = note
         if status != "pass":
             while True:
-                w = input("  waiver issue key (Enter for none - the gate will block): ").strip().upper()
+                unwaived = "the gate will block" if status == "fail" else "another report must pass it"
+                w = input(f"  waiver issue key (Enter for none - {unwaived}): ").strip().upper()
                 if not w or hil_gate.WAIVER_RE.fullmatch(w):
                     break
                 print("  that is not an issue key such as ABC-123")
