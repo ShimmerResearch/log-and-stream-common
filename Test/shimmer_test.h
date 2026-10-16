@@ -45,8 +45,7 @@ void ShimFactoryTest_setup(factory_test_target_t target, factory_test_t testToRu
 uint32_t ShimFactoryTest_run(void);
 
 void ShimFactoryTest_sendReport(const char *str);
-__weak void ShimFactoryTest_sendReportImpl(const char *str,
-    factory_test_target_t factoryTestTarget);
+void ShimFactoryTest_sendReportImpl(const char *str, factory_test_target_t factoryTestTarget);
 factory_test_t ShimFactoryTest_getTestToRun(void);
 factory_test_target_t ShimFactoryTest_getTarget(void);
 

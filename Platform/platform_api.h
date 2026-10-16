@@ -34,27 +34,32 @@ extern "C"
 #endif
 #endif
 
-  PLATFORM_WEAK void platform_reset(void);
-  PLATFORM_WEAK void platform_delayMs(const uint32_t delay_time_ms);
-  PLATFORM_WEAK uint32_t platform_getTick(void);
-  PLATFORM_WEAK void platform_processHwRevision(void);
-  PLATFORM_WEAK void platform_initGpioForRevision(void);
-  PLATFORM_WEAK uint8_t platform_gatherData(void);
-  PLATFORM_WEAK uint32_t platform_crcData(uint8_t *buf, uint8_t len);
+  /* PLATFORM_WEAK belongs on the default definitions in platform_api.c and
+   * never on these prototypes. A weak declaration makes every definition that
+   * sees it weak, the platform's own overrides included; the override then
+   * wins only by link order, or the link fails on toolchains that reject two
+   * weak definitions. The same applies to every __weak hook in this library. */
+  void platform_reset(void);
+  void platform_delayMs(const uint32_t delay_time_ms);
+  uint32_t platform_getTick(void);
+  void platform_processHwRevision(void);
+  void platform_initGpioForRevision(void);
+  uint8_t platform_gatherData(void);
+  uint32_t platform_crcData(uint8_t *buf, uint8_t len);
   /* 16-bit-length variant for payloads >255 bytes (e.g. SD file-transfer
    * data frames). Same CRC conventions as platform_crcData(); override in
    * the main application to offload to a hardware CRC peripheral. */
-  PLATFORM_WEAK uint32_t platform_crcData16(uint8_t *buf, uint16_t len);
-  PLATFORM_WEAK bool platform_isDockUartInitialised(void);
-  PLATFORM_WEAK bool platform_isUsbUartInitialised(void);
-  PLATFORM_WEAK void platform_sleepWhenNoTask(void);
+  uint32_t platform_crcData16(uint8_t *buf, uint16_t len);
+  bool platform_isDockUartInitialised(void);
+  bool platform_isUsbUartInitialised(void);
+  void platform_sleepWhenNoTask(void);
   /* LED phase lock (LEDs/shimmer_leds.c). The first returns the time since the
    * LED blink timer last fired, in 32768 Hz ticks; the second moves its next
    * firing later (positive) or earlier (negative) by that many ticks. The
    * defaults report 0 and do nothing, which still aligns the blink frame to
    * the clock but leaves the tick itself up to 100 ms off. */
-  PLATFORM_WEAK uint16_t platform_ledTickElapsedRtcTicks(void);
-  PLATFORM_WEAK void platform_ledTickShift(int16_t rtcTicks);
+  uint16_t platform_ledTickElapsedRtcTicks(void);
+  void platform_ledTickShift(int16_t rtcTicks);
 
 #ifdef __cplusplus
 }
