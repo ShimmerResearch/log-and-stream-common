@@ -176,6 +176,25 @@ class Structure(unittest.TestCase):
         self.assertFalse(gate({"r.json": r}).ok)
 
 
+class Summary(unittest.TestCase):
+    def test_report_fields_cannot_break_out_of_the_summary(self):
+        # The summary is pasted into the release notes. A report is data, so a
+        # pipe, a newline or a tag in it must stay inside its cell or line.
+        reports = {"r|.json": report([ok("a.one"), {"id": "a.two", "status": "fail", "note": "x\n## injected"}],
+                                     bench="b|1", operator="<img src=x>")}
+        v = gate(reports)
+        out = hil_gate.summary_markdown("shimmer3r", SHA, "1.01.022", reports, REQUIRED, v)
+        self.assertNotIn("\n## injected", out)
+        self.assertNotRegex(out, r"(?<!\\)<img")    # "\<img" renders as text
+        row = next(ln for ln in out.splitlines() if "b\\|1" in ln)
+        self.assertEqual(len(re.findall(r"(?<!\\)\|", row)), 6, row)
+        self.assertTrue(any(ln.startswith("- ") and "## injected" in ln for ln in out.splitlines()))
+
+    def test_escaping_keeps_ordinary_text(self):
+        self.assertEqual(hil_gate.md("pass (hil-report-a.json)"), "pass (hil-report-a.json)")
+        self.assertEqual(hil_gate.md("a|b\r\nc"), "a\\|b c")
+
+
 class Files(unittest.TestCase):
     def test_shipped_required_lists_load(self):
         for p in hil_gate.PLATFORMS:

@@ -53,6 +53,18 @@ SHA_RE = re.compile(r"[0-9a-f]{40}")
 
 REQUIRED_DIR = Path(__file__).resolve().parent / "required"
 
+# The summary goes into the release notes and the job summary, so anything a
+# report supplied is escaped before it is written there.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
+_MARKUP = re.compile(r"([\\`*_\[\]<>|])")
+
+
+def md(value) -> str:
+    """A report-supplied value made safe for one Markdown table cell or list
+    item: control characters, newlines among them, become spaces, and the
+    characters that start markup or end a cell are escaped."""
+    return _MARKUP.sub(r"\\\1", _CONTROL.sub(" ", str(value)))
+
 
 class InputError(Exception):
     """A report or requirement file that cannot be read as one."""
@@ -202,19 +214,19 @@ def summary_markdown(platform: str, commit: str, version: str, reports: dict[str
     if reports:
         out += ["| Report | Kind | Bench | Operator | Created |", "|---|---|---|---|---|"]
         for name, rep in reports.items():
-            out.append(f"| {name} | {rep.get('kind', '?')} | {rep.get('bench', '?')} "
-                       f"| {rep.get('operator', '?')} | {rep.get('created', '?')} |")
+            cells = [name] + [rep.get(k, "?") for k in ("kind", "bench", "operator", "created")]
+            out.append("| " + " | ".join(md(c) for c in cells) + " |")
         out.append("")
     out += ["| Required item | Ref | Result |", "|---|---|---|"]
     for item in required:
         rid = item["id"]
-        out.append(f"| {item.get('title', rid)} (`{rid}`) | {item.get('ref', '')} "
-                   f"| {v.covered.get(rid, '**not covered**')} |")
+        how = md(v.covered[rid]) if rid in v.covered else "**not covered**"
+        out.append(f"| {item.get('title', rid)} (`{rid}`) | {item.get('ref', '')} | {how} |")
     if v.extra:
         n_pass = sum(1 for s in v.extra.values() if s == "pass")
         out += ["", f"Additional results: {len(v.extra)} ({n_pass} passed)."]
     if v.problems:
-        out += ["", "**Why it is blocked:**", ""] + [f"- {p}" for p in v.problems]
+        out += ["", "**Why it is blocked:**", ""] + [f"- {md(p)}" for p in v.problems]
     return "\n".join(out) + "\n"
 
 

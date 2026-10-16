@@ -1,7 +1,7 @@
 {
   "schema": "shimmer-hil-required/1",
   "platform": "shimmer3",
-  "comment": "Every item must be covered by a passing result, or carry a waiver, in at least one report attached to the release candidate. Section numbers refer to docs/SHIMMER3_TEST_PROCEDURE.md. Gate 1 is not listed: CI runs it on every pull request and push, and the release workflow builds on top of that commit, changing only the version. Nor is the build: a candidate exists only if it built. The rest of gate 2 is read off the candidate's build, so it is listed: its warnings and its size. The boot matrix row covers each radio firmware that shipped to customers.",
+  "comment": "Every item must be covered by a passing result, or carry a waiver, in at least one report attached to the release candidate. Section numbers refer to docs/SHIMMER3_TEST_PROCEDURE.md. Gate 1 is not listed: CI runs it on every pull request and push, and the release workflow runs the host tests again before it builds; the commit it tags adds only the version bump. Nor is the build: a candidate exists only if it built. The rest of gate 2 is read off the candidate's build, so it is listed: its warnings and its size. The boot matrix row covers each radio firmware that shipped to customers.",
   "items": [
     {"id": "gate2.warnings_read",       "title": "The candidate's build warnings read for 16-bit int arithmetic", "ref": "§3.2"},
     {"id": "gate2.size_recorded",       "title": "Flash and RAM recorded and compared with the previous release", "ref": "§3.4"},
