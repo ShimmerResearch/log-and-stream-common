@@ -536,7 +536,7 @@ three fixed argument bytes.
 > clamped length would turn a malformed oversized request into an **accepted
 > partial write** of configuration, calibration or EEPROM.
 > `Comms/shimmer_bt_uart.c:607-639` (the clamp, with its reasoning) and
-> `:917-920` (the rejection).
+> `:920-923` (the rejection).
 >
 > **The whole oversized payload is still consumed before the NACK.** Only the
 > part that fits is received into the buffer; the rest follows in pieces of at
@@ -547,9 +547,14 @@ three fixed argument bytes.
 > 131-byte receive buffer holds.
 >
 > The command is processed once, when the last byte of its payload is in, and
-> that one run sends the NACK. A processing run still pending from an earlier
-> command does nothing while the drop is under way (`ShimBt_processCmd`), so it
-> cannot NACK the new command early and leave it to be dispatched afterwards.
+> that one run sends the NACK. More generally, `ShimBt_processCmd` does nothing
+> while the command in `gAction` is still receiving its arguments or payload,
+> drop included: a processing run still pending from an earlier command would
+> otherwise handle the new one early, with stale argument bytes, or NACK it and
+> clear the flag its own run needs. The new command's own run follows when its
+> last byte arrives. A host that sends a command before the previous one is
+> answered still loses the previous one, as it always has: the parser keeps one
+> command at a time.
 
 ### 3.2 Response frame and ACK
 
@@ -1760,7 +1765,7 @@ The offset is validated inside `ShimCalib_ramRead`, not in the command handler:
 **zero-filled** rather than left unwritten, so an out-of-range read yields a
 well-formed response full of zeros.
 
-> `Comms/shimmer_bt_uart.c:1231-1251` (the length check) and `:2399-2408` (the
+> `Comms/shimmer_bt_uart.c:1234-1254` (the length check) and `:2402-2411` (the
 > response); `Calibration/shimmer_calibration.c:513-529`.
 
 The blob's first two bytes are its own total length (`uint16_le`, excluding those

@@ -890,13 +890,16 @@ void ShimBt_processCmd(void)
   uint8_t fullSyncResp[SYNC_PACKET_MAX_SIZE] = { 0 };
   uint8_t sensorCalibId;
 
-  /* A command whose oversized payload is still being dropped is not complete
-   * yet (see ShimBt_armArgsPayload). It is processed, and NACKed through
-   * argsPayloadTruncated, once the last byte of its payload is in: that sets
-   * TASK_BT_PROCESS_CMD again. A run now can only be one left over from an
-   * earlier command, and gAction already names the new one, so it would NACK
-   * it, clear the flag, and leave that later run to dispatch it. */
-  if (argsPayloadDropping)
+  /* gAction always names the latest command byte, and waitingForArgs stays
+   * non-zero from that byte until the command's last argument or payload
+   * byte is in - including any drop of an oversized payload (see
+   * ShimBt_armArgsPayload). Both places that set TASK_BT_PROCESS_CMD do so
+   * with it at 0. A run that finds it non-zero is therefore one left over
+   * from an earlier command, and it would process the new, incomplete one:
+   * with stale argument bytes, or, for an oversized payload, by NACKing it and
+   * clearing the flag the command's own run needs. That run comes when the
+   * command is complete, so do nothing now. */
+  if (waitingForArgs)
   {
     return;
   }
