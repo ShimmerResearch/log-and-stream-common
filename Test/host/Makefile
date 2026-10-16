@@ -234,8 +234,12 @@ test: build
 
 # 'make test_rtc' runs both platform builds of that suite; 'make test_util' the
 # single one. Handy while iterating on one module.
-$(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES): %: $(BUILD)/%
+$(filter-out $(RING_DEPTH_SUITES),$(STANDALONE_SUITES)) $(SINGLE_PLATFORM_SUITES): %: $(BUILD)/%
 	@$(BUILD)/$@
+
+# 'make test_packet_ring' runs it at both ring depths, as 'make test' does.
+$(RING_DEPTH_SUITES): %: $(BUILD)/% $(BUILD)/%.SHIMMER3R
+	@$(BUILD)/$@ && $(BUILD)/$@.SHIMMER3R
 
 $(DUAL_PLATFORM_SUITES): %: $(foreach p,$(PLATFORMS),$(BUILD)/%.$(p))
 	@for p in $(PLATFORMS); do $(BUILD)/$@.$$p || exit 1; done
