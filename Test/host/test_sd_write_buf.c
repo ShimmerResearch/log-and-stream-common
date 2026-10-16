@@ -554,6 +554,145 @@ static void test_partial_write_keeps_the_tail(void)
   sim_checkNothingLost(&sim);
 }
 
+/* Pack every queued buffer, oldest first, as ShimSdDataFile_writeToCard()
+ * builds a batch for one f_write. Returns the packed length. */
+static uint16_t sim_pack(Sim *sim, uint8_t *out, uint16_t outMax)
+{
+  const uint8_t *p;
+  uint16_t l;
+  uint16_t total = 0;
+  uint8_t k;
+
+  for (k = 0; SdWrBuf_peekQueued(&sim->w, k, &p, &l); k++)
+  {
+    if ((uint32_t) total + l > outMax)
+    {
+      break;
+    }
+    memcpy(&out[total], p, l);
+    total = (uint16_t) (total + l);
+  }
+  return total;
+}
+
+/* What writeToCard() releases after a batch of which only the first `bw` bytes
+ * reached the card: whole buffers, then the written head of one it ended
+ * inside, or one buffer if nothing was written. */
+static void sim_release_after(Sim *sim, uint16_t bw)
+{
+  const uint8_t *p;
+  uint16_t l;
+  uint16_t done = 0;
+
+  while (SdWrBuf_peekQueued(&sim->w, 0, &p, &l) && (uint32_t) done + l <= bw)
+  {
+    done = (uint16_t) (done + l);
+    SdWrBuf_writeDone(&sim->w);
+  }
+  if (bw > done)
+  {
+    SdWrBuf_writePartial(&sim->w, (uint16_t) (bw - done));
+  }
+  else if (bw == 0)
+  {
+    SdWrBuf_writeDone(&sim->w);
+  }
+  sim_checkInvariants(sim);
+}
+
+/* Batched writes with SD sync on (DEV-1098). A batch must carry each buffer's
+ * 9-byte sync head exactly where buffer-at-a-time writing would have put it,
+ * and short writes - ending inside a buffer, inside a head, on a boundary -
+ * must leave the queue holding exactly the unwritten rest of the stream. */
+static void test_batch_with_sync_heads(void)
+{
+  Sim sim;
+  uint8_t packed[NUM_SDWRBUF * SD_WRITE_BUF_SIZE];
+  uint8_t rest[NUM_SDWRBUF * SD_WRITE_BUF_SIZE];
+  const uint8_t *p;
+  uint16_t l;
+  uint16_t total;
+  uint16_t pos;
+  uint16_t off;
+  uint32_t tapePos;
+  uint32_t bad = 0;
+  uint8_t k;
+  uint8_t step;
+  /* Short writes: inside the first head, inside a record, then 0 bytes. */
+  const uint16_t shorts[] = { 4, 300, 0 };
+
+  testCase("batched writes keep every sync head and the byte stream");
+  sim_init(&sim, FIELD_HEAD_LEN);
+  for (k = 0; k < NUM_SDWRBUF; k++)
+  {
+    sim_fillCurrent(&sim);
+    sim_put(&sim, FIELD_REC_LEN);
+  }
+  total = sim_pack(&sim, packed, sizeof(packed));
+
+  /* Each buffer in the batch starts with the head, and the records between
+   * heads are the accepted records in order. */
+  off = 0;
+  tapePos = sim.tapeOut;
+  for (k = 0; SdWrBuf_peekQueued(&sim.w, k, &p, &l); k++)
+  {
+    uint16_t i;
+    if (memcmp(&packed[off], sim.head, FIELD_HEAD_LEN) != 0)
+    {
+      bad++;
+    }
+    for (i = FIELD_HEAD_LEN; i < l; i++)
+    {
+      if (packed[off + i] != sim.tape[tapePos % TAPE_RING])
+      {
+        bad++;
+      }
+      tapePos++;
+    }
+    off = (uint16_t) (off + l);
+  }
+  expectU("every buffer in the batch leads with its sync head, records in order", bad, 0);
+
+  /* Short writes: after each, the queue packs to exactly what is left. */
+  pos = 0;
+  for (step = 0; step < sizeof(shorts) / sizeof(shorts[0]); step++)
+  {
+    uint16_t bw = shorts[step];
+    uint16_t left;
+    uint16_t lost = 0;
+
+    if (bw == 0)
+    {
+      /* Nothing written: one buffer is released, as the one-buffer path did. */
+      if (SdWrBuf_peekQueued(&sim.w, 0, &p, &l))
+      {
+        lost = l;
+      }
+    }
+    if ((uint32_t) pos + bw > total)
+    {
+      bw = (uint16_t) (total - pos);
+    }
+    sim_release_after(&sim, bw);
+    pos = (uint16_t) (pos + bw + lost);
+    left = sim_pack(&sim, rest, sizeof(rest));
+    expectU("the queue holds exactly the unwritten rest", left, (uint32_t) (total - pos));
+    expectU("and it is the same bytes", memcmp(rest, &packed[pos], left) == 0, 1);
+  }
+
+  /* A boundary-aligned short write: exactly the first queued buffer. */
+  if (SdWrBuf_peekQueued(&sim.w, 0, &p, &l) && SdWrBuf_numQueued(&sim.w) > 1)
+  {
+    uint16_t left;
+    sim_release_after(&sim, l);
+    pos = (uint16_t) (pos + l);
+    left = sim_pack(&sim, rest, sizeof(rest));
+    expectU("a boundary-aligned short write leaves the following buffers", left,
+        (uint32_t) (total - pos));
+    expectU("each still leading with its head", left == 0 || memcmp(rest, sim.head, FIELD_HEAD_LEN) == 0, 1);
+  }
+}
+
 /* Both indices wrap. Long enough to lap the buffers many times, with the write
  * lagging by a different amount each cycle. */
 static void test_indices_wrap(void)
@@ -788,6 +927,7 @@ int main(void)
   test_can_accept_predicts_put();
   test_peek_queued_matches_release_order();
   test_partial_write_keeps_the_tail();
+  test_batch_with_sync_heads();
   test_indices_wrap();
   test_variable_record_lengths();
   test_stop_flush_terminates();
