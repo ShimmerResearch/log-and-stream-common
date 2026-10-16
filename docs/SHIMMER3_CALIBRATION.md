@@ -703,12 +703,17 @@ timestamp into the SD header only. With `writeToFlash = 1` it also calls
 host or the SD card, so `ShimCalib_singleSensorRead` copies at most the length
 its caller asked for (21 bytes for the IMU blocks) and stops at the end of the
 1024-byte RAM, whatever length byte the record carries. `ShimCalib_singleSensorWrite`
-applies the same bounds, and appends a new record only if the whole record
-fits. `Test/host/test_calibration.c` checks these bounds, and the
-`ShimCalib_ramRead`/`ShimCalib_ramWrite` limits in §2.4, on both platforms. One
-bound is not checked: `ShimCalib_singleSensorWrite` stopping at the RAM end
-when it updates an existing record. Without that bound the write would land
-past the calibration RAM itself, which a host test cannot watch safely.
+applies the same bounds when it updates an existing record: it copies at most
+the caller's payload (`data_len`) and stops at the end of the RAM, so a record
+longer than the caller's payload keeps its remaining bytes. It appends a new
+record only if the whole record fits.
+
+`Test/host/test_calibration.c` checks these bounds, and the
+`ShimCalib_ramRead`/`ShimCalib_ramWrite` limits in §2.4, on both platforms. The
+one bound the code has but the suite does not exercise is that RAM-end stop in
+`ShimCalib_singleSensorWrite`. Proving it fails without the fix would mean
+letting a write land past the calibration RAM itself, which a host test cannot
+watch safely.
 
 A sensor ID with no slot of its own is handled differently on each platform. On
 Shimmer3 it falls through to the analog accelerometer's slot. On Shimmer3R it is

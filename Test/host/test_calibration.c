@@ -702,7 +702,9 @@ static void test_single_sensor_write_full_ram(void)
 /*
  * singleSensorWrite, an existing record. The new payload is copied over the
  * old one for the length the STORED record gives, and that length came from a
- * host or the SD card. It is capped at what the caller's sc_t holds.
+ * host or the SD card. It is capped at the caller's payload (data_len), and
+ * that at what the caller's sc_t holds; a longer stored record keeps the rest
+ * of its bytes.
  */
 static void test_single_sensor_write_stored_length(void)
 {
@@ -730,9 +732,22 @@ static void test_single_sensor_write_stored_length(void)
   expectTrue("with the caller's timestamp",
       memcmp(ram() + SC_OFFSET_FIRST_SENSOR + SC_OFFSET_SENSOR_TIMESTAMP, g.sc.ts, SC_TIMESTAMP_LENGTH)
           == 0);
-  expectTrue("and the 22 payload bytes sc_t holds",
+  expectTrue("and the caller's 21 payload bytes", isRamp(ram() + data, IMU_LEN, 0xC0));
+  expectTrue("but nothing past the caller's payload",
+      allBytes(ram() + data + IMU_LEN, 200 - IMU_LEN, 0x11));
+
+  /* A caller claiming more than sc_t holds is still held to sc_t. */
+  memset(ram() + data, 0x11, 200);
+  guardInit(&g, 255);
+  for (i = 0; i < sizeof(g.sc.data.raw); i++)
+  {
+    g.sc.data.raw[i] = (uint8_t) (0xC0 + i);
+  }
+  expectU("a 255-byte payload claim still updates the record",
+      ShimCalib_singleSensorWrite(&g.sc), 0);
+  expectTrue("with the 22 bytes sc_t holds",
       isRamp(ram() + data, SHIMMER_CALIB_DATA_MAX, 0xC0));
-  expectTrue("but nothing from past the caller's sc_t",
+  expectTrue("and nothing from past the caller's sc_t",
       allBytes(ram() + data + SHIMMER_CALIB_DATA_MAX, 200 - SHIMMER_CALIB_DATA_MAX, 0x11));
 }
 

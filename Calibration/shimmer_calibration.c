@@ -294,9 +294,14 @@ uint8_t ShimCalib_singleSensorWrite(const sc_t *sc1)
     if ((curr_sc.id == sc1->id) && (curr_sc.range == sc1->range))
     {
       /* The entry's length comes from the dump, which the host or the SD
-       * card supplied. Copy no more than sc1 holds, and stop at the end of
-       * the calibration RAM. */
+       * card supplied. Copy no more than the caller's payload (sc1->data_len,
+       * itself no more than sc1 holds), and stop at the end of the
+       * calibration RAM. A longer entry keeps its remaining bytes. */
       uint16_t copyLen = curr_sc.data_len;
+      if (copyLen > sc1->data_len)
+      {
+        copyLen = sc1->data_len;
+      }
       if (copyLen > sizeof(sc1->data.raw))
       {
         copyLen = sizeof(sc1->data.raw);
