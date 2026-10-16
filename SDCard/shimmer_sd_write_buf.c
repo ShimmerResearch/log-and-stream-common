@@ -140,6 +140,21 @@ uint8_t SdWrBuf_peekWrite(const SdWriteBuf *bufsPtr, const uint8_t **dataPtrOut,
   return 1;
 }
 
+uint8_t SdWrBuf_peekQueued(const SdWriteBuf *bufsPtr, uint8_t n, const uint8_t **dataPtrOut, uint16_t *lenPtrOut)
+{
+  uint16_t idx;
+
+  if (n >= bufsPtr->numQueued)
+  {
+    return 0;
+  }
+
+  idx = (uint16_t) ((bufsPtr->wrIdx + n) % NUM_SDWRBUF);
+  *dataPtrOut = &bufsPtr->buf[idx][0];
+  *lenPtrOut = bufsPtr->len[idx];
+  return 1;
+}
+
 /* Releases whatever is at the write index, whatever its length. The old code
  * returned early on a zero-length buffer without decrementing the count, which
  * is how a flush could spin forever. */

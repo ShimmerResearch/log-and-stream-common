@@ -49,6 +49,22 @@ void ShimSdDataFile_closeDataFile(void);
  * read in the debugger after a bench run. */
 SdWriteBuf sdWrBuf;
 
+#if defined(SHIMMER3R)
+/* DEV-1098: the most queued buffers one f_write takes (8 KB). A busy card
+ * costs about the same time per write whatever its size, so the backlog that
+ * builds while it is slow is written in one go. The buffers are not adjacent
+ * in memory (each ends after its last whole record), so they are packed here
+ * first; the bytes reaching the file are exactly those of buffer-at-a-time. */
+#define SD_WR_BATCH_BUFS 16U
+/* FatFs passes the whole sectors in the middle of a write straight to the SD
+ * driver, from wherever they fall in this buffer, and sd_diskio.c only takes
+ * its multi-block DMA path for a word-aligned address - otherwise it writes a
+ * sector at a time, which is what this is here to avoid. The data is placed at
+ * an offset congruent to the file position mod 4, so every sector boundary of
+ * the file lands on an aligned address; hence the 4 spare bytes. */
+static uint8_t sdWrBatch[SD_WR_BATCH_BUFS * SD_WRITE_BUF_SIZE + 4U] __attribute__((aligned(32)));
+#endif
+
 uint8_t fileName[64], dirName[64], expDirName[32];
 uint16_t fileNum, dirCounter;
 uint64_t sdFileCrTs, sdFileSyncTs;
@@ -354,6 +370,7 @@ void ShimSdDataFile_writeToCard(void)
 #endif //USE_FATFS
   const uint8_t *writing_buf;
   uint16_t writing_buf_len;
+  uint8_t bufsInWrite = 1;
 
   __NOP();
 
@@ -361,6 +378,29 @@ void ShimSdDataFile_writeToCard(void)
   {
     return;
   }
+
+#if defined(SHIMMER3R)
+  if (SdWrBuf_numQueued(&sdWrBuf) > 1)
+  {
+    const uint8_t *bufPtr;
+    uint16_t bufLen;
+    uint16_t total = 0;
+    uint8_t *basePtr = &sdWrBatch[0];
+
+#if USE_FATFS
+    basePtr += (uint32_t) f_size(&dataFile) & 3U;
+#endif
+    for (bufsInWrite = 0; (bufsInWrite < SD_WR_BATCH_BUFS)
+        && SdWrBuf_peekQueued(&sdWrBuf, bufsInWrite, &bufPtr, &bufLen);
+        bufsInWrite++)
+    {
+      memcpy(&basePtr[total], bufPtr, bufLen);
+      total = (uint16_t) (total + bufLen);
+    }
+    writing_buf = basePtr;
+    writing_buf_len = total;
+  }
+#endif
 
   sensing.inSdWr = 1;
   sensing.isSdOperating = 1;
@@ -400,7 +440,10 @@ void ShimSdDataFile_writeToCard(void)
 
   sensing.isSdOperating = 0;
 
-  SdWrBuf_writeDone(&sdWrBuf);
+  while (bufsInWrite--)
+  {
+    SdWrBuf_writeDone(&sdWrBuf);
+  }
   if (ShimSdDataFile_getNumberOfFullBuffers() > 0)
   {
     ShimTask_set(TASK_SDWRITE);

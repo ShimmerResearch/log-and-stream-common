@@ -46,23 +46,30 @@
 
 #include <stdint.h>
 
-/* One buffer, and the most a single f_write ever moves. */
+/* One buffer. Also the unit of the file layout: with SD sync on, the sync head
+ * leads every buffer, so changing this changes the file format. */
 #define SD_WRITE_BUF_SIZE 512
 
 /* How many buffers rotate. Compile-time per platform, because the storage is
  * a fixed array and on the MSP430 each buffer is 512 B of a 16 KB budget.
  *
- * Four on both platforms. What the count buys is the length of card stall the
- * firmware can absorb without losing a record: a buffer takes
- * recordsPerBlock / sampleRate to fill - about 46 ms at 504 Hz with a 21-byte
- * record - and a stall is survived for roughly NUM_SDWRBUF times that. Four is
- * about 180 ms, which covers the internal housekeeping a well-used card does
- * without warning.
+ * What the count buys is the length of card stall the firmware can absorb
+ * without losing a record: a buffer takes recordsPerBlock / sampleRate to
+ * fill - about 46 ms at 504 Hz with a 21-byte record - and a stall is survived
+ * for roughly NUM_SDWRBUF times that. Four on Shimmer3, about 180 ms.
+ *
+ * Shimmer3R has 32 (16 KB), for DEV-1098: a busy card there was seen taking
+ * 105-210 ms per write for up to a second at a time. The backlog that builds
+ * meanwhile is what ShimSdDataFile_writeToCard() writes as one f_write of up
+ * to SD_WR_BATCH_BUFS buffers, so a slow card is given more per write exactly
+ * when it is slow.
  *
  * Overridable with -DNUM_SDWRBUF=n so the host test can build the same code at
  * 1 (what Shimmer3 shipped, and what loses records), 2 and 4. */
 #if !defined(NUM_SDWRBUF)
-#if defined(SHIMMER3) || defined(SHIMMER3R)
+#if defined(SHIMMER3R)
+#define NUM_SDWRBUF 32
+#elif defined(SHIMMER3)
 #define NUM_SDWRBUF 4
 #else
 /* Host build with no platform selected. */
@@ -137,6 +144,11 @@ uint8_t SdWrBuf_queueCurrent(SdWriteBuf *bufsPtr);
 /* The oldest queued buffer. Returns 0, leaving the outputs untouched, when
  * nothing is queued. */
 uint8_t SdWrBuf_peekWrite(const SdWriteBuf *bufsPtr, const uint8_t **dataPtrOut, uint16_t *lenPtrOut);
+/* The nth queued buffer, oldest first (n = 0 is what SdWrBuf_peekWrite
+ * returns). Returns 0, leaving the outputs untouched, when fewer than n + 1
+ * are queued. For a writer that sends several buffers at once and then calls
+ * SdWrBuf_writeDone once per buffer. */
+uint8_t SdWrBuf_peekQueued(const SdWriteBuf *bufsPtr, uint8_t n, const uint8_t **dataPtrOut, uint16_t *lenPtrOut);
 /* Release the buffer SdWrBuf_peekWrite returned. Unconditional: a queued
  * buffer is always released, so a drain loop always terminates. */
 void SdWrBuf_writeDone(SdWriteBuf *bufsPtr);

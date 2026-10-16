@@ -466,6 +466,52 @@ static void test_can_accept_predicts_put(void)
   sim_checkNothingLost(&sim);
 }
 
+/* SdWrBuf_peekQueued(n) is what a batching writer sends (DEV-1098): it must
+ * name exactly the buffers that SdWrBuf_peekWrite would return over the next
+ * n + 1 releases, across the index wrap, and nothing past the queue. */
+static void test_peek_queued_matches_release_order(void)
+{
+  Sim sim;
+  uint32_t cycle;
+  uint8_t n;
+  uint8_t queued;
+  uint32_t mismatched = 0;
+  const uint8_t *ptrs[NUM_SDWRBUF];
+  uint16_t lens[NUM_SDWRBUF];
+  const uint8_t *p;
+  uint16_t l;
+
+  testCase("peekQueued names the buffers in release order");
+  sim_init(&sim, 0);
+  for (cycle = 0; cycle < 3U * NUM_SDWRBUF + 1U; cycle++)
+  {
+    /* Queue a varying number, so the oldest buffer moves around the ring. */
+    for (n = 0; n <= (uint8_t) (cycle % NUM_SDWRBUF); n++)
+    {
+      sim_fillCurrent(&sim);
+      sim_put(&sim, FIELD_REC_LEN);
+    }
+    queued = SdWrBuf_numQueued(&sim.w);
+    for (n = 0; n < queued; n++)
+    {
+      expectTrue("each queued buffer can be peeked", SdWrBuf_peekQueued(&sim.w, n, &ptrs[n], &lens[n]));
+    }
+    expectTrue("nothing past the queue", !SdWrBuf_peekQueued(&sim.w, queued, &p, &l));
+    for (n = 0; n < queued; n++)
+    {
+      SdWrBuf_peekWrite(&sim.w, &p, &l);
+      if ((p != ptrs[n]) || (l != lens[n]))
+      {
+        mismatched++;
+      }
+      sim_taskSdWrite(&sim);
+    }
+  }
+  expectU("every peeked buffer was the one released next", mismatched, 0);
+  sim_stop(&sim);
+  sim_checkNothingLost(&sim);
+}
+
 /* Both indices wrap. Long enough to lap the buffers many times, with the write
  * lagging by a different amount each cycle. */
 static void test_indices_wrap(void)
@@ -698,6 +744,7 @@ int main(void)
   test_batch_crossing_boundary();
   test_refusal_is_counted_and_recovers();
   test_can_accept_predicts_put();
+  test_peek_queued_matches_release_order();
   test_indices_wrap();
   test_variable_record_lengths();
   test_stop_flush_terminates();
