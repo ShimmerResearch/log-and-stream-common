@@ -62,7 +62,8 @@ SdWriteBuf sdWrBuf;
  * sector at a time, which is what this is here to avoid. The data is placed at
  * an offset congruent to the file position mod 4, so every sector boundary of
  * the file lands on an aligned address; hence the 4 spare bytes. */
-static uint8_t sdWrBatch[SD_WR_BATCH_BUFS * SD_WRITE_BUF_SIZE + 4U] __attribute__((aligned(32)));
+static uint8_t sdWrBatch[SD_WR_BATCH_BUFS * SD_WRITE_BUF_SIZE + 4U]
+    __attribute__((aligned(32)));
 #endif
 
 uint8_t fileName[64], dirName[64], expDirName[32];
@@ -391,8 +392,8 @@ void ShimSdDataFile_writeToCard(void)
     basePtr += (uint32_t) f_size(&dataFile) & 3U;
 #endif
     for (bufsInWrite = 0; (bufsInWrite < SD_WR_BATCH_BUFS)
-        && SdWrBuf_peekQueued(&sdWrBuf, bufsInWrite, &bufPtr, &bufLen);
-        bufsInWrite++)
+         && SdWrBuf_peekQueued(&sdWrBuf, bufsInWrite, &bufPtr, &bufLen);
+         bufsInWrite++)
     {
       memcpy(&basePtr[total], bufPtr, bufLen);
       total = (uint16_t) (total + bufLen);

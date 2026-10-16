@@ -148,7 +148,10 @@ uint8_t SdWrBuf_peekWrite(const SdWriteBuf *bufsPtr, const uint8_t **dataPtrOut,
  * returns). Returns 0, leaving the outputs untouched, when fewer than n + 1
  * are queued. For a writer that sends several buffers at once and then calls
  * SdWrBuf_writeDone once per buffer. */
-uint8_t SdWrBuf_peekQueued(const SdWriteBuf *bufsPtr, uint8_t n, const uint8_t **dataPtrOut, uint16_t *lenPtrOut);
+uint8_t SdWrBuf_peekQueued(const SdWriteBuf *bufsPtr,
+    uint8_t n,
+    const uint8_t **dataPtrOut,
+    uint16_t *lenPtrOut);
 /* Release the buffer SdWrBuf_peekWrite returned. Unconditional: a queued
  * buffer is always released, so a drain loop always terminates. */
 void SdWrBuf_writeDone(SdWriteBuf *bufsPtr);

@@ -494,7 +494,8 @@ static void test_peek_queued_matches_release_order(void)
     queued = SdWrBuf_numQueued(&sim.w);
     for (n = 0; n < queued; n++)
     {
-      expectTrue("each queued buffer can be peeked", SdWrBuf_peekQueued(&sim.w, n, &ptrs[n], &lens[n]));
+      expectTrue("each queued buffer can be peeked",
+          SdWrBuf_peekQueued(&sim.w, n, &ptrs[n], &lens[n]));
     }
     expectTrue("nothing past the queue", !SdWrBuf_peekQueued(&sim.w, queued, &p, &l));
     for (n = 0; n < queued; n++)
