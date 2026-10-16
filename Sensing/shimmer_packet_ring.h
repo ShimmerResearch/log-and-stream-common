@@ -36,7 +36,7 @@
 
 #include <stdint.h>
 
-#define DATA_BUF_SIZE                 128U
+#define DATA_BUF_SIZE 128U
 /* Ring depth: a power of two, at most 256 (slot indices and PktRing_count()
  * are 8-bit). The ring must outlast the longest SD write: sampling runs from
  * interrupts, but the drain waits on the main loop, which blocks for the whole
@@ -44,13 +44,13 @@
  * stalls were measured at 1024 Hz (DEV-1098), so Shimmer3R holds 254 packets
  * (248 ms at 1024 Hz) for ~35 KB of RAM. Shimmer3 has no RAM for that. */
 #if defined(SHIMMER3R)
-#define DATA_BUF_QTY                  256U
-#define DATA_BUF_QTY_IN_USE           254U /* must be < DATA_BUF_QTY */
+#define DATA_BUF_QTY        256U
+#define DATA_BUF_QTY_IN_USE 254U /* must be < DATA_BUF_QTY */
 #else
-#define DATA_BUF_QTY                  8U
-#define DATA_BUF_QTY_IN_USE           6U /* must be < DATA_BUF_QTY */
+#define DATA_BUF_QTY        8U
+#define DATA_BUF_QTY_IN_USE 6U /* must be < DATA_BUF_QTY */
 #endif
-#define DATA_BUF_MASK                 (DATA_BUF_QTY - 1UL)
+#define DATA_BUF_MASK (DATA_BUF_QTY - 1UL)
 
 #if (DATA_BUF_QTY > 256U) || ((DATA_BUF_QTY & (DATA_BUF_QTY - 1U)) != 0U)
 #error "DATA_BUF_QTY must be a power of two no larger than 256"
