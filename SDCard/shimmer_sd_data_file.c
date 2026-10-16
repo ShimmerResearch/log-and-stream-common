@@ -466,8 +466,10 @@ void ShimSdDataFile_writeToCard(void)
    * few seconds newer. */
   if ((partBytes == 0U) && (writing_buf_len >= (uint16_t) (sensing.dataLen - 1U)))
   {
-    const uint8_t *recPtr = &writing_buf[writing_buf_len - (uint16_t) (sensing.dataLen - 1U)];
-    uint32_t ts24 = (uint32_t) recPtr[0] | ((uint32_t) recPtr[1] << 8) | ((uint32_t) recPtr[2] << 16);
+    const uint8_t *recPtr
+        = &writing_buf[writing_buf_len - (uint16_t) (sensing.dataLen - 1U)];
+    uint32_t ts24 = (uint32_t) recPtr[0] | ((uint32_t) recPtr[1] << 8)
+        | ((uint32_t) recPtr[2] << 16);
     uint32_t full = (splitTs & 0xFF000000UL) | ts24;
 
     if (full > splitTs)
