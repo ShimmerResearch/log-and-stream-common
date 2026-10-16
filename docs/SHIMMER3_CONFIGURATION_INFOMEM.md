@@ -35,6 +35,9 @@ and mirrored into the SD-card file header.
 >   (v0.11.8_beta) — `driver/shimmer2r3/ConfigByteLayoutShimmer3.java`,
 >   `driver/ConfigByteLayout.java`; `shimmer-web-sdk` @ `8f78313` —
 >   `devices/infomem/layout.ts`.
+> - **Auto-stop range (bytes 222-223):** `log-and-stream-common` @ `f573f60`
+>   — `ShimSens_maxExperimentLengthSecsSet()` in `Sensing/shimmer_sensing.c`.
+>   Only that claim was checked at this revision.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). The **Gen** column says which generation a byte
@@ -549,7 +552,7 @@ Three things matter when writing configuration bytes directly:
 | 218 | `NV_SD_TRIAL_CONFIG1` | Bit flags, see below |
 | 219 | `btIntervalSecs` | Sync broadcast interval. Default 54 |
 | 220-221 | `experimentLengthEstimatedInSec` | **Big-endian** (MSB at 220) |
-| 222-223 | `experimentLengthMaxInMinutes` | **Big-endian** (MSB at 222). 0 = auto-stop disabled |
+| 222-223 | `experimentLengthMaxInMinutes` | **Big-endian** (MSB at 222). 0 = auto-stop disabled; 1-65535 minutes otherwise, on both platforms (Shimmer3 builds of this library before `4c9f3ad` wrapped any value above 1092 to a shorter limit) |
 | 224-229 | `macAddr` | 6 bytes |
 | 230 | `flagWriteCfgToSd` | Bit 0 only |
 | 231 | `btSetPin` | Legacy |

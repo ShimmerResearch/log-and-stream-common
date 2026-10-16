@@ -23,6 +23,11 @@ read before adding a subsystem.
 >   each platform's `ShimSdSync_init` call.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
+> - **Weak hooks:** the hook count and the rule that the weak attribute
+>   sits on the default definitions only were read at `log-and-stream-common`
+>   @ `f573f60`, from `Platform/platform_api.{h,c}`, `Boards/shimmer_boards.{h,c}`,
+>   `Comms/shimmer_bt_uart.{h,c}`, `Sensing/shimmer_sensing.{h,c}` and
+>   `Test/shimmer_test.{h,c}`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A, Code
 > Composer Studio); **S3R** = Shimmer3R (STM32U5, STM32CubeIDE). LogAndStream
@@ -441,6 +446,13 @@ not start and stop logging repeatedly. Dock/USB state changes are debounced at
   | `platform_isDockUartInitialised` | yes | yes | false |
   | `platform_isUsbUartInitialised` | **no** (no USB) | yes | false |
   | `platform_sleepWhenNoTask` | yes (LPM3) | yes (Sleep / WFI) | no-op (busy loop) |
+  | `platform_ledTickElapsedRtcTicks` | yes (`main.c`) | yes (`tim.c`) | 0 |
+  | `platform_ledTickShift` | yes (`main.c`) | yes (`tim.c`) | no-op |
+
+  The last two rows were checked at `shimmer3-firmware` @ `5e31618` and
+  `shimmer3r-firmware` @ `58c29980`. Since the weak attribute moved off the
+  prototypes, each override in the table is a strong symbol, and `nm` shows it
+  as `T` in the platform's object.
 
   Two consequences worth knowing. First, **Shimmer3R runs the software CRC**
   for every Bluetooth, dock and SD-transfer checksum, and does so deliberately.
