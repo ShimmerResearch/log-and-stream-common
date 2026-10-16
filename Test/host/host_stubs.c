@@ -4,7 +4,7 @@
  * WHY THE GUARD BELOW - do not remove it. Both consuming firmware projects add
  * this repository as a source-path root with no exclusions, so every .c file
  * under it is discovered and compiled into the firmware. This file defines
- * shimmerStatus and batteryStatus, which log_and_stream_globals.h also defines;
+ * shimmerStatus and batteryStatus, which log_and_stream_common.c also defines;
  * without the guard they collide at link time in both the STM32 and the MSP430
  * build. The guard makes the translation unit empty for anyone who does not ask
  * for it; only the host-test build passes -DSHIMMER_HOST_TEST.
@@ -17,9 +17,8 @@
 #include "host_stubs.h"
 #include "log_and_stream_includes.h"
 
-/* The two globals log_and_stream_globals.h defines for the firmware. The
- * firmware includes that header from exactly one translation unit; the host
- * tests define them here instead, for the same reason. */
+/* The two globals log_and_stream_common.c defines for the firmware. The host
+ * tests do not link that file, so they are defined here instead. */
 STATTypeDef shimmerStatus;
 BattStatus batteryStatus;
 
