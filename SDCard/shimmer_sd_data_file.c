@@ -55,7 +55,7 @@ SdWriteBuf sdWrBuf;
  * builds while it is slow is written in one go. The buffers are not adjacent
  * in memory (each ends after its last whole record), so they are packed here
  * first; the bytes reaching the file are exactly those of buffer-at-a-time. */
-#define SD_WR_BATCH_BUFS 16U
+#define SD_WR_BATCH_BUFS              16U
 /* No batching this close to the hourly split: longer than the ring (~1 s at
  * 1024 Hz) and the buffers can hold between them, so every buffer still queued
  * when batching stops was filled before the split time. */
