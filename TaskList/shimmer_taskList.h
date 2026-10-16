@@ -128,6 +128,11 @@ typedef enum TaskId_Tag
    * because it measures how long ago the blink timer fired and so does not
    * mind waiting behind any other task. */
   TASK_LED_PHASE_SYNC = (0x00000001UL << 24U),
+  /* Sends a command reply that was held back because the BT TX ring was full
+   * (Comms/shimmer_bt_reply.h). Below everything else on purpose: data packets
+   * are refused while a reply is held, so nothing competes with it for the
+   * ring, and the TX-complete path sets it again on every transfer. */
+  TASK_BT_REPLY_RETRY = (0x00000001UL << 25U),
 } TaskId_t;
 //return the task id of the current task
 

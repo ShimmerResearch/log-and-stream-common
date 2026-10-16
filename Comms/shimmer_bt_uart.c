@@ -2425,7 +2425,7 @@ void ShimBt_sendRsp(void)
       calculateCrcAndInsert(crcMode, resPacket, packet_length);
       packet_length += crcMode;
     }
-    ShimBt_writeToTxBufAndSend(resPacket, packet_length, SHIMMER_CMD);
+    ShimBtReply_send(resPacket, packet_length);
   }
 }
 
@@ -2546,7 +2546,7 @@ void ShimBt_instreamStatusRespSend(void)
       i += crcModeAndLen;
     }
 
-    ShimBt_writeToTxBufAndSend(selfcmd, i, SHIMMER_CMD);
+    ShimBtReply_send(selfcmd, i);
   }
 }
 
@@ -2695,6 +2695,10 @@ void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain)
 #endif
 
     RINGFIFO_RESET(gBtTxFifo);
+    /* A held reply belongs to the link being torn down or the data being
+     * discarded; sending it into the next session would desynchronise that
+     * host's command/reply pairing */
+    ShimBtReply_reset();
 
     //Reset all bytes in the buffer -> only used during debugging
     //memset(gBtTxFifo.data, 0x00, sizeof(gBtTxFifo.data) /
@@ -2796,6 +2800,13 @@ void ShimBt_TxCpltCallback(void)
   gBtTxFifo.rdIdx += gBtTxFifo.numBytesBeingRead;
   gBtTxFifo.numBytesBeingRead = 0;
 #endif
+
+  /* Ring space has been freed: a held reply may fit now. The retry runs in
+   * task context because it writes the ring. */
+  if (ShimBtReply_isPending())
+  {
+    ShimTask_set(TASK_BT_REPLY_RETRY);
+  }
 
 #if defined(SHIMMER3R)
   /* Ring space has been freed: let a paused SD file transfer continue.
@@ -3010,6 +3021,14 @@ void ShimBt_loadTxBufForDataRateTest(void)
 #if defined(SHIMMER3R)
 uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType responseType)
 {
+  /* Data packets and SD file-transfer data frames stay out of the space kept
+   * for replies, and out of the ring altogether while a reply is held. Their
+   * callers already treat a refusal as a dropped packet or a paused transfer. */
+  if (responseType == SENSOR_DATA && !ShimBtReply_isRoomForSensorData(len))
+  {
+    return 1; //fail
+  }
+
   if (ShimBt_getSpaceInBtTxBuf() <= len)
   {
     return 1; //fail
@@ -3022,6 +3041,20 @@ uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType re
   return 0;
 }
 #endif
+
+uint8_t ShimBt_writeReplyToTxBuf(uint8_t *buf, uint16_t len)
+{
+  if (ShimBt_writeToTxBufAndSend(buf, len, SHIMMER_CMD))
+  {
+    /* The reply is about to be held, and data is refused while it is. Make
+     * sure the ring is draining, or nothing would ever free the space: on
+     * the Shimmer3 RN4678 paths, data can sit in the ring waiting to be
+     * grouped into a larger transfer. */
+    ShimBt_sendNextCharIfNotInProgress();
+    return 1;
+  }
+  return 0;
+}
 
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)
 {
