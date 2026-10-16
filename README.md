@@ -49,7 +49,7 @@ scripts/        – Firmware version management scripts
 
 Hardware-specific behaviour is provided to the library via two mechanisms:
 
-1. **Weak function stubs** declared in `Platform/platform_api.h` — implement these in your platform project to supply tick counters, delays, hardware resets, GPIO setup, and peripheral initialisation checks.
+1. **Optional hooks** declared in `Platform/platform_api.h`, with weak default definitions in `Platform/platform_api.c`. Override the ones you need in your platform project with plain (non-weak) definitions, to supply tick counters, delays, hardware resets, GPIO setup, and peripheral initialisation checks. The weak attribute stays on the defaults only; on a prototype it would make your override weak as well.
 2. **External function declarations** in `log_and_stream_externs.h` — these must be implemented by the platform firmware (e.g. board GPIO, UART drivers, RTC, ADC/I2C/SPI sensing, Bluetooth).
 
 ## Supported Platforms

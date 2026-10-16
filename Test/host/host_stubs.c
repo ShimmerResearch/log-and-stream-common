@@ -30,6 +30,7 @@ static uint32_t stubTick;
 static uint8_t stubRtcErrorFlash;
 static uint32_t stubStopSensingCount;
 static uint32_t stubResetCount;
+static uint32_t stubDelayMsTotal;
 /* The real gConfigBytes union - see ShimConfig_getStoredConfig() below. */
 static gConfigBytes stubStoredConfig;
 
@@ -46,6 +47,7 @@ void hostStub_reset(void)
   stubRtcErrorFlash = 0;
   stubStopSensingCount = 0;
   stubResetCount = 0;
+  stubDelayMsTotal = 0;
 }
 
 void hostStub_setDockedOrUsbIn(uint8_t state)
@@ -81,6 +83,11 @@ uint32_t hostStub_getStopSensingCount(void)
 uint32_t hostStub_getResetCount(void)
 {
   return stubResetCount;
+}
+
+uint32_t hostStub_getDelayMsTotal(void)
+{
+  return stubDelayMsTotal;
 }
 
 /* --- Configuration/shimmer_config.h --------------------------------------- *
@@ -184,9 +191,11 @@ void platform_reset(void)
   stubResetCount++;
 }
 
+/* Does not wait: it only adds up what was asked for, so a test can see that
+ * this override ran rather than the default, which also does nothing. */
 void platform_delayMs(const uint32_t delay_time_ms)
 {
-  (void) delay_time_ms;
+  stubDelayMsTotal += delay_time_ms;
 }
 
 uint32_t platform_getTick(void)

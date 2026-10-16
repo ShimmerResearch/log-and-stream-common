@@ -158,6 +158,9 @@ static void test_overrides_in_another_file_win(void)
 
   hostStub_setTick(4321U);
   expectU("platform_getTick()", platform_getTick(), 4321U);
+  platform_delayMs(25U);
+  platform_delayMs(7U);
+  expectU("platform_delayMs() reached the stub", hostStub_getDelayMsTotal(), 32U);
   platform_reset();
   expectU("platform_reset() reached the stub", hostStub_getResetCount(), 1U);
   hostStub_reset(); /* nothing else here should see a reset */
