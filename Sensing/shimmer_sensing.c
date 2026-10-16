@@ -285,6 +285,17 @@ void ShimSens_startSensing(void)
     ShimSens_maxExperimentLengthSecsSet(maxExpLenMins);
     ShimSens_currentExperimentLengthReset();
 
+#if TEST_LOG_WITH_USB && defined(SHIMMER3R)
+    /* A log started while a stream is already running skips the hand-over
+     * above, which only runs when a sensing session begins. Take the card from
+     * USB here too, so fileInit() never works on FatFs's pre-USB view. */
+    if (shimmerStatus.usbPluggedIn && (shimmerStatus.sdOwner != SD_OWNER_MCU))
+    {
+      USB_deinit();
+      Board_sd2Mcu();
+    }
+#endif
+
     ShimSdDataFile_fileInit();
 
     if (shimmerStatus.sdSyncEnabled)

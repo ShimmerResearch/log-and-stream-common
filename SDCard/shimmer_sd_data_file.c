@@ -56,6 +56,10 @@ SdWriteBuf sdWrBuf;
  * in memory (each ends after its last whole record), so they are packed here
  * first; the bytes reaching the file are exactly those of buffer-at-a-time. */
 #define SD_WR_BATCH_BUFS 16U
+/* No batching this close to the hourly split: longer than the ring (~1 s at
+ * 1024 Hz) and the buffers can hold between them, so every buffer still queued
+ * when batching stops was filled before the split time. */
+#define SD_WR_BATCH_SPLIT_GUARD_TICKS (4UL * 32768UL)
 /* FatFs passes the whole sectors in the middle of a write straight to the SD
  * driver, from wherever they fall in this buffer, and sd_diskio.c only takes
  * its multi-block DMA path for a word-aligned address - otherwise it writes a
@@ -381,7 +385,13 @@ void ShimSdDataFile_writeToCard(void)
   }
 
 #if defined(SHIMMER3R)
-  if (SdWrBuf_numQueued(&sdWrBuf) > 1)
+  /* Batch only well clear of the hourly split. The split is checked after the
+   * write, so a batch spanning the threshold would put up to SD_WR_BATCH_BUFS
+   * buffers of post-split records into the old file. Near the split, write a
+   * buffer at a time as before, which overshoots by at most one buffer. */
+  if ((SdWrBuf_numQueued(&sdWrBuf) > 1)
+      && (((uint32_t) sensing.latestTs - (uint32_t) sdFileCrTs)
+          < ((uint32_t) BIN_FILE_SPLIT_TIME_TICKS - SD_WR_BATCH_SPLIT_GUARD_TICKS)))
   {
     const uint8_t *bufPtr;
     uint16_t bufLen;
@@ -412,6 +422,28 @@ void ShimSdDataFile_writeToCard(void)
   assert_param(file_status == FR_OK);
   file_status = f_write(&dataFile, writing_buf, writing_buf_len, &bw);
   assert_param(file_status == FR_OK);
+#if defined(SHIMMER3R)
+  /* A failed or short batch releases only the buffers it reached: whole ones,
+   * plus one it ended inside (its bytes are partly in the file already, so
+   * writing it again would duplicate them), and always at least one, so a
+   * flush on a failing card still terminates. The rest stay queued. A single
+   * buffer write behaves exactly as before: it is always released. */
+  if ((bufsInWrite > 1) && ((file_status != FR_OK) || (bw < writing_buf_len)))
+  {
+    const uint8_t *bufPtr;
+    uint16_t bufLen;
+    uint32_t start = 0;
+    uint8_t reached = 0;
+
+    while ((reached < bufsInWrite) && (start < bw)
+        && SdWrBuf_peekQueued(&sdWrBuf, reached, &bufPtr, &bufLen))
+    {
+      start += bufLen;
+      reached++;
+    }
+    bufsInWrite = (reached > 0U) ? reached : 1U;
+  }
+#endif
 #endif
 
   __NOP();

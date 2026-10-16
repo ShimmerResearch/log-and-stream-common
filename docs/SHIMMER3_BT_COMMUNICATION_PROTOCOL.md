@@ -320,7 +320,7 @@ than a single hand-off to the UART (300 bytes, `BT_TX_MAX_DMA_CHUNK`), a
 Shimmer3R response can be produced faster than the link drains it — which is the
 situation the SD file transfer's 256-byte reserve exists to protect.
 
-The Shimmer3R ring is that deep (DEV-1098; it was 4096) for stream + log. An SD
+The Shimmer3R ring is that deep (it was 4096) for stream + log. An SD
 write can hold the main loop for ~0.3–0.5 s, and when it returns the sample
 ring releases the backlog at once: about 9 KB at 1024 Hz with 30-byte packets.
 A sensor-data packet the ring cannot take is dropped and counted in

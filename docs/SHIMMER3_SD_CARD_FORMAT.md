@@ -464,9 +464,16 @@ the card.
   `f_write` of up to 8 KB, packed into a word-aligned staging buffer so the SD
   driver takes its multi-block DMA path. While the card keeps up, only one
   buffer is ever queued, so writes stay 512 bytes; a write grows only with the
-  backlog a slow card leaves (DEV-1098). A busy card costs about the same time
+  backlog a slow card leaves. A busy card costs about the same time
   per write whatever its size, so this raises throughput exactly when the card
-  is slow.
+  is slow. Two limits keep it from changing anything else:
+  - **Near the hourly split it writes one buffer at a time** (within
+    `SD_WR_BATCH_SPLIT_GUARD_TICKS`, 4 s). The split is checked after each
+    write, so a file still ends at most one buffer past the hour, as on
+    Shimmer3.
+  - **A failed or short write releases only the buffers it reached**, at least
+    one, and keeps the rest queued for the next write. A single failure
+    therefore costs at most what it did on the one-buffer path.
 
 The bytes reaching the file are the same either way, sync heads included:
 buffers stay 512 bytes, the unit of the file layout.
@@ -501,7 +508,7 @@ lands during a stall does not cut the end off the log.
 Behind that sits the sample ring (`Sensing/shimmer_packet_ring.c`): on Shimmer3,
 eight slots, six usable; on Shimmer3R, 1024 slots, 1022 usable — about 1 s at
 1024 Hz, because a single blocking `f_write` was measured holding the main loop
-for up to ~470 ms (DEV-1098). One packet is filled at a time. A sample tick starts a
+for up to ~470 ms. One packet is filled at a time. A sample tick starts a
 packet and stamps it; the platform gathers the enabled channels; a completion
 closes the slot and the drain hands it to the SD and Bluetooth writers. Ticks
 are refused while the ring is full or while a gather is still outstanding, so
