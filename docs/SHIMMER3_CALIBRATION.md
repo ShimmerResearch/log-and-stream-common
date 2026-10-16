@@ -228,10 +228,14 @@ hardware generation by the IDs it contains.
 A `SET_CALIB_DUMP` transfer is **stateful and must start at offset 0**. The
 first chunk (offset 0 or 1) is what tells the firmware the total size — it reads
 the length field out of the chunk itself and sets the expected byte count to
-`length + 2`. Chunks at offset 2 or beyond only accumulate a running total.
-Starting a transfer part-way through therefore accumulates against a stale
-expected size, and the firmware commits the blob as soon as the running total
-reaches it. On commit, `ShimCalib_ramWrite` re-stamps the version bytes, clears
+`length + 2`. A first chunk declaring more than the 1024-byte RAM is refused,
+and opens no transfer. Chunks at offset 2 or beyond only accumulate a running
+total, and only while a transfer is open. With none open, such a chunk is
+refused and the staging buffer is not written. That covers the time before the
+first transfer, after one completes, and after a refused start. A part-way
+start while an earlier transfer is still open accumulates against that
+transfer's expected size, and the firmware commits the blob as soon as the
+running total reaches it. On commit, `ShimCalib_ramWrite` re-stamps the version bytes, clears
 the staging buffer, and pushes the new values out to the configuration bytes and
 the SD header via `ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1)` — which
 writes InfoMem.
@@ -700,8 +704,11 @@ host or the SD card, so `ShimCalib_singleSensorRead` copies at most the length
 its caller asked for (21 bytes for the IMU blocks) and stops at the end of the
 1024-byte RAM, whatever length byte the record carries. `ShimCalib_singleSensorWrite`
 applies the same bounds, and appends a new record only if the whole record
-fits. `Test/host/test_calibration.c` checks each of these bounds, and the
-`ShimCalib_ramRead`/`ShimCalib_ramWrite` limits in §2.4, on both platforms.
+fits. `Test/host/test_calibration.c` checks these bounds, and the
+`ShimCalib_ramRead`/`ShimCalib_ramWrite` limits in §2.4, on both platforms. One
+bound is not checked: `ShimCalib_singleSensorWrite` stopping at the RAM end
+when it updates an existing record. Without that bound the write would land
+past the calibration RAM itself, which a host test cannot watch safely.
 
 A sensor ID with no slot of its own is handled differently on each platform. On
 Shimmer3 it falls through to the analog accelerometer's slot. On Shimmer3R it is

@@ -451,19 +451,31 @@ static void test_ram_write_declared_length(void)
  * none under way the expected total is 0, so such a chunk used to "complete" a
  * transfer at once: an empty copy, then the old dump re-applied to the
  * configuration and saved again. It is refused, and the staging buffer is not
- * written. Three ways to get there: a stray chunk before any transfer, the
- * chunk after a refused start, and one after a finished transfer.
+ * written, and nothing reaches the configuration or the SD header. Three ways
+ * to get there: a stray chunk before any transfer, the chunk after a refused
+ * start, and one after a finished transfer. A proper transfer still goes
+ * through after them.
  */
 static void test_ram_write_no_transfer(void)
 {
   static uint8_t ramBefore[RAM_MAX];
   static uint8_t stagingBefore[RAM_MAX];
+  static gConfigBytes configBefore;
+  static uint8_t sdHeadBefore[SD_HEAD_SIZE];
   static uint8_t image[CHUNK];
+  gConfigBytes *config;
   uint8_t chunk[CHUNK];
 
   testCase("test_ram_write_no_transfer");
   reset();
   memset(chunk, 0x42, sizeof(chunk));
+  /* A completed transfer copies the dump on into the configuration bytes and
+   * the SD header. Mark both so that a refused chunk visibly reached neither. */
+  config = ShimConfig_getStoredConfig();
+  memset(config, 0xEE, sizeof(*config));
+  memset(ShimSdHead_getSdHeadText(), 0xEE, SD_HEAD_SIZE);
+  memcpy(&configBefore, config, sizeof(configBefore));
+  memcpy(sdHeadBefore, ShimSdHead_getSdHeadText(), SD_HEAD_SIZE);
 
   memcpy(ramBefore, ram(), RAM_MAX);
   memcpy(stagingBefore, shimmerCalib_ramTemp, RAM_MAX);
@@ -473,6 +485,10 @@ static void test_ram_write_no_transfer(void)
   expectTrue("the staging buffer is untouched",
       memcmp(stagingBefore, shimmerCalib_ramTemp, RAM_MAX) == 0);
   expectTrue("and so is the calibration RAM", memcmp(ramBefore, ram(), RAM_MAX) == 0);
+  expectTrue("and the config bytes",
+      memcmp(&configBefore, config, sizeof(configBefore)) == 0);
+  expectTrue("and the SD header",
+      memcmp(sdHeadBefore, ShimSdHead_getSdHeadText(), SD_HEAD_SIZE) == 0);
 
   /* A start declaring too much is refused, and that leaves no transfer open. */
   setLenField(chunk, RAM_MAX - 1);
@@ -485,11 +501,21 @@ static void test_ram_write_no_transfer(void)
       memcmp(stagingBefore, shimmerCalib_ramTemp, RAM_MAX) == 0);
   expectTrue("or the calibration RAM", memcmp(ramBefore, ram(), RAM_MAX) == 0);
 
-  /* A 128-byte dump completes in its one chunk, and closes the transfer. */
+  expectTrue("or the config bytes",
+      memcmp(&configBefore, config, sizeof(configBefore)) == 0);
+  expectTrue("or the SD header",
+      memcmp(sdHeadBefore, ShimSdHead_getSdHeadText(), SD_HEAD_SIZE) == 0);
+
+  /* After all those refusals a proper transfer still goes through. A 128-byte
+   * dump completes in its one chunk, and closes the transfer. */
   memset(image, 0, sizeof(image));
   setLenField(image, CHUNK - 2);
   fillTo(image, CHUNK);
-  expectU("a one-chunk dump completes", ShimCalib_ramWrite(image, CHUNK, 0), 1);
+  expectU("a one-chunk dump from offset 0 still completes",
+      ShimCalib_ramWrite(image, CHUNK, 0), 1);
+  expectTrue("and lands in the calibration RAM",
+      memcmp(ram() + SC_OFFSET_FIRST_SENSOR, image + SC_OFFSET_FIRST_SENSOR, CHUNK - SC_OFFSET_FIRST_SENSOR)
+          == 0);
   memcpy(ramBefore, ram(), RAM_MAX);
   memcpy(stagingBefore, shimmerCalib_ramTemp, RAM_MAX);
   expectX("a chunk after a finished transfer is refused",
