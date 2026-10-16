@@ -8,6 +8,9 @@ wire, not over the air.
 >
 > - `log-and-stream-common` @ `f3cf73e`; `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
+> - `TEST_LOG_WITH_USB` (§7): `log-and-stream-common` @ `126e9fb` —
+>   `log_and_stream_definitions.h`, `Sensing/shimmer_sensing.c`,
+>   `log_and_stream_common.c`. Only that row was checked at this revision.
 > - Toolchain observations are from the build configurations present in those
 >   repositories at those revisions.
 
