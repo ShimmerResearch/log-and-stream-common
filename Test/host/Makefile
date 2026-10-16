@@ -75,7 +75,7 @@ SD_WRBUF_COUNTS := 1 2 4
 SINGLE_PLATFORM_SUITES := test_crc
 
 # Suites built twice, once per platform. See the note above.
-DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards
+DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards test_bt_reply
 
 PLATFORMS := SHIMMER3 SHIMMER3R
 
@@ -94,6 +94,7 @@ SRC_test_crc         := test_crc.c $(REPO)/CRC/shimmer_crc.c \
 SRC_test_rtc         := test_rtc.c $(REPO)/RTC/shimmer_rtc.c
 SRC_test_battery     := test_battery.c $(REPO)/Battery/shimmer_battery.c
 SRC_test_boards      := test_boards.c $(REPO)/Boards/shimmer_boards.c
+SRC_test_bt_reply    := test_bt_reply.c $(REPO)/Comms/shimmer_bt_reply.c
 
 # test_swcrc and test_packet_ring predate the stub platform and use their own
 # include paths, so they are built with a narrower -I set.
@@ -245,6 +246,7 @@ DUAL_COMPILE_MODULES := \
   Button/shimmer_button.c \
   CRC/shimmer_crc.c \
   CRC/shimmer_swCrc.c \
+  Comms/shimmer_bt_reply.c \
   LEDs/shimmer_leds_phase.c \
   Platform/platform_api.c \
   RTC/shimmer_rtc.c \
