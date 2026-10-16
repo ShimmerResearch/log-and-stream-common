@@ -184,6 +184,7 @@ uint8_t ShimCalib_file2Ram(void)
   FRESULT res;
   uint8_t this_read_size;
   uint16_t offset = 0;
+  uint8_t readFailed = 0;
 
   strcpy(cal_file_name, "/Calibration"); //"/Calibration/calibParams"
   if (f_opendir(&gdc, "/Calibration"))
@@ -251,12 +252,23 @@ uint8_t ShimCalib_file2Ram(void)
     res = f_read(&gfc, shimmerCalib_ram + offset, this_read_size, &bw);
     if ((res != FR_OK) || (bw == 0))
     {
+      readFailed = 1;
       break;
     }
     offset += bw;
   }
   shimmerCalib_ramLen = min(*(uint16_t *) shimmerCalib_ram, SHIMMER_CALIB_RAM_MAX - 2);
   f_close(&gfc);
+  if (readFailed)
+  {
+    /* The RAM now holds part of the file, and the callers would apply it to
+     * the configuration. Rebuild it from the configuration instead, as the
+     * boot path does before reading the file. Report success all the same:
+     * on failure the callers write the RAM back to the card, which would
+     * replace a file that may read cleanly next time. */
+    ShimCalib_init();
+    ShimCalib_initFromConfigBytesAll();
+  }
 #if defined(SHIMMER3)
   _delay_cycles(1200000); //50ms
 #elif defined(SHIMMER3R)
@@ -384,15 +396,21 @@ void ShimCalib_ramTempInit(void)
 //the calib dump write operation starts with offset = 0, ends with shimmerCalib_ramTempMax bytes received.
 uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
 {
-  if ((length <= 128) && (offset <= (SHIMMER_CALIB_RAM_MAX - 1))
-      && (length + offset <= SHIMMER_CALIB_RAM_MAX))
-  {
-    memcpy(shimmerCalib_ramTemp + offset, buf, length);
-  }
-  else
+  if (!((length <= 128) && (offset <= (SHIMMER_CALIB_RAM_MAX - 1))
+          && (length + offset <= SHIMMER_CALIB_RAM_MAX)))
   {
     return 0xff;
   }
+  /* A chunk past the start continues a transfer only if one was started and
+   * has not finished. With none in progress, shimmerCalib_ramTempMax is 0 and
+   * this chunk would "complete" a transfer that never began: an empty copy,
+   * then the old dump re-applied to the configuration and saved again. That
+   * includes the chunks after a start refused below. */
+  if ((offset >= 2) && (shimmerCalib_ramTempMax == 0))
+  {
+    return 0xff;
+  }
+  memcpy(shimmerCalib_ramTemp + offset, buf, length);
 
   //to start a new calib_dump transmission, the sw must use offset = 0 to setup the correct length.
   //offset = 1 is not suggested, but will be considered.
