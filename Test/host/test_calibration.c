@@ -64,9 +64,21 @@
 /* The record the cases read and write. SC_SENSOR_HOST_ECG is declared on both
  * platforms and seeded on neither, so it is never among the defaults. */
 #define TEST_SENSOR SC_SENSOR_HOST_ECG
+
+/* The sensor whose calibration the config bytes keep in lnAccelCalib. */
+#if defined(SHIMMER3)
+#define LN_ACCEL_SENSOR SC_SENSOR_ANALOG_ACCEL
+#else
+#define LN_ACCEL_SENSOR SC_SENSOR_LSM6DSV_ACCEL
+#endif
+
+/* The buffer SET_CALIB_DUMP chunks are staged in. The module keeps it as a
+ * plain global with no accessor; a refused chunk must leave it alone, so the
+ * suite looks at it directly. */
+extern uint8_t shimmerCalib_ramTemp[SHIMMER_CALIB_RAM_MAX];
 /* Padding records, there only to move the next one to a chosen offset. */
-#define FILLER_ID   0xFFF0
-#define GUARD       0x5A
+#define FILLER_ID 0xFFF0
+#define GUARD     0x5A
 
 /* --- building a dump -------------------------------------------------------- */
 
@@ -220,6 +232,9 @@ static struct
   FRESULT failWith;
   uint32_t reads;
   uint32_t closes;
+  /* Opens for writing, and f_write calls: ShimCalib_ram2File() at work. */
+  uint32_t writeOpens;
+  uint32_t writes;
   /* Bytes a read was asked to put past the end of the calibration RAM. */
   uint32_t pastRamEnd;
   /* Set when CARD_READ_BUDGET ran out: the read loop would not have ended. */
@@ -270,7 +285,8 @@ FRESULT f_open(FIL *fp, const TCHAR *path, BYTE mode)
   memset(fp, 0, sizeof(*fp));
   if (mode & FA_WRITE)
   {
-    return FR_OK; /* ShimCalib_ram2File() - not exercised here */
+    card.writeOpens++; /* ShimCalib_ram2File(), counted but not modelled */
+    return FR_OK;
   }
   if (!card.present)
   {
@@ -335,6 +351,7 @@ FRESULT f_read(FIL *fp, void *buff, UINT btr, UINT *br)
 FRESULT f_write(FIL *fp, const void *buff, UINT btw, UINT *bw)
 {
   (void) buff;
+  card.writes++;
   fp->fptr += btw;
   *bw = btw;
   return FR_OK;
@@ -427,6 +444,59 @@ static void test_ram_write_declared_length(void)
   setLenField(chunk, RAM_MAX - 2);
   expectU("a dump declaring exactly 1024 bytes is accepted",
       ShimCalib_ramWrite(chunk, sizeof(chunk), 0), 0);
+}
+
+/*
+ * SET_CALIB_DUMP, a chunk past the start with no transfer in progress. With
+ * none under way the expected total is 0, so such a chunk used to "complete" a
+ * transfer at once: an empty copy, then the old dump re-applied to the
+ * configuration and saved again. It is refused, and the staging buffer is not
+ * written. Three ways to get there: a stray chunk before any transfer, the
+ * chunk after a refused start, and one after a finished transfer.
+ */
+static void test_ram_write_no_transfer(void)
+{
+  static uint8_t ramBefore[RAM_MAX];
+  static uint8_t stagingBefore[RAM_MAX];
+  static uint8_t image[CHUNK];
+  uint8_t chunk[CHUNK];
+
+  testCase("test_ram_write_no_transfer");
+  reset();
+  memset(chunk, 0x42, sizeof(chunk));
+
+  memcpy(ramBefore, ram(), RAM_MAX);
+  memcpy(stagingBefore, shimmerCalib_ramTemp, RAM_MAX);
+  expectX("a chunk at offset 128 before any transfer is refused",
+      ShimCalib_ramWrite(chunk, CHUNK, CHUNK), 0xFF);
+  expectX("and so is one at offset 2", ShimCalib_ramWrite(chunk, CHUNK, 2), 0xFF);
+  expectTrue("the staging buffer is untouched",
+      memcmp(stagingBefore, shimmerCalib_ramTemp, RAM_MAX) == 0);
+  expectTrue("and so is the calibration RAM", memcmp(ramBefore, ram(), RAM_MAX) == 0);
+
+  /* A start declaring too much is refused, and that leaves no transfer open. */
+  setLenField(chunk, RAM_MAX - 1);
+  expectX("an oversized start is refused", ShimCalib_ramWrite(chunk, CHUNK, 0), 0xFF);
+  memcpy(stagingBefore, shimmerCalib_ramTemp, RAM_MAX);
+  memset(chunk, 0x43, sizeof(chunk));
+  expectX("the chunk after a refused start is refused",
+      ShimCalib_ramWrite(chunk, CHUNK, CHUNK), 0xFF);
+  expectTrue("without touching the staging buffer",
+      memcmp(stagingBefore, shimmerCalib_ramTemp, RAM_MAX) == 0);
+  expectTrue("or the calibration RAM", memcmp(ramBefore, ram(), RAM_MAX) == 0);
+
+  /* A 128-byte dump completes in its one chunk, and closes the transfer. */
+  memset(image, 0, sizeof(image));
+  setLenField(image, CHUNK - 2);
+  fillTo(image, CHUNK);
+  expectU("a one-chunk dump completes", ShimCalib_ramWrite(image, CHUNK, 0), 1);
+  memcpy(ramBefore, ram(), RAM_MAX);
+  memcpy(stagingBefore, shimmerCalib_ramTemp, RAM_MAX);
+  expectX("a chunk after a finished transfer is refused",
+      ShimCalib_ramWrite(chunk, CHUNK, CHUNK), 0xFF);
+  expectTrue("without touching the staging buffer",
+      memcmp(stagingBefore, shimmerCalib_ramTemp, RAM_MAX) == 0);
+  expectTrue("or the calibration RAM", memcmp(ramBefore, ram(), RAM_MAX) == 0);
 }
 
 /* SET_CALIB_DUMP, the transfer that should go through: chunks at increasing
@@ -673,29 +743,69 @@ static void test_file2ram_truncates(void)
  * succeeds with nothing in it, which is what a file shorter than its directory
  * entry gives. Either one ends the read.
  *
- * What file2Ram returns afterwards is not asserted: today it reports success,
- * with the RAM holding what arrived before the failure.
+ * The RAM then holds part of a file, and the callers would apply it to the
+ * configuration. So it is rebuilt from the configuration bytes instead, the
+ * way boot builds it before it reads the file: ShimCalib_init(), then
+ * ShimCalib_initFromConfigBytesAll(). And file2Ram still reports success,
+ * because on failure its callers write the RAM back to the card, over a file
+ * that may read cleanly next time.
  */
 static void test_file2ram_failed_read(void)
 {
   static const FRESULT failures[] = { FR_DISK_ERR, FR_OK };
   static const char *const names[]
       = { "test_file2ram_failed_read (FR_DISK_ERR)", "test_file2ram_failed_read (FR_OK, 0 bytes)" };
+  static uint8_t booted[RAM_MAX];
+  gConfigBytes *config;
+  sc_t sc;
   unsigned f;
+  unsigned i;
 
   for (f = 0; f < sizeof(failures) / sizeof(failures[0]); f++)
   {
     testCase(names[f]);
     reset();
+
+    /* A calibration in the config bytes, for the rebuild to carry over. */
+    config = ShimConfig_getStoredConfig();
+    for (i = 0; i < sizeof(config->lnAccelCalib.rawBytes); i++)
+    {
+      config->lnAccelCalib.rawBytes[i] = (uint8_t) (0x30 + i);
+    }
+    /* What boot builds from that configuration, before any file is read. */
+    ShimCalib_init();
+    ShimCalib_initFromConfigBytesAll();
+    memcpy(booted, ram(), RAM_MAX);
+
     cardInsert(300);
     card.failFromRead = 2;
     card.failWith = failures[f];
 
-    (void) ShimCalib_file2Ram();
+    expectU("file2Ram still reports success", ShimCalib_file2Ram(), 0);
     expectFalse("does not leave the read loop spinning", card.stuck);
     expectU("the read stops at it", card.reads, 2);
     expectU("and the file is closed", card.closes, 1);
-    expectTrue("keeping the chunk read before it", memcmp(ram(), card.file, CHUNK) == 0);
+
+    expectTrue("the RAM is rebuilt as boot builds it", memcmp(booted, ram(), RAM_MAX) == 0);
+    expectFalse("with nothing of the file's first chunk",
+        memcmp(ram(), card.file, CHUNK) == 0);
+    expectTrue("its length field is the rebuilt dump's, not the file's",
+        ramLenField() != 300 - 2);
+    expectX("its version bytes are the firmware's",
+        ram()[SC_OFFSET_VER_HW_ID_L], DEVICE_VER & 0xFF);
+
+    memset(&sc, 0xAA, sizeof(sc));
+    sc.id = LN_ACCEL_SENSOR;
+    sc.range = 0;
+    sc.data_len = IMU_LEN;
+    expectU("the config bytes' accel calibration is in it",
+        ShimCalib_singleSensorRead(&sc), 0);
+    expectTrue("with their payload", isRamp(sc.data.raw, IMU_LEN, 0x30));
+    expectTrue("and the zero timestamp of a boot rebuild",
+        allBytes(sc.ts, SC_TIMESTAMP_LENGTH, 0));
+
+    expectU("nothing is opened for writing on the card", card.writeOpens, 0);
+    expectU("and nothing written to it", card.writes, 0);
   }
 }
 
@@ -736,6 +846,7 @@ int main(void)
 
   test_ram_read_bounds();
   test_ram_write_declared_length();
+  test_ram_write_no_transfer();
   test_ram_write_multi_chunk();
   test_single_sensor_read_slot();
   test_single_sensor_read_ram_end();
