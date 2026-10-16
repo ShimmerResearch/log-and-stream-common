@@ -547,8 +547,10 @@ power failure to about a minute. Every 3600 seconds a new file is opened.
 > `sensing.latestTs`, the newest sample taken. The split uses it on Shimmer3;
 > on Shimmer3R it uses the timestamp of the newest record just written, because
 > the deeper ring and buffers can hold a second or more of older samples during
-> a card stall. Shimmer3R also never splits while the unwritten tail of a short
-> write is still queued: that tail belongs to the file it started in.
+> a card stall. Shimmer3R also never splits after a failed or short write:
+> whatever it left unwritten (a buffer's tail, or whole buffers when it stopped
+> on a boundary) belongs to the file it started in, so the split waits until a
+> write completes.
 
 > **File splits are not aligned to any wall-clock boundary.** A file starts when
 > logging starts and ends 3600 seconds of sample time later. Do not assume file

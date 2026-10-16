@@ -448,6 +448,10 @@ void ShimSdDataFile_writeToCard(void)
     }
     partBytes = (uint16_t) (bw - done);
     bufsInWrite = ((whole == 0U) && (partBytes == 0U)) ? 1U : whole;
+    /* Whatever was left unwritten - a tail, or whole buffers when the write
+     * stopped on a boundary - belongs to this file, ahead of everything after
+     * it. No split until a write completes; the next one carries on. */
+    splitAllowed = 0;
   }
 #endif
 #endif
@@ -464,7 +468,7 @@ void ShimSdDataFile_writeToCard(void)
    * the file that much past an hour of sampling. Records begin with their
    * 24-bit timestamp; take the upper bits from latestTs, which is at most a
    * few seconds newer. */
-  if ((partBytes == 0U) && (writing_buf_len >= (uint16_t) (sensing.dataLen - 1U)))
+  if (splitAllowed && (writing_buf_len >= (uint16_t) (sensing.dataLen - 1U)))
   {
     const uint8_t *recPtr
         = &writing_buf[writing_buf_len - (uint16_t) (sensing.dataLen - 1U)];
@@ -478,9 +482,6 @@ void ShimSdDataFile_writeToCard(void)
     }
     splitTs = full;
   }
-  /* Never split with the tail of a short write still queued: it belongs to
-   * this file, ahead of everything after it. The next write finishes it. */
-  splitAllowed = (partBytes == 0U);
 #endif
   if (splitAllowed && ((splitTs - (uint32_t) sdFileCrTs) >= (uint32_t) BIN_FILE_SPLIT_TIME_TICKS))
   {
