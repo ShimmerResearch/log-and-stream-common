@@ -17,6 +17,10 @@ and — as importantly — what each layer of testing cannot tell you.
 > - **`test_platform_seam` and `check_weak_decls.py`:** `log-and-stream-common`
 >   @ `f573f60` — `Test/host/test_platform_seam.c`,
 >   `Test/host/check_weak_decls.py`, `Test/host/Makefile`.
+> - **The release gate (§8, §10):** `log-and-stream-common` @ `42c4d9f` —
+>   `Test/hil/` in full; `shimmer3-firmware` @ `578c9e6` and
+>   `shimmer3r-firmware` @ `b12f711` — `build-release-firmware.yml` and
+>   `promote-release.yml`, on their release-gate pull-request branches.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
