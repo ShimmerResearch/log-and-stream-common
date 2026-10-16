@@ -27,6 +27,10 @@ BLE, and over the dock's serial link.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`
 >   (`LogAndStream_Shimmer3/`), `shimmer3r-firmware` @ `a8f105e5`
 >   (`LogAndStream_Shimmer3R/`).
+> - **Shimmer3R transmit ring size and sensor-data drops:**
+>   `log-and-stream-common` @ `126e9fb` — `Comms/shimmer_bt_uart.h`
+>   (`BT_TX_BUF_SIZE`), `Comms/shimmer_bt_uart.c` (`ShimBt_writeToTxBufAndSend`,
+>   `btTxSensorDataDropped`). Only those claims were checked at this revision.
 > - **SD header pressure sensor ID (offset 224):** `log-and-stream-common` @
 >   `f0af855` — `SDCard/shimmer_sd_pressure_id.{h,c}`,
 >   `ShimSdHead_savePressureSensorIdToSdHeader`, the `PRESSURE_SENSOR_*` registry;

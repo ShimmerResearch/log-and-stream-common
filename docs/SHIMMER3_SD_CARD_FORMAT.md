@@ -32,6 +32,15 @@ channel encodings are identical, only the framing around them differs.
 >   `PressureSensor_detect()`, `PressureSensor_wasIdentifiedByChipId()`. Only
 >   the claims about that field were checked at these revisions; the rest of
 >   this document stays pinned as above.
+> - **Write buffering and the sample ring ([§4.1](#41-buffering-sync-and-rollover)):**
+>   `log-and-stream-common` @ `126e9fb` — `SDCard/shimmer_sd_write_buf.{h,c}`
+>   (`NUM_SDWRBUF`, `SdWrBuf_canAccept`, `SdWrBuf_peekQueued`,
+>   `SdWrBuf_writePartial`), `SDCard/shimmer_sd_data_file.c`
+>   (`ShimSdDataFile_writeToCard`: `SD_WR_BATCH_BUFS`,
+>   `SD_WR_BATCH_SPLIT_GUARD_TICKS`, failed-write handling),
+>   `Sensing/shimmer_packet_ring.h` (`DATA_BUF_QTY`), `Sensing/shimmer_sensing.c`
+>   (`ShimSens_saveData` back-pressure, `ShimSens_flushRingToSd`). Only §4.1's
+>   claims about these were checked at this revision.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). Where the two generations differ, both are
@@ -471,9 +480,12 @@ the card.
     `SD_WR_BATCH_SPLIT_GUARD_TICKS`, 4 s). The split is checked after each
     write, so a file still ends at most one buffer past the hour, as on
     Shimmer3.
-  - **A failed or short write releases only the buffers it reached**, at least
-    one, and keeps the rest queued for the next write. A single failure
-    therefore costs at most what it did on the one-buffer path.
+  - **A failed or short write releases only what reached the file**: the
+    buffers it wrote in full, and the written head of one it ended inside,
+    whose unwritten tail stays queued so the next write continues the file
+    exactly where this one stopped (`SdWrBuf_writePartial`). A write that moved
+    nothing releases one buffer, as the one-buffer path always did, so a flush
+    on a dead card still ends.
 
 The bytes reaching the file are the same either way, sync heads included:
 buffers stay 512 bytes, the unit of the file layout.
