@@ -108,7 +108,7 @@ uint8_t ShimBrd_isHwId(uint8_t hwIdToCheck);
 uint8_t ShimBrd_isExpBrdId(uint8_t expIdToCheck);
 uint8_t ShimBrd_checkCorrectStateForBoot0(void);
 
-__weak uint8_t ShimBrd_doesDeviceSupportBle(void);
-__weak uint8_t ShimBrd_doesDeviceSupportBtClassic(void);
+uint8_t ShimBrd_doesDeviceSupportBle(void);
+uint8_t ShimBrd_doesDeviceSupportBtClassic(void);
 
 #endif /* LOG_AND_STREAM_COMMON_BOARDS_SHIMMER_BOARDS_H_ */

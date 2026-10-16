@@ -45,7 +45,10 @@ BUILD   := out
 
 # -Werror on purpose: these are small, self-contained translation units, so a
 # new warning here is a real finding rather than noise from a vendor header.
-CFLAGS  := -std=c11 -O2 -Wall -Wextra -Werror -DSHIMMER_HOST_TEST
+# -fno-common makes a header that defines storage instead of declaring it fail
+# to link, as it would in a program-level firmware build. It is the default
+# from GCC 10 and Clang 11; it is spelled out so an older compiler agrees.
+CFLAGS  := -std=c11 -O2 -Wall -Wextra -Werror -fno-common -DSHIMMER_HOST_TEST
 
 # stubs/ first, so its log_and_stream_includes.h shadows the repository's own
 # aggregate. Nothing else in stubs/ shadows anything - see stubs/README.md.
@@ -75,7 +78,8 @@ SD_WRBUF_COUNTS := 1 2 4
 SINGLE_PLATFORM_SUITES := test_crc
 
 # Suites built twice, once per platform. See the note above.
-DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards test_bt_reply
+DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards test_bt_reply \
+                        test_platform_seam
 
 PLATFORMS := SHIMMER3 SHIMMER3R
 
@@ -95,6 +99,12 @@ SRC_test_rtc         := test_rtc.c $(REPO)/RTC/shimmer_rtc.c
 SRC_test_battery     := test_battery.c $(REPO)/Battery/shimmer_battery.c
 SRC_test_boards      := test_boards.c $(REPO)/Boards/shimmer_boards.c
 SRC_test_bt_reply    := test_bt_reply.c $(REPO)/Comms/shimmer_bt_reply.c
+# The library's weak defaults come FIRST, ahead of the test file and of
+# host_stubs.c (which the rule appends). That is the link order in which a weak
+# override loses to the default - see test_platform_seam.c.
+SRC_test_platform_seam := $(REPO)/Platform/platform_api.c \
+                        $(REPO)/Boards/shimmer_boards.c \
+                        $(REPO)/CRC/shimmer_swCrc.c test_platform_seam.c
 
 # test_swcrc and test_packet_ring predate the stub platform and use their own
 # include paths, so they are built with a narrower -I set.
@@ -108,7 +118,8 @@ INC_test_leds_phase  := -I . -I $(REPO)
 ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) \
               $(DUAL_PLATFORM_SUITES) $(SD_WRBUF_SUITES)
 
-.PHONY: all build test clean help platform-check host-constants timestamp-unwrap $(ALL_SUITES)
+.PHONY: all build test clean help platform-check host-constants timestamp-unwrap \
+        weak-decls $(ALL_SUITES)
 
 all: test
 
@@ -120,6 +131,7 @@ help:
 	@echo "make platform-check   compile every host-clean module for BOTH MCUs"
 	@echo "make host-constants   check the Python host reference against the firmware"
 	@echo "make timestamp-unwrap check the shared unwrap vectors against their reference"
+	@echo "make weak-decls       check that no header declares a function weak"
 	@echo ""
 	@echo "Suites: $(ALL_SUITES)"
 	@echo "Run one with e.g. 'make test_rtc'."
@@ -196,6 +208,8 @@ test: build
 	if ! $(PYTHON) crosscheck_timestamp_unwrap.py \
 	     --check $(REPO)/Test/conformance/timestamp_unwrap.json; then \
 	  failed="$$failed crosscheck_timestamp_unwrap.py"; fi; \
+	if ! $(PYTHON) check_weak_decls.py; then \
+	  failed="$$failed check_weak_decls.py"; fi; \
 	echo ""; \
 	echo "=============================================================="; \
 	if [ -n "$$failed" ]; then \
@@ -291,6 +305,11 @@ host-constants:
 timestamp-unwrap:
 	@$(PYTHON) crosscheck_timestamp_unwrap.py \
 	  --check $(REPO)/Test/conformance/timestamp_unwrap.json
+
+# No compiler, no binary: every header in the repository, read as text. The
+# link-time half of the same rule is test_platform_seam.
+weak-decls:
+	@$(PYTHON) check_weak_decls.py
 
 clean:
 	rm -rf $(BUILD)

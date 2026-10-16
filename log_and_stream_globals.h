@@ -8,10 +8,11 @@
 #ifndef SHIMMER_GLOBALS_H_
 #define SHIMMER_GLOBALS_H_
 
-#include "Battery/shimmer_battery.h"
-#include "log_and_stream_definitions.h"
-
-STATTypeDef shimmerStatus;
-BattStatus batteryStatus;
+/* Declarations only: shimmerStatus and batteryStatus are defined once, in
+ * log_and_stream_common.c. A definition here would be repeated in every file
+ * that includes this header, which links only while the toolchain merges
+ * duplicate tentative definitions and fails under program-level or link-time
+ * optimisation. */
+#include "log_and_stream_externs.h"
 
 #endif /* SHIMMER_GLOBALS_H_ */
