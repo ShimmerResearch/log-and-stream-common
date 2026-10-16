@@ -138,6 +138,77 @@ build and revert any generated makefile changes you did not intend.
 The MSP430 is programmed over its JTAG/Spy-Bi-Wire header from CCS, or through
 the bootstrap loader. There is no over-the-air path.
 
+### 4.5 Stack size and printf support
+
+Both configurations link with `--stack_size=2200` and compile with
+`--printf_support=nofloat`.
+
+**The stack size comes from a measured worst case.** Figures are for the `-O0`
+image at the time the size was set:
+
+| Path | Bytes |
+|---|---|
+| Deepest from `main`: the factory test's SD check, `ShimSd_test1()` → FatFs → SD driver | 1,070 |
+| Deepest interrupt: `DMA_ISR`, Bluetooth RX → status-string handling → `snprintf` | 462 |
+| Next deepest interrupt: `TIMER1_A0_ISR`, the millisecond clock's callbacks → RN4x bring-up → `sprintf` | 450 |
+| `main` plus two nested interrupts | 1,982 |
+| `--stack_size` (218 B of margin) | 2,200 |
+
+Two interrupts are counted because they can nest. Starting the Bluetooth
+module calls `msp430_clock_init()`, which sets GIE, and the RN4x baud-change
+step in `runSetCommands()` can call `msp430_clock_enable()`, which does the
+same. `DMA_ISR`, `Port1_ISR`, `TIMER0_A1_ISR` and `TIMER1_A0_ISR` can all reach
+one of them, and SD sync starts the module from `TIMER0_A1_ISR` in normal
+operation. A third level cannot happen: `btInit()` powers the module before it
+starts the clock, and once the clock is running, a nested handler that reaches
+either call returns without touching GIE.
+
+A frame that holds a FatFs `FIL` costs over 500 bytes, because each `FIL`
+carries a sector buffer. The `sdlog.cfg` parser keeps its `FIL` and its
+configuration backup at file scope for this reason. A local `FIL` or a 512-byte
+configuration copy in a new function is the quickest way to undo this sizing.
+
+**Re-measuring.** Do it after anything that could move the figures: a new local
+buffer, a new call made from an interrupt, or a different optimisation level.
+
+1. Run `ofd430 --call_graph -o cg.xml LogAndStream_Shimmer3.out`.
+2. Walk the graph from `main` and from every interrupt handler, adding each
+   function's `stack_size`, which already includes the 4-byte return address.
+3. Resolve indirect calls by hand. The graph records only that a function makes
+   one. Apart from the C library's own (printf's output callbacks, and
+   start-up initialisation before `main`), the targets are whatever is
+   registered through the following:
+   - `DMA0_transferDoneFunction()` and `DMA2_transferDoneFunction()`
+   - `UCA0_isrRegister()` and `UART_init()`
+   - `msp430_register_timer_cb()` and `BT_startDone_cb()`
+   - `ShimSdSync_init()`
+   - the `ShimBt_writeToTxBufAndSend` pointer
+4. Follow `__TI_printfi_nofloat` wherever the graph shows `__TI_printfi`. The
+   linker resolves the call there, but the graph lists `__TI_printfi` as an
+   empty leaf.
+5. Count `send_cmd()` in the SD driver twice. It calls itself once, because an
+   application command (ACMD) is preceded by CMD55.
+
+The ceiling is the RAM the map shows unused below `.stack`. When the size was
+set, that was 2,456 B, leaving 256 B unallocated.
+
+**The stack's high-water mark at run time.** `main()` fills the stack with
+`0xA5` at boot. The factory test's MCU section reports the deepest point
+reached between boot and the test starting, as
+`- Stack high-water = <used> of 2200 bytes`. It appends `(FULL)` if the fill
+pattern is gone from the very bottom of the stack, which means the stack may
+have overflowed.
+
+**`nofloat` printf.** No format string in the firmware has a floating-point
+conversion. A value with a fraction is printed as integers instead, as
+`ShimSdCfgFile_generate()` does for the sampling rate. Dropping the float
+formatter took 234 B off each of the four deep interrupt paths, which all end in
+`sprintf` or `snprintf`, and about 4.2 KB off the image.
+
+The compiler enforces this rule: under `nofloat`, a literal `%f`, `%e`, `%g` or
+`%a` fails the build with error #2631. `minimal` support is not an option,
+because it also drops field widths, which `%02X` and `%03d` depend on.
+
 ## 5. Shimmer3R — STM32CubeIDE
 
 ### 5.1 Headless build
