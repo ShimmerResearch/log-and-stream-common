@@ -10,6 +10,11 @@ wire, not over the air.
 >   `shimmer3r-firmware` @ `a8f105e5`.
 > - Toolchain observations are from the build configurations present in those
 >   repositories at those revisions.
+> - §4.5 is newer. Its settings and figures were read from `shimmer3-firmware`
+>   @ `a311203`, with this repository @ `cea18c2` as its submodule. The stack
+>   and printf settings arrive in `shimmer3-firmware` `641366c`, so a revision
+>   that does not contain that commit still has the old 1600-byte stack and full
+>   printf.
 
 **Source references:**
 
