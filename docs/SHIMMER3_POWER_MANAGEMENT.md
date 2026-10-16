@@ -13,7 +13,9 @@ document is about consumption.
 >   `Battery/shimmer_battery.{h,c}`, `Sensing/shimmer_sensing.c`,
 >   `Comms/shimmer_sd_file_transfer.c`. The once-a-second LED phase-sync
 >   wake in §2 postdates `ff242a6`. It was read from
->   `LogAndStream_blinkTimerCommon` and `TASK_LED_PHASE_SYNC`.
+>   `LogAndStream_blinkTimerCommon` and `TASK_LED_PHASE_SYNC`. The queued
+>   disconnect check in §3 also postdates `ff242a6`. It was read from
+>   `ShimBt_handleBtRfCommStateChange` and `TASK_BT_MODE_CHECK`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `8f800952`.
 

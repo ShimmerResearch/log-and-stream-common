@@ -2636,7 +2636,11 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
     /* On Shimmer3 this handler runs in an interrupt (the connection pin and
      * the status-string DMA), and the check can stop and start the module.
      * Starting it is main-loop work there - it powers the module, resets the
-     * driver and formats its names - so the check is queued. */
+     * driver and formats its names - so the check is queued. Waking the main
+     * loop is the caller's job, as for the other tasks queued here: Port1_ISR
+     * always leaves LPM3 after a connection change, and every
+     * RN4678_parseStatusString() call site returns "bring out of sleep" to
+     * DMA_ISR. */
     ShimTask_set(TASK_BT_MODE_CHECK);
 #else
     ShimConfig_checkBtModeFromConfig();

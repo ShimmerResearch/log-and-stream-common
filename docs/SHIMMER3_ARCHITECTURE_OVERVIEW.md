@@ -16,7 +16,11 @@ read before adding a subsystem.
 >   `TASK_LED_PHASE_SYNC`, postdates `f3cf73e`. It was read from
 >   `TaskList/shimmer_taskList.{h,c}` with the LED phase lock in place. Task
 >   bit 25, `TASK_BT_REPLY_RETRY`, was read at `e5f2252`, from
->   `TaskList/shimmer_taskList.{h,c}` and `Comms/shimmer_bt_reply.c`.
+>   `TaskList/shimmer_taskList.{h,c}` and `Comms/shimmer_bt_reply.c`. Task
+>   bit 21's `TASK_BT_MODE_CHECK`, and bit 20's use by SD sync, also postdate
+>   `f3cf73e`. They were read from `TaskList/shimmer_taskList.{h,c}`,
+>   `ShimBt_handleBtRfCommStateChange` and `ShimSdSync_startBtForSync`, with
+>   each platform's `ShimSdSync_init` call.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
 

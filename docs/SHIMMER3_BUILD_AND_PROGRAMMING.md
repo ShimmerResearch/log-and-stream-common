@@ -10,6 +10,13 @@ wire, not over the air.
 >   `shimmer3r-firmware` @ `a8f105e5`.
 > - Toolchain observations are from the build configurations present in those
 >   repositories at those revisions.
+> - §4.5 postdates these revisions. Its settings were read from the Shimmer3
+>   project's `.cproject`. Its stack figures were measured with
+>   `ofd430 --call_graph` on the `-O0` Debug image, built with Bluetooth start
+>   already moved to the main loop. The interrupt-context claims were read from
+>   `ShimBt_handleBtRfCommStateChange`, `ShimSdSync_startBtForSync`,
+>   `TIMER0_A1_ISR`, and shimmer3-firmware's `msp430_clock_enable()` and
+>   `BtStop()`.
 
 **Source references:**
 
