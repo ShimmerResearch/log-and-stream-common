@@ -651,7 +651,8 @@ static void test_batch_with_sync_heads(void)
     }
     off = (uint16_t) (off + l);
   }
-  expectU("every buffer in the batch leads with its sync head, records in order", bad, 0);
+  expectU(
+      "every buffer in the batch leads with its sync head, records in order", bad, 0);
 
   /* Short writes: after each, the queue packs to exactly what is left. */
   pos = 0;
@@ -689,7 +690,8 @@ static void test_batch_with_sync_heads(void)
     left = sim_pack(&sim, rest, sizeof(rest));
     expectU("a boundary-aligned short write leaves the following buffers", left,
         (uint32_t) (total - pos));
-    expectU("each still leading with its head", left == 0 || memcmp(rest, sim.head, FIELD_HEAD_LEN) == 0, 1);
+    expectU("each still leading with its head",
+        left == 0 || memcmp(rest, sim.head, FIELD_HEAD_LEN) == 0, 1);
   }
 }
 
