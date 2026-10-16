@@ -715,8 +715,8 @@ static void ShimSens_routePacket(PACKETBufferTypeDef *slotPtr, uint8_t toSd)
     {
       calculateCrcAndInsert(crcMode, &dataBufferPtr[PACKET_HEADER_IDX], sensing.dataLen);
     }
-    ShimBt_writeToTxBufAndSend(
-        &dataBufferPtr[PACKET_HEADER_IDX], sensing.dataLen + crcMode, SENSOR_DATA);
+    ShimBt_writeToTxBufAndSend(&dataBufferPtr[PACKET_HEADER_IDX],
+        sensing.dataLen + crcMode, SENSOR_DATA);
   }
 #endif
 }
