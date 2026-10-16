@@ -707,19 +707,23 @@ timestamp into the SD header only. With `writeToFlash = 1` it also calls
 
 **A record's own length is never trusted past its slot.** The dump comes from a
 host or the SD card, so `ShimCalib_singleSensorRead` copies at most the length
-its caller asked for (21 bytes for the IMU blocks) and stops at the end of the
-1024-byte RAM, whatever length byte the record carries. `ShimCalib_singleSensorWrite`
-applies the same bounds when it updates an existing record: it copies at most
-the caller's payload (`data_len`) and stops at the end of the RAM, so a record
-longer than the caller's payload keeps its remaining bytes. It appends a new
-record only if the whole record fits.
+its caller asked for (21 bytes for the IMU blocks), whatever length byte the
+record carries. It also walks only the dump itself, whose end is its declared
+length plus the 2 bytes of the length field: never past the 1024-byte RAM, and
+often well before it. A record whose header does not fit inside the dump is not
+matched. A record whose payload runs past the dump's end is read only up to that
+end; the rest of the slot reads as zero. The bytes after the dump are not part
+of it. They may be the rest of an earlier, longer dump, or of a file longer than
+its own length field.
+
+`ShimCalib_singleSensorWrite` applies the same bounds when it updates an
+existing record. It copies at most the caller's payload (`data_len`) and stops
+at the dump's end, so a record longer than either keeps its remaining bytes. It
+appends a new record only if the whole record fits in the RAM.
 
 `Test/host/test_calibration.c` checks these bounds, and the
-`ShimCalib_ramRead`/`ShimCalib_ramWrite` limits in §2.4, on both platforms. The
-one bound the code has but the suite does not exercise is that RAM-end stop in
-`ShimCalib_singleSensorWrite`. Proving it fails without the fix would mean
-letting a write land past the calibration RAM itself, which a host test cannot
-watch safely.
+`ShimCalib_ramRead`/`ShimCalib_ramWrite` limits in §2.4, on both platforms. That
+includes a dump whose declared end cuts a record short of the RAM end.
 
 A sensor ID with no slot of its own is handled differently on each platform. On
 Shimmer3 it falls through to the analog accelerometer's slot. On Shimmer3R it is

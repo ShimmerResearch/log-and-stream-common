@@ -693,6 +693,46 @@ static void test_single_sensor_read_ram_end(void)
   expectTrue("and the slot reads as zeros", allBytes(g.sc.data.raw, IMU_LEN, 0));
 }
 
+/*
+ * singleSensorRead and singleSensorWrite, the declared end. The dump is as long
+ * as its own length field says, and that can end well before the RAM does.
+ * What lies after it is not part of the dump: the rest of an earlier, longer
+ * dump, or of a calibration file longer than its own length field. So a record
+ * whose payload runs past the declared end is read, and updated, only up to it.
+ */
+static void test_single_sensor_declared_end(void)
+{
+  guarded_sc_t g;
+  const uint16_t data = SC_OFFSET_FIRST_SENSOR + HDR;
+  const uint16_t inDump = 5; /* payload bytes inside the declared length */
+  unsigned i;
+
+  testCase("test_single_sensor_declared_end");
+  reset();
+  ramEmpty();
+  putRecord(ram(), SC_OFFSET_FIRST_SENSOR, TEST_SENSOR, 0, IMU_LEN, 0x40);
+  setLenField(ram(), data + inDump - 2);
+
+  guardInit(&g, IMU_LEN);
+  expectU("a record cut by the declared end is found",
+      ShimCalib_singleSensorRead(&g.sc), 0);
+  expectU("its payload is cut at the declared end", g.sc.data_len, inDump);
+  expectTrue("to the bytes inside the dump", isRamp(g.sc.data.raw, inDump, 0x40));
+  expectTrue("and zeros for the rest of the slot, not the bytes after the dump",
+      allBytes(g.sc.data.raw + inDump, IMU_LEN - inDump, 0));
+
+  guardInit(&g, IMU_LEN);
+  for (i = 0; i < sizeof(g.sc.data.raw); i++)
+  {
+    g.sc.data.raw[i] = (uint8_t) (0xC0 + i);
+  }
+  expectU("the same record is updated", ShimCalib_singleSensorWrite(&g.sc), 0);
+  expectTrue("inside the dump", isRamp(ram() + data, inDump, 0xC0));
+  expectTrue("but not past its declared end",
+      isRamp(ram() + data + inDump, IMU_LEN - inDump, (uint8_t) (0x40 + inDump)));
+  expectU("and the dump keeps its length", ramLenField(), data + inDump - 2);
+}
+
 /* singleSensorRead, a sensor the dump does not hold. It reads back as the
  * all-zero block and the all-zero timestamp of a default calibration. The
  * timestamp used to be left as it was, and the SD header got stack bytes. */
@@ -947,6 +987,7 @@ int main(void)
   test_ram_write_multi_chunk();
   test_single_sensor_read_slot();
   test_single_sensor_read_ram_end();
+  test_single_sensor_declared_end();
   test_single_sensor_read_missing();
   test_single_sensor_write_full_ram();
   test_single_sensor_write_stored_length();
