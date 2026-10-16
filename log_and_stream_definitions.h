@@ -19,8 +19,8 @@
  * and read back without undocking. Starting a log takes the card from USB MSC
  * (USB stack down, card power-cycled and remounted, as on an undock); the card
  * goes back to USB when sensing stops - with a stream still running after the
- * log, when that stream ends too. Never ship with this set: it relies on the USB stack being
- * torn down before the MCU touches the card. */
+ * log, when that stream ends too. Never ship with this set: it relies on the
+ * USB stack being torn down before the MCU touches the card. */
 #ifndef TEST_LOG_WITH_USB
 #define TEST_LOG_WITH_USB 0
 #endif
