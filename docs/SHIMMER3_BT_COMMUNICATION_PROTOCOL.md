@@ -58,6 +58,17 @@ BLE, and over the dock's serial link.
 >   there). The number itself comes from a bench measurement of the Bluetooth
 >   module, not from source; its method and limits are recorded under
 >   [Still unverified](#still-unverified--not-found-in-code).
+> - **Reply priority over data ([§6.3](#63-interleaving)):**
+>   `log-and-stream-common` @ `e5f2252`, which postdates the pin above. Read
+>   from `Comms/shimmer_bt_reply.{h,c}` (`BT_TX_REPLY_RESERVE`,
+>   `ShimBtReply_send`, `ShimBtReply_retry`), `Comms/shimmer_bt_uart.c`
+>   (`ShimBt_sendRsp`, `ShimBt_instreamStatusRespSend`,
+>   `ShimBt_pushBytesToBtTxBufLeaving`, and the Shimmer3R
+>   `ShimBt_writeToTxBufAndSend`) and `Comms/shimmer_sd_file_transfer.c`
+>   (`sdFtEmitPendingStatusFrames`). The Shimmer3 half of the data gate is in
+>   `shimmer3-firmware`'s `Shimmer_Driver/RN4X/RN4X.c`, which the
+>   platform-firmware pins above predate. Treat the Shimmer3 data gate as
+>   unverified here until those pins move to a revision that carries it.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). The **Gen** column in the opcode tables says
@@ -1273,13 +1284,15 @@ A reply can therefore arrive late when the link is slow, but it arrives. A host
 should time out on the link, not on a single reply under load.
 
 The SD file transfer's data frames follow the same rule as data packets
-([§7.13](#713-sd-file-transfer-shimmer3r)). SD sync packets are sent as before,
+([§7.13](#713-sd-file-transfer-shimmer3r)). Its status frames wait while a reply
+is held, so they cannot overtake it. SD sync packets are sent as before,
 because they carry the time at which they were stamped and must not go out late
 ([SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md)).
 
 > `Comms/shimmer_bt_reply.c`; `Comms/shimmer_bt_uart.c` (`ShimBt_writeToTxBufAndSend`
-> on Shimmer3R); `shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.c` (the Shimmer3
-> write functions).
+> on Shimmer3R); `Comms/shimmer_sd_file_transfer.c` (`sdFtEmitPendingStatusFrames`);
+> `shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.c` (the Shimmer3 write
+> functions). Pinned in "Verified against" above.
 
 A disconnect stops streaming unconditionally, whether or not the host asked
 (`ShimBt_handleBtRfCommStateChange`, `:2608-2609`), and on Shimmer3 records a
