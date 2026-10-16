@@ -582,6 +582,13 @@ static void test_ram_write_start_header(void)
   expectX("a one-byte start is refused", ShimCalib_ramWrite(chunk, 1, 0), 0xFF);
   expectX("so is a start at offset 1", ShimCalib_ramWrite(chunk, CHUNK, 1), 0xFF);
 
+  /* A start too long for any chunk fails the range check before the rest, and
+   * it closes an open transfer just the same. */
+  expectU("another 300-byte transfer starts", ShimCalib_ramWrite(image, CHUNK, 0), 0);
+  expectX("a 129-byte start is refused", ShimCalib_ramWrite(image, CHUNK + 1, 0), 0xFF);
+  expectX("and it closes the open transfer as well",
+      ShimCalib_ramWrite(image + CHUNK, CHUNK, CHUNK), 0xFF);
+
   /* A whole 300-byte dump of 0x55 goes through... */
   expectU("chunk 1 of the 0x55 dump", ShimCalib_ramWrite(image, CHUNK, 0), 0);
   expectU("chunk 2", ShimCalib_ramWrite(image + CHUNK, CHUNK, CHUNK), 0);
@@ -1030,6 +1037,50 @@ static void test_file2ram_short_header(void)
   expectU("nothing is opened for writing on the card", card.writeOpens, 0);
 }
 
+/*
+ * file2Ram, a file shorter than the dump it declares. The RAM is cleared before
+ * the read, so whatever the file did not supply reads as zero, and a dump
+ * missing its tail - or a file of one byte, whose second length byte is that
+ * zero - would be applied as if it were whole. Each is handled like a failed
+ * read: the RAM is rebuilt as boot builds it, the call still reports success,
+ * and the card is left alone.
+ */
+static void test_file2ram_truncated(void)
+{
+  static uint8_t booted[RAM_MAX];
+  static const uint32_t lens[] = { 1, 200 };
+  static const char *const names[]
+      = { "test_file2ram_truncated (1 byte of an 8-byte dump)",
+          "test_file2ram_truncated (200 of 300 bytes)" };
+  static const uint16_t declared[] = { SC_OFFSET_FIRST_SENSOR - 2, 300 - 2 };
+  unsigned c;
+
+  for (c = 0; c < sizeof(lens) / sizeof(lens[0]); c++)
+  {
+    testCase(names[c]);
+    reset();
+    ShimCalib_init();
+    ShimCalib_initFromConfigBytesAll();
+    memcpy(booted, ram(), RAM_MAX);
+
+    cardInsert(300);
+    setLenField(card.file, declared[c]);
+    card.fileLen = lens[c];
+
+    expectU("file2Ram reports success", ShimCalib_file2Ram(), 0);
+    expectTrue("the RAM is rebuilt as boot builds it", memcmp(booted, ram(), RAM_MAX) == 0);
+    expectU("nothing is opened for writing on the card", card.writeOpens, 0);
+  }
+
+  /* The same file read whole is taken. */
+  reset();
+  cardInsert(300);
+  expectU("a 300-byte file declaring 300 is read", ShimCalib_file2Ram(), 0);
+  expectTrue("into the RAM",
+      memcmp(ram() + SC_OFFSET_FIRST_SENSOR, card.file + SC_OFFSET_FIRST_SENSOR, 300 - SC_OFFSET_FIRST_SENSOR)
+          == 0);
+}
+
 #if defined(SHIMMER3R)
 /*
  * file2Ram on Shimmer3R, f_stat() failing. The read loop runs to the size
@@ -1110,6 +1161,7 @@ int main(void)
   test_file2ram_truncates();
   test_file2ram_failed_read();
   test_file2ram_short_header();
+  test_file2ram_truncated();
 #if defined(SHIMMER3R)
   test_file2ram_stat_fails();
 #endif

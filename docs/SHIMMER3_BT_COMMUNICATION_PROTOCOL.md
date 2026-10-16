@@ -1756,7 +1756,7 @@ The offset is validated inside `ShimCalib_ramRead`, not in the command handler:
 well-formed response full of zeros.
 
 > `Comms/shimmer_bt_uart.c:1220-1240` (the length check) and `:2388-2396` (the
-> response); `Calibration/shimmer_calibration.c:489-505`.
+> response); `Calibration/shimmer_calibration.c:507-523`.
 
 The blob's first two bytes are its own total length (`uint16_le`, excluding those
 two bytes), which is how a host discovers how much to read. The Python reference
@@ -1784,23 +1784,23 @@ the older comments.**
 
 Writes are **accumulated**, not applied per chunk:
 
-1. A chunk at offset 0 starts a new transfer, and must carry at least the
-   blob's first two bytes, its declared total length. The firmware adds 2,
-   stores that as the expected total, and clears the rest of the staging buffer
-   so that nothing of the previous transfer can be committed. A start that is
-   shorter than those two bytes, a chunk at offset 1, or a start declaring a
-   total that would not fit the 1024-byte calibration RAM is refused: the chunk
-   is NACKed and no transfer is open afterwards. So is a start declaring fewer
-   than 8 bytes, which is too short to hold the version header that follows the
-   length field. Earlier firmware also took offset 1 as a start, and took a
-   missing length byte from the previous transfer.
+1. A chunk at offset 0 starts a new transfer, and must carry at least the blob's
+   first two bytes, its declared total length. The firmware adds 2, stores that
+   as the expected total, and clears the rest of the staging buffer so that
+   nothing of the previous transfer can be committed. A start that is shorter
+   than those two bytes, a chunk at offset 1, or a start declaring a total that
+   would not fit the 1024-byte calibration RAM is refused: the chunk is NACKed
+   and no transfer is open afterwards, as after any refused start. So is a start
+   declaring fewer than 8 bytes, which is too short to hold the version header
+   that follows the length field. Earlier firmware also took offset 1 as a
+   start, and took a missing length byte from the previous transfer.
 2. Every later chunk adds its own length to a running counter.
 3. When the running counter reaches the declared total, the staging buffer is
    promoted to live calibration RAM, the version header is stamped, and the
    configuration bytes plus SD header are regenerated from the new dump.
 
-> `Calibration/shimmer_calibration.c:414-486`. The staging-buffer semantics are
-> in the function's own comment at `:444-446`: "to start a new calib_dump
+> `Calibration/shimmer_calibration.c:426-504`. The staging-buffer semantics are
+> in the function's own comment at `:462-464`: "to start a new calib_dump
 > transmission, the sw must use offset = 0 to setup the correct length …
 > starting with offset >= 2 is not accepted."
 
@@ -1826,7 +1826,7 @@ Writes are **accumulated**, not applied per chunk:
 straight to `ShimCalib_ramWrite` (`:1180-1181`), which applies the equivalent test
 itself — `length <= 128`, `offset <= SHIMMER_CALIB_RAM_MAX - 1`,
 `length + offset <= SHIMMER_CALIB_RAM_MAX`, returning `0xFF` otherwise
-(`Calibration/shimmer_calibration.c:416-441`). With the 131-byte `args[]`
+(`Calibration/shimmer_calibration.c:428-459`). With the 131-byte `args[]`
 truncation clamp (`Comms/shimmer_bt_uart.c:607-639`) in front of both, an oversized or misaligned
 write is contained on either path. The difference is where the check lives, not
 whether there is one: a host reading only the handler will not find it.

@@ -230,23 +230,24 @@ first chunk is what tells the firmware the total size. It must be at offset 0
 and carry at least the two length bytes; the firmware reads the length field out
 of the chunk itself and sets the expected byte count to `length + 2`. A start
 that is shorter, is at offset 1, or declares more than the 1024-byte RAM is
-refused, and leaves no transfer open. So is a start declaring fewer than 8
-bytes: the version header that follows the length field would lie outside the
-dump, and the next appended record would land on it. Earlier firmware also took offset 1 as a
+refused, and leaves no transfer open; so is a start that fails the length and
+offset limits above. So is a start declaring fewer than 8 bytes: the version
+header that follows the length field would lie outside the dump, and the next
+appended record would land on it. Earlier firmware also took offset 1 as a
 start, and a start without both length bytes took the missing one from the
 previous transfer. A start also clears the rest of the staging buffer, so a byte
-the transfer never writes commits as zero, not as the previous dump's. Chunks at offset 2 or beyond only accumulate a running
-total, and only while a transfer is open. With none open, such a chunk is
-refused and the staging buffer is not written. That covers the time before the
-first transfer, after one completes, and after a refused start. A part-way
-start while an earlier transfer is still open accumulates against that
-transfer's expected size, and the firmware commits the blob as soon as the
-running total reaches it. The total counts bytes received, not bytes covered, so
-a repeated chunk can complete a transfer with a gap in it; the gap commits as
-zero. On commit, `ShimCalib_ramWrite` re-stamps the version bytes, closes the
-transfer, and pushes the new values out to the configuration bytes and
-the SD header via `ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1)` — which
-writes InfoMem.
+the transfer never writes commits as zero, not as the previous dump's. Chunks at
+offset 2 or beyond only accumulate a running total, and only while a transfer is
+open. With none open, such a chunk is refused and the staging buffer is not
+written. That covers the time before the first transfer, after one completes,
+and after a refused start. A part-way start while an earlier transfer is still
+open accumulates against that transfer's expected size, and the firmware commits
+the blob as soon as the running total reaches it. The total counts bytes
+received, not bytes covered, so a repeated chunk can complete a transfer with a
+gap in it; the gap commits as zero. On commit, `ShimCalib_ramWrite` re-stamps
+the version bytes, closes the transfer, and pushes the new values out to the
+configuration bytes and the SD header via
+`ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1)` — which writes InfoMem.
 
 ## 3. The 21-byte kinematic block
 
@@ -410,13 +411,14 @@ exists or the file is absent, leaving the RAM blob as the firmware defaults. It
 reads at most the 1024 bytes of calibration RAM (`SHIMMER_CALIB_RAM_MAX`), so a
 longer file is truncated to that.
 
-If a read fails partway, or the file's length field declares fewer than the 8
-bytes of its own version header, or (on Shimmer3R, which takes the file's size
-from `f_stat`) `f_stat` fails, the RAM is rebuilt from the configuration bytes
-(`ShimCalib_init` + `ShimCalib_initFromConfigBytesAll`, as at boot) instead of
-being left as read, and the function still returns 0. That matters because
-both callers answer a non-zero return by writing the RAM back to the card,
-which here would replace a file that may read cleanly next time.
+If a read fails partway, or the file is shorter than the dump its own length
+field declares, or that field declares fewer than the 8 bytes of its own version
+header, or (on Shimmer3R, which takes the file's size from `f_stat`) `f_stat`
+fails, the RAM is rebuilt from the configuration bytes (`ShimCalib_init` +
+`ShimCalib_initFromConfigBytesAll`, as at boot) instead of being left as read,
+and the function still returns 0. That matters because both callers answer a
+non-zero return by writing the RAM back to the card, which here would replace a
+file that may read cleanly next time.
 
 ## 5. Pressure sensor coefficient blocks
 
