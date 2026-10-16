@@ -19,6 +19,11 @@ read before adding a subsystem.
 >   `TaskList/shimmer_taskList.{h,c}` and `Comms/shimmer_bt_reply.c`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
+> - **Weak hooks:** the hook count and the rule that the weak attribute
+>   sits on the default definitions only were read at `log-and-stream-common`
+>   @ `f573f60`, from `Platform/platform_api.{h,c}`, `Boards/shimmer_boards.{h,c}`,
+>   `Comms/shimmer_bt_uart.{h,c}`, `Sensing/shimmer_sensing.{h,c}` and
+>   `Test/shimmer_test.{h,c}`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A, Code
 > Composer Studio); **S3R** = Shimmer3R (STM32U5, STM32CubeIDE). LogAndStream

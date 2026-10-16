@@ -32,6 +32,9 @@ channel encodings are identical, only the framing around them differs.
 >   `PressureSensor_detect()`, `PressureSensor_wasIdentifiedByChipId()`. Only
 >   the claims about that field were checked at these revisions; the rest of
 >   this document stays pinned as above.
+> - **When `center=` is written:** `log-and-stream-common` @ `f573f60` —
+>   `ShimSdCfgFile_generate()` in `SDCard/shimmer_sd_cfg_file.c`. Only that
+>   claim was checked at this revision.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). Where the two generations differ, both are

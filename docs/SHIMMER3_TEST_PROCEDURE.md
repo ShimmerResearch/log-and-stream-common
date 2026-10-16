@@ -14,6 +14,9 @@ and — as importantly — what each layer of testing cannot tell you.
 > - **Platform firmware:** `shimmer3-firmware` @ `eb6c400`;
 >   `shimmer3r-firmware` @ `4dc5253` — the release workflows and the
 >   Shimmer3R CubeMX guard check.
+> - **`test_platform_seam` and `check_weak_decls.py`:** `log-and-stream-common`
+>   @ `f573f60` — `Test/host/test_platform_seam.c`,
+>   `Test/host/check_weak_decls.py`, `Test/host/Makefile`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
