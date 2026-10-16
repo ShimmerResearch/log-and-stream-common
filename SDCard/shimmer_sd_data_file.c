@@ -376,6 +376,8 @@ void ShimSdDataFile_writeToCard(void)
   const uint8_t *writing_buf;
   uint16_t writing_buf_len;
   uint8_t bufsInWrite = 1;
+  uint32_t splitTs;
+  uint8_t splitAllowed = 1;
 #if defined(SHIMMER3R)
   uint16_t partBytes = 0;
 #endif
@@ -454,7 +456,31 @@ void ShimSdDataFile_writeToCard(void)
   __NOP();
 
   /* split file every hour upwards from 000 */
-  if ((uint32_t) sensing.latestTs - (uint32_t) sdFileCrTs >= (uint32_t) BIN_FILE_SPLIT_TIME_TICKS)
+  splitTs = (uint32_t) sensing.latestTs;
+#if defined(SHIMMER3R)
+  /* Judge the hour by the newest record this write put in the file, not the
+   * newest sample taken: the ring and buffers can hold a second or more of
+   * older data during a stall, and splitting on the sample clock would end
+   * the file that much past an hour of sampling. Records begin with their
+   * 24-bit timestamp; take the upper bits from latestTs, which is at most a
+   * few seconds newer. */
+  if ((partBytes == 0U) && (writing_buf_len >= (uint16_t) (sensing.dataLen - 1U)))
+  {
+    const uint8_t *recPtr = &writing_buf[writing_buf_len - (uint16_t) (sensing.dataLen - 1U)];
+    uint32_t ts24 = (uint32_t) recPtr[0] | ((uint32_t) recPtr[1] << 8) | ((uint32_t) recPtr[2] << 16);
+    uint32_t full = (splitTs & 0xFF000000UL) | ts24;
+
+    if (full > splitTs)
+    {
+      full -= 0x01000000UL;
+    }
+    splitTs = full;
+  }
+  /* Never split with the tail of a short write still queued: it belongs to
+   * this file, ahead of everything after it. The next write finishes it. */
+  splitAllowed = (partBytes == 0U);
+#endif
+  if (splitAllowed && ((splitTs - (uint32_t) sdFileCrTs) >= (uint32_t) BIN_FILE_SPLIT_TIME_TICKS))
   {
     sdFileSyncTs = sdFileCrTs = RTC_get64();
 

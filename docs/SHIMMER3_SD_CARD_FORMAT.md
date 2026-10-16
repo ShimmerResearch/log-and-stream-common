@@ -541,9 +541,14 @@ never reset while sensing, so a bench run can be read out afterwards.
 Every 60 seconds of sample time the file is `f_sync`ed, bounding data loss on
 power failure to about a minute. Every 3600 seconds a new file is opened.
 
-> **Both intervals are measured in sample ticks, not wall time.** They use
-> `sensing.latestTs`, so a file spans an hour *of sampling*. This matters when
-> comparing against wall-clock expectations for a paused or restarted trial.
+> **Both intervals are measured in sample ticks, not wall time**, so a file
+> spans an hour *of sampling*. This matters when comparing against wall-clock
+> expectations for a paused or restarted trial. The sync uses
+> `sensing.latestTs`, the newest sample taken. The split uses it on Shimmer3;
+> on Shimmer3R it uses the timestamp of the newest record just written, because
+> the deeper ring and buffers can hold a second or more of older samples during
+> a card stall. Shimmer3R also never splits while the unwritten tail of a short
+> write is still queued: that tail belongs to the file it started in.
 
 > **File splits are not aligned to any wall-clock boundary.** A file starts when
 > logging starts and ends 3600 seconds of sample time later. Do not assume file
