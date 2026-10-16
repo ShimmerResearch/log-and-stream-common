@@ -63,12 +63,22 @@ uint8_t ShimBt_writeReplyToTxBuf(uint8_t *buf, uint16_t len)
   return ringPush(buf, len);
 }
 
-/* A data packet, gated the way ShimBt_writeToTxBufAndSend() gates SENSOR_DATA */
+/* Stands in for setting TASK_BT_REPLY_RETRY */
+static uint32_t retriesScheduled;
+
+void ShimBt_scheduleReplyRetry(void)
+{
+  retriesScheduled++;
+}
+
+/* A data packet, gated the way the firmware's write functions gate SENSOR_DATA:
+ * refused while a reply is held, and unless more than BT_TX_REPLY_RESERVE
+ * bytes stay free (ShimBt_pushBytesToBtTxBufLeaving()) */
 static uint8_t pushData(uint16_t len)
 {
   static uint8_t pkt[1100];
   memset(pkt, 0x00, len); /* DATA_PACKET opcode and zero payload */
-  if (!ShimBtReply_isRoomForSensorData(len))
+  if (gBtReplyPendingLen != 0U || ShimBt_getSpaceInBtTxBuf() <= len + BT_TX_REPLY_RESERVE)
   {
     return 1;
   }
@@ -86,6 +96,7 @@ static void reset(void)
   wireLen = 0;
   ringUsed = 0;
   replyWrites = 0;
+  retriesScheduled = 0;
 }
 
 /* Fill with data packets of len until the gate refuses one */
@@ -151,14 +162,43 @@ static void testLongReplyHeldThenSent(void)
   expectU("held", ShimBtReply_isPending(), 1);
   expectU("nothing written yet", wireLen, before);
 
-  /* While held, data is refused even once the ring drains: the reply goes first */
+  /* While it is held, data is refused even once the ring has drained:
+   * nothing may overtake the held reply */
   drain(RING_SIZE);
   expectU("data refused while a reply is held", pushData(24), 1);
+  expectU("still held", ShimBtReply_isPending(), 1);
 
+  /* The retry task moves it on; data then goes in behind it */
+  before = wireLen;
   ShimBtReply_retry();
   expectU("released", ShimBtReply_isPending(), 0);
-  expectTrue("held reply on the wire", wireEndsWith(longRsp, sizeof(longRsp)));
-  expectU("data accepted again", pushData(24), 0);
+  expectU("data accepted once the reply is out", pushData(24), 0);
+  expectU("reply then packet", wireLen, before + sizeof(longRsp) + 24U);
+  expectTrue("held reply first", memcmp(&wire[before], longRsp, sizeof(longRsp)) == 0);
+}
+
+static void testRetryTaskReleasesWithoutData(void)
+{
+  testCase("with no data flowing, the retry task releases a held reply");
+  reset();
+  fillWithData(24);
+  static uint8_t longRsp[RESPONSE_PACKET_SIZE];
+  memset(longRsp, 0x3C, sizeof(longRsp));
+  ShimBtReply_send(longRsp, sizeof(longRsp));
+  expectU("held", ShimBtReply_isPending(), 1);
+  expectTrue("holding asked for a retry", retriesScheduled > 0);
+
+  /* Each retry that still finds no room asks for another */
+  uint32_t asked = retriesScheduled;
+  ShimBtReply_retry();
+  expectU("retry without room re-arms", retriesScheduled, asked + 1U);
+
+  drain(RING_SIZE);
+  asked = retriesScheduled;
+  ShimBtReply_retry(); /* TASK_BT_REPLY_RETRY runs */
+  expectU("released", ShimBtReply_isPending(), 0);
+  expectTrue("on the wire", wireEndsWith(longRsp, sizeof(longRsp)));
+  expectU("no further retry once out", retriesScheduled, asked);
 }
 
 static void testOrderKeptBehindHeldReply(void)
@@ -252,6 +292,7 @@ int main(void)
   testReplyOnIdleRing();
   testDataLeavesRoomForReply();
   testLongReplyHeldThenSent();
+  testRetryTaskReleasesWithoutData();
   testOrderKeptBehindHeldReply();
   testRetryWithoutRoomKeepsReply();
   testHoldOverflowCounted();

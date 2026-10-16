@@ -45,16 +45,22 @@
  * buffer is full too. Main-loop context only. */
 uint8_t ShimBtReply_send(uint8_t *buf, uint16_t len);
 
-/* Move a held reply into the ring if it now fits. Runs as TASK_BT_REPLY_RETRY,
- * which the TX-complete path sets while a reply is held. */
+/* Move a held reply into the ring if it now fits; if it still does not, ask
+ * for another try (TASK_BT_REPLY_RETRY), so it is polled from the main loop
+ * until it is out. Main loop only. */
 void ShimBtReply_retry(void);
 
 uint8_t ShimBtReply_isPending(void);
 
-/* Gate for data packets and SD file-transfer data frames: refused while a reply
- * is held, so the ring drains to make room for it, and when the packet would
- * eat into BT_TX_REPLY_RESERVE. */
-uint8_t ShimBtReply_isRoomForSensorData(uint16_t len);
+/* Bytes held. Read directly by the write functions that gate data packets
+ * (and SD file-transfer data frames): while it is non-zero they refuse data,
+ * so the ring drains to make room for the held reply. The gate is a bare
+ * compare plus ShimBt_pushBytesToBtTxBufLeaving() on purpose. On Shimmer3 an
+ * RN42 link outrunning a 1024 Hz stream lost up to a fifth of its data when
+ * the data path did more work than main's - extra calls, a retry - for
+ * reasons not pinned down: it tracked the path's timing, not its cost (bench).
+ * Keep it at main's shape. Main loop only. */
+extern uint16_t gBtReplyPendingLen;
 
 /* Forget a held reply: the TX ring has been cleared or the link is gone. */
 void ShimBtReply_reset(void);
@@ -63,8 +69,9 @@ void ShimBtReply_reset(void);
  * host waits for one reply before sending its next command; readable over SWD. */
 uint16_t ShimBtReply_getDropCount(void);
 
-/* Provided by Comms/shimmer_bt_uart.c (the fake ring in the host tests). */
+/* Provided by Comms/shimmer_bt_uart.c (fakes in the host tests). */
 uint8_t ShimBt_writeReplyToTxBuf(uint8_t *buf, uint16_t len);
 uint16_t ShimBt_getSpaceInBtTxBuf(void);
+void ShimBt_scheduleReplyRetry(void); /* sets TASK_BT_REPLY_RETRY */
 
 #endif /* SHIMMER_BT_REPLY_H_ */

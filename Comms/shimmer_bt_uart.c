@@ -2730,10 +2730,18 @@ void ShimBt_pushByteToBtTxBuf(uint8_t c)
 
 uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint16_t len)
 {
+  return ShimBt_pushBytesToBtTxBufLeaving(buf, len, 0U);
+}
+
+/* As ShimBt_pushBytesToBtTxBuf(), but refuses unless more than `leave` bytes
+ * stay free afterwards. Data packets pass BT_TX_REPLY_RESERVE, to keep room
+ * for command replies (Comms/shimmer_bt_reply.h). */
+uint8_t ShimBt_pushBytesToBtTxBufLeaving(uint8_t *buf, uint16_t len, uint16_t leave)
+{
   uint16_t wr = gBtTxFifo.wrIdx & BT_TX_BUF_MASK;
 
   /* Note: There must always be a space of >=1 byte within the ring buffer. */
-  if (ShimBt_getSpaceInBtTxBuf() <= len)
+  if (ShimBt_getSpaceInBtTxBuf() <= (uint16_t) (len + leave))
   {
     return 1; //FAIL
   }
@@ -2800,13 +2808,6 @@ void ShimBt_TxCpltCallback(void)
   gBtTxFifo.rdIdx += gBtTxFifo.numBytesBeingRead;
   gBtTxFifo.numBytesBeingRead = 0;
 #endif
-
-  /* Ring space has been freed: a held reply may fit now. The retry runs in
-   * task context because it writes the ring. */
-  if (ShimBtReply_isPending())
-  {
-    ShimTask_set(TASK_BT_REPLY_RETRY);
-  }
 
 #if defined(SHIMMER3R)
   /* Ring space has been freed: let a paused SD file transfer continue.
@@ -3024,17 +3025,20 @@ uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType re
   /* Data packets and SD file-transfer data frames stay out of the space kept
    * for replies, and out of the ring altogether while a reply is held. Their
    * callers already treat a refusal as a dropped packet or a paused transfer. */
-  if (responseType == SENSOR_DATA && !ShimBtReply_isRoomForSensorData(len))
+  uint16_t leave = 0U;
+  if (responseType == SENSOR_DATA)
+  {
+    if (gBtReplyPendingLen != 0U)
+    {
+      return 1; //fail
+    }
+    leave = BT_TX_REPLY_RESERVE;
+  }
+
+  if (ShimBt_pushBytesToBtTxBufLeaving(buf, len, leave))
   {
     return 1; //fail
   }
-
-  if (ShimBt_getSpaceInBtTxBuf() <= len)
-  {
-    return 1; //fail
-  }
-
-  ShimBt_pushBytesToBtTxBuf(buf, len);
 
   ShimBt_sendNextCharIfNotInProgress();
 
@@ -3054,6 +3058,11 @@ uint8_t ShimBt_writeReplyToTxBuf(uint8_t *buf, uint16_t len)
     return 1;
   }
   return 0;
+}
+
+void ShimBt_scheduleReplyRetry(void)
+{
+  ShimTask_set(TASK_BT_REPLY_RETRY);
 }
 
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)

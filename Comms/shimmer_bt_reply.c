@@ -9,11 +9,9 @@
 
 #include <string.h>
 
-/* Held replies, in the order they were sent. Touched only from the main loop:
- * the TX-complete interrupt only reads pendingReplyLen, through
- * ShimBtReply_isPending(), to decide whether to schedule a retry. */
+/* Held replies, in the order they were sent. Main loop only. */
 static uint8_t pendingReply[BT_PENDING_REPLY_SIZE];
-static volatile uint16_t pendingReplyLen = 0;
+uint16_t gBtReplyPendingLen = 0;
 static uint16_t replyDropCount = 0;
 
 uint8_t ShimBtReply_send(uint8_t *buf, uint16_t len)
@@ -25,21 +23,21 @@ uint8_t ShimBtReply_send(uint8_t *buf, uint16_t len)
 
   /* Something is already held: this one goes behind it, never ahead, or the
    * host would see replies out of order */
-  if (pendingReplyLen == 0U && ShimBt_writeReplyToTxBuf(buf, len) == 0U)
+  if (gBtReplyPendingLen == 0U && ShimBt_writeReplyToTxBuf(buf, len) == 0U)
   {
     return 0;
   }
 
-  if ((uint16_t) (pendingReplyLen + len) > BT_PENDING_REPLY_SIZE)
+  if ((uint16_t) (gBtReplyPendingLen + len) > BT_PENDING_REPLY_SIZE)
   {
     replyDropCount++;
     return 1;
   }
 
-  memcpy(&pendingReply[pendingReplyLen], buf, len);
-  pendingReplyLen += len;
+  memcpy(&pendingReply[gBtReplyPendingLen], buf, len);
+  gBtReplyPendingLen += len;
 
-  /* The ring may have room for the held bytes already */
+  /* The ring may have room for the held bytes already; if not, keep trying */
   ShimBtReply_retry();
   return 0;
 }
@@ -48,26 +46,32 @@ void ShimBtReply_retry(void)
 {
   /* All or nothing: the held bytes can be several replies, and a reply split
    * across two writes could have a status push land inside it */
-  if (pendingReplyLen != 0U && ShimBt_writeReplyToTxBuf(pendingReply, pendingReplyLen) == 0U)
+  if (gBtReplyPendingLen == 0U)
   {
-    pendingReplyLen = 0;
+    return;
+  }
+  if (ShimBt_writeReplyToTxBuf(pendingReply, gBtReplyPendingLen) == 0U)
+  {
+    gBtReplyPendingLen = 0;
+  }
+  else
+  {
+    /* Poll from the main loop until it is out. Deliberately not from the TX
+     * path or the data path: on Shimmer3 the RN42 link's throughput proved
+     * sensitive to the timing of both (shimmer_bt_reply.h). A reply is held
+     * for milliseconds, and only when the ring is full. */
+    ShimBt_scheduleReplyRetry();
   }
 }
 
 uint8_t ShimBtReply_isPending(void)
 {
-  return pendingReplyLen != 0U;
-}
-
-uint8_t ShimBtReply_isRoomForSensorData(uint16_t len)
-{
-  return pendingReplyLen == 0U
-      && (uint32_t) ShimBt_getSpaceInBtTxBuf() >= (uint32_t) len + BT_TX_REPLY_RESERVE;
+  return gBtReplyPendingLen != 0U;
 }
 
 void ShimBtReply_reset(void)
 {
-  pendingReplyLen = 0;
+  gBtReplyPendingLen = 0;
 }
 
 uint16_t ShimBtReply_getDropCount(void)
