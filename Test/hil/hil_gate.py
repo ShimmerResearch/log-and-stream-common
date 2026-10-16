@@ -46,8 +46,10 @@ REQUIRED_SCHEMA = "shimmer-hil-required/1"
 PLATFORMS = ("shimmer3", "shimmer3r")
 STATUSES = ("pass", "fail", "not_covered")
 KINDS = ("manual", "automated")
-WAIVER_RE = re.compile(r"^[A-Z][A-Z0-9]+-[0-9]+$")
-SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+# Always fullmatch(): with match(), "$" also matches before a final newline, so
+# "ABC-123\n" would pass as an issue key.
+WAIVER_RE = re.compile(r"[A-Z][A-Z0-9]+-[0-9]+")
+SHA_RE = re.compile(r"[0-9a-f]{40}")
 
 REQUIRED_DIR = Path(__file__).resolve().parent / "required"
 
@@ -108,7 +110,7 @@ def validate_report(name: str, rep: dict) -> list[str]:
     for key in ("platform", "commit", "firmware_version", "bench", "operator", "created"):
         if not isinstance(rep.get(key), str) or not rep.get(key):
             p.append(f"{name}: missing {key}")
-    if isinstance(rep.get("commit"), str) and not SHA_RE.match(rep["commit"]):
+    if isinstance(rep.get("commit"), str) and not SHA_RE.fullmatch(rep["commit"]):
         p.append(f"{name}: commit must be a full 40-character lowercase SHA")
     results = rep.get("results")
     if not isinstance(results, list):
@@ -130,7 +132,7 @@ def validate_report(name: str, rep: dict) -> list[str]:
         if r.get("status") not in STATUSES:
             p.append(f"{where} ({rid}): status must be one of {', '.join(STATUSES)}")
         w = r.get("waiver")
-        if w is not None and not (isinstance(w, str) and WAIVER_RE.match(w)):
+        if w is not None and not (isinstance(w, str) and WAIVER_RE.fullmatch(w)):
             p.append(f"{where} ({rid}): waiver must be an issue key such as ABC-123")
     return p
 

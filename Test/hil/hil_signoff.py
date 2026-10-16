@@ -102,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
         if status != "pass":
             while True:
                 w = input("  waiver issue key (Enter for none - the gate will block): ").strip().upper()
-                if not w or hil_gate.WAIVER_RE.match(w):
+                if not w or hil_gate.WAIVER_RE.fullmatch(w):
                     break
                 print("  that is not an issue key such as ABC-123")
             if w:

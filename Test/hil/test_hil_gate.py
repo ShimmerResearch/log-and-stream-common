@@ -111,6 +111,12 @@ class Rules(unittest.TestCase):
                                     {"id": "a.two", "status": "fail", "waiver": "it's fine"}])})
         self.assertFalse(v.ok)
 
+    def test_waiver_must_be_only_an_issue_key(self):
+        for w in ("DEV-1\n", "DEV-1 ok", " DEV-1"):
+            with self.subTest(waiver=w):
+                v = gate({"r.json": report([ok("a.one"), {"id": "a.two", "status": "fail", "waiver": w}])})
+                self.assertFalse(v.ok)
+
 
 class Binding(unittest.TestCase):
     """A report is evidence about one build only."""
@@ -127,6 +133,11 @@ class Binding(unittest.TestCase):
     def test_short_sha_rejected(self):
         v = gate({"r.json": report([ok("a.one"), ok("a.two")], commit=SHA[:12])})
         self.assertFalse(v.ok)
+
+    def test_sha_with_a_trailing_newline_rejected(self):
+        v = gate({"r.json": report([ok("a.one"), ok("a.two")], commit=SHA + "\n")})
+        self.assertFalse(v.ok)
+        self.assertTrue(any("40-character" in p for p in v.problems), v.problems)
 
     def test_wrong_version_blocks(self):
         v = gate({"r.json": report([ok("a.one"), ok("a.two")], firmware_version="1.01.021")})
