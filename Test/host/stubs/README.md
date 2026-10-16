@@ -19,8 +19,10 @@ Two kinds of file live here:
   makes a green test meaningless. Each one names its source below.
 
 - **`host_stubs.c`** — the externs themselves, plus the `shimmerStatus` and
-  `batteryStatus` globals that `log_and_stream_globals.h` defines for the
-  firmware. Tests drive the platform by writing to these directly.
+  `batteryStatus` globals. `log_and_stream_externs.h` declares those two and
+  `log_and_stream_common.c` defines them for the firmware; the host tests do
+  not link that file, so `host_stubs.c` defines them instead. Tests drive the
+  platform by writing to these directly.
 
 A stub header can stop at declarations and leave the definitions to the one
 suite that drives them. `ff.h` does: `test_calibration.c` defines the FatFs

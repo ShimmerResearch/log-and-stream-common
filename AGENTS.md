@@ -16,9 +16,11 @@ Anything platform-specific goes behind the abstraction — `log_and_stream_exter
 functions each platform firmware must implement. Add to that contract rather than `#ifdef`-ing by MCU.
 
 ## Layout
-`log_and_stream_common.c/h` is the lifecycle entry point. `log_and_stream_globals.h` holds shared
-state (`shimmerStatus`, `batteryStatus`). Subsystems are one directory each: `Comms/`, `SDCard/`,
-`Sensing/`, `Calibration/`, `Battery/`, `Button/`, `LEDs/`, `RTC/`, `EEPROM/`, `SDSync/`, `TaskList/`.
+`log_and_stream_common.c/h` is the lifecycle entry point. It also defines the shared state
+(`shimmerStatus`, `batteryStatus`) that `log_and_stream_externs.h` declares; headers declare and never
+define, because a definition in a header is repeated in every file that includes it. Subsystems are
+one directory each: `Comms/`, `SDCard/`, `Sensing/`, `Calibration/`, `Battery/`, `Button/`, `LEDs/`,
+`RTC/`, `EEPROM/`, `SDSync/`, `TaskList/`.
 
 ## Read the docs first
 `docs/` holds 22 reference documents covering both platforms — protocol, memory maps, calibration,

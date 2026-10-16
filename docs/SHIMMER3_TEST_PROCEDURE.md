@@ -14,6 +14,9 @@ and — as importantly — what each layer of testing cannot tell you.
 > - **Platform firmware:** `shimmer3-firmware` @ `eb6c400`;
 >   `shimmer3r-firmware` @ `4dc5253` — the release workflows and the
 >   Shimmer3R CubeMX guard check.
+> - **`test_platform_seam` and `check_weak_decls.py`:** `log-and-stream-common`
+>   @ `f573f60` — `Test/host/test_platform_seam.c`,
+>   `Test/host/check_weak_decls.py`, `Test/host/Makefile`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
@@ -184,6 +187,12 @@ What the suites cover today:
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
 | `test_boards` | `Boards/shimmer_boards.c` | ×2 | Every revision gate, across 25 board revisions |
 | `test_calibration` | `Calibration/shimmer_calibration.c` | ×2 | The length and offset bounds on the calibration dump: Bluetooth chunk reads and writes, record copies against the caller's slot and the RAM end, the SD calibration file's size, and a card that stops answering |
+| `test_platform_seam` | `Platform/platform_api.c`, `Boards/shimmer_boards.c` | ×2 | A platform's override of a weak hook beats the default even when the default links first; `log_and_stream_globals.h` declares its globals rather than defining them |
+
+`check_weak_decls.py` (`make -C Test/host weak-decls`) is the text-only half of
+`test_platform_seam`: it fails if any header in the repository puts a weak
+attribute on a declaration, which covers the hook headers the host build cannot
+include yet.
 
 Three of them are additionally cross-checked against a reference that shares no
 code with the firmware — an oracle, not a restatement:
