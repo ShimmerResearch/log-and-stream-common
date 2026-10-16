@@ -346,12 +346,18 @@ Run them against a **factory-reset configuration first**, then against the
 configuration a customer is most likely to have. A device only ever tested from
 a known-good config will not tell you that a config path is broken.
 
-### 4.1 The factory self-test — Shimmer3R
+### 4.1 The factory self-test
 
-Trigger the on-device self-test and read the report. Every fitted part answers
-on its bus; `S3R_TEST_nnnn - PASS|FAIL|WARNING` per line, with a bitmask summary.
-See [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) for the
-registry and the report format.
+Trigger the on-device self-test (`SET_FACTORY_TEST`) and read the report.
+
+- **Shimmer3R:** every fitted part answers on its bus;
+  `S3R_TEST_nnnn - PASS|FAIL|WARNING` per line, with a bitmask summary. See
+  [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) for the
+  registry and the report format.
+- **Shimmer3:** a plain-text report from shimmer3-firmware's
+  `hal_FactoryTest.c`: the model, the MCU and its last reset reason, then the
+  LED, SD card, Bluetooth module, I2C and SPI checks. It has no registry or
+  bitmask.
 
 **Check it against the board revision.** A `FAIL` for a part that revision does
 not carry is a revision-gate problem (§2.4), not a hardware fault — and a `PASS`
@@ -1059,9 +1065,14 @@ hardware-in-the-loop rig writes the same format.
 ```
 
 `kind` is `manual` or `automated`. `status` is `pass`, `fail` or `not_covered`.
-A `waiver` is the issue key under which someone accepted a failure or a gap.
-Without one the gate treats that result as blocking, and the issue is where the
-reason is kept.
+A `waiver` is the issue key under which someone accepted a failure or a gap, and
+the issue is where the reason is kept.
+
+- **An unwaived `fail` blocks** wherever it appears (rule 3).
+- **An unwaived `not_covered` is a gap, not a failure.** It covers nothing, so a
+  required item still blocks unless another report passes it (rule 4). A gap in
+  an item that is not required is listed, and does not block. A bench that cannot
+  run an item says so with `not_covered`, and another bench can cover it.
 
 ### 10.2 The rules
 

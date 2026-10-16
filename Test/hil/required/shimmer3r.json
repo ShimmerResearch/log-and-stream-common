@@ -8,9 +8,11 @@
     {"id": "gate4.boot_and_identity",   "title": "Boot, identity and radio banner recorded",                   "ref": "§5.1, §5.2"},
     {"id": "gate4.per_model",           "title": "Per-model behaviour walked on the models the change touches", "ref": "§5.4"},
     {"id": "gate4.stream_and_log",      "title": "Streaming, logging, and both together",                      "ref": "§5.5, §5.6"},
-    {"id": "gate4.functional_other",    "title": "Rest of gate 4 walked on at least one unit",                  "ref": "§5.7 to §5.11"},
+    {"id": "gate4.functional_other",    "title": "Rest of gate 4 walked on at least one unit",                  "ref": "§5.3, §5.7 to §5.11"},
     {"id": "gate5.host_stack",          "title": "Shipping host stack against the release candidate",          "ref": "§6.4"},
     {"id": "gate5.previous_recording",  "title": "A recording from the previous release still imports",        "ref": "§6.4.5"},
-    {"id": "gate5.version_skew",        "title": "Version skew walked in both directions",                     "ref": "§6.5"}
+    {"id": "gate5.version_skew",        "title": "Version skew walked in both directions",                     "ref": "§6.5"},
+    {"id": "gate5.compatibility_change", "title": "Any compatibility change made loud: version bumped, document and host reference updated, host version named in the release notes", "ref": "§6.6"},
+    {"id": "regression.cases_considered", "title": "Regression cases considered against what changed",       "ref": "§7"}
   ]
 }

@@ -9,6 +9,7 @@ rule were removed.
 import copy
 import io
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -18,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hil_gate  # noqa: E402
 
+REPO = Path(__file__).resolve().parents[2]
 SHA = "0123456789abcdef0123456789abcdef01234567"
 OTHER_SHA = "fedcba9876543210fedcba9876543210fedcba98"
 REQUIRED = [{"id": "a.one", "title": "One"}, {"id": "a.two", "title": "Two"}]
@@ -92,6 +94,18 @@ class Rules(unittest.TestCase):
                                     {"id": "a.two", "status": "not_covered", "waiver": "DEV-2"}])})
         self.assertTrue(v.ok, v.problems)
 
+    def test_a_gap_on_one_bench_is_covered_by_a_pass_on_another(self):
+        # Rule 4: coverage is split across reports. A bench that cannot run an
+        # item says so, and that is not a failure.
+        v = gate({"r1.json": report([ok("a.one"), {"id": "a.two", "status": "not_covered"}], bench="b1"),
+                  "r2.json": report([ok("a.two")], bench="b2")})
+        self.assertTrue(v.ok, v.problems)
+
+    def test_a_gap_in_an_unrequired_item_is_listed_not_blocking(self):
+        v = gate({"r.json": report([ok("a.one"), ok("a.two"), {"id": "extra.x", "status": "not_covered"}])})
+        self.assertTrue(v.ok, v.problems)
+        self.assertEqual(v.extra, {"extra.x": "not_covered"})
+
     def test_waiver_must_be_an_issue_key(self):
         v = gate({"r.json": report([ok("a.one"),
                                     {"id": "a.two", "status": "fail", "waiver": "it's fine"}])})
@@ -156,6 +170,23 @@ class Files(unittest.TestCase):
             items = hil_gate.load_required(p)
             self.assertTrue(items)
 
+    def test_shipped_required_lists_cover_the_checklist_items_the_gate_checks(self):
+        # §8 says which of its items the gate checks: from "On-device suites
+        # pass" to "§7 regression cases". Each of those lines cites a section
+        # first; every platform's list must require that section or a part of it.
+        doc = (REPO / "docs" / "SHIMMER3_TEST_PROCEDURE.md").read_text(encoding="utf-8")
+        sec = doc.split("\n## 8. Release sign-off", 1)[1].split("\n## ", 1)[0]
+        lines = [ln for ln in sec.splitlines() if ln.startswith("- [ ]")]
+        start = next(i for i, ln in enumerate(lines) if "On-device suites pass" in ln)
+        end = next(i for i, ln in enumerate(lines) if "§7 regression cases" in ln)
+        cited = [re.search(r"§\d+(?:\.\d+)*", ln).group() for ln in lines[start:end + 1]]
+        self.assertGreaterEqual(len(cited), 10)
+        for p in hil_gate.PLATFORMS:
+            refs = re.findall(r"§\d+(?:\.\d+)*", " ".join(i.get("ref", "") for i in hil_gate.load_required(p)))
+            for c in cited:
+                self.assertTrue(any(r == c or r.startswith(c + ".") for r in refs),
+                                f"{p}: §8 has a gate item for {c}, but nothing in required/{p}.json cites it")
+
     def test_cli_exit_codes_and_summary(self):
         with tempfile.TemporaryDirectory() as d:
             good = Path(d, "hil-report-a.json")
@@ -178,6 +209,26 @@ class Files(unittest.TestCase):
             Path(d, "broken.json").write_text("{", encoding="utf-8")
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(hil_gate.main(args + [str(Path(d, "broken.json"))]), 2)
+
+    def test_unusable_inputs_are_exit_2_not_a_traceback(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = ["--platform", "shimmer3r", "--commit", SHA, "--version", "1.01.022"]
+            rep = json.dumps(report([ok(i["id"]) for i in hil_gate.load_required("shimmer3r")]))
+            Path(d, "a").mkdir()
+            Path(d, "b").mkdir()
+            Path(d, "a", "hil-report.json").write_text(rep, encoding="utf-8")
+            Path(d, "b", "hil-report.json").write_text(rep, encoding="utf-8")
+            Path(d, "latin1.json").write_bytes(b'{"operator": "Se\xe1n"}')
+            req = Path(d, "req.json")
+            for items in (["a.one"], [{"id": ["a"]}], [{"id": "a.one"}, {"id": "a.one"}]):
+                req.write_text(json.dumps({"schema": hil_gate.REQUIRED_SCHEMA, "platform": "shimmer3r",
+                                           "items": items}), encoding="utf-8")
+                with self.subTest(required=items), redirect_stdout(io.StringIO()):
+                    self.assertEqual(hil_gate.main(args + ["--required", str(req)]), 2)
+            for paths in ([Path(d, "a", "hil-report.json"), Path(d, "b", "hil-report.json")],
+                          [Path(d, "latin1.json")]):
+                with self.subTest(reports=[p.name for p in paths]), redirect_stdout(io.StringIO()):
+                    self.assertEqual(hil_gate.main(args + [str(p) for p in paths]), 2)
 
 
 if __name__ == "__main__":

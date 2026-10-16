@@ -26,7 +26,8 @@ The rules, which docs/SHIMMER3_TEST_PROCEDURE.md §10 states for humans:
      bench does not cancel a failure on another.
   4. Every required item is covered: passed in some report, or waived.
      Reports may contain any number of other items; they are listed, not
-     required.
+     required. An unwaived not_covered is a gap, not a failure: it covers
+     nothing, so it blocks only a required item no other report passes.
 
 Standard library only, so it runs in CI and on a Windows desk alike.
 """
@@ -72,7 +73,7 @@ def load_json(path: Path) -> dict:
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-    except (OSError, json.JSONDecodeError) as e:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
         raise InputError(f"{path}: {e}") from e
     if not isinstance(data, dict):
         raise InputError(f"{path}: top level is not an object")
@@ -89,8 +90,10 @@ def load_required(platform: str, path: Path | None = None) -> list[dict]:
     items = data.get("items")
     if not isinstance(items, list) or not items:
         raise InputError(f"{path}: no items")
+    if not all(isinstance(i, dict) for i in items):
+        raise InputError(f"{path}: every item must be an object")
     ids = [i.get("id") for i in items]
-    if len(set(ids)) != len(ids) or not all(isinstance(i, str) and i for i in ids):
+    if not all(isinstance(i, str) and i for i in ids) or len(set(ids)) != len(ids):
         raise InputError(f"{path}: item ids must be unique non-empty strings")
     return items
 
@@ -228,7 +231,13 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         required = load_required(a.platform, a.required)
-        reports = {p.name: load_json(p) for p in a.reports}
+        # Reports are named by file name, so two with one name would leave one
+        # of them unread.
+        reports = {}
+        for p in a.reports:
+            if p.name in reports:
+                raise InputError(f"{p}: another report is also named {p.name}")
+            reports[p.name] = load_json(p)
     except InputError as e:
         print(f"hil_gate: {e}", file=sys.stderr)
         return 2
