@@ -14,7 +14,9 @@ read before adding a subsystem.
 >   `log_and_stream_externs.h`, `TaskList/shimmer_taskList.{h,c}`,
 >   `Platform/platform_api.c`, `Sensing/shimmer_sensing.c`. Task bit 24,
 >   `TASK_LED_PHASE_SYNC`, postdates `f3cf73e`. It was read from
->   `TaskList/shimmer_taskList.{h,c}` with the LED phase lock in place.
+>   `TaskList/shimmer_taskList.{h,c}` with the LED phase lock in place. Task
+>   bit 25, `TASK_BT_REPLY_RETRY`, was read at `e5f2252`, from
+>   `TaskList/shimmer_taskList.{h,c}` and `Comms/shimmer_bt_reply.c`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
 
@@ -174,6 +176,14 @@ uint32_t taskList;   // one bit per task
 | 22 | `TASK_WRITE_RADIO_DETAILS` | S3 |
 | 23 | `TASK_SD_FILE_TRANSFER` | S3R |
 | 24 | `TASK_LED_PHASE_SYNC` | both; queued once a second ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1) |
+| 25 | `TASK_BT_REPLY_RETRY` | both; queued only while a command reply is held because the Bluetooth TX ring is full, and re-arms itself until the reply is out ([SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) §6.3) |
+
+> **Bit 25 polls on purpose.** While a reply is held, `TASK_BT_REPLY_RETRY`
+> re-arms itself each time it runs, so the main loop does not sleep until the
+> reply is in the ring. That lasts milliseconds and only happens while the ring
+> is full. It is lowest priority, and data packets are refused meanwhile, so
+> nothing above it is starved. The retry is not driven from the TX-complete
+> interrupt because, on Shimmer3, that runs once per byte sent.
 
 > **Bit 5 means two different things.** `TASK_USB_PROCESS_CMD` on Shimmer3R,
 > `TASK_CFGCH` on Shimmer3. The bit numbers are not a stable cross-platform

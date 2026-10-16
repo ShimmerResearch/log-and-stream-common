@@ -13,6 +13,7 @@
 #include "Button/shimmer_button.h"
 #include "CRC/shimmer_crc.h"
 #include "Calibration/shimmer_calibration.h"
+#include "Comms/shimmer_bt_reply.h"
 #include "Comms/shimmer_bt_uart.h"
 #include "Comms/shimmer_dock_usart.h"
 #include "Comms/shimmer_sd_file_transfer.h"
