@@ -89,15 +89,43 @@ line, taking a workspace directory, a project to import, and a build
 configuration. Capture stdout and stderr; the exit code alone does not
 distinguish "built with warnings" from "built clean".
 
+```bat
+eclipsec.exe -noSplash -data <ws> -application com.ti.ccstudio.apps.projectImport -ccs.location <path>\LogAndStream_Shimmer3
+eclipsec.exe -noSplash -data <ws> -application com.ti.ccstudio.apps.projectBuild -ccs.projects LogAndStream_Shimmer3 -ccs.configuration Debug -ccs.buildType full
+```
+
+These are the CCS 12.8.1 application names, the version CI uses; 12.7.1 calls
+them `importProject` and `buildProject`. The image is
+`<configuration>/LogAndStream_Shimmer3.txt`. Build a scratch copy of the
+project, so `Debug/` and `Release/` are not written into a checkout. From
+Windows PowerShell 5.1, run these through `cmd /c`: it splits arguments such as
+`-ccs.location` at the dot, and `eclipsec` then prints only its usage text.
+
 ### 4.2 Shimmer3 ships from the *Debug* configuration
 
-> **This is the single most surprising fact about this build.** Releases are
-> produced from the **Debug** CCS configuration. The Release configuration does
-> not build, and that is a known, parked issue — not a regression to
-> investigate and not something to "fix" as a side quest.
+> **Releases are produced from the Debug CCS configuration**, at `-O0`. The
+> release workflow's `build_mode` input defaults to `Debug`; keep it there.
 
-If you are producing a Shimmer3 release, build `Debug`. If you are evaluating
-whether a change is safe, build `Debug` — that is the configuration that ships.
+`Release` has the same compiler and linker settings as `Debug`, so both build
+the same image. A headless build of either at `LogAndStream_Shimmer3_v1.01.006`
+is byte-identical to that release's `.txt`. Before DEV-1217 the Release
+configuration was a stale template that did not build:
+
+- no include paths
+- no `SHIMMER3` define
+- minimal printf
+- no code/data model options
+- a 160-byte stack and heap, which never boots
+- `libc.a` before `libmath.a`
+
+Release is where an optimised build will be developed. DEV-1217 plans to raise
+its `--opt_level` once the pre-existing defects that optimisation can expose are
+fixed and it has passed the bench procedure. Until that lands, build `Debug` to
+produce a release or to judge whether a change is safe.
+
+**Keep the two configurations in step.** Make project-setting changes under
+*[All configurations]* in CCS, so Release cannot drift from Debug again. The
+only intended difference is the optimisation level, once DEV-1217 sets it.
 
 ### 4.3 Do not commit regenerated makefiles
 
@@ -207,11 +235,9 @@ and IC. See
   Shimmer3 via a cached CCS install under `/opt/ti/ccs`. Nothing builds on push
   or pull request, so a `common` change is compile-checked only when someone
   runs those workflows or builds locally.
-- **The Shimmer3 Release configuration failure.** Known and parked; not
-  reproduced for this document, but the `.cproject` offers a likely cause: the
-  `Debug` configuration defines `__MSP430F5437A__ SHIMMER3`, the `Release`
-  configuration defines only `__MSP430F5437A__`. Without `SHIMMER3` the shared
-  module's platform selection has no target.
+- ~~The Shimmer3 Release configuration failure~~ — resolved in DEV-1217. Release
+  lacked the include paths, then the `SHIMMER3` define, and had several other
+  stale settings. It now matches Debug (§4.2).
 - ~~STM32 bootloader specifics~~ — resolved as far as the firmware goes. Two
   entry paths, both into ST's **system-memory bootloader at `0x0BF90000`**
   (`Shimmer_Driver/hal_bootloader.c`): (1) at boot, `JumpToBootloaderIfRequired`
