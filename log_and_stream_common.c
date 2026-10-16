@@ -456,13 +456,6 @@ void LogAndStream_setupDock(void)
   shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_STOP;
   shimmerStatus.sdlogReady = 0;
   ShimSens_stopSensing(0);
-#if TEST_LOG_WITH_USB
-  /* USB-C only, not docked: keep the card available for a log start. */
-  if (!shimmerStatus.docked)
-  {
-    shimmerStatus.sdlogReady = LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile;
-  }
-#endif
 
 #if defined(SHIMMER3R)
   /* --- SD ownership logic ---
@@ -520,6 +513,16 @@ void LogAndStream_setupDock(void)
   if (shimmerStatus.docked)
   {
     LogAndStream_assignSdToDock();
+  }
+#endif
+
+#if TEST_LOG_WITH_USB
+  /* USB-C only, not docked: keep the card available for a log start. Judged
+   * after the hand-over above, which is where a cold boot first initialises
+   * the card and clears sdBadFile. */
+  if (!shimmerStatus.docked)
+  {
+    shimmerStatus.sdlogReady = LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile;
   }
 #endif
 
