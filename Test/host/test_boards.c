@@ -97,6 +97,54 @@ static void test_daughter_card_id_set(void)
   expectTrue("a programmed ID is set", ShimBrd_isDaughterCardIdSet());
 }
 
+/*
+ * The partial writes behind SET_DAUGHTER_CARD_ID (Bluetooth and dock). Offset
+ * and length come from the host, and the page is 16 bytes. A write that would
+ * end past the page must be refused whole, even though both its offset and its
+ * length are in range on their own - the dock handler once checked only those.
+ */
+static void test_daughter_card_id_partial_writes(void)
+{
+  uint8_t page[16];
+  uint8_t data[16];
+  const uint8_t *idPtr;
+  unsigned i;
+
+  testCase("test_daughter_card_id_partial_writes");
+  hostStub_reset();
+
+  for (i = 0; i < sizeof(page); i++)
+  {
+    page[i] = (uint8_t) (0x10U + i);
+    data[i] = (uint8_t) (0xA0U + i);
+  }
+  ShimBrd_setDaugherCardIdPage(page);
+  idPtr = ShimBrd_getDaughtCardIdPtr();
+
+  ShimBrd_setDaugherCardIdMemory(4, data, 3);
+  expectX("an in-range write lands at its offset", idPtr[4], 0xA0);
+  expectX("and covers its length", idPtr[6], 0xA2);
+  expectX("but not the byte after it", idPtr[7], 0x17);
+  expectX("nor the byte before it", idPtr[3], 0x13);
+
+  ShimBrd_setDaugherCardIdMemory(15, data, 1);
+  expectX("a write ending on the last byte is accepted", idPtr[15], 0xA0);
+
+  ShimBrd_setDaugherCardIdPage(page);
+  ShimBrd_setDaugherCardIdMemory(15, data, 16);
+  expectX("offset 15 + length 16 is refused whole", idPtr[15], 0x1F);
+
+  ShimBrd_setDaugherCardIdMemory(1, data, 16);
+  expectX("offset 1 + length 16 is refused whole", idPtr[1], 0x11);
+
+  ShimBrd_setDaugherCardIdMemory(16, data, 1);
+  expectX("a write starting past the page changes nothing", idPtr[15], 0x1F);
+
+  ShimBrd_setDaugherCardIdMemory(0, data, 16);
+  expectX("the whole page is still writable", idPtr[0], 0xA0);
+  expectX("to its last byte", idPtr[15], 0xAF);
+}
+
 /* The two comparison primitives every gate is built from. Their boundaries are
  * where the revision logic actually lives. */
 static void test_sr_number_comparisons(void)
@@ -494,6 +542,7 @@ int main(int argc, char **argv)
   hostTestSilenceUnused();
 
   test_daughter_card_id_set();
+  test_daughter_card_id_partial_writes();
   test_sr_number_comparisons();
   test_bmp581_gate();
   test_lis3mdl_and_adxl371_gates();

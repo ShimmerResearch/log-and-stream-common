@@ -394,7 +394,9 @@ The file is written in 128-byte chunks and is `length + 2` bytes long: a
 byte-for-byte image of the blob, with no additional framing.
 
 `ShimCalib_file2Ram` reads it back and returns 1 (failure) if neither directory
-exists or the file is absent, leaving the RAM blob as the firmware defaults.
+exists or the file is absent, leaving the RAM blob as the firmware defaults. It
+reads at most the 1024 bytes of calibration RAM (`SHIMMER_CALIB_RAM_MAX`), so a
+longer file is truncated to that, and it stops early if a read fails.
 
 ## 5. Pressure sensor coefficient blocks
 
@@ -682,6 +684,17 @@ timestamp into the SD header only. With `writeToFlash = 1` it also calls
 > Whether that is a defect or a deliberate invalidation of a block that belonged
 > to the previous range is arguable; the effect on InfoMem is the same either
 > way, and a host should not expect a range change to preserve the old block.
+>
+> The 8-byte timestamp is zeroed too, so the SD header gets the all-zero
+> timestamp that marks a default calibration (§3.3). Earlier firmware left it
+> unset and copied whatever the stack held.
+
+**A record's own length is never trusted past its slot.** The dump comes from a
+host or the SD card, so `ShimCalib_singleSensorRead` copies at most the length
+its caller asked for (21 bytes for the IMU blocks) and stops at the end of the
+1024-byte RAM, whatever length byte the record carries. `ShimCalib_singleSensorWrite`
+applies the same bounds, and appends a new record only if the whole record
+fits.
 
 ### 8.3 Precedence
 

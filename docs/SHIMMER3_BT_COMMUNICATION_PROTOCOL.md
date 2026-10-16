@@ -535,8 +535,16 @@ three fixed argument bytes.
 > deliberately left at the host's original value, because rewriting it to the
 > clamped length would turn a malformed oversized request into an **accepted
 > partial write** of configuration, calibration or EEPROM.
-> `Comms/shimmer_bt_uart.c:562-580` (the clamp, with its reasoning) and
-> `:846-849` (the rejection).
+> `Comms/shimmer_bt_uart.c:603-635` (the clamp, with its reasoning) and
+> `:902-905` (the rejection).
+>
+> **The whole oversized payload is still consumed before the NACK.** Only the
+> part that fits is received into the buffer; the rest follows in pieces of at
+> most `MAX_COMMAND_ARG_SIZE` bytes and is dropped, so the byte after the
+> payload is parsed as the next command on both platforms
+> (`ShimBt_armArgsPayload`, `Comms/shimmer_bt_uart.c:235-259`). Earlier Shimmer3
+> firmware armed its receive DMA for the full declared length, more than the
+> 131-byte receive buffer holds.
 
 ### 3.2 Response frame and ACK
 
@@ -1008,6 +1016,8 @@ the only per-command refusals in the protocol:
 | Command | NACKs when |
 |---|---|
 | `SET_DAUGHTER_CARD_MEM_COMMAND` 0x67 | The EEPROM write is out of bounds, or `len = 0` |
+| `GET_CALIB_DUMP_COMMAND` 0x9A | `len` is above 128 ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
+| `SET_CALIB_DUMP_COMMAND` 0x98 | The chunk is out of range, or a first chunk declares a dump larger than the calibration RAM ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
 | `RESET_BT_ERROR_COUNTS` 0xB6 | Shimmer3R always; Shimmer3 without an EEPROM |
 | `SET_FEATURE` 0xB7 | Unrecognised feature id |
 | `SET_SD_SYNC_COMMAND` 0xE0 | Not actually in a running sync session |
@@ -1033,6 +1043,7 @@ is the single most important thing for a host implementer to internalise:
 | `GET_INFOMEM_COMMAND` out of bounds | bare `ACK`, no `INFOMEM_RESPONSE` |
 | `GET_DAUGHTER_CARD_ID`/`MEM` out of bounds | bare `ACK`, no response opcode |
 | `GET_EXG_REGS_COMMAND` invalid arguments | `ACK`, `0x62`, `0x00` — a zero-length read |
+| `GET_CALIB_DUMP_COMMAND` with `len > 128` | `NACK` — earlier firmware tried to answer with `len` zero bytes, more than the Shimmer3 response buffer holds ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
 | `SET_CALIB_DUMP_COMMAND` out of range | `NACK` — earlier firmware ACKed and discarded the data ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
 | Any setter given an out-of-range value | normal `ACK`, value silently clamped ([§7.8](#78-sensor-settings)) |
 | `SET_BT_COMMS_BAUD_RATE` 0x6A | `NACK` — earlier firmware ACKed a no-op ([§2.4](#24-baud-rates)) |
@@ -1734,12 +1745,18 @@ Firmware calibration RAM is **1024** bytes (`SHIMMER_CALIB_RAM_MAX`,
 The response echoes the requested length and offset before the data, so a host
 can match a reply to a request without keeping its own ordering state.
 
-Validation happens inside `ShimCalib_ramRead`, not in the command handler:
-`len <= 128 && offset <= 1023 && len + offset <= 1024`. On a violation the
-destination is **zero-filled** rather than left unwritten, so an out-of-range
-read yields a well-formed response full of zeros.
+**A `len` above 128 is NACKed** by the command handler, with no response: the
+response is built in a buffer sized for at most 128 data bytes
+(`RESPONSE_PACKET_SIZE` is 133 on Shimmer3). Earlier firmware answered it with
+`len` zero bytes.
 
-> `Comms/shimmer_bt_uart.c:2316-2325`; `Calibration/shimmer_calibration.c:372-386`.
+The offset is validated inside `ShimCalib_ramRead`, not in the command handler:
+`offset <= 1023 && len + offset <= 1024`. On a violation the destination is
+**zero-filled** rather than left unwritten, so an out-of-range read yields a
+well-formed response full of zeros.
+
+> `Comms/shimmer_bt_uart.c:1216-1236` (the length check) and `:2384-2392` (the
+> response); `Calibration/shimmer_calibration.c:435-451`.
 
 The blob's first two bytes are its own total length (`uint16_le`, excluding those
 two bytes), which is how a host discovers how much to read. The Python reference
@@ -1769,14 +1786,16 @@ Writes are **accumulated**, not applied per chunk:
 
 1. A chunk at `offset < 2` is treated as the start of a new transfer. The
    firmware reads the blob's declared total length out of the first two bytes,
-   adds 2, and stores that as the expected total.
+   adds 2, and stores that as the expected total. A declared total that would
+   not fit the 1024-byte calibration RAM is refused: the chunk is NACKed and no
+   transfer is started.
 2. Every later chunk adds its own length to a running counter.
 3. When the running counter reaches the declared total, the staging buffer is
    promoted to live calibration RAM, the version header is stamped, and the
    configuration bytes plus SD header are regenerated from the new dump.
 
-> `Calibration/shimmer_calibration.c:330-369`. The staging-buffer semantics are
-> in the function's own comment at `:342-344`: "to start a new calib_dump
+> `Calibration/shimmer_calibration.c:386-432`. The staging-buffer semantics are
+> in the function's own comment at `:398-400`: "to start a new calib_dump
 > transmission, the sw must use offset = 0 to setup the correct length …
 > starting with offset > 2 is not accepted."
 
@@ -1799,8 +1818,8 @@ Writes are **accumulated**, not applied per chunk:
 straight to `ShimCalib_ramWrite` (`:1180-1181`), which applies the equivalent test
 itself — `length <= 128`, `offset <= SHIMMER_CALIB_RAM_MAX - 1`,
 `length + offset <= SHIMMER_CALIB_RAM_MAX`, returning `0xFF` otherwise
-(`Calibration/shimmer_calibration.c:332-340`). With the 131-byte `args[]`
-truncation clamp (`Comms/shimmer_bt_uart.c:562-580`) in front of both, an oversized or misaligned
+(`Calibration/shimmer_calibration.c:388-396`). With the 131-byte `args[]`
+truncation clamp (`Comms/shimmer_bt_uart.c:603-635`) in front of both, an oversized or misaligned
 write is contained on either path. The difference is where the check lives, not
 whether there is one: a host reading only the handler will not find it.
 
@@ -2108,7 +2127,9 @@ empty string.
 
 A zero-length write (`[0x79][0x00]`) is dispatched and blanks the field, which
 means the very next read returns the regenerated default — a blank name is not
-representable.
+representable. Earlier firmware's regeneration also cleared the first byte of
+the trial ID, which follows the name in InfoMem, so the trial ID could then read
+back as its own default, `DefaultTrial`.
 
 Unlike most setters this one writes InfoMem directly and does **not** call
 `ShimBt_settingChangeCommon`, so the whole-image correction pass does not run.

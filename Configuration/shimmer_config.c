@@ -247,7 +247,10 @@ void ShimConfig_setDefaultConfig(void)
 
 void ShimConfig_setDefaultShimmerName(void)
 {
-  strcpy(&storedConfig.shimmerName[0], "Shimmer_XXXX");
+  /* The field is 12 characters with no terminator, and expIdName follows it
+   * directly. A strcpy() of the 12-character default put its NUL on the trial
+   * ID's first byte, which then read back as blank and was reset too. */
+  memcpy(&storedConfig.shimmerName[0], "Shimmer_", 8);
   memcpy(&storedConfig.shimmerName[8], &ShimBt_macIdStrPtrGet()[8], 4);
 }
 
