@@ -376,6 +376,9 @@ void ShimSdDataFile_writeToCard(void)
   const uint8_t *writing_buf;
   uint16_t writing_buf_len;
   uint8_t bufsInWrite = 1;
+#if defined(SHIMMER3R)
+  uint16_t partBytes = 0;
+#endif
 
   __NOP();
 
@@ -423,25 +426,26 @@ void ShimSdDataFile_writeToCard(void)
   file_status = f_write(&dataFile, writing_buf, writing_buf_len, &bw);
   assert_param(file_status == FR_OK);
 #if defined(SHIMMER3R)
-  /* A failed or short batch releases only the buffers it reached: whole ones,
-   * plus one it ended inside (its bytes are partly in the file already, so
-   * writing it again would duplicate them), and always at least one, so a
-   * flush on a failing card still terminates. The rest stay queued. A single
-   * buffer write behaves exactly as before: it is always released. */
-  if ((bufsInWrite > 1) && ((file_status != FR_OK) || (bw < writing_buf_len)))
+  /* A failed or short write releases only what reached the file: the buffers
+   * it wrote in full, and the written head of one it ended inside, whose
+   * unwritten tail stays queued so the next write continues the file exactly
+   * where this one stopped. A write that moved nothing releases one buffer,
+   * as the one-buffer path always did, so a flush on a dead card still ends. */
+  if ((file_status != FR_OK) || (bw < writing_buf_len))
   {
     const uint8_t *bufPtr;
     uint16_t bufLen;
-    uint32_t start = 0;
-    uint8_t reached = 0;
+    uint32_t done = 0;
+    uint8_t whole = 0;
 
-    while ((reached < bufsInWrite) && (start < bw)
-        && SdWrBuf_peekQueued(&sdWrBuf, reached, &bufPtr, &bufLen))
+    while ((whole < bufsInWrite) && SdWrBuf_peekQueued(&sdWrBuf, whole, &bufPtr, &bufLen)
+        && ((done + bufLen) <= bw))
     {
-      start += bufLen;
-      reached++;
+      done += bufLen;
+      whole++;
     }
-    bufsInWrite = (reached > 0U) ? reached : 1U;
+    partBytes = (uint16_t) (bw - done);
+    bufsInWrite = ((whole == 0U) && (partBytes == 0U)) ? 1U : whole;
   }
 #endif
 #endif
@@ -477,6 +481,12 @@ void ShimSdDataFile_writeToCard(void)
   {
     SdWrBuf_writeDone(&sdWrBuf);
   }
+#if defined(SHIMMER3R)
+  if (partBytes > 0U)
+  {
+    SdWrBuf_writePartial(&sdWrBuf, partBytes);
+  }
+#endif
   if (ShimSdDataFile_getNumberOfFullBuffers() > 0)
   {
     ShimTask_set(TASK_SDWRITE);

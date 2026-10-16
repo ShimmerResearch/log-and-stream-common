@@ -513,6 +513,47 @@ static void test_peek_queued_matches_release_order(void)
   sim_checkNothingLost(&sim);
 }
 
+/* SdWrBuf_writePartial is what a short card write calls: the first n bytes of
+ * the oldest buffer reached the file, the rest must follow on the next write
+ * with nothing dropped or repeated, so the file stays one contiguous stream. */
+static void test_partial_write_keeps_the_tail(void)
+{
+  Sim sim;
+  uint32_t cycle;
+  uint32_t mismatched = 0;
+  const uint8_t *data;
+  uint16_t len;
+  uint16_t n;
+  uint16_t i;
+
+  testCase("a partial write keeps the unwritten tail, in order");
+  sim_init(&sim, 0);
+  for (cycle = 0; cycle < 40U; cycle++)
+  {
+    sim_fillCurrent(&sim);
+    sim_put(&sim, FIELD_REC_LEN);
+    if (!SdWrBuf_peekWrite(&sim.w, &data, &len))
+    {
+      continue;
+    }
+    /* Write a different-length head each time, from 1 byte to the whole. */
+    n = (uint16_t) (1U + (cycle * 37U) % len);
+    for (i = 0; i < n; i++)
+    {
+      if (data[i] != sim.tape[sim.tapeOut % TAPE_RING])
+      {
+        mismatched++;
+      }
+      sim.tapeOut++;
+    }
+    SdWrBuf_writePartial(&sim.w, n);
+    sim_checkInvariants(&sim);
+  }
+  expectU("every partially written byte was the next one accepted", mismatched, 0);
+  sim_stop(&sim);
+  sim_checkNothingLost(&sim);
+}
+
 /* Both indices wrap. Long enough to lap the buffers many times, with the write
  * lagging by a different amount each cycle. */
 static void test_indices_wrap(void)
@@ -746,6 +787,7 @@ int main(void)
   test_refusal_is_counted_and_recovers();
   test_can_accept_predicts_put();
   test_peek_queued_matches_release_order();
+  test_partial_write_keeps_the_tail();
   test_indices_wrap();
   test_variable_record_lengths();
   test_stop_flush_terminates();

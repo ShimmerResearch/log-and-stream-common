@@ -155,6 +155,10 @@ uint8_t SdWrBuf_peekQueued(const SdWriteBuf *bufsPtr,
 /* Release the buffer SdWrBuf_peekWrite returned. Unconditional: a queued
  * buffer is always released, so a drain loop always terminates. */
 void SdWrBuf_writeDone(SdWriteBuf *bufsPtr);
+/* A write that reached only the first n bytes of the oldest queued buffer:
+ * drop those bytes and keep the rest queued, in order, for the next write -
+ * the file stays contiguous. n >= its length releases it as writeDone does. */
+void SdWrBuf_writePartial(SdWriteBuf *bufsPtr, uint16_t n);
 
 uint8_t SdWrBuf_numQueued(const SdWriteBuf *bufsPtr);
 /* 1 when SdWrBuf_put would store a record of recLen rather than refuse it as

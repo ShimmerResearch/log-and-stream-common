@@ -174,6 +174,24 @@ void SdWrBuf_writeDone(SdWriteBuf *bufsPtr)
   bufsPtr->numQueued--;
 }
 
+void SdWrBuf_writePartial(SdWriteBuf *bufsPtr, uint16_t n)
+{
+  uint8_t idx = bufsPtr->wrIdx;
+  uint16_t len = bufsPtr->len[idx];
+
+  if (bufsPtr->numQueued == 0 || n == 0)
+  {
+    return;
+  }
+  if (n >= len)
+  {
+    SdWrBuf_writeDone(bufsPtr);
+    return;
+  }
+  memmove(&bufsPtr->buf[idx][0], &bufsPtr->buf[idx][n], (size_t) (len - n));
+  bufsPtr->len[idx] = (uint16_t) (len - n);
+}
+
 uint8_t SdWrBuf_numQueued(const SdWriteBuf *bufsPtr)
 {
   return bufsPtr->numQueued;

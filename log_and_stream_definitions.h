@@ -23,6 +23,11 @@
 #ifndef TEST_LOG_WITH_USB
 #define TEST_LOG_WITH_USB 0
 #endif
+/* The USB hand-over it relies on exists only on Shimmer3R; elsewhere the flag
+ * would let the MCU log while the host holds the card. */
+#if TEST_LOG_WITH_USB && !defined(SHIMMER3R)
+#error "TEST_LOG_WITH_USB is Shimmer3R-only"
+#endif
 
 #define IS_SUPPORTED_SINGLE_TOUCH 0
 /* 1: the LED blink phase follows the real-world clock (on an SD-sync node, the
