@@ -114,6 +114,31 @@ def test_config_roundtrip(docklink):
 
 
 STREAM_DIVIDER = 640    # 51.2 Hz: well inside every shipped radio's capacity
+RESTORE_ATTEMPTS = 3
+
+
+def restore_infomem(base6, original: bytes, stream_error: BaseException | None) -> list[str]:
+    """Put the unit's own sampling rate back; return what each failed attempt saw.
+
+    Runs in a finally block, so a failure here must not replace the stream's
+    own exception: when both fail, the DockError names the stream's error and
+    is chained from it.
+    """
+    seen = []
+    for _ in range(RESTORE_ATTEMPTS):
+        try:
+            with dock.open_when_ready(base6.uart_port) as d:
+                d.write_infomem(original, offset=0)
+                if d.read_infomem(0, len(original)) != original:
+                    raise dock.DockError("read back differs")
+            return seen
+        except dock.DockError as e:
+            seen.append(str(e))
+            time.sleep(1.0)
+    msg = f"could not restore the sampling rate over the dock: {seen}"
+    if stream_error is not None:
+        raise dock.DockError(f"{msg} - after the stream itself failed with {stream_error!r}") from stream_error
+    raise dock.DockError(msg)
 
 
 @pytest.mark.hil("fleet.bt_stream", needs=["shimmer3", "bt", "dock"])
@@ -130,15 +155,24 @@ def test_bt_stream(unit, base6, hil_note):
     with dock.open_when_ready(base6.uart_port) as d:
         original = d.read_infomem(0, 2)
         d.write_infomem(STREAM_DIVIDER.to_bytes(2, "little"), offset=0)
+    stream_error = None
     try:
         with open_bt(unit) as link:
             assert link.hw == 3
             inq = link.inquiry()
             assert inq.divider == STREAM_DIVIDER, f"inquiry reports divider {inq.divider} after setting it"
             st = link.stream(STREAM_SECONDS, inq)
+            # A stop the firmware did not act on leaves the unit sensing, and
+            # a sensing Shimmer3 turns its dock UART off: name that here
+            # rather than as a dock timeout in the restore below.
+            link.wait_status(bt.STATUS_SENSING, False, timeout_s=5)
+    except BaseException as e:
+        stream_error = e
+        raise
     finally:
-        with dock.open_when_ready(base6.uart_port) as d:
-            d.write_infomem(original, offset=0)
+        retries = restore_infomem(base6, original, stream_error)
+        if retries:
+            hil_note(f"divider restore needed {len(retries)} retries: {'; '.join(retries)}")
     expected = STREAM_SECONDS * inq.rate_hz
     assert st.packets > 0.8 * expected, f"{st.packets} packets in {st.seconds:.1f} s, expected ~{expected:.0f}"
     assert st.resyncs == 0, f"{st.resyncs} bytes did not frame as packets"
