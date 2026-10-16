@@ -550,7 +550,8 @@ power failure to about a minute. Every 3600 seconds a new file is opened.
 > a card stall. Shimmer3R also never splits after a failed or short write:
 > whatever it left unwritten (a buffer's tail, or whole buffers when it stopped
 > on a boundary) belongs to the file it started in, so the split waits until a
-> write completes.
+> write completes - and one that carries at least a whole record, whose
+> timestamp it can read.
 
 > **File splits are not aligned to any wall-clock boundary.** A file starts when
 > logging starts and ends 3600 seconds of sample time later. Do not assume file

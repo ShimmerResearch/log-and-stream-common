@@ -482,6 +482,14 @@ void ShimSdDataFile_writeToCard(void)
     }
     splitTs = full;
   }
+  else
+  {
+    /* Too short to hold a whole record - the retried tail of a short write -
+     * so its last record's timestamp cannot be read, and falling back to the
+     * sample clock could split with older buffers still queued. Leave the
+     * decision to the next write that carries a whole record. */
+    splitAllowed = 0;
+  }
 #endif
   if (splitAllowed && ((splitTs - (uint32_t) sdFileCrTs) >= (uint32_t) BIN_FILE_SPLIT_TIME_TICKS))
   {
