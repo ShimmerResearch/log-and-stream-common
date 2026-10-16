@@ -75,7 +75,8 @@ SD_WRBUF_COUNTS := 1 2 4
 SINGLE_PLATFORM_SUITES := test_crc
 
 # Suites built twice, once per platform. See the note above.
-DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards test_bt_reply
+DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards test_bt_reply \
+                        test_calibration
 
 PLATFORMS := SHIMMER3 SHIMMER3R
 
@@ -95,6 +96,8 @@ SRC_test_rtc         := test_rtc.c $(REPO)/RTC/shimmer_rtc.c
 SRC_test_battery     := test_battery.c $(REPO)/Battery/shimmer_battery.c
 SRC_test_boards      := test_boards.c $(REPO)/Boards/shimmer_boards.c
 SRC_test_bt_reply    := test_bt_reply.c $(REPO)/Comms/shimmer_bt_reply.c
+SRC_test_calibration := test_calibration.c \
+                        $(REPO)/Calibration/shimmer_calibration.c
 
 # test_swcrc and test_packet_ring predate the stub platform and use their own
 # include paths, so they are built with a narrower -I set.
@@ -236,8 +239,8 @@ $(SD_WRBUF_SUITES): %: $(foreach n,$(SD_WRBUF_COUNTS),$(BUILD)/%.n$(n))
 # ADDING TO THE LIST is the goal, not the exception. A module qualifies as soon
 # as it compiles for both without a new stub; the ones missing today
 # (Comms/, SDCard/, SDSync/, Sensing/shimmer_sensing.c, Configuration/,
-# TaskList/, Calibration/, GSR/, LEDs/, EEPROM/) each need one or two more
-# headers under stubs/Shimmer_Driver - FatFs, FileX, RN4X, ADXL371, gpio.h - or,
+# TaskList/, GSR/, LEDs/, EEPROM/) each need one or two more headers under
+# stubs/Shimmer_Driver - FileX, RN4X, ADXL371, gpio.h - or,
 # for EEPROM/, the BAUD_* enum out of Comms/shimmer_bt_uart.h. Each one added
 # brings its subsystem within reach of a host test as well.
 DUAL_COMPILE_MODULES := \
@@ -246,6 +249,7 @@ DUAL_COMPILE_MODULES := \
   Button/shimmer_button.c \
   CRC/shimmer_crc.c \
   CRC/shimmer_swCrc.c \
+  Calibration/shimmer_calibration.c \
   Comms/shimmer_bt_reply.c \
   LEDs/shimmer_leds_phase.c \
   Platform/platform_api.c \

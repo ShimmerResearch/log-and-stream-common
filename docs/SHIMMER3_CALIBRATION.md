@@ -694,7 +694,13 @@ host or the SD card, so `ShimCalib_singleSensorRead` copies at most the length
 its caller asked for (21 bytes for the IMU blocks) and stops at the end of the
 1024-byte RAM, whatever length byte the record carries. `ShimCalib_singleSensorWrite`
 applies the same bounds, and appends a new record only if the whole record
-fits.
+fits. `Test/host/test_calibration.c` checks each of these bounds, and the
+`ShimCalib_ramRead`/`ShimCalib_ramWrite` limits in §2.4, on both platforms.
+
+A sensor ID with no slot of its own is handled differently on each platform. On
+Shimmer3 it falls through to the analog accelerometer's slot. On Shimmer3R it is
+ignored and nothing is copied. Every caller in the firmware passes one of the
+listed sensors, so neither path is reached today.
 
 ### 8.3 Precedence
 
