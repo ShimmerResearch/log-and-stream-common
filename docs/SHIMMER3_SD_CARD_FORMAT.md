@@ -611,7 +611,9 @@ ExG registers, twenty keys, named after the register:
 
 > **`node` appears once per node**, not as a list; the parser accumulates
 > repeated `node=` lines into the sync node table. `center` sets the sync
-> centre address.
+> centre address. The firmware writes the `center=` line only when a centre
+> address is configured, that is when configuration bytes 256–261 are not all
+> `0xFF`.
 
 ## 6. The calibration file
 

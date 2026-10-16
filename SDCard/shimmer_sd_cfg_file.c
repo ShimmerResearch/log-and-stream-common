@@ -16,7 +16,9 @@
 
 FRESULT cfg_file_status;
 
-static uint8_t all0xff[7U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+/* const, so the bytes are part of the image. A writable array's initialiser is
+ * copied in by the C runtime at start-up, which Shimmer3 does not run. */
+static const uint8_t all0xff[6U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
 //Centralized config file constants to avoid duplicated string literals
 #define CFG_FILENAME "sdlog.cfg"
@@ -291,7 +293,7 @@ void ShimSdCfgFile_generate(void)
             (char *) ShimSdSync_syncNodeNamePtrForIndexGet(i));
       }
 
-      if (memcmp(all0xff, storedConfig + NV_CENTER, 6))
+      if (memcmp(all0xff, &storedConfig->rawBytes[NV_CENTER], sizeof(all0xff)))
       {
         ShimSdSync_parseSyncCenterNameFromConfig(&storedConfig->rawBytes[0]);
         CFG_WRITE_STR(&cfgFile, CFG_KEY_CENTER, (char *) ShimSdSync_syncCenterNamePtrGet());
