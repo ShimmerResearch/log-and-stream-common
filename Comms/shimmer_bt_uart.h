@@ -463,9 +463,9 @@ void ShimBt_setBtBaudRateToUse(uint32_t baudRate);
 uint32_t ShimBt_getBtBaudRateToUse(void);
 
 void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
-__weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
+void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 /* Abort an in-flight BT UART transmit (board-specific; no-op by default) */
-__weak void BtTransmitAbort(void);
+void BtTransmitAbort(void);
 uint8_t ShimBt_isBleCurrentlyEnabled(void);
 uint8_t ShimBt_isBtClassicCurrentlyEnabled(void);
 #if defined(SHIMMER3)

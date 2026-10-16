@@ -19,6 +19,11 @@ read before adding a subsystem.
 >   `TaskList/shimmer_taskList.{h,c}` and `Comms/shimmer_bt_reply.c`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
+> - **Weak hooks:** the hook count and the rule that the weak attribute
+>   sits on the default definitions only were read at `log-and-stream-common`
+>   @ `f573f60`, from `Platform/platform_api.{h,c}`, `Boards/shimmer_boards.{h,c}`,
+>   `Comms/shimmer_bt_uart.{h,c}`, `Sensing/shimmer_sensing.{h,c}` and
+>   `Test/shimmer_test.{h,c}`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A, Code
 > Composer Studio); **S3R** = Shimmer3R (STM32U5, STM32CubeIDE). LogAndStream
@@ -116,10 +121,18 @@ Grouped by what they cover:
 | Platform-specific sensors | `MPU9150_startMagMeasurement`, `BMPX80_startMeasurement` (Shimmer3 only) |
 | Fault handling | `triggerShimmerErrorState` |
 
-`Platform/platform_api.h` adds a second, softer boundary: eleven
-`PLATFORM_WEAK` functions with default implementations in `platform_api.c`, so
-a platform overrides only what it needs. `PLATFORM_WEAK` resolves to the right
-attribute for GCC/Clang, IAR and ARMCC.
+`Platform/platform_api.h` adds a second, softer boundary: thirteen hooks whose
+default implementations in `platform_api.c` are `PLATFORM_WEAK`, so a platform
+overrides only what it needs. `PLATFORM_WEAK` resolves to the right attribute
+for GCC/Clang, IAR and ARMCC.
+
+> **The weak attribute goes on the default definition, never on the
+> prototype.** A weak prototype makes every definition that sees it weak, the
+> platform's override included, and the linker then keeps whichever weak copy
+> it meets first. The same holds for the library's other `__weak` hooks
+> (`ShimBrd_doesDeviceSupportBle`, `BT_setBtMode`, `ADC_gatherDataStart`,
+> `ShimFactoryTest_sendReportImpl` and the rest). `test_platform_seam` and
+> `check_weak_decls.py` under `Test/host/` hold both halves of that rule.
 
 > **The two boundaries fail differently.** A missing `extern` from
 > `log_and_stream_externs.h` is a link error. A missing `platform_*` override
@@ -428,6 +441,13 @@ not start and stop logging repeatedly. Dock/USB state changes are debounced at
   | `platform_isDockUartInitialised` | yes | yes | false |
   | `platform_isUsbUartInitialised` | **no** (no USB) | yes | false |
   | `platform_sleepWhenNoTask` | yes (LPM3) | yes (Sleep / WFI) | no-op (busy loop) |
+  | `platform_ledTickElapsedRtcTicks` | yes (`main.c`) | yes (`tim.c`) | 0 |
+  | `platform_ledTickShift` | yes (`main.c`) | yes (`tim.c`) | no-op |
+
+  The last two rows were checked at `shimmer3-firmware` @ `5e31618` and
+  `shimmer3r-firmware` @ `58c29980`. Since the weak attribute moved off the
+  prototypes, each override in the table is a strong symbol, and `nm` shows it
+  as `T` in the platform's object.
 
   Two consequences worth knowing. First, **Shimmer3R runs the software CRC**
   for every Bluetooth, dock and SD-transfer checksum, and does so deliberately.

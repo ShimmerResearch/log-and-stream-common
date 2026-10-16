@@ -836,7 +836,9 @@ void ShimSens_currentExperimentLengthReset(void)
 
 void ShimSens_maxExperimentLengthSecsSet(uint16_t maxExpLenMins)
 {
-  maxExpLenSecs = maxExpLenMins * 60;
+  /* Widened before the multiply. On MSP430 int is 16 bits, so maxExpLenMins * 60
+   * would be computed in 16 bits and truncate every limit above 1092 minutes. */
+  maxExpLenSecs = (uint32_t) maxExpLenMins * 60U;
 }
 
 uint8_t *ShimSens_getDataBuffAtWrIdx(void)

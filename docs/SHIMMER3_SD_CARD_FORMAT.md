@@ -41,6 +41,9 @@ channel encodings are identical, only the framing around them differs.
 >   `Sensing/shimmer_packet_ring.h` (`DATA_BUF_QTY`), `Sensing/shimmer_sensing.c`
 >   (`ShimSens_saveData` back-pressure, `ShimSens_flushRingToSd`). Only §4.1's
 >   claims about these were checked at this revision.
+> - **When `center=` is written:** `log-and-stream-common` @ `f573f60` —
+>   `ShimSdCfgFile_generate()` in `SDCard/shimmer_sd_cfg_file.c`. Only that
+>   claim was checked at this revision.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). Where the two generations differ, both are
@@ -654,7 +657,9 @@ ExG registers, twenty keys, named after the register:
 
 > **`node` appears once per node**, not as a list; the parser accumulates
 > repeated `node=` lines into the sync node table. `center` sets the sync
-> centre address.
+> centre address. The firmware writes the `center=` line only when a centre
+> address is configured, that is when configuration bytes 256–261 are not all
+> `0xFF`.
 
 ## 6. The calibration file
 

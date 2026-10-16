@@ -15,6 +15,10 @@
 #include "hal_Board.h"
 #include "log_and_stream_includes.h"
 
+/* Declared in log_and_stream_externs.h; these are the only definitions. */
+STATTypeDef shimmerStatus;
+BattStatus batteryStatus;
+
 volatile boot_stage_t bootStage;
 
 uint8_t sdInfoSyncDelayed = 0;
