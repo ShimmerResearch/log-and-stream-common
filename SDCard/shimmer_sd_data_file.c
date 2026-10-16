@@ -405,6 +405,14 @@ void ShimSdDataFile_writeToCard(void)
   {
     ShimTask_set(TASK_SDWRITE);
   }
+#if defined(SHIMMER3R)
+  /* A buffer is free again: resume a drain that ShimSens_saveData() paused
+   * because every buffer was queued (DEV-1098). */
+  if (!PktRing_isEmpty(&sensing.ring))
+  {
+    ShimTask_set(TASK_SAVEDATA);
+  }
+#endif
 
 #if USE_FATFS
   if (file_status != 0)

@@ -37,9 +37,27 @@
 #include <stdint.h>
 
 #define DATA_BUF_SIZE                 128U
-#define DATA_BUF_QTY                  8U /* packet buffer (power 2)  */
+/* Ring depth: a power of two, at most 256 (slot indices and PktRing_count()
+ * are 8-bit). The ring must outlast the longest SD write: sampling runs from
+ * interrupts, but the drain waits on the main loop, which blocks for the whole
+ * f_write. A card may stay write-busy for up to 250 ms (SD spec), and ~210 ms
+ * stalls were measured at 1024 Hz (DEV-1098), so Shimmer3R holds 254 packets
+ * (248 ms at 1024 Hz) for ~35 KB of RAM. Shimmer3 has no RAM for that. */
+#if defined(SHIMMER3R)
+#define DATA_BUF_QTY                  256U
+#define DATA_BUF_QTY_IN_USE           254U /* must be < DATA_BUF_QTY */
+#else
+#define DATA_BUF_QTY                  8U
 #define DATA_BUF_QTY_IN_USE           6U /* must be < DATA_BUF_QTY */
+#endif
 #define DATA_BUF_MASK                 (DATA_BUF_QTY - 1UL)
+
+#if (DATA_BUF_QTY > 256U) || ((DATA_BUF_QTY & (DATA_BUF_QTY - 1U)) != 0U)
+#error "DATA_BUF_QTY must be a power of two no larger than 256"
+#endif
+#if DATA_BUF_QTY_IN_USE >= DATA_BUF_QTY
+#error "DATA_BUF_QTY_IN_USE must be less than DATA_BUF_QTY"
+#endif
 
 /* Packet structure: [Header(1)][Timestamp(3)][Sensor Data(N)][CRC(N)] */
 #define PACKET_HEADER_IDX             0

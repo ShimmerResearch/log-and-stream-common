@@ -19,13 +19,13 @@ void PktRing_init(PacketRing *ringPtr, uint8_t headerByte)
 
 void PktRing_reset(PacketRing *ringPtr)
 {
-  uint8_t i;
+  uint16_t i; /* not uint8_t: i < 256 would never be false */
 
   ringPtr->rdIdx = ringPtr->wrIdx = 0;
   ringPtr->stallCount = 0;
   for (i = 0; i < DATA_BUF_QTY; i++)
   {
-    PktRing_resetSlot(ringPtr, i, 1);
+    PktRing_resetSlot(ringPtr, (uint8_t) i, 1);
   }
 }
 
