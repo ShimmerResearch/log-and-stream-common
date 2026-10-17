@@ -164,7 +164,9 @@ uint8_t SdWrBuf_numQueued(const SdWriteBuf *bufsPtr);
 /* 1 when SdWrBuf_put would store a record of recLen rather than refuse it as
  * full. Lets a caller hold records back instead of losing them, which a test
  * of numQueued alone cannot do: with one buffer free, a record that closes the
- * open buffer is still refused. */
+ * open buffer is still refused. A record too long for any buffer is not
+ * "full": canAccept says 1 and SdWrBuf_put refuses it as oversize, so a caller
+ * that waits on canAccept cannot wait forever. */
 uint8_t SdWrBuf_canAccept(const SdWriteBuf *bufsPtr, uint16_t recLen);
 /* Bytes in the open buffer, and 0 when no buffer is open. */
 uint16_t SdWrBuf_bytesInCurrent(const SdWriteBuf *bufsPtr);

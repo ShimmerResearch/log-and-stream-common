@@ -580,6 +580,15 @@ uint8_t ShimSdDataFile_getNumberOfFullBuffers(void)
   return SdWrBuf_numQueued(&sdWrBuf);
 }
 
+/* SdWrBuf_canAccept does not refuse an oversize record, because waiting on one
+ * would never end. So prove here that a ring record (one slot less its header
+ * byte) behind a sync head always fits one buffer. */
+#if !defined(DATA_BUF_SIZE) || !defined(SYNC_PACKET_PAYLOAD_SIZE) || !defined(SD_WRITE_BUF_SIZE)
+#error "the record size check below needs the packet ring, SD sync and write buffer sizes"
+#elif ((DATA_BUF_SIZE - 1U) + SYNC_PACKET_PAYLOAD_SIZE) > SD_WRITE_BUF_SIZE
+#error "a packet ring record plus its sync head must fit one SD write buffer"
+#endif
+
 uint8_t ShimSdDataFile_canAcceptRecord(uint16_t len)
 {
   return SdWrBuf_canAccept(&sdWrBuf, len);

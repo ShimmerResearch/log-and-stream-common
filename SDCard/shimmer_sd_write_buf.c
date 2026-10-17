@@ -205,6 +205,12 @@ uint8_t SdWrBuf_canAccept(const SdWriteBuf *bufsPtr, uint16_t recLen)
   {
     return 1;
   }
+  /* Only the refusals for a full set of buffers, deliberately not the oversize
+   * one. A full set clears as the card catches up, so a caller may wait on
+   * this; an oversize record never fits, so waiting on it would never end -
+   * both drain loops in shimmer_sensing.c wait here. SdWrBuf_put refuses and
+   * counts it (diag.putsRefusedOversize) instead. Ring records cannot be
+   * oversize: shimmer_sd_data_file.c checks that at compile time. */
   /* The same two refusals SdWrBuf_put makes for a full set of buffers. */
   if (bufsPtr->numQueued >= NUM_SDWRBUF)
   {

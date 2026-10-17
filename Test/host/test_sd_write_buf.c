@@ -459,6 +459,24 @@ static void test_can_accept_predicts_put(void)
       SdWrBuf_canAccept(&sim.w, 0), 1);
   expectU("and by put", SdWrBuf_put(&sim.w, 0, 0, 0, 0) != SDWRBUF_PUT_REFUSED, 1);
 
+  /* An oversize record is the one refusal canAccept does not predict, on
+   * purpose: it never clears, so a drain waiting on canAccept would hang.
+   * It says 1, and put refuses it and counts it as oversize, not as full. */
+  testCase("canAccept does not hold back an oversize record");
+  sim_init(&sim, 0);
+  {
+    static uint8_t big[SD_WRITE_BUF_SIZE + 1];
+    static const uint8_t head[9] = { 0 };
+    expectU("canAccept says 1 for a record one byte over a buffer",
+        SdWrBuf_canAccept(&sim.w, SD_WRITE_BUF_SIZE + 1), 1);
+    expectU("put refuses it",
+        SdWrBuf_put(&sim.w, 0, 0, big, SD_WRITE_BUF_SIZE + 1), SDWRBUF_PUT_REFUSED);
+    expectU("put refuses one that fits only without its sync head",
+        SdWrBuf_put(&sim.w, head, sizeof(head), big, SD_WRITE_BUF_SIZE), SDWRBUF_PUT_REFUSED);
+    expectU("both counted as oversize", sim.w.diag.putsRefusedOversize, 2);
+    expectU("neither as full", sim.w.diag.putsRefusedFull, 0);
+  }
+
   testCase("a drain that obeys canAccept loses nothing");
   sim_init(&sim, 0);
   for (i = 0; i < 4000; i++)
