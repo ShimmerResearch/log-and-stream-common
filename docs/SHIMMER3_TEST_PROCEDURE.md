@@ -17,6 +17,10 @@ and — as importantly — what each layer of testing cannot tell you.
 > - **`test_platform_seam` and `check_weak_decls.py`:** `log-and-stream-common`
 >   @ `f573f60` — `Test/host/test_platform_seam.c`,
 >   `Test/host/check_weak_decls.py`, `Test/host/Makefile`.
+> - **The release gate (§8, §10):** `log-and-stream-common` @ `42c4d9f` —
+>   `Test/hil/` in full; `shimmer3-firmware` @ `578c9e6` and
+>   `shimmer3r-firmware` @ `b12f711` — `build-release-firmware.yml` and
+>   `promote-release.yml`, on their release-gate pull-request branches.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
@@ -34,6 +38,7 @@ and — as importantly — what each layer of testing cannot tell you.
 | On-device suites | `Extras/python_scripts/` |
 | Factory self-test | [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) |
 | Release mechanics | [SHIMMER3_RELEASE_AND_VERSIONING.md](SHIMMER3_RELEASE_AND_VERSIONING.md) |
+| Release gate | `Test/hil/` (§10); `promote-release.yml` in each platform repository |
 | Build setup | [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md) |
 
 ---
@@ -249,8 +254,13 @@ the diff (§3.3).
 
 ## 3. Gate 2 — the platform builds
 
-**Required for every release, both platforms, by hand.** Neither vendor toolchain
-runs in CI, and this is the only gate that sees the real word sizes.
+**Required for every release, both platforms.** Each platform repository's
+`build-check.yml` builds the shipping configuration on every pull request and
+every push to `main`, and the release workflow builds it again on the tagged
+commit. This is the only gate that sees the real word sizes. What CI does not do
+is read the warnings (§3.2) or compare the size (§3.4); those remain by hand.
+CI also builds only the repository it runs in, so a shared-library change still
+needs the other platform's pull request (§8.1).
 
 | | Shimmer3 | Shimmer3R |
 |---|---|---|
@@ -341,12 +351,18 @@ Run them against a **factory-reset configuration first**, then against the
 configuration a customer is most likely to have. A device only ever tested from
 a known-good config will not tell you that a config path is broken.
 
-### 4.1 The factory self-test — Shimmer3R
+### 4.1 The factory self-test
 
-Trigger the on-device self-test and read the report. Every fitted part answers
-on its bus; `S3R_TEST_nnnn - PASS|FAIL|WARNING` per line, with a bitmask summary.
-See [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) for the
-registry and the report format.
+Trigger the on-device self-test (`SET_FACTORY_TEST`) and read the report.
+
+- **Shimmer3R:** every fitted part answers on its bus;
+  `S3R_TEST_nnnn - PASS|FAIL|WARNING` per line, with a bitmask summary. See
+  [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) for the
+  registry and the report format.
+- **Shimmer3:** a plain-text report from shimmer3-firmware's
+  `hal_FactoryTest.c`: the model, the MCU and its last reset reason, then the
+  LED, SD card, Bluetooth module, I2C and SPI checks. It has no registry or
+  bitmask.
 
 **Check it against the board revision.** A `FAIL` for a part that revision does
 not carry is a revision-gate problem (§2.4), not a hardware fault — and a `PASS`
@@ -430,8 +446,15 @@ versions on the RN4678 alone**:
 >   selection, BLE availability, error-LED support. The unit boots and
 >   misbehaves, which is harder to spot than a unit that does not boot.
 
-**The test.** Load the release firmware onto one unit of each row, power-cycle
-and confirm it reaches idle:
+**Which rows a release must cover.** Only the radio firmware that shipped to
+customers: **RN42 v4.77, RN42 v6.15, RN4678 v1.00.5 and RN4678 v1.23.0** on
+Shimmer3, and the shipping EZ-Serial build on Shimmer3R. RN41 and RN4678
+v1.11.0, v1.13.5, v1.22.0 and v1.24.0 are recognised by the code but were never
+released to customers, so they are not a release requirement. Test them only if
+a change touches their detection branch.
+
+**The test.** Load the release firmware onto one unit of each shipped row,
+power-cycle and confirm it reaches idle:
 
 | # | Step | Expected |
 |---|---|---|
@@ -907,8 +930,22 @@ is what has to be true before you trigger it.
 - [ ] Documentation updated for every behaviour change in the release
 - [ ] Release notes name what changed and what was tested
 
-Then trigger `build-release-firmware.yml` by **workflow_dispatch**. The push
-trigger is commented out on purpose, so releases are never accidental.
+The release itself happens in two steps, and the checklist splits across them
+(§10):
+
+1. Trigger `build-release-firmware.yml` by **workflow_dispatch**. The push
+   trigger is commented out on purpose, so releases are never accidental. This
+   publishes a **release candidate**: a GitHub pre-release, built on the tagged
+   commit, that customers are not offered.
+2. Test that candidate, attach the results to it as reports, and run
+   `promote-release.yml`. The gate reads the reports and makes the release
+   public only if every required item is covered on that exact commit.
+
+The gate checks the items a person can read off the candidate: the Shimmer3
+build warnings (§3.2), flash and RAM (§3.4), and everything from "On-device
+suites pass" through "§7 regression cases". They are listed in
+`Test/hil/required/`, and `Test/hil/hil_signoff.py` records them as a report.
+The rest are settled before the build is triggered, or are CI's (§2).
 
 ### 8.1 A shared-library change spans two releases
 
@@ -988,6 +1025,86 @@ The suites in §2.2 follow four habits worth keeping:
 
 ---
 
+## 10. The release gate
+
+A release is made public only when there is recorded evidence that the exact
+build was tested. The gate turns §8 from a checklist someone can forget into a
+step the release cannot skip.
+
+```
+build-release-firmware.yml ──► pre-release (candidate)
+                                   │  build-info.json: commit, version, submodule commit
+                                   │
+         testers / the rig ──────► │  hil-report*.json attached
+                                   │
+promote-release.yml ──► hil_gate.py ──► public release, Jira version released,
+                                        test summary appended to the notes
+```
+
+| File | What it is |
+|---|---|
+| `Test/hil/required/<platform>.json` | The items every candidate must cover, each citing the section of this document it comes from |
+| `Test/hil/hil_gate.py` | The gate. Exit 0 = promote, 1 = blocked, 2 = unreadable input |
+| `Test/hil/hil_signoff.py` | Walks a person through the required items and writes a manual report |
+| `Test/hil/test_hil_gate.py` | The gate's own tests, run by `make -C Test/host` |
+
+### 10.1 The report
+
+One JSON file per test session, named `hil-report*.json` and attached to the
+pre-release. A person writes one with `hil_signoff.py`; the
+hardware-in-the-loop rig writes the same format.
+
+```json
+{
+  "schema": "shimmer-hil-report/1",
+  "kind": "manual",
+  "platform": "shimmer3r",
+  "commit": "<the full 40-character SHA the tag points at>",
+  "firmware_version": "1.01.022",
+  "bench": "<machine or bench name>",
+  "operator": "<who ran it>",
+  "created": "2026-10-12T10:00:00Z",
+  "results": [
+    {"id": "gate4.boot_and_identity", "status": "pass", "note": "banner recorded"},
+    {"id": "gate5.version_skew", "status": "not_covered", "waiver": "ABC-123"}
+  ]
+}
+```
+
+`kind` is `manual` or `automated`. `status` is `pass`, `fail` or `not_covered`.
+A `waiver` is the issue key under which someone accepted a failure or a gap, and
+the issue is where the reason is kept.
+
+- **An unwaived `fail` blocks** wherever it appears (rule 3).
+- **An unwaived `not_covered` is a gap, not a failure.** It covers nothing, so a
+  required item still blocks unless another report passes it (rule 4). A gap in
+  an item that is not required is listed, and does not block. A bench that cannot
+  run an item says so with `not_covered`, and another bench can cover it.
+
+### 10.2 The rules
+
+1. **At least one report.** A candidate nobody tested stays a candidate.
+2. **Every report is about this build.** Platform, full commit SHA and version
+   must all match the candidate. One stale report rejects the whole set rather
+   than being ignored, because it means someone believes they tested something
+   they did not.
+3. **A failure blocks, wherever it is.** That includes items that are not
+   required. A pass on one bench does not cancel a failure on another; a waiver
+   does.
+4. **Every required item is covered** — passed in some report, or waived.
+   Coverage can be split across reports, so different people or benches can each
+   take a share of the list.
+
+### 10.3 Changing what is required
+
+The required lists start as the §8 items a person signs off by hand. As the rig
+learns to cover an item, its automated test ids are added to the list, and the
+manual item can then be retired. Change a list in the same pull request as the
+tests that cover the new items, and never weaken it in the pull request that
+needs it weakened.
+
+---
+
 ## Still unverified / not found in code
 
 - **Sleep-current figures (§5.10.1).** The acceptance limits are per board and
@@ -1028,11 +1145,15 @@ The suites in §2.2 follow four habits worth keeping:
   describes the mechanism and how to apply the offsets, but no accuracy budget
   is stated anywhere in the firmware or docs, so §5.6.1 asks only that the
   offsets be usable.
-- **Which on-device suites are run per release today.** §4 lists what exists in
-  `Extras/python_scripts/`. Whether all four are currently part of a release
-  run, and on how many units, is a process question this repository does not
-  record.
-- **Shimmer3 factory self-test.** §4.1 covers the Shimmer3R report, which is
-  what [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md)
-  documents. `hal_FactoryTest.h` exists on both platforms; the Shimmer3 report
-  format is not documented here.
+- ~~**Which on-device suites are run per release today.**~~ — resolved going
+  forward: each release now carries its test reports as assets on the GitHub
+  release (§10), which name the items covered, the bench and the operator.
+  Releases made before the gate existed have no such record.
+- **Which units a release was tested on.** A report has no field for them. A
+  result's note can name them, and `hil_signoff.py` asks for that, but nothing
+  requires it.
+- **Shimmer3 factory self-test report format.** §4.1 lists what the Shimmer3
+  report contains, from the test functions in shimmer3-firmware's
+  `hal_FactoryTest.c`. Its line format is not documented here, as
+  [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) does for
+  the Shimmer3R, so the report is checked by eye.

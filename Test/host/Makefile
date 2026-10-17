@@ -121,7 +121,7 @@ ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) \
               $(DUAL_PLATFORM_SUITES) $(SD_WRBUF_SUITES)
 
 .PHONY: all build test clean help platform-check host-constants timestamp-unwrap \
-        weak-decls $(ALL_SUITES)
+        hil-gate weak-decls $(ALL_SUITES)
 
 all: test
 
@@ -133,6 +133,7 @@ help:
 	@echo "make platform-check   compile every host-clean module for BOTH MCUs"
 	@echo "make host-constants   check the Python host reference against the firmware"
 	@echo "make timestamp-unwrap check the shared unwrap vectors against their reference"
+	@echo "make hil-gate         test the release gate's rules"
 	@echo "make weak-decls       check that no header declares a function weak"
 	@echo ""
 	@echo "Suites: $(ALL_SUITES)"
@@ -210,6 +211,8 @@ test: build
 	if ! $(PYTHON) crosscheck_timestamp_unwrap.py \
 	     --check $(REPO)/Test/conformance/timestamp_unwrap.json; then \
 	  failed="$$failed crosscheck_timestamp_unwrap.py"; fi; \
+	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_gate.py; then \
+	  failed="$$failed test_hil_gate.py"; fi; \
 	if ! $(PYTHON) check_weak_decls.py; then \
 	  failed="$$failed check_weak_decls.py"; fi; \
 	echo ""; \
@@ -308,6 +311,13 @@ host-constants:
 timestamp-unwrap:
 	@$(PYTHON) crosscheck_timestamp_unwrap.py \
 	  --check $(REPO)/Test/conformance/timestamp_unwrap.json
+
+# The release gate (Test/hil/hil_gate.py) decides whether a release candidate
+# may be made public. No compiler, no binary - its tests run from a bare
+# checkout, and they run here so a change to the gate rules is tested in CI
+# like everything else it guards.
+hil-gate:
+	@$(PYTHON) $(REPO)/Test/hil/test_hil_gate.py
 
 # No compiler, no binary: every header in the repository, read as text. The
 # link-time half of the same rule is test_platform_seam.
