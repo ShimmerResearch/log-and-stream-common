@@ -173,8 +173,13 @@ def open_when_ready(port: str, attempts: int = 10, delay_s: float = 0.5) -> Dock
         try:
             link.version()
             return link
-        except DockError as e:
+        except (DockError, serial.SerialException) as e:
+            # A unit still booting or re-enumerating can drop the port mid-read,
+            # which is a reason to try again, not to fail.
             last = e
-            link.close()
+            try:
+                link.close()
+            except serial.SerialException:
+                pass
             time.sleep(delay_s)
     raise DockError(f"{port}: no answer after {attempts} attempts ({last})")
