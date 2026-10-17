@@ -226,15 +226,28 @@ hardware generation by the IDs it contains.
 `length > 128`, `offset > 1023`, or `length + offset > 1024`.
 
 A `SET_CALIB_DUMP` transfer is **stateful and must start at offset 0**. The
-first chunk (offset 0 or 1) is what tells the firmware the total size — it reads
-the length field out of the chunk itself and sets the expected byte count to
-`length + 2`. Chunks at offset 2 or beyond only accumulate a running total.
-Starting a transfer part-way through therefore accumulates against a stale
-expected size, and the firmware commits the blob as soon as the running total
-reaches it. On commit, `ShimCalib_ramWrite` re-stamps the version bytes, clears
-the staging buffer, and pushes the new values out to the configuration bytes and
-the SD header via `ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1)` — which
-writes InfoMem.
+first chunk is what tells the firmware the total size. It must be at offset 0
+and carry at least the two length bytes; the firmware reads the length field out
+of the chunk itself and sets the expected byte count to `length + 2`. A start
+that is shorter, is at offset 1, or declares more than the 1024-byte RAM is
+refused, and leaves no transfer open; so is a start that fails the length and
+offset limits above. So is a start declaring fewer than 8 bytes: the version
+header that follows the length field would lie outside the dump, and the next
+appended record would land on it. Earlier firmware also took offset 1 as a
+start, and a start without both length bytes took the missing one from the
+previous transfer. A start also clears the rest of the staging buffer, so a byte
+the transfer never writes commits as zero, not as the previous dump's. Chunks at
+offset 2 or beyond only accumulate a running total, and only while a transfer is
+open. With none open, such a chunk is refused and the staging buffer is not
+written. That covers the time before the first transfer, after one completes,
+and after a refused start. A part-way start while an earlier transfer is still
+open accumulates against that transfer's expected size, and the firmware commits
+the blob as soon as the running total reaches it. The total counts bytes
+received, not bytes covered, so a repeated chunk can complete a transfer with a
+gap in it; the gap commits as zero. On commit, `ShimCalib_ramWrite` re-stamps
+the version bytes, closes the transfer, and pushes the new values out to the
+configuration bytes and the SD header via
+`ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1)` — which writes InfoMem.
 
 ## 3. The 21-byte kinematic block
 
@@ -394,7 +407,20 @@ The file is written in 128-byte chunks and is `length + 2` bytes long: a
 byte-for-byte image of the blob, with no additional framing.
 
 `ShimCalib_file2Ram` reads it back and returns 1 (failure) if neither directory
-exists or the file is absent, leaving the RAM blob as the firmware defaults.
+exists or the file is absent, leaving the RAM blob as the firmware defaults. It
+reads at most the 1024 bytes of calibration RAM (`SHIMMER_CALIB_RAM_MAX`). From a
+longer file it keeps the dump the file's length field declares, as long as that
+dump fits the RAM; anything after the dump is ignored.
+
+If a read fails partway, the file is shorter than the dump its own length field
+declares, that field declares a dump larger than the 1024-byte RAM or fewer than
+the 8 bytes of its own version header (the field is checked as the file has it,
+before it is clamped to the RAM), or (on Shimmer3R, which takes the file's size
+from `f_stat`) `f_stat` fails, the RAM is rebuilt from the configuration bytes
+(`ShimCalib_init` + `ShimCalib_initFromConfigBytesAll`, as at boot) instead of
+being left as read, and the function still returns 0. That matters because both
+callers answer a non-zero return by writing the RAM back to the card, which here
+would replace a file that may read cleanly next time.
 
 ## 5. Pressure sensor coefficient blocks
 
@@ -682,6 +708,39 @@ timestamp into the SD header only. With `writeToFlash = 1` it also calls
 > Whether that is a defect or a deliberate invalidation of a block that belonged
 > to the previous range is arguable; the effect on InfoMem is the same either
 > way, and a host should not expect a range change to preserve the old block.
+>
+> The 8-byte timestamp is zeroed too, so the SD header gets the all-zero
+> timestamp that marks a default calibration (§3.3). Earlier firmware left it
+> unset and copied whatever the stack held.
+
+**A record's own length is never trusted past its slot.** The dump comes from a
+host or the SD card, so `ShimCalib_singleSensorRead` copies at most the length
+its caller asked for (21 bytes for the IMU blocks), whatever length byte the
+record carries. It also walks only the dump itself, whose end is its declared
+length plus the 2 bytes of the length field: never past the 1024-byte RAM, and
+often well before it. A record whose header does not fit inside the dump is not
+matched. A record whose payload runs past the dump's end is read only up to that
+end; the rest of the slot reads as zero. The bytes after the dump are not part
+of it. They may be the rest of an earlier, longer dump, or of a file longer than
+its own length field.
+
+`ShimCalib_singleSensorWrite` bounds its copy the same way when it updates an
+existing record. It copies at most the caller's payload (`data_len`, capped at
+the 22-byte `data.raw`) and stops at the dump's end, so a record longer than
+either keeps its remaining bytes. It matches a record only if the header and at
+least one payload byte lie inside the dump. That is one byte stricter than the
+read, which also matches a record that ends exactly at the end of its header.
+With no match, it appends a new record, but only if the whole record fits in the
+RAM.
+
+`Test/host/test_calibration.c` checks these bounds, and the
+`ShimCalib_ramRead`/`ShimCalib_ramWrite` limits in §2.4, on both platforms. That
+includes a dump whose declared end cuts a record short of the RAM end.
+
+A sensor ID with no slot of its own is handled differently on each platform. On
+Shimmer3 it falls through to the analog accelerometer's slot. On Shimmer3R it is
+ignored and nothing is copied. Every caller in the firmware passes one of the
+listed sensors, so neither path is reached today.
 
 ### 8.3 Precedence
 

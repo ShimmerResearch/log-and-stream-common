@@ -311,10 +311,15 @@ the centre:
 > succeeds first time.
 
 > **`shortExpFlag` makes the centre declare success without one.** In the short
-> branch, `nodeSucc |= 1 << syncNodeCnt` is set on *timeout* as well as on
-> success. A short trial therefore reports every node as synced whether or not
-> any packet was exchanged. Combined with §2's 0xFFFF substitution, "short
+> branch, `nodeSucc |= nodeShift(syncNodeCnt)` is set on *timeout* as well as
+> on success. A short trial therefore reports every node as synced whether or
+> not any packet was exchanged. Combined with §2's 0xFFFF substitution, "short
 > trial" means "do not block on sync", not "sync quickly".
+>
+> Earlier firmware wrote that as `1 << syncNodeCnt`, a 16-bit shift on Shimmer3.
+> From node 15 on it set the wrong bits of the 32-bit mask, so a short trial
+> with 16 or more nodes could never reach `nodeSuccFull`, and the search for the
+> next unsynced node could then loop without end.
 
 ### 6.2 Node
 

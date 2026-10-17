@@ -58,7 +58,13 @@ void ShimBrd_setDaugherCardIdPage(uint8_t *pagePtr)
 
 void ShimBrd_setDaugherCardIdMemory(uint8_t index, uint8_t *pagePtr, uint8_t len)
 {
-  memcpy(&daughterCardIdPage.raw[index], pagePtr, len);
+  /* index and len come from a host command. The callers range-check them,
+   * but this is the copy itself, so a write that would run past the 16-byte
+   * page is refused here as well. */
+  if ((uint16_t) index + len <= sizeof(daughterCardIdPage.raw))
+  {
+    memcpy(&daughterCardIdPage.raw[index], pagePtr, len);
+  }
 }
 
 uint8_t ShimBrd_isAds1292Present(void)

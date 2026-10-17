@@ -44,6 +44,10 @@ uint8_t rcNodeR10Cnt;
 uint32_t firstOutlier, rcWindowC, rcNodeReboot;
 uint32_t estLen, estLen3, syncCnt;
 uint32_t nodeSucc, nodeSuccFull;
+/* One bit per node in the two masks above (see ShimSdSync_nodeShift). */
+#if MAX_NODES > 32
+#error "MAX_NODES exceeds the 32 bits of nodeSucc/nodeSuccFull"
+#endif
 uint64_t myLocalTimeLong, myCenterTimeLong, myTimeDiffLong;
 uint64_t myTimeDiffLongMin;
 uint64_t myTimeDiffArr[SYNC_TRANS_IN_ONE_COMM];
@@ -771,7 +775,12 @@ void ShimSdSync_handleSyncTimerTriggerCenter(void)
               cReboot = 1;
               if (shortExpFlag)
               {
-                nodeSucc |= 1 << syncNodeCnt;
+                /* Not 1 << syncNodeCnt: that is a 16-bit int on Shimmer3,
+                 * and from node 15 on it sets the wrong bits of the 32-bit
+                 * mask, or sign-extends into all the high ones. nodeSucc
+                 * can then never equal nodeSuccFull, and the search for the
+                 * next unsynced node above never ends. */
+                nodeSucc |= ShimSdSync_nodeShift(syncNodeCnt);
               }
 
               syncNodeCnt++;
