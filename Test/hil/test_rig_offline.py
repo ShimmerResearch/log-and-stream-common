@@ -336,6 +336,34 @@ class BtPortOpen(unittest.TestCase):
         self.assertEqual(FakeSerial.opened_with, ("COM9", False, False))
         self.assertEqual(link.hw, bt.HW_SHIMMER3R)
 
+    def test_a_link_that_fails_its_first_exchange_closes_its_port(self):
+        made = []
+
+        class SilentSerial:
+            def __init__(self, *a, **k):
+                self.closed = False
+                made.append(self)
+
+            def open(self):
+                pass
+
+            def write(self, b):
+                pass
+
+            def reset_input_buffer(self):
+                pass
+
+            def read(self, n):
+                return b""                              # nothing answers
+
+            def close(self):
+                self.closed = True
+
+        with mock.patch.object(bt.serial, "Serial", SilentSerial), mock.patch.object(bt.time, "sleep", lambda s: None):
+            with self.assertRaises(bt.BtError):
+                bt.BtLink("COM9")
+        self.assertTrue(made[0].closed, "the port was left open")
+
 
 class StatusLength(unittest.TestCase):
     def test_shimmer3r_before_1_00_024_sends_one_status_byte(self):

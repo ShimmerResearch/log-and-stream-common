@@ -182,14 +182,21 @@ class BtLink:
         self.ser.timeout = self.ser.write_timeout = connect_timeout_s
         self.ser.dtr = self.ser.rts = False
         self.ser.open()
-        self.ser.timeout = 1.0
         self.hw: int | None = None
         self._nstatus: int | None = None
-        time.sleep(0.2)
-        self.ser.write(bytes([SET_CRC, 0]))
-        time.sleep(0.5)
-        self.ser.reset_input_buffer()
-        self.hw = self.device_version()
+        # Until the constructor returns there is no link to close, so if the
+        # first exchange fails the port is closed here: left open, it would
+        # hold the COM port against every later connection.
+        try:
+            self.ser.timeout = 1.0
+            time.sleep(0.2)
+            self.ser.write(bytes([SET_CRC, 0]))
+            time.sleep(0.5)
+            self.ser.reset_input_buffer()
+            self.hw = self.device_version()
+        except BaseException:
+            self.ser.close()
+            raise
 
     def close(self):
         self.ser.close()
