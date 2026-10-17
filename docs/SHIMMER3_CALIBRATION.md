@@ -724,10 +724,14 @@ end; the rest of the slot reads as zero. The bytes after the dump are not part
 of it. They may be the rest of an earlier, longer dump, or of a file longer than
 its own length field.
 
-`ShimCalib_singleSensorWrite` applies the same bounds when it updates an
-existing record. It copies at most the caller's payload (`data_len`) and stops
-at the dump's end, so a record longer than either keeps its remaining bytes. It
-appends a new record only if the whole record fits in the RAM.
+`ShimCalib_singleSensorWrite` bounds its copy the same way when it updates an
+existing record. It copies at most the caller's payload (`data_len`, capped at
+the 22-byte `data.raw`) and stops at the dump's end, so a record longer than
+either keeps its remaining bytes. It matches a record only if the header and at
+least one payload byte lie inside the dump. That is one byte stricter than the
+read, which also matches a record that ends exactly at the end of its header.
+With no match, it appends a new record, but only if the whole record fits in the
+RAM.
 
 `Test/host/test_calibration.c` checks these bounds, and the
 `ShimCalib_ramRead`/`ShimCalib_ramWrite` limits in §2.4, on both platforms. That
