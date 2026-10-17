@@ -497,8 +497,7 @@ void ShimSdDataFile_writeToCard(void)
    * and split every file as soon as it was opened. An hour of ticks fits an
    * int32_t many times over, and on Shimmer3 (splitTs = latestTs, never older)
    * this is the same test as before. */
-  if (splitAllowed
-      && ((int32_t) (splitTs - (uint32_t) sdFileCrTs) >= (int32_t) BIN_FILE_SPLIT_TIME_TICKS))
+  if (splitAllowed && ((int32_t) (splitTs - (uint32_t) sdFileCrTs) >= (int32_t) BIN_FILE_SPLIT_TIME_TICKS))
   {
     sdFileSyncTs = sdFileCrTs = RTC_get64();
 
