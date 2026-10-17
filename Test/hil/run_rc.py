@@ -13,7 +13,8 @@
    "dfu" by default, "swd" when an ST-Link serial is named), and confirms each
    reports the candidate's version.
 3. Runs the tier with pytest, which writes hil-report-<bench>.json.
-4. With --upload, attaches the report and the pytest log to the release.
+4. With --upload, attaches the report and the pytest log (as
+   hil-log-<bench>.log) to the release.
 
 Everything lands in Test/hil/out/<tag>/<time>/ (git-ignored), which is what
 to archive alongside the report.
@@ -25,6 +26,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +34,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+from hil_gate import normalise_version  # noqa: E402
 from rig import config as rig_config  # noqa: E402
 from rig import flash as rig_flash  # noqa: E402
 
@@ -73,7 +76,7 @@ def fetch(tag: str, out: Path) -> tuple[dict, Path]:
                 "firmware_version": version, "commit": tag_commit(repo, tag),
                 "image": images[0].name, "synthesised": True}
         info_path.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
-    if info["platform"] != platform or info["firmware_version"].lstrip("vV") != version:
+    if info["platform"] != platform or normalise_version(info["firmware_version"]) != normalise_version(version):
         raise SystemExit(f"build-info.json does not match the tag: {info}")
     return info, images[0]
 
@@ -166,14 +169,19 @@ def main(argv=None) -> int:
         else:
             print("every item passed - no triage needed")
 
+    # The log goes up under the bench's name, so two benches' logs do not
+    # overwrite each other on the release. It does not match hil-report*.json,
+    # so the gate never reads it as a report.
+    attached = out / f"hil-log-{rig.bench}.log"
+    shutil.copyfile(log, attached)
     if a.upload:
-        gh("release", "upload", a.tag, str(report), str(log), "-R", repo, "--clobber")
-        print(f"attached {report.name} and {log.name} to {repo} {a.tag}")
+        gh("release", "upload", a.tag, str(report), str(attached), "-R", repo, "--clobber")
+        print(f"attached {report.name} and {attached.name} to {repo} {a.tag}")
         if triage_md.exists():
             gh("release", "upload", a.tag, str(triage_md), "-R", repo, "--clobber")
             print(f"attached {triage_md.name} to {repo} {a.tag}")
     else:
-        print(f"report: {report}\nattach with: gh release upload {a.tag} \"{report}\" -R {repo}")
+        print(f"report: {report}\nattach with: gh release upload {a.tag} \"{report}\" \"{attached}\" -R {repo}")
     return rc
 
 

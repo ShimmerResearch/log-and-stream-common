@@ -33,12 +33,15 @@ static uint32_t stubResetCount;
 static uint32_t stubDelayMsTotal;
 /* The real gConfigBytes union - see ShimConfig_getStoredConfig() below. */
 static gConfigBytes stubStoredConfig;
+/* The SD file header, at the real header's SD_HEAD_SIZE. */
+static uint8_t stubSdHeadText[SD_HEAD_SIZE];
 
 void hostStub_reset(void)
 {
   memset((void *) &shimmerStatus, 0, sizeof(shimmerStatus));
   memset((void *) &batteryStatus, 0, sizeof(batteryStatus));
   memset(&stubStoredConfig, 0, sizeof(stubStoredConfig));
+  memset(stubSdHeadText, 0, sizeof(stubSdHeadText));
   stubDockedOrUsbIn = 0;
   stubRwcTimeSet = 0;
   stubEepromPresent = 1; /* the common case: SR31-7-0 and later carry one */
@@ -101,6 +104,41 @@ gConfigBytes *ShimConfig_getStoredConfig(void)
   return &stubStoredConfig;
 }
 
+/* The real accessor's body, over the stub config. */
+uint8_t ShimConfig_gyroRangeGet(void)
+{
+#if defined(SHIMMER3)
+  return stubStoredConfig.gyroRangeLsb;
+#elif defined(SHIMMER3R)
+  return (stubStoredConfig.gyroRangeMsb << 2) | stubStoredConfig.gyroRangeLsb;
+#endif
+}
+
+/* --- Comms/shimmer_bt_uart.h ---------------------------------------------- *
+ * The module's MAC as 12 hex digits. Calibration/ names its SD file after the
+ * last four, so a test can predict the path: "/Calibration/calib_5A1C". */
+char *ShimBt_macIdStrPtrGet(void)
+{
+  static char mac[] = "000666805A1C";
+  return mac;
+}
+
+/* --- SDCard/shimmer_sd_header.h ------------------------------------------- *
+ * SDCard/shimmer_sd_header.c is not host-buildable yet, so the accessor hands
+ * back stubSdHeadText, which the real header sizes. */
+uint8_t *ShimSdHead_getSdHeadText(void)
+{
+  return stubSdHeadText;
+}
+
+/* --- SDCard/shimmer_sd.h -------------------------------------------------- */
+
+FRESULT ShimSd_setFileTimestamp(char *path)
+{
+  (void) path;
+  return FR_OK;
+}
+
 /* --- log_and_stream_common.h ---------------------------------------------- */
 
 uint8_t LogAndStream_isDockedOrUsbIn(void)
@@ -124,6 +162,39 @@ uint64_t RTC_get64(void)
 {
   return (uint64_t) stubTick * 32768U / 1000U;
 }
+
+#if defined(SHIMMER3)
+/* Shimmer3's own function, from 5xx_HAL/hal_RTC.h. On Shimmer3R the same name
+ * is a macro over RTC_get64(), so both platforms read the same clock here. */
+uint64_t RTC_getRwcTime(void)
+{
+  return RTC_get64();
+}
+#endif
+
+uint8_t InfoMem_write(uint16_t addr, uint8_t *buf, uint16_t size)
+{
+  (void) addr;
+  (void) buf;
+  (void) size;
+  return 0;
+}
+
+uint8_t InfoMem_read(uint16_t addr, uint8_t *buf, uint16_t size)
+{
+  (void) addr;
+  (void) buf;
+  (void) size;
+  return 0;
+}
+
+#if defined(SHIMMER3R)
+/* From the STM32 HAL - see stubs/stm32u5xx.h. */
+void HAL_Delay(uint32_t Delay)
+{
+  (void) Delay;
+}
+#endif
 
 /* --- LEDs/shimmer_leds.h --------------------------------------------------- *
  * Overriding the real ShimLeds_setRtcErrorFlash() rather than linking

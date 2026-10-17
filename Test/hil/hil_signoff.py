@@ -13,8 +13,9 @@ explains it).
 The commit and version are read from the release candidate itself with the gh
 CLI, so the report is bound to the build that was actually tested. Answer each
 item with p (pass), f (fail) or n (not covered). A fail or not-covered item can
-carry a waiver - the issue key under which someone accepted it - and only then
-will the gate let the release through.
+carry a waiver - the issue key under which someone accepted it. Without one, a
+fail blocks the release, and a not-covered item still needs another report to
+pass it.
 
 Standard library plus the gh CLI.
 """
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fnmatch
 import getpass
 import json
 import platform as host_platform
@@ -33,6 +35,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hil_gate  # noqa: E402
+
+REPORT_GLOB = "hil-report*.json"
 
 REPOS = {
     "shimmer3": ("ShimmerResearch/shimmer3-firmware", "LogAndStream_Shimmer3_v"),
@@ -77,6 +81,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, help="report path (default: hil-report-manual-<operator>-<time>.json)")
     ap.add_argument("--upload", action="store_true", help="attach the report to the pre-release")
     a = ap.parse_args(argv)
+    # promote-release.yml reads only the candidate's assets named like this, so
+    # a report under any other name would be attached and never read.
+    if a.out and not fnmatch.fnmatchcase(a.out.name, REPORT_GLOB):
+        ap.error(f"--out must be named {REPORT_GLOB}: the release gate reads no other assets")
     # The required items cite sections with '§'; a Windows pipe defaults to cp1252.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -101,8 +109,9 @@ def main(argv: list[str] | None = None) -> int:
             r["note"] = note
         if status != "pass":
             while True:
-                w = input("  waiver issue key (Enter for none - the gate will block): ").strip().upper()
-                if not w or hil_gate.WAIVER_RE.match(w):
+                unwaived = "the gate will block" if status == "fail" else "another report must pass it"
+                w = input(f"  waiver issue key (Enter for none - {unwaived}): ").strip().upper()
+                if not w or hil_gate.WAIVER_RE.fullmatch(w):
                     break
                 print("  that is not an issue key such as ABC-123")
             if w:

@@ -1,15 +1,20 @@
 {
   "schema": "shimmer-hil-required/1",
   "platform": "shimmer3",
-  "comment": "Every item must be covered by a passing result, or carry a waiver, in at least one report attached to the release candidate. Section numbers refer to docs/SHIMMER3_TEST_PROCEDURE.md. Gates 1 and 2 are not listed: CI proves them on the tagged commit. The boot matrix row covers each radio firmware that shipped to customers.",
+  "comment": "Every item must be covered by a passing result, or carry a waiver, in at least one report attached to the release candidate. Section numbers refer to docs/SHIMMER3_TEST_PROCEDURE.md. Gate 1 is not listed: CI runs it on every pull request and push, and the release workflow runs the host tests again before it builds; the commit it tags adds only the version bump. Nor is the build: a candidate exists only if it built. The rest of gate 2 is read off the candidate's build, so it is listed: its warnings and its size. The boot matrix row covers each radio firmware that shipped to customers.",
   "items": [
+    {"id": "gate2.warnings_read",       "title": "The candidate's build warnings read for 16-bit int arithmetic", "ref": "§3.2"},
+    {"id": "gate2.size_recorded",       "title": "Flash and RAM recorded and compared with the previous release", "ref": "§3.4"},
     {"id": "gate3.on_device_suites",    "title": "On-device suites pass",                                      "ref": "§4"},
+    {"id": "gate3.factory_self_test",   "title": "Factory self-test read and checked against the board revision", "ref": "§4.1"},
     {"id": "gate4.boot_matrix",         "title": "Boot matrix: one unit per shipped radio firmware (RN42 v4.77, RN42 v6.15, RN4678 v1.00.5, RN4678 v1.23.0), banners recorded", "ref": "§5.1"},
     {"id": "gate4.per_model",           "title": "Per-model behaviour walked on the models the change touches", "ref": "§5.4"},
     {"id": "gate4.stream_and_log",      "title": "Streaming, logging, and both together",                      "ref": "§5.5, §5.6"},
-    {"id": "gate4.functional_other",    "title": "Rest of gate 4 walked on at least one unit",                  "ref": "§5.7 to §5.11"},
+    {"id": "gate4.functional_other",    "title": "Rest of gate 4 walked on at least one unit",                  "ref": "§5.2, §5.3, §5.7 to §5.11"},
     {"id": "gate5.host_stack",          "title": "Shipping host stack against the release candidate",          "ref": "§6.4"},
     {"id": "gate5.previous_recording",  "title": "A recording from the previous release still imports",        "ref": "§6.4.5"},
-    {"id": "gate5.version_skew",        "title": "Version skew walked in both directions",                     "ref": "§6.5"}
+    {"id": "gate5.version_skew",        "title": "Version skew walked in both directions",                     "ref": "§6.5"},
+    {"id": "gate5.compatibility_change", "title": "Any compatibility change made loud: version bumped, document and host reference updated, host version named in the release notes", "ref": "§6.6"},
+    {"id": "regression.cases_considered", "title": "Regression cases considered against what changed",       "ref": "§7"}
   ]
 }

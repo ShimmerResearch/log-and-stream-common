@@ -74,7 +74,7 @@ plug and unplug.
 | `rig/bt.py` | Bluetooth SPP: commands, status, streaming with timestamp checks |
 | `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial |
 | `rig/sdfile.py` | Reads a Shimmer3R SD data file and checks its records |
-| `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version |
+| `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version. USB DFU flashes only a DFU device that appeared after this unit was sent to its bootloader, and only if it is the only one |
 | `rig/base6.py` | Base6 slot mux: which slots are occupied, select one, mask its BSL lines |
 | `rig/msp430_bsl.py` | MSP430 ROM bootloader client (port of Consensys's): erase, write, CRC-verify |
 | `rig/s3_flash.py` | Flashes a Shimmer3 in a Base6 slot, backing up and restoring its InfoMem |

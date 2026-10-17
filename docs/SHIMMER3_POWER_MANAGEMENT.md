@@ -13,9 +13,16 @@ document is about consumption.
 >   `Battery/shimmer_battery.{h,c}`, `Sensing/shimmer_sensing.c`,
 >   `Comms/shimmer_sd_file_transfer.c`. The once-a-second LED phase-sync
 >   wake in §2 postdates `ff242a6`. It was read from
->   `LogAndStream_blinkTimerCommon` and `TASK_LED_PHASE_SYNC`.
+>   `LogAndStream_blinkTimerCommon` and `TASK_LED_PHASE_SYNC`. The queued
+>   disconnect check in §3 also postdates `ff242a6`. It was read from
+>   `ShimBt_handleBtRfCommStateChange` and `TASK_BT_MODE_CHECK`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
->   `shimmer3r-firmware` @ `8f800952`.
+>   `shimmer3r-firmware` @ `8f800952`. §3's statement that Shimmer3 keeps radio
+>   start out of interrupt handlers postdates `2765ff4`. It depends on two
+>   `shimmer3-firmware` changes, both read at `ac30299`: SD sync's start
+>   callback becomes `ShimTask_setInitialiseBluetooth`, and
+>   `msp430_clock_enable()` no longer sets GIE. A Shimmer3 build without them
+>   still starts the radio from the sync timer interrupt.
 
 > **Scope.** The shared module decides *when* rails go on and off and when the
 > part may sleep; the actual low-power modes are platform code. This document
@@ -102,6 +109,13 @@ It stops the radio when it is powered but should not be, when the sync mode
 disagrees with the current state, or when the EEPROM's BLE / classic enables
 disagree with what is running. It starts the radio when normal log-and-stream
 mode is enabled and the radio is off.
+
+It runs whenever the configuration is re-read, from InfoMem or `sdlog.cfg`, and
+after every Bluetooth disconnect. On Shimmer3 the disconnect is seen in an
+interrupt, so the handler queues `TASK_BT_MODE_CHECK` and the check runs from
+the main loop. Starting the radio is kept out of interrupt handlers on
+Shimmer3 ([SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md)
+§4.5).
 
 > **In SD-sync mode the radio is cycled per node**, not left on. The centre
 > starts Bluetooth, attempts one node, and stops it again before the next —

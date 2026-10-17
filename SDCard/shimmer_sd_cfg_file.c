@@ -27,6 +27,14 @@ static const uint8_t all0xff[6U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
  * parse() -> generate() was the deepest stack path in the firmware. */
 static FIL cfgFile;
 
+/* ShimSdCfgFile_parse() backs the configuration bytes up here before parsing
+ * and restores the calibration bytes from it afterwards. It is file scope
+ * rather than a 512-byte local for the same reason as cfgFile: in parse()'s
+ * frame it put parse() at the head of the deepest stack path. parse() runs only
+ * from the main loop (boot, dock/undock and stop-sensing handling), never from
+ * an interrupt, and does not call itself, so one copy is enough. */
+static gConfigBytes storedConfigTemp;
+
 //Centralized config file constants to avoid duplicated string literals
 #define CFG_FILENAME "sdlog.cfg"
 
@@ -423,7 +431,6 @@ void ShimSdCfgFile_parse(void)
   else
   {
     /* Backup configuration bytes before parsing from cfg file */
-    gConfigBytes storedConfigTemp;
     memcpy(&(storedConfigTemp.rawBytes[0]), &(storedConfigPtr->rawBytes[0]), STOREDCONFIG_SIZE);
 
     //Reset global configuration bytes to a blank state before parsing the config file.

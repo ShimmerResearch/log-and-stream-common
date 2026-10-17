@@ -17,6 +17,10 @@ it, and the linker requirement that has broken it before.
 >   `Shimmer_Driver/version.h` (`v1.01.012`),
 >   `Shimmer_Driver/shimmer_definitions.h` (`DEVICE_VER` 10),
 >   `Core/Src/main.c` (`fw_version_struct`).
+> - **The release workflows (§7):** `shimmer3-firmware` @ `578c9e6` and
+>   `shimmer3r-firmware` @ `b12f711` — `build-release-firmware.yml` and
+>   `promote-release.yml`, on their release-gate pull-request branches;
+>   `log-and-stream-common` @ `42c4d9f` — `Test/hil/`.
 
 **Source references:**
 
