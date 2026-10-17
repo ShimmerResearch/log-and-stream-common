@@ -253,8 +253,11 @@ def main(argv=None) -> int:
         gh("release", "upload", a.tag, str(report), str(attached), "-R", repo, "--clobber")
         print(f"attached {report.name} and {attached.name} to {repo} {a.tag}")
         if triage_md.exists():
-            gh("release", "upload", a.tag, str(triage_md), "-R", repo, "--clobber")
-            print(f"attached {triage_md.name} to {repo} {a.tag}")
+            # Under the bench's name too, so one bench's triage never replaces another's.
+            triage_attached = out / f"hil-triage-{rig.bench}.md"
+            shutil.copyfile(triage_md, triage_attached)
+            gh("release", "upload", a.tag, str(triage_attached), "-R", repo, "--clobber")
+            print(f"attached {triage_attached.name} to {repo} {a.tag}")
     else:
         print(f"report: {report}\nattach with: gh release upload {a.tag} \"{report}\" \"{attached}\" -R {repo}")
     return exit_status(rc, gate.returncode, json.loads(report.read_text(encoding="utf-8")))

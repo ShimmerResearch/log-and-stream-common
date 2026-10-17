@@ -1200,7 +1200,9 @@ For each item it returns:
 - the next experiment.
 
 New defects come back as drafts, which are not filed. The result is
-`triage.md`, attached to the candidate beside the report with `--upload`.
+`triage.md`, attached to the candidate beside the report with `--upload`, as
+`hil-triage-<bench>.md` so that two benches' triages do not overwrite each
+other.
 
 **Triage is advice, never a verdict.** The gate (§10.2) does not read it, and
 a waiver is still a person's decision, recorded with an issue key.
