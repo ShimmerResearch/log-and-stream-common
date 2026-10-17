@@ -170,6 +170,9 @@ void ShimTask_NORM_manage(void)
       case TASK_BT_TX_BUF_CLEAR:
         ShimBt_clearBtTxBuf(1U);
         break;
+      case TASK_BT_REPLY_RETRY:
+        ShimBtReply_retry();
+        break;
 
       case TASK_BT_TURN_ON_AFTER_BOOT:
         InitialiseBtAfterBoot();

@@ -167,8 +167,8 @@ def main(argv=None) -> int:
             print("every item passed - no triage needed")
 
     if a.upload:
-        gh("release", "upload", a.tag, str(report), "-R", repo, "--clobber")
-        print(f"attached {report.name} to {repo} {a.tag}")
+        gh("release", "upload", a.tag, str(report), str(log), "-R", repo, "--clobber")
+        print(f"attached {report.name} and {log.name} to {repo} {a.tag}")
         if triage_md.exists():
             gh("release", "upload", a.tag, str(triage_md), "-R", repo, "--clobber")
             print(f"attached {triage_md.name} to {repo} {a.tag}")
