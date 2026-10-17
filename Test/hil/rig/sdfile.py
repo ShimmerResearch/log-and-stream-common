@@ -58,6 +58,8 @@ class FileCheck:
     span_ticks: int = 0
     trailing_bytes: int = 0    # bytes that do not form a whole record
     deltas: dict = field(default_factory=dict)
+    ts: list = field(default_factory=list)       # kept with check(keep=True)
+    rows: list = field(default_factory=list)
 
 
 def read_header(raw: bytes) -> Header:
@@ -77,7 +79,7 @@ def read_header(raw: bytes) -> Header:
     )
 
 
-def check(path: Path) -> FileCheck:
+def check(path: Path, keep: bool = False) -> FileCheck:
     raw = Path(path).read_bytes()
     h = read_header(raw)
     rl = h.record_len
@@ -94,6 +96,9 @@ def check(path: Path) -> FileCheck:
             if pos + rl > end:
                 break
             ts = raw[pos] | (raw[pos + 1] << 8) | (raw[pos + 2] << 16)
+            if keep:
+                fc.ts.append(ts)
+                fc.rows.append(raw[pos + 3:pos + rl])
             pos += rl
             fc.records += 1
             if ts == 0:
