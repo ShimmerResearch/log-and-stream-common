@@ -9,3 +9,6 @@ codeql-db/
 _codeql_detected_source_root
 # Host test build output (Test/host/Makefile)
 Test/host/out/
+# Python bytecode (hil_gate.py, hil_signoff.py, the host cross-checks)
+__pycache__/
+*.pyc

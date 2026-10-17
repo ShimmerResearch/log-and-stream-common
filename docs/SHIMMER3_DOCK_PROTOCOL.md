@@ -109,6 +109,12 @@ character-at-a-time writer will never complete one.
 An unrecognised command byte in state 4 aborts immediately with
 `UART_BAD_CMD_RESPONSE` — the parser does not wait for the rest of the frame.
 
+A length byte of 0, or above 133, aborts the same way in state 3 with
+`UART_BAD_ARG_RESPONSE`. 133 is `UART_DATA_LEN_MAX` less the five bytes around
+the payload (`'$'`, command, length and the two CRC bytes), so a whole frame
+always fits the receive buffer. Earlier firmware accepted any length and went on
+storing bytes past the end of that buffer.
+
 ## 3. Commands and responses
 
 | Constant | Value | Direction |
@@ -293,7 +299,7 @@ table used to give was wrong. `0x07` in the `SHIMMER` component's own space is
 | `SHIMMER` | `INFOMEM` `0x06` | `length` u8, `offset` u16, then `length` bytes — bounded by `STOREDCONFIG_SIZE` | `ShimConfig_storedConfigSet`, `ShimConfig_checkAndCorrectConfig`, flags the SD config file for rewrite, `LogAndStream_infomemUpdate` |
 | `SHIMMER` | `CALIB_DUMP`* | `length` u8, `offset` u16, then `length` bytes | `ShimmerCalib_ramWrite` (return value ignored; always ACKs) |
 | `SHIMMER` | `ENTER_BOOTLOADER` `0x09` (Shimmer3R only) | 1 byte: seconds until reboot; `0` cancels | arms `RTC_setAlarmRebootToBootloader`, sets `bslRebootPending` |
-| `DAUGHTER_CARD` | `CARD_ID` `0x02` | `length` u8, `offset` u8, then `length` bytes — `length ≤ 16`, `offset < 16` | writes EEPROM bytes 0-15 and refreshes the in-RAM daughter-card ID |
+| `DAUGHTER_CARD` | `CARD_ID` `0x02` | `length` u8, `offset` u8, then `length` bytes — `length ≤ 16`, `offset ≤ 15`, sum `≤ 16` (earlier firmware did not check the sum, so a write could run past byte 15 into the daughter-card memory) | writes EEPROM bytes 0-15 and refreshes the in-RAM daughter-card ID |
 | `DAUGHTER_CARD` | `CARD_MEM` `0x03` | `length` u8, `offset` u16, then `length` bytes | `ShimEeprom_writeDaughterCardMem` — writes at `offset + 16`; rejects zero length, over-long or out-of-range writes with `BAD_ARG` |
 | `TEST` `0x0B` | *suite index* | none | property byte `< FACTORY_TEST_COUNT` → `ShimFactoryTest_setup(PRINT_TO_DOCK_UART, suite)` and `TASK_FACTORY_TEST`; otherwise `BAD_CMD` |
 

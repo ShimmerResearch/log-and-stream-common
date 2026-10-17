@@ -81,10 +81,14 @@ void ShimConfig_readRam(void)
 #if USE_DEFAULT_SENSOR
   ShimConfig_setDefaultConfig();
 #else
-  gConfigBytes temp_storedConfig;
-  InfoMem_read(0, temp_storedConfig.rawBytes, STOREDCONFIG_SIZE);
-  if ((temp_storedConfig.rawBytes[NV_SENSORS1] == 0xFF)
-      || temp_storedConfig.samplingRateTicks == 0)
+  /* Check the two bytes that say whether InfoMem holds a configuration before
+   * reading it straight into storedConfig. Reading all 512 bytes into a local
+   * copy first made this one of the deepest stack frames in the firmware. */
+  uint8_t sensors1;
+  uint16_t samplingRateTicks;
+  InfoMem_read(NV_SENSORS1, &sensors1, sizeof(sensors1));
+  InfoMem_read(NV_SAMPLING_RATE, (uint8_t *) &samplingRateTicks, sizeof(samplingRateTicks));
+  if ((sensors1 == 0xFF) || samplingRateTicks == 0)
   {
     //if config was never written to Infomem, write default
     //assuming some other app didn't make use of InfoMem, or else InfoMem was erased
@@ -92,8 +96,7 @@ void ShimConfig_readRam(void)
   }
   else
   {
-    //memcpy(temp_storedConfig+NV_MAC_ADDRESS, btMacHex, 6);
-    ShimConfig_storedConfigSet(temp_storedConfig.rawBytes, 0, STOREDCONFIG_SIZE);
+    InfoMem_read(0, storedConfig.rawBytes, STOREDCONFIG_SIZE);
   }
 #endif //USE_DEFAULT_SENSOR
 
@@ -247,7 +250,10 @@ void ShimConfig_setDefaultConfig(void)
 
 void ShimConfig_setDefaultShimmerName(void)
 {
-  strcpy(&storedConfig.shimmerName[0], "Shimmer_XXXX");
+  /* The field is 12 characters with no terminator, and expIdName follows it
+   * directly. A strcpy() of the 12-character default put its NUL on the trial
+   * ID's first byte, which then read back as blank and was reset too. */
+  memcpy(&storedConfig.shimmerName[0], "Shimmer_", 8);
   memcpy(&storedConfig.shimmerName[8], &ShimBt_macIdStrPtrGet()[8], 4);
 }
 

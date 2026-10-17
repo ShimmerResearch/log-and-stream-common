@@ -121,6 +121,17 @@ uint8_t ShimDock_rxCallback(uint8_t data)
     }
     else if (uartSteps == UART_STEP_WAIT4_LEN)
     {
+      /* The whole frame is held in dockRxBuf, so a length that would not fit
+       * beside the '$', command, length and two CRC bytes is refused here, as
+       * is a length of 0, which would wrap the countdown below. Like an
+       * unknown command, the rest of the frame is not waited for. */
+      if ((data == 0U) || (data > (UART_DATA_LEN_MAX - 5U)))
+      {
+        uartSteps = 0;
+        uartSendRspBadArg = 1;
+        ShimTask_set(TASK_DOCK_RESPOND);
+        return 1;
+      }
       uartSteps = UART_STEP_WAIT4_DATA;
       uartArgSize = UART_RXBUF_LEN;
       dockRxBuf[uartArgSize++] = data;
@@ -435,7 +446,11 @@ void ShimDock_processCmd(void)
             case UART_PROP_CARD_ID:
               uartDcMemLength = dockRxBuf[UART_RXBUF_DATA];
               uartDcMemOffset = dockRxBuf[UART_RXBUF_DATA + 1];
-              if ((uartDcMemLength <= 16) && (uartDcMemOffset < 16))
+              /* The sum is checked too, as for the GET above and the
+               * Bluetooth SET: an in-range offset and length can still end
+               * past the 16-byte ID page and write into the EEPROM after it. */
+              if ((uartDcMemLength <= 16) && (uartDcMemOffset <= 15)
+                  && ((uint16_t) uartDcMemLength + uartDcMemOffset <= 16))
               {
                 //Write (up to) 16 bytes to eeprom
                 eepromWrite(uartDcMemOffset, (uint16_t) uartDcMemLength,
