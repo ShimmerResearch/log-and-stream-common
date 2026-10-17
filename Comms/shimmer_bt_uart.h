@@ -426,6 +426,7 @@ void ShimBt_clearBtTxBuf(uint8_t isCalledFromMain);
 uint8_t ShimBt_isBtTxBufEmpty(void);
 void ShimBt_pushByteToBtTxBuf(uint8_t b);
 uint8_t ShimBt_pushBytesToBtTxBuf(uint8_t *buf, uint16_t len);
+uint8_t ShimBt_pushBytesToBtTxBufLeaving(uint8_t *buf, uint16_t len, uint16_t leave);
 uint8_t ShimBt_popBytefromBtTxBuf(void);
 uint16_t ShimBt_getUsedSpaceInBtTxBuf(void);
 uint16_t ShimBt_getSpaceInBtTxBuf(void);
@@ -452,9 +453,9 @@ void ShimBt_setBtBaudRateToUse(uint32_t baudRate);
 uint32_t ShimBt_getBtBaudRateToUse(void);
 
 void ShimBt_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
-__weak void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
+void BT_setBtMode(uint8_t btClassicEn, uint8_t bleEn);
 /* Abort an in-flight BT UART transmit (board-specific; no-op by default) */
-__weak void BtTransmitAbort(void);
+void BtTransmitAbort(void);
 uint8_t ShimBt_isBleCurrentlyEnabled(void);
 uint8_t ShimBt_isBtClassicCurrentlyEnabled(void);
 #if defined(SHIMMER3)

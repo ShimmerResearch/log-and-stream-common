@@ -153,8 +153,8 @@ def main(argv=None) -> int:
     print("\nThis report alone, against the required list:\n" + gate.stdout)
 
     if a.upload:
-        gh("release", "upload", a.tag, str(report), "-R", repo, "--clobber")
-        print(f"attached {report.name} to {repo} {a.tag}")
+        gh("release", "upload", a.tag, str(report), str(log), "-R", repo, "--clobber")
+        print(f"attached {report.name} and {log.name} to {repo} {a.tag}")
     else:
         print(f"report: {report}\nattach with: gh release upload {a.tag} \"{report}\" -R {repo}")
     return rc

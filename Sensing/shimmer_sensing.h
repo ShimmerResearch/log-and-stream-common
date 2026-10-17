@@ -268,6 +268,6 @@ uint8_t *ShimSens_getDataBuffAtPrevWrIdx(void);
 PACKETBufferTypeDef *ShimSens_getPacketBuffAtWrIdx(void);
 void ShimSens_resetPacketBuffAll(void);
 
-__weak void ADC_gatherDataStart(void);
+void ADC_gatherDataStart(void);
 
 #endif //SHIMMER_SENSING_H
