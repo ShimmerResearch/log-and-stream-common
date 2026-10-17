@@ -93,6 +93,25 @@ def fetch(tag: str, out: Path) -> tuple[dict, Path]:
     return info, images[0]
 
 
+def exit_status(pytest_rc: int, gate_rc: int, report: dict) -> int:
+    """The runner's exit status.
+
+    Nonzero when the report is unusable (the gate's 2), when a test failed, or
+    when the report holds a failure nobody waived: each of those blocks the
+    release. Not when this report alone leaves required items uncovered: the
+    required list includes items a person signs off, so no bench report covers
+    it alone, and the gate judges the reports attached to the candidate
+    together.
+    """
+    if gate_rc == 2:
+        return 2
+    if pytest_rc:
+        return pytest_rc
+    if any(r["status"] == "fail" and not r.get("waiver") for r in report.get("results", [])):
+        return 1
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("tag")
@@ -162,6 +181,10 @@ def main(argv=None) -> int:
                            "--required", str(HERE / "required" / f"{platform}.json"), str(report)],
                           capture_output=True, text=True, encoding="utf-8")
     print("\nThis report alone, against the required list:\n" + gate.stdout)
+    if gate.returncode == 2:
+        # The gate cannot read the report, so neither could the promote step.
+        print(f"the gate cannot use this report, so it is not attached:\n{gate.stderr}")
+        return 2
 
     # The log goes up under the bench's name, so two benches' logs do not
     # overwrite each other on the release. It does not match hil-report*.json,
@@ -173,7 +196,7 @@ def main(argv=None) -> int:
         print(f"attached {report.name} and {attached.name} to {repo} {a.tag}")
     else:
         print(f"report: {report}\nattach with: gh release upload {a.tag} \"{report}\" \"{attached}\" -R {repo}")
-    return rc
+    return exit_status(rc, gate.returncode, json.loads(report.read_text(encoding="utf-8")))
 
 
 if __name__ == "__main__":

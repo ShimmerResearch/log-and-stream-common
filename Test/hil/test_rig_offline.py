@@ -366,6 +366,15 @@ class SdFileTrailing(unittest.TestCase):
                 fc = sdfile.check(sd_file(d, per_block, tail=tail))
                 self.assertEqual((fc.records, fc.trailing_bytes), (per_block, want))
 
+    def test_a_header_claiming_more_channels_than_a_shimmer3r_has_is_refused(self):
+        raw = bytearray(sdfile.HEAD_S3R)
+        raw[30:32] = sdfile.HW_SHIMMER3R.to_bytes(2, "big")
+        raw[sdfile.SDH_NUM_ENABLED_CHANNELS] = sdfile.S3R_MAX_CHANNELS
+        sdfile.read_header(bytes(raw))                       # 50 is the most it records
+        raw[sdfile.SDH_NUM_ENABLED_CHANNELS] = sdfile.S3R_MAX_CHANNELS + 1
+        with self.assertRaisesRegex(sdfile.SdFileError, "at most"):
+            sdfile.read_header(bytes(raw))
+
 
 class BuildInfoBinding(unittest.TestCase):
     TAG = "LogAndStream_Shimmer3R_v1.01.022"
@@ -412,6 +421,23 @@ class BuildInfoBinding(unittest.TestCase):
         import subprocess
         with self.assertRaises(subprocess.CalledProcessError):
             self.fetch_with(self.SHA, download_fails=True)
+
+
+class RunnerExitStatus(unittest.TestCase):
+    def results(self, *rs):
+        return {"results": [dict(zip(("id", "status", "waiver"), r)) for r in rs]}
+
+    def test_an_unwaived_failure_fails_the_run_even_if_pytest_passed(self):
+        self.assertEqual(run_rc.exit_status(0, 1, self.results(("a", "pass"), ("b", "fail"))), 1)
+
+    def test_a_waived_failure_and_uncovered_required_items_do_not(self):
+        # One bench report cannot cover the items a person signs off; the gate
+        # judges all the candidate's reports together.
+        self.assertEqual(run_rc.exit_status(0, 1, self.results(("a", "pass"), ("b", "fail", "ABC-1"))), 0)
+
+    def test_an_unusable_report_and_a_failed_test_fail_the_run(self):
+        self.assertEqual(run_rc.exit_status(0, 2, self.results(("a", "pass"))), 2)
+        self.assertEqual(run_rc.exit_status(1, 0, self.results(("a", "pass"))), 1)
 
 
 class DockOpenRetries(unittest.TestCase):

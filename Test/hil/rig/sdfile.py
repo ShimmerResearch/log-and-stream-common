@@ -22,6 +22,7 @@ SDH_TRIAL_CONFIG0 = 16
 SDH_TIME_SYNC = 0x04
 SDH_NUM_ENABLED_CHANNELS = 314
 SDH_CHANNEL_ID_BYTE_0 = 315
+S3R_MAX_CHANNELS = 50     # MAX_NUM_CHANNELS (Sensing/shimmer_sensing.h): ids at 315-364
 BLOCK = 512
 SYNC_HEAD = 9
 
@@ -67,6 +68,9 @@ def read_header(raw: bytes) -> Header:
     if hw != HW_SHIMMER3R:
         raise SdFileError(f"header says hardware {hw}; only Shimmer3R ({HW_SHIMMER3R}) files are read here")
     n = raw[SDH_NUM_ENABLED_CHANNELS]
+    if n > S3R_MAX_CHANNELS:
+        # More would read past the channel list into the rest of the header.
+        raise SdFileError(f"header says {n} channels; a Shimmer3R records at most {S3R_MAX_CHANNELS}")
     return Header(
         divider=struct.unpack("<H", raw[0:2])[0],
         mac=raw[24:30].hex().upper(),
