@@ -1174,6 +1174,20 @@ when they are open. On USB arrival the IDE pages every Bluetooth COM port,
 which holds classic throughput near 20 KB/s for most of a minute, below what
 the high-rate rows need.
 
+The **soak** tier is the §5.11 soak, made repeatable: what shows only over
+time or repetition. It runs unattended, with durations scaled by
+`HIL_SOAK_SCALE` (1 is about three hours; 3 is an overnight run). It is
+**advisory**: never required for a release. Its notes carry rates, such as
+lost samples per hour or failures per hundred reconnects, so candidates can be
+compared, and each item still fails if anything happened.
+
+| Item | Checks |
+|---|---|
+| `soak.long_log` | Shimmer3R, undocked, logging at 256 Hz for 75 min × scale. The session's files are checked as one recording, and each file must join the next at exactly one sample period across the hourly rollover |
+| `soak.dock_cycles` | Repeated hub-port undock/re-dock. Every cycle, the CDC port, the dock protocol and the SD drive must return; re-enumeration time is recorded |
+| `soak.bt_reconnect` | On every unit, connect → status → 3 s stream at 51.2 Hz → stop → status → close, repeated. Counts connect failures, stops without an ACK, links left silent, and lost samples. On Shimmer3, two failed connects in a row trigger a reset through the Base6 and a retry, and the count records whether the reset brought Bluetooth back |
+| `soak.long_stream` | A long Shimmer3R stream at 256 Hz: lost samples, duplicates, resyncs, jitter, and whether the stop is ACKed |
+
 Smoke, fleet and release items are not yet on the required lists. They join once they have run
 clean across a few candidates, so a flaky check never blocks a release on its
 first day.

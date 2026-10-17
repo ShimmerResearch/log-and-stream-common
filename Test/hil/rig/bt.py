@@ -148,7 +148,13 @@ class BtLink:
         self.ser.write(bytes([SET_CRC, 0]))
         time.sleep(0.5)
         self.ser.reset_input_buffer()
-        self.hw = self.device_version()
+        try:
+            self.hw = self.device_version()
+        except Exception:
+            # A link that opened but never answered: release the port now, not
+            # at garbage collection, or the next open meets "Access is denied".
+            self.ser.close()
+            raise
 
     def close(self):
         self.ser.close()
