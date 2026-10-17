@@ -44,6 +44,10 @@ uint8_t rcNodeR10Cnt;
 uint32_t firstOutlier, rcWindowC, rcNodeReboot;
 uint32_t estLen, estLen3, syncCnt;
 uint32_t nodeSucc, nodeSuccFull;
+/* One bit per node in the two masks above (see ShimSdSync_nodeShift). */
+#if MAX_NODES > 32
+#error "MAX_NODES exceeds the 32 bits of nodeSucc/nodeSuccFull"
+#endif
 uint64_t myLocalTimeLong, myCenterTimeLong, myTimeDiffLong;
 uint64_t myTimeDiffLongMin;
 uint64_t myTimeDiffArr[SYNC_TRANS_IN_ONE_COMM];
@@ -771,7 +775,12 @@ void ShimSdSync_handleSyncTimerTriggerCenter(void)
               cReboot = 1;
               if (shortExpFlag)
               {
-                nodeSucc |= 1 << syncNodeCnt;
+                /* Not 1 << syncNodeCnt: that is a 16-bit int on Shimmer3,
+                 * and from node 15 on it sets the wrong bits of the 32-bit
+                 * mask, or sign-extends into all the high ones. nodeSucc
+                 * can then never equal nodeSuccFull, and the search for the
+                 * next unsynced node above never ends. */
+                nodeSucc |= ShimSdSync_nodeShift(syncNodeCnt);
               }
 
               syncNodeCnt++;
@@ -910,13 +919,12 @@ void ShimSdSync_handleSyncTimerTriggerNode(void)
   }
 }
 
+/* Called from the sync timer interrupt. Both platforms register a start
+ * callback that only queues TASK_BT_TURN_ON_AFTER_BOOT, so the module starts
+ * from the main loop, well inside the one-second tick. On Shimmer3 the RN4x
+ * driver set-up (BT_init) is part of InitialiseBtAfterBoot(), in that task. */
 void ShimSdSync_startBtForSync(void)
 {
-#if defined(SHIMMER3)
-  BT_init();
-  BT_rn4xDisableRemoteConfig(1);
-  BT_setUpdateBaudDuringBoot(1);
-#endif
   btStartCb();
 }
 
@@ -995,6 +1003,12 @@ __interrupt void TIMER0_A1_ISR(void)
 
       ShimSdSync_handleSyncTimerTrigger();
 
+      /* Wake the main loop for anything the tick queued: the Bluetooth start
+       * above, or a stop-logging request */
+      if (ShimTask_getList())
+      {
+        __bic_SR_register_on_exit(LPM3_bits);
+      }
       break;
     case 4:
       break; //TA0CCR2 not used

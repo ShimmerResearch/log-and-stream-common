@@ -35,6 +35,9 @@ STATUS_DOCKED, STATUS_SENSING, STATUS_LOGGING, STATUS_STREAMING = 0x01, 0x02, 0x
 STATUS_SD_INSERTED, STATUS_SD_BAD_FILE = 0x20, 0x40
 
 HW_SHIMMER3, HW_SHIMMER3R = 3, 10
+# Shimmer3R LogAndStream sends two status bytes from v1.00.024, one before it
+# (SHIMMER3_BT_COMMUNICATION_PROTOCOL.md §5.3). Shimmer3 always sends one.
+S3R_TWO_STATUS_BYTES_FROM = (1, 0, 24)
 TICKS_PER_S = 32768
 TS_WRAP = 1 << 24
 
@@ -140,6 +143,7 @@ class BtLink:
         self.ser.timeout = 1.0
         self.hw: int | None = None
         self.crc_mode = 0
+        self._nstatus: int | None = None
         time.sleep(0.2)
         self.ser.write(bytes([SET_CRC, 0]))
         time.sleep(0.5)
@@ -193,6 +197,17 @@ class BtLink:
         fw_id, major, minor, patch = struct.unpack("<HHBB", self._read(6))
         return fw_id, major, minor, patch
 
+    def status_len(self) -> int:
+        """Status bytes this unit sends, from its hardware and, on Shimmer3R, its
+        firmware version (asked once). Never call it while streaming."""
+        if self._nstatus is None:
+            if self.hw != HW_SHIMMER3R:
+                self._nstatus = 1
+            else:
+                _, major, minor, patch = self.fw_version()
+                self._nstatus = 2 if (major, minor, patch) >= S3R_TWO_STATUS_BYTES_FROM else 1
+        return self._nstatus
+
     def status(self, timeout_s: float = 3.0) -> int:
         """Status byte 0 (byte 1, Shimmer3R's usbPluggedIn, is read and dropped).
 
@@ -202,7 +217,7 @@ class BtLink:
         reply (seen with STOP_SDBT at 256 Hz). Reading status therefore also
         flushes the link for the command after it.
         """
-        n = 2 if self.hw == HW_SHIMMER3R else 1
+        n = self.status_len()
         pattern = bytes([ACK, INSTREAM, STATUS_RSP])
         self.ser.reset_input_buffer()
         self.ser.write(bytes([GET_STATUS]))
@@ -278,6 +293,7 @@ class BtLink:
         crc_n = getattr(self, "crc_mode", 0)
         body = 4 + sum(channel_width(c, self.hw) for c in inq.channels)
         plen = body + crc_n
+        push_len = 3 + self.status_len() + crc_n  # [ACK][0x8A][0x71][status...][CRC]; asked before the start
         st = StreamStats()
         self.command(start_op)
         if crc_n:
@@ -345,11 +361,10 @@ class BtLink:
                             st.rows.append(bytes(buf[4:body]))
                         del buf[:plen]
                     elif buf[0] == ACK and len(buf) >= 2 and buf[1] == INSTREAM:
-                        n = 3 + (2 if self.hw == HW_SHIMMER3R else 1) + crc_n
-                        if len(buf) < n:
+                        if len(buf) < push_len:
                             break
                         st.status_pushes += 1
-                        del buf[:n]
+                        del buf[:push_len]
                     elif buf[0] == ACK and stop_t is not None and (len(buf) >= 2 or final):
                         # A bare ACK at a frame boundary after the stop: the stop's.
                         st.stop_ack = True

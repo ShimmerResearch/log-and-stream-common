@@ -63,11 +63,14 @@
 #include "Boards/shimmer_boards.h"
 #include "CRC/shimmer_crc.h"
 #include "CRC/shimmer_swCrc.h"
+#include "Calibration/shimmer_calibration.h"
 #include "Configuration/shimmer_config.h"
 #include "EEPROM/shimmer_eeprom.h"
 #include "LEDs/shimmer_leds.h"
 #include "Platform/platform_api.h"
 #include "RTC/shimmer_rtc.h"
+#include "SDCard/shimmer_sd.h"
+#include "SDCard/shimmer_sd_header.h"
 #include "Sensing/shimmer_packet_ring.h"
 #include "Util/shimmer_util.h"
 #include "log_and_stream_common.h"
@@ -84,6 +87,9 @@
  * real ones; host_stubs.c defines them. Tests that need to steer one of these
  * use the hostStub_* setters in host_stubs.h.
  * -------------------------------------------------------------------------- */
+
+/* Comms/shimmer_bt_uart.h - needs firmware-side RN4X/RN4678.h */
+char *ShimBt_macIdStrPtrGet(void);
 
 /* TaskList/shimmer_taskList.h - needs firmware-side shimmer_definitions.h */
 void ShimTask_setStopSensing(void);

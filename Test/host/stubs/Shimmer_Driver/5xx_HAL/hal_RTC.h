@@ -13,5 +13,8 @@ void RTC_init(uint64_t rtc_val);
 void RTC_set64(uint64_t rtc_val);
 uint64_t RTC_get64(void);
 uint32_t RTC_get32(void);
+/* Real-world clock. On Shimmer3R, RTC/shimmer_rtc.h maps the same name onto
+ * RTC_get64(); on Shimmer3 it is a function of its own, declared here. */
+uint64_t RTC_getRwcTime(void);
 
 #endif /* HOST_TEST_STUB_HAL_RTC_H */

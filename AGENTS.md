@@ -36,7 +36,8 @@ and no device. CI runs the same Makefile, so green locally is green there.
 the only one that acts at edit time rather than at release time.
 
 The suite covers the CRC, the sample ring, the string/number helpers, the RTC conversions, the
-battery classification and the board revision gates; three of those are additionally cross-checked
+battery classification, the board revision gates and the calibration dump's length bounds; three of
+those are additionally cross-checked
 against references that share no code with the firmware. `Test/host/README.md` has the mechanics and
 `docs/SHIMMER3_TEST_PROCEDURE.md` §9 lists the next modules worth covering.
 

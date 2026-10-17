@@ -60,22 +60,24 @@ class HubPower(Power):
         if not self.location.com:
             raise RigError(f"hub {hub_serial} has no COM port started")
         self.hub = self.hubctl.ExsysHub(self.location.com)
-        self._switched_off: set[int] = set()
+        self._initial: dict[int, bool] = {}     # port -> on before this run first switched it
 
     def _require(self, port):
         if not port:
             raise RigError("this unit has no hub_port in rig.toml")
 
+    def _note(self, port):
+        if port not in self._initial:
+            self._initial[port] = self.is_on(port)
+
     def on(self, port, label):
         self._require(port)
+        self._note(port)
         self.hub.switch([port], True)
-        self._switched_off.discard(port)
 
     def off(self, port, label):
         self._require(port)
-        # Only a port that was on is this run's to restore in close().
-        if self.is_on(port):
-            self._switched_off.add(port)
+        self._note(port)
         self.hub.switch([port], False)
 
     def is_on(self, port):
@@ -87,13 +89,21 @@ class HubPower(Power):
         return self.location.devices().get(port, [])
 
     def close(self):
-        # Never leave a port this run switched off: a unit left undocked runs
-        # its battery down and the next run starts from an unknown state.
-        # Ports that were already off before the run are not ours to change.
+        # Put back every port this run switched to how it was before the run.
+        # A unit left undocked runs its battery down and the next run starts
+        # from an unknown state; a port that was already off is not ours to
+        # turn on.
         try:
-            if self._switched_off:
-                self.hub.switch(sorted(self._switched_off), True)
-                self._switched_off.clear()
+            if self._initial:
+                states = self.hub.states()
+                now_on = {p: bool(states & (1 << (p - 1))) for p in self._initial}
+                back_on = sorted(p for p, was in self._initial.items() if was and not now_on[p])
+                back_off = sorted(p for p, was in self._initial.items() if not was and now_on[p])
+                if back_on:
+                    self.hub.switch(back_on, True)
+                if back_off:
+                    self.hub.switch(back_off, False)
+                self._initial.clear()
         finally:
             self.hub.close()
 
