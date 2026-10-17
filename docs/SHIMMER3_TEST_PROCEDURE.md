@@ -186,6 +186,7 @@ What the suites cover today:
 | `test_rtc` | `RTC/shimmer_rtc.c` | ×2 | Every day from 2000 to 2099 round-trips; leap years; date validation |
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
 | `test_boards` | `Boards/shimmer_boards.c` | ×2 | Every revision gate, across 25 board revisions |
+| `test_calibration` | `Calibration/shimmer_calibration.c` | ×2 | The length and offset bounds on the calibration dump: Bluetooth chunk reads and writes, record copies against the caller's slot, the dump's declared end and the RAM end, the SD calibration file's size, and a card that stops answering |
 | `test_platform_seam` | `Platform/platform_api.c`, `Boards/shimmer_boards.c` | ×2 | A platform's override of a weak hook beats the default even when the default links first; `log_and_stream_globals.h` declares its globals rather than defining them |
 
 `check_weak_decls.py` (`make -C Test/host weak-decls`) is the text-only half of
@@ -943,12 +944,12 @@ own, which is what stops a green test from meaning nothing.
 
 | Module | What a test would pin | What it needs first |
 |---|---|---|
-| `SDCard/shimmer_sd_cfg_file.c` | `sdlog.cfg` parse and generate, round-trip, malformed input | A `ff.h` stub |
-| `Configuration/shimmer_config.c` | The 512-byte InfoMem image: validation, defaults, clamping | `ADXL371/`, `LSM6DSV/` header stubs |
+| `SDCard/shimmer_sd_cfg_file.c` | `sdlog.cfg` parse and generate, round-trip, malformed input | More of `ff.h`: the stub carries only what `Calibration/` uses |
+| `Configuration/shimmer_config.c` | The 512-byte InfoMem image: validation, defaults, clamping | An `ADXL371/` stub, and more of the `LSM6DSV/` one |
 | `TaskList/shimmer_taskList.c` | Task priority and the set/clear/get-list bitmask | The firmware-side `shimmer_definitions.h` |
 | `Comms/shimmer_bt_uart.c` | Command framing and the parser, against the protocol document | An `RN4678.h` stub; it is a large module |
 | `GSR/gsr.c` | Auto-range switching and its settling behaviour | Detangling from the HAL headers |
-| `SDCard/shimmer_sd_header.c` | The binary file header, against the SD format document | `ff.h`, `fx_api.h` stubs |
+| `SDCard/shimmer_sd_header.c` | The binary file header, against the SD format document | An `fx_api.h` stub, and more of `ff.h` |
 | `EEPROM/shimmer_eeprom.c` | The memory map and the branding record | The `BAUD_*` enum out of `Comms/` |
 
 Each stub added brings its whole subsystem within reach, so the order above is

@@ -149,7 +149,7 @@ void ShimCalib_ram2File(void)
       return;
     }
 
-    while (gfc.fptr < shimmerCalib_ramLen + 2)
+    while (gfc.fptr < shimmerCalib_ramLen + 2U)
     {
       this_write_size = min(shimmerCalib_ramLen + 2 - gfc.fptr, SHIMMER_CALIB_COPY_SIZE);
       f_write(&gfc, shimmerCalib_ram + gfc.fptr, this_write_size, &bw);
@@ -184,6 +184,8 @@ uint8_t ShimCalib_file2Ram(void)
   FRESULT res;
   uint8_t this_read_size;
   uint16_t offset = 0;
+  uint8_t readFailed = 0;
+  uint16_t declaredLen;
 
   strcpy(cal_file_name, "/Calibration"); //"/Calibration/calibParams"
   if (f_opendir(&gdc, "/Calibration"))
@@ -224,7 +226,13 @@ uint8_t ShimCalib_file2Ram(void)
   memset(shimmerCalib_ram, 0, SHIMMER_CALIB_RAM_MAX);
 
 #if defined(SHIMMER3R)
-  f_stat(cal_file_name, &calibFileInfo);
+  /* The read loop below runs to the size f_stat() reports. If it fails there
+   * is no size, only whatever calibFileInfo held, so it is handled like a
+   * failed read. */
+  if (f_stat(cal_file_name, &calibFileInfo) != FR_OK)
+  {
+    readFailed = 1;
+  }
 #endif
 
 #if defined(SHIMMER3)
@@ -232,15 +240,54 @@ uint8_t ShimCalib_file2Ram(void)
   {
     this_read_size = min(gfc.fsize - gfc.fptr, SHIMMER_CALIB_COPY_SIZE);
 #elif defined(SHIMMER3R)
-  while (gfc.fptr != calibFileInfo.fsize)
+  while (!readFailed && (gfc.fptr != calibFileInfo.fsize))
   {
     this_read_size = min(calibFileInfo.fsize - gfc.fptr, SHIMMER_CALIB_COPY_SIZE);
 #endif
+    /* The file size is whatever is on the card, so stop at the end of the
+     * calibration RAM rather than read past it. Stop on a failed or empty
+     * read too: the file pointer would not move and this loop would never
+     * end. */
+    if (this_read_size > SHIMMER_CALIB_RAM_MAX - offset)
+    {
+      this_read_size = SHIMMER_CALIB_RAM_MAX - offset;
+    }
+    if (this_read_size == 0)
+    {
+      break;
+    }
     res = f_read(&gfc, shimmerCalib_ram + offset, this_read_size, &bw);
-    offset += this_read_size;
+    if ((res != FR_OK) || (bw == 0))
+    {
+      readFailed = 1;
+      break;
+    }
+    offset += bw;
   }
-  shimmerCalib_ramLen = min(*(uint16_t *) shimmerCalib_ram, SHIMMER_CALIB_RAM_MAX - 2);
+  /* The length field as the file has it, checked before it is clamped: a
+   * clamped length would make an oversized dump look like one that fits. */
+  declaredLen = *(uint16_t *) shimmerCalib_ram;
+  shimmerCalib_ramLen = min(declaredLen, SHIMMER_CALIB_RAM_MAX - 2);
   f_close(&gfc);
+  /* offset is now the number of bytes actually read. A file shorter than the
+   * dump its own length field declares (+ the 2 bytes of the field) was cut
+   * short: the rest of the RAM is the zeros it was cleared to, not the
+   * file's, and a file of 0 or 1 bytes has not even supplied the field. A
+   * dump declared larger than the RAM can only have been read in part. */
+  if (readFailed || (declaredLen < SC_OFFSET_FIRST_SENSOR - 2U)
+      || ((uint32_t) declaredLen + 2U > SHIMMER_CALIB_RAM_MAX)
+      || (offset < declaredLen + 2U))
+  {
+    /* The RAM now holds part of the file, a file shorter than it declares,
+     * one declaring more than the RAM holds, or one whose length field is
+     * too short for its own version header, and the callers would apply it
+     * to the configuration. Rebuild it from the configuration instead, as
+     * the boot path does before reading the file. Report success all the
+     * same: on failure the callers write the RAM back to the card, which
+     * would replace a file that may read cleanly next time. */
+    ShimCalib_init();
+    ShimCalib_initFromConfigBytesAll();
+  }
 #if defined(SHIMMER3)
   _delay_cycles(1200000); //50ms
 #elif defined(SHIMMER3R)
@@ -257,18 +304,40 @@ uint8_t ShimCalib_singleSensorWrite(const sc_t *sc1)
   sc_t curr_sc;
   uint16_t cnt = SC_OFFSET_FIRST_SENSOR;
   uint8_t sensor_found = 0;
+  uint16_t dumpEnd;
 
   shimmerCalib_ramLen = min(*(uint16_t *) shimmerCalib_ram, SHIMMER_CALIB_RAM_MAX - 2);
+  /* The dump is as long as its own length field says (+ the 2 bytes of the
+   * field), which is never past the calibration RAM. Bytes after it are not
+   * part of the dump. */
+  dumpEnd = shimmerCalib_ramLen + 2U;
 
-  while (cnt + SC_OFFSET_SENSOR_DATA < shimmerCalib_ramLen + 2)
+  while (cnt + SC_OFFSET_SENSOR_DATA < dumpEnd)
   {
     memcpy((uint8_t *) &curr_sc, shimmerCalib_ram + cnt, SC_OFFSET_SENSOR_TIMESTAMP);
     if ((curr_sc.id == sc1->id) && (curr_sc.range == sc1->range))
     {
+      /* The entry's length comes from the dump, which the host or the SD
+       * card supplied. Copy no more than the caller's payload (sc1->data_len,
+       * capped at what sc1->data.raw holds, since nothing guarantees it), and
+       * stop at the end of the dump. A longer entry keeps its remaining
+       * bytes. */
+      uint16_t copyLen = curr_sc.data_len;
+      if (copyLen > sc1->data_len)
+      {
+        copyLen = sc1->data_len;
+      }
+      if (copyLen > sizeof(sc1->data.raw))
+      {
+        copyLen = sizeof(sc1->data.raw);
+      }
+      if (copyLen > dumpEnd - (cnt + SC_OFFSET_SENSOR_DATA))
+      {
+        copyLen = dumpEnd - (cnt + SC_OFFSET_SENSOR_DATA);
+      }
       //setup RTC time as calib timestamp
       memcpy(shimmerCalib_ram + cnt + SC_OFFSET_SENSOR_TIMESTAMP, sc1->ts, SC_TIMESTAMP_LENGTH);
-      memcpy(shimmerCalib_ram + cnt + SC_OFFSET_SENSOR_DATA, sc1->data.raw,
-          curr_sc.data_len);
+      memcpy(shimmerCalib_ram + cnt + SC_OFFSET_SENSOR_DATA, sc1->data.raw, copyLen);
       sensor_found = 1;
       break;
     }
@@ -277,6 +346,12 @@ uint8_t ShimCalib_singleSensorWrite(const sc_t *sc1)
 
   if (!sensor_found)
   {
+    /* Append only if the whole entry fits. A full dump keeps what it has. */
+    if ((sc1->data_len > sizeof(sc1->data.raw))
+        || (shimmerCalib_ramLen + 2U + SC_OFFSET_SENSOR_DATA + sc1->data_len > SHIMMER_CALIB_RAM_MAX))
+    {
+      return 1;
+    }
     memcpy(shimmerCalib_ram + shimmerCalib_ramLen + 2, (uint8_t *) sc1,
         SC_OFFSET_SENSOR_DATA + sc1->data_len);
     shimmerCalib_ramLen += SC_OFFSET_SENSOR_DATA + sc1->data_len;
@@ -290,16 +365,44 @@ uint8_t ShimCalib_singleSensorRead(sc_t *sc1)
   sc_t curr_sc;
   uint16_t cnt = SC_OFFSET_FIRST_SENSOR;
   uint8_t sensor_found = 0;
+  /* The caller sets data_len to the size of the slot the result is copied
+   * into (InfoMem, the SD header, a BT response), so it is the most this may
+   * return - whatever length the dump's own entry gives. */
+  uint8_t slotLen = sc1->data_len;
+  uint16_t dumpEnd;
 
-  memset((uint8_t *) sc1->data.raw, 0, sc1->data_len);
+  if (slotLen > sizeof(sc1->data.raw))
+  {
+    slotLen = sizeof(sc1->data.raw);
+  }
+  /* A sensor missing from the dump reads back as zeros, timestamp included:
+   * the same as a default calibration (see ShimCalib_setDefaultForSensor). */
+  memset(sc1->ts, 0, sizeof(sc1->ts));
+  memset((uint8_t *) sc1->data.raw, 0, slotLen);
+  sc1->data_len = slotLen;
   shimmerCalib_ramLen = min(*(uint16_t *) shimmerCalib_ram, SHIMMER_CALIB_RAM_MAX - 2);
-  while (cnt < shimmerCalib_ramLen + 2)
+  /* Walk only the dump itself: its declared length (+ the 2 bytes of the
+   * field), never past the calibration RAM. A record whose header does not
+   * fit inside it is not a record, and one whose payload runs past it is
+   * read only up to it. */
+  dumpEnd = shimmerCalib_ramLen + 2U;
+  while (cnt + SC_OFFSET_SENSOR_DATA <= dumpEnd)
   {
     memcpy((uint8_t *) &curr_sc, shimmerCalib_ram + cnt, SC_OFFSET_SENSOR_TIMESTAMP);
     if ((curr_sc.id == sc1->id) && (curr_sc.range == sc1->range))
     {
-      memcpy((uint8_t *) sc1, shimmerCalib_ram + cnt,
-          SC_OFFSET_SENSOR_DATA + curr_sc.data_len);
+      uint8_t copyLen = curr_sc.data_len;
+      if (copyLen > slotLen)
+      {
+        copyLen = slotLen;
+      }
+      if (copyLen > dumpEnd - (cnt + SC_OFFSET_SENSOR_DATA))
+      {
+        copyLen = (uint8_t) (dumpEnd - (cnt + SC_OFFSET_SENSOR_DATA));
+      }
+      memcpy((uint8_t *) sc1, shimmerCalib_ram + cnt, SC_OFFSET_SENSOR_DATA);
+      memcpy(sc1->data.raw, shimmerCalib_ram + cnt + SC_OFFSET_SENSOR_DATA, copyLen);
+      sc1->data_len = copyLen;
       sensor_found = 1;
       break;
     }
@@ -329,21 +432,60 @@ void ShimCalib_ramTempInit(void)
 //the calib dump write operation starts with offset = 0, ends with shimmerCalib_ramTempMax bytes received.
 uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
 {
-  if ((length <= 128) && (offset <= (SHIMMER_CALIB_RAM_MAX - 1))
-      && (length + offset <= SHIMMER_CALIB_RAM_MAX))
+  if (!((length <= 128) && (offset <= (SHIMMER_CALIB_RAM_MAX - 1))
+          && (length + offset <= SHIMMER_CALIB_RAM_MAX)))
   {
-    memcpy(shimmerCalib_ramTemp + offset, buf, length);
+    /* A refused start closes any transfer in progress, like the refusals
+     * below, so its continuation chunks cannot commit the older one. */
+    if (offset < 2)
+    {
+      ShimCalib_ramTempInit();
+    }
+    return 0xff;
   }
-  else
+  /* A chunk at offset 0 or 1 starts a new transfer, and the dump's first two
+   * bytes are its declared length, which sizes the transfer and the final
+   * copy. So a start has to carry both bytes: offset 0, length 2 or more.
+   * Anything shorter, or an offset-1 start, would take the missing byte from
+   * the staging buffer, which still holds the previous transfer. A refused
+   * start ends any transfer in progress, so the chunks after it are refused
+   * too. */
+  if ((offset < 2) && ((offset != 0) || (length < 2)))
+  {
+    ShimCalib_ramTempInit();
+    return 0xff;
+  }
+  /* A chunk past the start continues a transfer only if one was started and
+   * has not finished. With none in progress, shimmerCalib_ramTempMax is 0 and
+   * this chunk would "complete" a transfer that never began: an empty copy,
+   * then the old dump re-applied to the configuration and saved again. That
+   * includes the chunks after a start refused below. */
+  if ((offset >= 2) && (shimmerCalib_ramTempMax == 0))
   {
     return 0xff;
   }
+  memcpy(shimmerCalib_ramTemp + offset, buf, length);
 
-  //to start a new calib_dump transmission, the sw must use offset = 0 to setup the correct length.
-  //offset = 1 is not suggested, but will be considered.
-  //starting with offset > 2 is not accepted.
-  if (offset < 2)
+  //to start a new calib_dump transmission, the sw must use offset = 0 to setup
+  //the correct length. a start at offset 1, or one shorter than the 2 length
+  //bytes, is refused above. starting with offset >= 2 is not accepted.
+  if (offset == 0)
   {
+    /* The declared length is the host's, and it sizes the copy below, so a
+     * dump that would not fit the calibration RAM is refused at its start.
+     * So is one too short to hold the version header that follows the field:
+     * the commit stamps that header, the records start after it, and an
+     * append goes at the declared end, which would then land inside it. */
+    uint16_t declaredLen = *(uint16_t *) shimmerCalib_ramTemp;
+    if ((declaredLen < SC_OFFSET_FIRST_SENSOR - 2U)
+        || ((uint32_t) declaredLen + 2U > SHIMMER_CALIB_RAM_MAX))
+    {
+      ShimCalib_ramTempInit();
+      return 0xff;
+    }
+    /* Clear what the previous transfer left after this chunk, so any byte
+     * this transfer does not write commits as zero, not as the old dump. */
+    memset(shimmerCalib_ramTemp + length, 0, SHIMMER_CALIB_RAM_MAX - length);
     //+ 2 as length bytes in header are not included in the overall array length
     shimmerCalib_ramTempMax = (*(uint16_t *) shimmerCalib_ramTemp) + 2;
     shimmerCalib_ramTempLen = length;
@@ -380,7 +522,9 @@ uint8_t ShimCalib_ramRead(uint8_t *buf, uint8_t length, uint16_t offset)
   }
   else
   {
-    memset(buf, 0, length);
+    /* Zero no more than the largest read a caller sizes its buffer for: the
+     * length is the host's, and it is out of range when this branch runs. */
+    memset(buf, 0, (length <= 128) ? length : 128);
     return 1;
   }
 }
@@ -949,6 +1093,8 @@ void ShimCalib_configBytes128To255ToCalibDumpBytes(uint8_t setCalibTsZero)
 #if defined(SHIMMER3R)
   ShimCalib_configBytesToCalibDump(SC_SENSOR_ADXL371_ACCEL, setCalibTsZero);
   ShimCalib_configBytesToCalibDump(SC_SENSOR_LIS3MDL_MAG, setCalibTsZero);
+#else
+  (void) setCalibTsZero; //Shimmer3 keeps no calibration in config bytes 128-255
 #endif
 }
 
@@ -1159,7 +1305,8 @@ void ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(uint8_t sensor, uin
       sc1.range = configBytes->altMagRange;
       break;
     default:
-      break;
+      //No slot in the config bytes or the SD header to copy into
+      return;
 #endif
   }
 
