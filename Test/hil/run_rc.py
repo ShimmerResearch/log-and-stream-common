@@ -151,15 +151,18 @@ def main(argv=None) -> int:
     if not a.no_flash and platform == "shimmer3":
         if not rig.base6_serial:
             raise SystemExit("rig.toml names no Base6; Shimmer3 flashing goes through its slots")
+        # As for Shimmer3R: a unit that cannot be flashed would still be tested,
+        # on whatever it runs now, so refuse before flashing any of them.
+        unflashable = [u.name for u in units if not u.base6_slot]
+        if unflashable:
+            raise SystemExit(f"{', '.join(unflashable)}: no base6_slot in rig.toml, so not flashable. Add it, "
+                             "or test what the units run now with --no-flash.")
         from rig.base6 import Base6
         from rig.s3_flash import flash_slot
         # InfoMem backups live beside the run: the one copy of each unit's
         # configuration and calibration if a flash fails half way.
         with Base6(rig.base6_serial) as b6:
             for u in units:
-                if not u.base6_slot:
-                    print(f"{u.name}: no base6_slot, not flashed")
-                    continue
                 print(f"{u.name}: flashing {image.name} through Base6 slot {u.base6_slot} ...", flush=True)
                 flash_slot(b6, u.base6_slot, image, out / "infomem-backup", expect_version=version)
     elif not a.no_flash:

@@ -121,6 +121,17 @@ class FlashEveryUnitOrNone(unittest.TestCase):
                 run_rc.main(["LogAndStream_Shimmer3R_v1.01.022"])
         self.assertEqual(flashed, [], "a unit was flashed before the run was refused")
 
+    def test_a_shimmer3_without_a_base6_slot_stops_the_run_before_any_flash(self):
+        import tempfile
+        rig = config.Rig(path=Path("rig.toml"), bench="b", base6_serial="FT1",
+                         units=[config.Unit("a", "shimmer3", base6_slot=1), config.Unit("b", "shimmer3")])
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(run_rc, "HERE", Path(d)), \
+                mock.patch.object(run_rc.rig_config, "load", lambda p: rig), \
+                mock.patch.object(run_rc, "fetch", lambda tag, out: ({"commit": "0" * 40}, Path("img.txt"))):
+            with self.assertRaisesRegex(SystemExit, "b: no base6_slot"):
+                run_rc.main(["LogAndStream_Shimmer3_v1.01.006"])
+
     def test_a_unit_with_an_st_link_is_flashed_though_not_on_usb(self):
         # SWD is the recovery route for firmware too broken to come up on USB.
         import tempfile
