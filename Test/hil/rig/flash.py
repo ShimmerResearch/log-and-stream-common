@@ -46,15 +46,25 @@ def flash_swd(cli: Path, image: Path, stlink_serial: str | None = None) -> str:
 
 
 def flash_dfu(cli: Path, image: Path, usb_serial: str, timeout_s: float = 30) -> str:
+    # The DFU device carries no serial of the unit, and port=USB1 is simply
+    # the first one, so the only way to know USB1 is this unit is for it to be
+    # the only device in DFU: none before ENTER_BOOTLOADER, exactly one after.
+    stale = s3r_usb.dfu_count()
+    if stale:
+        raise FlashError(f"{stale} device(s) already in USB DFU before {usb_serial} was asked "
+                         "to enter it; flashing USB1 could program the wrong one")
     port = s3r_usb.wait_cdc(usb_serial, 15)
     with dock.open_when_ready(port) as d:
         d.enter_bootloader(1)
     s3r_usb.wait_cdc_gone(usb_serial, 15)
     end = time.monotonic() + timeout_s
-    while not s3r_usb.dfu_present():
+    while (n := s3r_usb.dfu_count()) == 0:
         if time.monotonic() > end:
             raise FlashError("unit did not enumerate as USB DFU after ENTER_BOOTLOADER")
         time.sleep(0.5)
+    if n != 1:
+        raise FlashError(f"{n} devices in USB DFU after {usb_serial} entered it; "
+                         "cannot tell which is the unit")
     # -s with no address starts the application from the vector table the image set.
     return _run(cli, ["-c", "port=USB1", "-w", str(image), "-v", "-s"])
 

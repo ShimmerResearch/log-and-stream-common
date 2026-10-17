@@ -73,7 +73,9 @@ class HubPower(Power):
 
     def off(self, port, label):
         self._require(port)
-        self._switched_off.add(port)
+        # Only a port that was on is this run's to restore in close().
+        if self.is_on(port):
+            self._switched_off.add(port)
         self.hub.switch([port], False)
 
     def is_on(self, port):
