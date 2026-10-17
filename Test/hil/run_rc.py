@@ -40,6 +40,9 @@ from rig import s3r_usb  # noqa: E402
 
 REPOS = {"LogAndStream_Shimmer3R_v": ("shimmer3r", "ShimmerResearch/shimmer3r-firmware", "*.hex"),
          "LogAndStream_Shimmer3_v": ("shimmer3", "ShimmerResearch/shimmer3-firmware", "*.txt")}
+# pytest's exit statuses for a session that ran to the end: all passed, or
+# some tests failed.
+PYTEST_FINISHED = (0, 1)
 
 
 def gh(*args, **kw) -> str:
@@ -199,6 +202,14 @@ def main(argv=None) -> int:
         # The gate cannot read the report, so neither could the promote step.
         print(f"the gate cannot use this report, so it is not attached:\n{gate.stderr}")
         return 2
+    # pytest's 1 is "some tests failed": the report records them, and that is
+    # evidence. Anything higher - interrupted, an internal or usage error,
+    # nothing collected - may have stopped the run part way, and a partial
+    # report would look like a complete one, so it is not attached.
+    if rc not in PYTEST_FINISHED:
+        print(f"pytest stopped with exit status {rc}, so the run may not have finished: "
+              f"the report is not attached. It is in {out}.")
+        return rc
 
     # The log goes up under the bench's name, so two benches' logs do not
     # overwrite each other on the release. It does not match hil-report*.json,

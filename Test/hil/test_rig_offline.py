@@ -145,6 +145,36 @@ class FlashEveryUnitOrNone(unittest.TestCase):
         self.assertIn("--manual-power", cmds[0])
         self.assertIn("--waive=smoke.sd_log=ABC-1", cmds[0])
 
+    def test_a_report_from_a_run_that_stopped_early_is_not_uploaded(self):
+        import json
+        import tempfile
+        rig = config.Rig(path=Path("rig.toml"), bench="b", units=[config.Unit("a", "shimmer3r", usb_serial="A")])
+        for pytest_rc, uploads in ((1, True), (2, False)):     # tests failed: evidence; interrupted: maybe partial
+            uploaded = []
+
+            class Proc:
+                stdout = iter(())
+
+                def __init__(self, cmd, **kw):
+                    report = Path(cmd[cmd.index("--hil-report") + 1])
+                    report.write_text(json.dumps({"results": [{"id": "smoke.x", "status": "pass"}]}),
+                                      encoding="utf-8")
+
+                def wait(self):
+                    return pytest_rc
+
+            gate = types.SimpleNamespace(returncode=1, stdout="", stderr="")
+            with self.subTest(pytest_rc=pytest_rc), tempfile.TemporaryDirectory() as d, \
+                    mock.patch.object(run_rc, "HERE", Path(d)), \
+                    mock.patch.object(run_rc.rig_config, "load", lambda p: rig), \
+                    mock.patch.object(run_rc, "fetch", lambda tag, out: ({"commit": "0" * 40}, Path("img.hex"))), \
+                    mock.patch.object(run_rc.subprocess, "Popen", Proc), \
+                    mock.patch.object(run_rc.subprocess, "run", lambda *a, **k: gate), \
+                    mock.patch.object(run_rc, "gh", lambda *a, **k: uploaded.append(a) or ""):
+                rc = run_rc.main(["LogAndStream_Shimmer3R_v1.01.022", "--no-flash", "--upload"])
+                self.assertEqual(bool(uploaded), uploads)
+                self.assertEqual(rc, pytest_rc)
+
 
 class SessionDirs(unittest.TestCase):
     def test_sessions_compare_across_a_drive_letter_change(self):
