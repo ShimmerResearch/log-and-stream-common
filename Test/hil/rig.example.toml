@@ -1,0 +1,42 @@
+# Bench description for the hardware-in-the-loop suite. Copy to rig.toml (or
+# anywhere, and point --rig or $HIL_RIG at it) and describe what this bench has.
+#
+# Name hardware by something that survives a reboot: MACs, USB serial numbers,
+# hub ports. Never COM numbers or drive letters - Windows reassigns them.
+#
+# Leave out what the bench does not have. A test needing it is reported as
+# not_covered, so the gate looks for that item in another bench's report.
+
+bench = "my-bench"            # appears in the report; one name per physical bench
+
+[hub]
+# Exsys EX-1594HMS managed hub. The control chip's FTDI serial, as printed by
+# `python hub/hubctl.py list` in bench-tools. Omit this table without a hub:
+# the docking tests are then reported not_covered, unless the run is given
+# --manual-power, which prompts the operator to plug and unplug instead.
+serial = "ABCD1234"
+
+[tools]
+bench_tools = "C:/dev/bench-tools"     # checkout providing hub/hubctl.py
+stm32_programmer = "C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe"
+# An ST-Link flashes by SWD instead of USB DFU. It reaches one unit's SWD
+# header, so with more than one Shimmer3R give each [[unit]] its own
+# stlink_serial; this bench-wide one is only for a bench with one.
+# stlink_serial = "<ST-Link serial from STM32_Programmer_CLI -l st-link>"
+
+[[unit]]
+name = "s3r-a"
+platform = "shimmer3r"
+mac = "AABBCCDD0001"           # Bluetooth MAC
+usb_serial = "0123456789AB"    # USB iSerial: `python -m serial.tools.list_ports -v`, VID:PID 0483:5710
+hub_port = 1                   # hub port powering its USB-C (power-off = undock)
+radio = "IF820 v1.4.16.16"
+board = ""
+notes = ""
+# stlink_serial = "..."        # the ST-Link on this unit's SWD header: flash by SWD, not USB DFU
+
+# [[unit]]
+# name = "s3-rn42"
+# platform = "shimmer3"
+# mac = "000666AABBCC"
+# radio = "RN42 v6.15"
