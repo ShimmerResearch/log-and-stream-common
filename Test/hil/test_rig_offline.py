@@ -238,6 +238,35 @@ def bt_link(hw, fw):
     return link
 
 
+class BtPortOpen(unittest.TestCase):
+    def test_the_port_opens_with_dtr_and_rts_low(self):
+        class FakeSerial:
+            opened_with = None
+
+            def __init__(self, *a, **k):
+                self.dtr = self.rts = True              # pyserial's default
+                self.port = None
+                self.replies = bytearray([bt.ACK, bt.DEVICE_VERSION_RSP, bt.HW_SHIMMER3R])
+
+            def open(self):
+                FakeSerial.opened_with = (self.port, self.dtr, self.rts)
+
+            def write(self, b):
+                pass
+
+            def reset_input_buffer(self):
+                pass
+
+            def read(self, n):
+                out, self.replies = bytes(self.replies[:n]), self.replies[n:]
+                return out
+
+        with mock.patch.object(bt.serial, "Serial", FakeSerial), mock.patch.object(bt.time, "sleep", lambda s: None):
+            link = bt.BtLink("COM9")
+        self.assertEqual(FakeSerial.opened_with, ("COM9", False, False))
+        self.assertEqual(link.hw, bt.HW_SHIMMER3R)
+
+
 class StatusLength(unittest.TestCase):
     def test_shimmer3r_before_1_00_024_sends_one_status_byte(self):
         link = bt_link(bt.HW_SHIMMER3R, (3, 1, 0, 23))
