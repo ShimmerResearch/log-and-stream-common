@@ -455,7 +455,8 @@ static void test_can_accept_predicts_put(void)
   expectU("canAccept agreed with put every time", mispredicted, 0);
   /* The buffers may be full here; a zero-length record is still accepted by
    * put, so canAccept must say so too. */
-  expectU("a zero-length record is accepted by canAccept", SdWrBuf_canAccept(&sim.w, 0), 1);
+  expectU("a zero-length record is accepted by canAccept",
+      SdWrBuf_canAccept(&sim.w, 0), 1);
   expectU("and by put", SdWrBuf_put(&sim.w, 0, 0, 0, 0) != SDWRBUF_PUT_REFUSED, 1);
 
   testCase("a drain that obeys canAccept loses nothing");
