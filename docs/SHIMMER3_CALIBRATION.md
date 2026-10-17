@@ -338,13 +338,13 @@ Bluetooth handlers are all unconditional: `gConfigBytes` declares
 `altAccelCalib` and `altMagCalib` outside any generation guard
 (`Configuration/shimmer_config.h:368-369`, matching the byte map at `:118-119`),
 and `SET_ALT_ACCEL_CALIBRATION_COMMAND` / `SET_ALT_MAG_CALIBRATION_COMMAND`
-write them on either platform (`Comms/shimmer_bt_uart.c:1521-1545`). On
+write them on either platform (`Comms/shimmer_bt_uart.c:1528-1552`). On
 Shimmer3 they hold the MPU9x50/ICM20948 accelerometer and magnetometer.
 
 > **On Shimmer3 those two blocks are write-only.** The write lands in InfoMem
 > and in the SD header, and then `ShimBt_calibrationChangeCommon` hands the
 > sensor id to `ShimCalib_configBytesToCalibDump`
-> (`Comms/shimmer_bt_uart.c:1734`) — which under `SHIMMER3` has cases for the
+> (`Comms/shimmer_bt_uart.c:1741`) — which under `SHIMMER3` has cases for the
 > analog accel, gyro, LSM303 accel and LSM303 mag and **none** for
 > `SC_SENSOR_MPU9X50_ICM20948_ACCEL` (33) or `_MAG` (34)
 > (`Calibration/shimmer_calibration.c:955-982`). Nor does
@@ -353,7 +353,7 @@ Shimmer3 they hold the MPU9x50/ICM20948 accelerometer and magnetometer.
 > enters the dump, and the matching `GET` reply is built by
 > `ShimCalib_singleSensorRead`, which zero-fills its buffer and returns "not
 > found" — a return value the caller ignores before sending the buffer anyway
-> (`Comms/shimmer_bt_uart.c:1820-1823`).
+> (`Comms/shimmer_bt_uart.c:1827-1830`).
 >
 > A Shimmer3 therefore answers `GET_ALT_ACCEL_CALIBRATION_COMMAND` with **21
 > zero bytes** no matter what was written, while the value the host wrote is
