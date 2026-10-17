@@ -133,7 +133,7 @@ help:
 	@echo "make platform-check   compile every host-clean module for BOTH MCUs"
 	@echo "make host-constants   check the Python host reference against the firmware"
 	@echo "make timestamp-unwrap check the shared unwrap vectors against their reference"
-	@echo "make hil-gate         test the release gate and report rules"
+	@echo "make hil-gate         test the release gate, report and bench rig rules"
 	@echo "make weak-decls       check that no header declares a function weak"
 	@echo ""
 	@echo "Suites: $(ALL_SUITES)"
@@ -215,6 +215,8 @@ test: build
 	  failed="$$failed test_hil_gate.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_report.py; then \
 	  failed="$$failed test_hil_report.py"; fi; \
+	if ! $(PYTHON) $(REPO)/Test/hil/test_rig_offline.py; then \
+	  failed="$$failed test_rig_offline.py"; fi; \
 	if ! $(PYTHON) check_weak_decls.py; then \
 	  failed="$$failed check_weak_decls.py"; fi; \
 	echo ""; \
@@ -321,6 +323,7 @@ timestamp-unwrap:
 hil-gate:
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_gate.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_report.py
+	@$(PYTHON) $(REPO)/Test/hil/test_rig_offline.py
 
 # No compiler, no binary: every header in the repository, read as text. The
 # link-time half of the same rule is test_platform_seam.

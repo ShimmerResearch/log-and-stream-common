@@ -1119,7 +1119,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 |---|---|
 | `smoke.boot_identity` | Hardware 10, LogAndStream identifier, the candidate's version, the MAC that `rig.toml` names |
 | `smoke.config_roundtrip` | The configuration reads back exactly as written, and a rate change round-trips; byte 230 bit 0 is self-set by design |
-| `smoke.bt_identity` | Version over Bluetooth, an SD card present and usable |
+| `smoke.bt_identity` | Over Bluetooth: hardware 10, the LogAndStream identifier and the candidate's version; an SD card present and usable |
 | `smoke.bt_stream` | 10 s stream: packet framing, no lost or duplicate samples, the rate on the device clock |
 | `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |

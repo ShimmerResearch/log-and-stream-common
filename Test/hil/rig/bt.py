@@ -35,6 +35,9 @@ STATUS_DOCKED, STATUS_SENSING, STATUS_LOGGING, STATUS_STREAMING = 0x01, 0x02, 0x
 STATUS_SD_INSERTED, STATUS_SD_BAD_FILE = 0x20, 0x40
 
 HW_SHIMMER3, HW_SHIMMER3R = 3, 10
+# Shimmer3R LogAndStream sends two status bytes from v1.00.024, one before it
+# (SHIMMER3_BT_COMMUNICATION_PROTOCOL.md §5.3). Shimmer3 always sends one.
+S3R_TWO_STATUS_BYTES_FROM = (1, 0, 24)
 TICKS_PER_S = 32768
 TS_WRAP = 1 << 24
 
@@ -124,6 +127,7 @@ class BtLink:
         self.ser = serial.Serial(port, 115200, timeout=connect_timeout_s, write_timeout=connect_timeout_s)
         self.ser.timeout = 1.0
         self.hw: int | None = None
+        self._nstatus: int | None = None
         time.sleep(0.2)
         self.ser.write(bytes([SET_CRC, 0]))
         time.sleep(0.5)
@@ -171,10 +175,21 @@ class BtLink:
         fw_id, major, minor, patch = struct.unpack("<HHBB", self._read(6))
         return fw_id, major, minor, patch
 
+    def status_len(self) -> int:
+        """Status bytes this unit sends, from its hardware and, on Shimmer3R, its
+        firmware version (asked once). Never call it while streaming."""
+        if self._nstatus is None:
+            if self.hw != HW_SHIMMER3R:
+                self._nstatus = 1
+            else:
+                _, major, minor, patch = self.fw_version()
+                self._nstatus = 2 if (major, minor, patch) >= S3R_TWO_STATUS_BYTES_FROM else 1
+        return self._nstatus
+
     def status(self) -> int:
         """Status byte 0 (byte 1, Shimmer3R's usbPluggedIn, is read and dropped)."""
+        n = self.status_len()
         self.command(GET_STATUS, rsp=STATUS_RSP, wrapped=True)
-        n = 2 if self.hw == HW_SHIMMER3R else 1
         return self._read(n)[0]
 
     def inquiry(self) -> Inquiry:
@@ -206,6 +221,7 @@ class BtLink:
         """Stream for `seconds`, checking packet framing and timestamp continuity."""
         inq = inq or self.inquiry()
         plen = 4 + sum(channel_width(c, self.hw) for c in inq.channels)
+        push_len = 3 + self.status_len()          # [ACK][0x8A][0x71][status...]
         st = StreamStats()
         self.command(START_STREAMING)
         buf = bytearray()
@@ -229,11 +245,10 @@ class BtLink:
                         st.packets += 1
                         del buf[:plen]
                     elif buf[0] == ACK and len(buf) >= 2 and buf[1] == INSTREAM:
-                        n = 3 + (2 if self.hw == HW_SHIMMER3R else 1)
-                        if len(buf) < n:
+                        if len(buf) < push_len:
                             break
                         st.status_pushes += 1
-                        del buf[:n]
+                        del buf[:push_len]
                     elif buf[0] == ACK and len(buf) < 2:
                         break
                     else:

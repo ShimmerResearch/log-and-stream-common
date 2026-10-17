@@ -57,12 +57,20 @@ def drive(usb_serial: str) -> Path | None:
     return None
 
 
-def dfu_present() -> bool:
-    """ST's system bootloader in DFU mode. It has no COM port, so ask PnP."""
-    ps = (f"@(Get-PnpDevice -PresentOnly | Where-Object InstanceId -like 'USB\\VID_{DFU_VID:04X}&PID_{DFU_PID:04X}*').Count")
+def dfu_devices() -> list[str]:
+    """PnP instance ids of every ST system bootloader present in DFU mode. It has
+    no COM port, so ask PnP. Any STM32 in its bootloader looks the same here, so
+    a caller that wants one unit must be sure no other is in DFU (flash.flash_dfu)."""
+    ps = ("Get-PnpDevice -PresentOnly | Where-Object { $_.InstanceId -like "
+          f"'USB\\VID_{DFU_VID:04X}&PID_{DFU_PID:04X}*' -and $_.InstanceId -notlike '*&MI_*' }} | "
+          "ForEach-Object { $_.InstanceId }")
     r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
                        capture_output=True, text=True, encoding="utf-8", timeout=60)
-    return r.stdout.strip() not in ("", "0")
+    return [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
+
+
+def dfu_present() -> bool:
+    return bool(dfu_devices())
 
 
 def wait_cdc(usb_serial: str, timeout_s: float = 30.0) -> str:

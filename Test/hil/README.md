@@ -56,7 +56,7 @@ plug and unplug.
 | `rig/bt.py` | Bluetooth SPP: commands, status, streaming with timestamp checks |
 | `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial |
 | `rig/sdfile.py` | Reads a Shimmer3R SD data file and checks its records |
-| `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version |
+| `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version. USB DFU flashes only a DFU device that appeared after this unit was sent to its bootloader, and only if it is the only one |
 | `tests/` | The tests, marked `smoke`, `release` or `soak` |
 | `test_hil_*.py` | Unit tests for the above that need no hardware; run by `make -C Test/host` |
 
