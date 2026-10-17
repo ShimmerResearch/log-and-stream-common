@@ -12,7 +12,8 @@ bench = "my-bench"            # appears in the report; one name per physical ben
 [hub]
 # Exsys EX-1594HMS managed hub. The control chip's FTDI serial, as printed by
 # `python hub/hubctl.py list` in bench-tools. Omit this table without a hub:
-# docking then prompts the operator instead.
+# the docking tests are then reported not_covered, unless the run is given
+# --manual-power, which prompts the operator to plug and unplug instead.
 serial = "ABCD1234"
 
 [tools]

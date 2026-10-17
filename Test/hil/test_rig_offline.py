@@ -121,6 +121,30 @@ class FlashEveryUnitOrNone(unittest.TestCase):
                 run_rc.main(["LogAndStream_Shimmer3R_v1.01.022"])
         self.assertEqual(flashed, [], "a unit was flashed before the run was refused")
 
+    def test_run_options_reach_pytest(self):
+        import tempfile
+        rig = config.Rig(path=Path("rig.toml"), bench="b", units=[config.Unit("a", "shimmer3r", usb_serial="A")])
+        cmds = []
+
+        class Proc:
+            stdout = iter(())
+
+            def __init__(self, cmd, **kw):
+                cmds.append(cmd)
+
+            def wait(self):
+                return 0
+
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(run_rc, "HERE", Path(d)), \
+                mock.patch.object(run_rc.rig_config, "load", lambda p: rig), \
+                mock.patch.object(run_rc, "fetch", lambda tag, out: ({"commit": "0" * 40}, Path("img.hex"))), \
+                mock.patch.object(run_rc.subprocess, "Popen", Proc):
+            run_rc.main(["LogAndStream_Shimmer3R_v1.01.022", "--no-flash", "--manual-power",
+                         "--waive", "smoke.sd_log=ABC-1"])
+        self.assertIn("--manual-power", cmds[0])
+        self.assertIn("--waive=smoke.sd_log=ABC-1", cmds[0])
+
 
 class SessionDirs(unittest.TestCase):
     def test_sessions_compare_across_a_drive_letter_change(self):

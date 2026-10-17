@@ -11,6 +11,7 @@ python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022            # flash, r
 python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022 --upload   # ...and attach it to the pre-release
 python Test/hil/run_rc.py <tag> --no-flash                           # the unit already runs the candidate
 python Test/hil/run_rc.py <tag> --waive smoke.sd_log=ABC-123        # accept a known failure under an issue
+python Test/hil/run_rc.py <tag> --manual-power                       # dock and undock by hand when prompted
 ```
 
 A failure in the report blocks the release, required item or not, unless it
