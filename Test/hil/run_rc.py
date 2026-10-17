@@ -36,6 +36,7 @@ sys.path.insert(0, str(HERE))
 from hil_gate import normalise_version  # noqa: E402
 from rig import config as rig_config  # noqa: E402
 from rig import flash as rig_flash  # noqa: E402
+from rig import s3r_usb  # noqa: E402
 
 REPOS = {"LogAndStream_Shimmer3R_v": ("shimmer3r", "ShimmerResearch/shimmer3r-firmware", "*.hex"),
          "LogAndStream_Shimmer3_v": ("shimmer3", "ShimmerResearch/shimmer3-firmware", "*.txt")}
@@ -151,6 +152,15 @@ def main(argv=None) -> int:
         if unflashable:
             raise SystemExit(f"{', '.join(unflashable)}: no usb_serial in rig.toml, so not flashable. Add it, "
                              "or test what the units run now with --no-flash.")
+        # Flashing reaches the unit over USB, and the tests start from docked, so
+        # every unit must be docked before the run. Checked here, rather than
+        # docked by the runner: the hub's control port belongs to the pytest
+        # session that follows, which puts back whatever it switches.
+        undocked = [u for u in units if not s3r_usb.cdc_port(u.usb_serial)]
+        if undocked:
+            how = "; ".join(f"{u.name}: " + (f"switch hub port {u.hub_port} on" if u.hub_port else "plug its USB-C in")
+                            for u in undocked)
+            raise SystemExit(f"not docked, so not flashable - dock them and run again ({how})")
         for u in units:
             stlink = rig.stlink_for(u)          # this unit's ST-Link, never another unit's
             method = "swd" if stlink else "dfu"

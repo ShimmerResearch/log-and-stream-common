@@ -68,12 +68,21 @@ plug and unplug.
 
 ## What a timestamp check counts
 
-A step between consecutive sample stamps is sorted three ways:
+A step between consecutive sample stamps is taken as the nearest whole number
+of periods, halves rounding up (`rig/bt.py`, `classify_step`), and sorted three
+ways:
 
-- **lost samples:** the step spans two or more periods;
-- **duplicates:** the step is under half a period;
-- **jitter:** the step is off a whole number of periods by more than a tick.
+- **lost samples:** the step is 1.5 periods or more. So a lost sample is still
+  counted when the stamp after it is a tick early, a step just under two
+  periods;
+- **duplicates:** the step is under half a period, or backwards;
+- **jitter:** the step is off its whole number of periods by more than a tick.
 
-A sample stamped late is followed by a short step, so a late stamp is jitter,
-not a loss. Smoke tests fail on any loss or duplicate, and on jitter beyond a
-quarter period.
+A sample stamped up to half a period late shows as two steps of one period,
+with jitter. Stamped later than that, it shows as a long step that rounds up
+and a short one that rounds to nothing. That pair is counted as one late stamp,
+not as a lost sample and a duplicate. Smoke tests fail on any loss or
+duplicate, and on jitter beyond a quarter period.
+
+`run_rc.py` expects every unit it flashes to be docked (on USB) when it starts,
+as the tests do, and stops before flashing anything if one is not.

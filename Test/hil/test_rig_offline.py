@@ -105,6 +105,22 @@ class FlashEveryUnitOrNone(unittest.TestCase):
                 run_rc.main(["LogAndStream_Shimmer3R_v1.01.022"])
         self.assertEqual(flashed, [], "a unit was flashed before the run was refused")
 
+    def test_an_undocked_unit_stops_the_run_before_any_flash(self):
+        import tempfile
+        rig = config.Rig(path=Path("rig.toml"), bench="b", stm32_programmer=Path("cli"),
+                         units=[config.Unit("a", "shimmer3r", usb_serial="A"),
+                                config.Unit("b", "shimmer3r", usb_serial="B", hub_port=3)])
+        flashed = []
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(run_rc, "HERE", Path(d)), \
+                mock.patch.object(run_rc.rig_config, "load", lambda p: rig), \
+                mock.patch.object(run_rc, "fetch", lambda tag, out: ({"commit": "0" * 40}, Path("img.hex"))), \
+                mock.patch.object(run_rc.s3r_usb, "cdc_port", lambda s: "COM9" if s == "A" else None), \
+                mock.patch.object(run_rc.rig_flash, "flash", lambda *a, **k: flashed.append(a)):
+            with self.assertRaisesRegex(SystemExit, "b: switch hub port 3 on"):
+                run_rc.main(["LogAndStream_Shimmer3R_v1.01.022"])
+        self.assertEqual(flashed, [], "a unit was flashed before the run was refused")
+
 
 class SessionDirs(unittest.TestCase):
     def test_sessions_compare_across_a_drive_letter_change(self):
