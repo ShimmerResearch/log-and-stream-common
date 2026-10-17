@@ -56,4 +56,8 @@ uint32_t hostStub_getStopSensingCount(void);
  * ever reboot the device; a non-zero count is a failure in itself. */
 uint32_t hostStub_getResetCount(void);
 
+/* Sum of every platform_delayMs() argument since the last reset. The stub does
+ * not actually wait. */
+uint32_t hostStub_getDelayMsTotal(void);
+
 #endif /* HOST_TEST_HOST_STUBS_H */

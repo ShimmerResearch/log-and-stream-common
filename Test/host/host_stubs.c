@@ -4,7 +4,7 @@
  * WHY THE GUARD BELOW - do not remove it. Both consuming firmware projects add
  * this repository as a source-path root with no exclusions, so every .c file
  * under it is discovered and compiled into the firmware. This file defines
- * shimmerStatus and batteryStatus, which log_and_stream_globals.h also defines;
+ * shimmerStatus and batteryStatus, which log_and_stream_common.c also defines;
  * without the guard they collide at link time in both the STM32 and the MSP430
  * build. The guard makes the translation unit empty for anyone who does not ask
  * for it; only the host-test build passes -DSHIMMER_HOST_TEST.
@@ -17,9 +17,8 @@
 #include "host_stubs.h"
 #include "log_and_stream_includes.h"
 
-/* The two globals log_and_stream_globals.h defines for the firmware. The
- * firmware includes that header from exactly one translation unit; the host
- * tests define them here instead, for the same reason. */
+/* The two globals log_and_stream_common.c defines for the firmware. The host
+ * tests do not link that file, so they are defined here instead. */
 STATTypeDef shimmerStatus;
 BattStatus batteryStatus;
 
@@ -31,6 +30,7 @@ static uint32_t stubTick;
 static uint8_t stubRtcErrorFlash;
 static uint32_t stubStopSensingCount;
 static uint32_t stubResetCount;
+static uint32_t stubDelayMsTotal;
 /* The real gConfigBytes union - see ShimConfig_getStoredConfig() below. */
 static gConfigBytes stubStoredConfig;
 
@@ -47,6 +47,7 @@ void hostStub_reset(void)
   stubRtcErrorFlash = 0;
   stubStopSensingCount = 0;
   stubResetCount = 0;
+  stubDelayMsTotal = 0;
 }
 
 void hostStub_setDockedOrUsbIn(uint8_t state)
@@ -82,6 +83,11 @@ uint32_t hostStub_getStopSensingCount(void)
 uint32_t hostStub_getResetCount(void)
 {
   return stubResetCount;
+}
+
+uint32_t hostStub_getDelayMsTotal(void)
+{
+  return stubDelayMsTotal;
 }
 
 /* --- Configuration/shimmer_config.h --------------------------------------- *
@@ -185,9 +191,11 @@ void platform_reset(void)
   stubResetCount++;
 }
 
+/* Does not wait: it only adds up what was asked for, so a test can see that
+ * this override ran rather than the default, which also does nothing. */
 void platform_delayMs(const uint32_t delay_time_ms)
 {
-  (void) delay_time_ms;
+  stubDelayMsTotal += delay_time_ms;
 }
 
 uint32_t platform_getTick(void)

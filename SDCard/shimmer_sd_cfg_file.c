@@ -16,7 +16,16 @@
 
 FRESULT cfg_file_status;
 
-static uint8_t all0xff[7U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+/* const, so the bytes are part of the image. A writable array's initialiser is
+ * copied in by the C runtime at start-up, which Shimmer3 does not run. */
+static const uint8_t all0xff[6U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+
+/* One file object serves both ShimSdCfgFile_parse() and
+ * ShimSdCfgFile_generate(). parse() calls generate() only when its own f_open()
+ * failed or after its f_close(), so the two never have the file open at once.
+ * A FIL carries a 512-byte sector buffer, and with one in each frame
+ * parse() -> generate() was the deepest stack path in the firmware. */
+static FIL cfgFile;
 
 //Centralized config file constants to avoid duplicated string literals
 #define CFG_FILENAME "sdlog.cfg"
@@ -151,8 +160,6 @@ void ShimSdCfgFile_init(void)
 
 void ShimSdCfgFile_generate(void)
 {
-  FIL cfgFile;
-
   if (!shimmerStatus.docked && LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile)
   {
     uint8_t sd_power_state = shimmerStatus.sdPowerOn;
@@ -291,7 +298,7 @@ void ShimSdCfgFile_generate(void)
             (char *) ShimSdSync_syncNodeNamePtrForIndexGet(i));
       }
 
-      if (memcmp(all0xff, storedConfig + NV_CENTER, 6))
+      if (memcmp(all0xff, &storedConfig->rawBytes[NV_CENTER], sizeof(all0xff)))
       {
         ShimSdSync_parseSyncCenterNameFromConfig(&storedConfig->rawBytes[0]);
         CFG_WRITE_STR(&cfgFile, CFG_KEY_CENTER, (char *) ShimSdSync_syncCenterNamePtrGet());
@@ -384,8 +391,6 @@ void ShimSdCfgFile_generate(void)
 
 void ShimSdCfgFile_parse(void)
 {
-  FIL cfgFile;
-
   char buffer[66], *equals;
   uint8_t string_length = 0;
   float sample_rate = 51.2;
