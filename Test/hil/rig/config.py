@@ -39,6 +39,7 @@ class Unit:
     radio: str | None = None        # e.g. "RN42 v6.15", "IF820 v1.4.16.16"
     board: str | None = None        # SR number / revision, free text
     notes: str = ""
+    stlink_serial: str | None = None  # the ST-Link on this unit's SWD header, for flash method "swd"
 
     def capabilities(self) -> set[str]:
         caps = {self.platform}
@@ -83,6 +84,12 @@ class Rig:
     def units_for(self, platform: str) -> list[Unit]:
         return [u for u in self.units if u.platform == platform]
 
+    def stlink_for(self, unit: Unit) -> str | None:
+        """The ST-Link wired to this unit's SWD header: the unit's own, or else the
+        bench's [tools] stlink_serial, which load() allows only when one Shimmer3R
+        unit could be on it."""
+        return unit.stlink_serial or self.stlink_serial
+
 
 def _normalise_mac(mac: str) -> str:
     m = mac.replace(":", "").replace("-", "").upper()
@@ -113,20 +120,45 @@ def load(path: str | os.PathLike | None = None) -> Rig:
             raise RigError(f"{where}: platform must be one of {', '.join(PLATFORMS)}")
         if not u.get("name"):
             raise RigError(f"{where}: missing name")
+        hub_port = u.get("hub_port")
+        if hub_port is not None and (isinstance(hub_port, bool) or not isinstance(hub_port, int) or hub_port < 1):
+            raise RigError(f"{where}: hub_port must be a hub port number from 1, not {hub_port!r}")
         units.append(Unit(
             name=u["name"], platform=u["platform"],
             mac=_normalise_mac(u["mac"]) if u.get("mac") else None,
-            usb_serial=u.get("usb_serial") or None,
-            hub_port=int(u["hub_port"]) if u.get("hub_port") else None,
+            # Compared without regard to case wherever it is looked up (s3r_usb).
+            usb_serial=str(u["usb_serial"]).upper() if u.get("usb_serial") else None,
+            hub_port=hub_port,
             base6_slot=int(u["base6_slot"]) if u.get("base6_slot") else None,
             radio=u.get("radio"), board=u.get("board"), notes=u.get("notes", ""),
+            stlink_serial=u.get("stlink_serial") or None,
         ))
     names = [u.name for u in units]
     if len(set(names)) != len(names):
         raise RigError(f"{p}: unit names must be unique")
+    # Two units with one MAC, USB serial, hub port or Base6 slot would be one
+    # device tested twice, or the wrong one switched off.
+    for field_name in ("mac", "usb_serial", "hub_port", "base6_slot"):
+        values = [getattr(u, field_name) for u in units if getattr(u, field_name)]
+        dupes = sorted({str(v) for v in values if values.count(v) > 1})
+        if dupes:
+            raise RigError(f"{p}: two units share {field_name} {', '.join(dupes)}")
 
     hub = data.get("hub", {})
     tools = data.get("tools", {})
+    # An ST-Link reaches one unit's SWD header. A bench-wide one used for
+    # several units would program the same unit again and again, so each unit
+    # names its own unless only one could be meant.
+    bench_stlink = tools.get("stlink_serial") or None
+    s3r = [u for u in units if u.platform == "shimmer3r"]
+    if bench_stlink and sum(1 for u in s3r if not u.stlink_serial) > 1:
+        raise RigError(f"{p}: [tools] stlink_serial would be used for every Shimmer3R unit that names "
+                       "none, and an ST-Link reaches one unit: give each unit its own stlink_serial")
+    used = [u.stlink_serial for u in s3r if u.stlink_serial]
+    if bench_stlink and any(not u.stlink_serial for u in s3r):
+        used.append(bench_stlink)
+    if len(set(used)) != len(used):
+        raise RigError(f"{p}: two Shimmer3R units name the same ST-Link")
     return Rig(
         path=p, bench=bench, units=units,
         hub_serial=hub.get("serial") or None,

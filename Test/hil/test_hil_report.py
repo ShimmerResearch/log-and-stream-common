@@ -67,5 +67,33 @@ class Report(unittest.TestCase):
             c.report(platform="shimmer3r", commit="abc", firmware_version="1", bench="b", operator="o")
 
 
+class Waivers(unittest.TestCase):
+    def report(self, waivers):
+        c = hil_report.Collector()
+        c.record("a.fails", "fail", "u1: lost 2 samples")
+        c.record("a.gap", "not_covered")
+        c.record("a.passes", "pass")
+        return c.report(platform="shimmer3r", commit=SHA, firmware_version="1.01.022",
+                        bench="b", operator="o", waivers=waivers)
+
+    def test_a_waived_failure_or_gap_carries_its_issue_key(self):
+        r = {x["id"]: x for x in self.report({"a.fails": "DEV-1098", "a.gap": "DEV-1", "a.passes": "DEV-2"})["results"]}
+        self.assertEqual((r["a.fails"]["waiver"], r["a.gap"]["waiver"]), ("DEV-1098", "DEV-1"))
+        self.assertNotIn("waiver", r["a.passes"], "a pass needs no waiver")
+
+    def test_the_gate_lets_a_waived_failure_through_and_blocks_an_unwaived_one(self):
+        required = [{"id": "a.passes"}]
+        rep = self.report({"a.fails": "DEV-1098"})
+        v = hil_gate.evaluate("shimmer3r", SHA, "1.01.022", {"r.json": rep}, required)
+        self.assertTrue(v.ok, v.problems)
+        rep = self.report({})
+        v = hil_gate.evaluate("shimmer3r", SHA, "1.01.022", {"r.json": rep}, required)
+        self.assertFalse(v.ok)
+
+    def test_a_waiver_that_is_not_an_issue_key_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.report({"a.fails": "accepted"})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -32,6 +32,7 @@ import pytest
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import hil_gate  # noqa: E402
 import hil_report  # noqa: E402
 from rig import config as rig_config  # noqa: E402
 from rig.power import HubPower, ManualPower  # noqa: E402
@@ -43,9 +44,26 @@ def pytest_addoption(parser):
     g.addoption("--candidate", default=None, help="build-info.json of the release candidate under test")
     g.addoption("--hil-report", default=None, help="where to write the report (needs --candidate)")
     g.addoption("--operator", default=getpass.getuser())
-    g.addoption("--unit", default=None, help="run against this rig unit only (default: every unit the test applies to)")
+    g.addoption("--unit", default=None,
+                help="run against this rig unit only; the others are reported not_covered, so the "
+                     "report never passes an item for a unit it did not test (default: every unit)")
     g.addoption("--manual-power", action="store_true",
                 help="prompt the operator to dock/undock even if the rig has a hub")
+    g.addoption("--waive", action="append", default=[], metavar="ITEM=ISSUE",
+                help="accept a known failure or gap of ITEM under issue ISSUE (e.g. "
+                     "smoke.sd_log=ABC-123): the key goes into the item's result if it does not "
+                     "pass, as a sign-off's waiver does. Repeatable.")
+
+
+def _waivers(config) -> dict[str, str]:
+    out = {}
+    for w in config.getoption("--waive"):
+        item, sep, key = w.partition("=")
+        item, key = item.strip(), key.strip().upper()
+        if not sep or not item or not hil_gate.WAIVER_RE.fullmatch(key):
+            raise pytest.UsageError(f"--waive {w}: expected ITEM=ISSUE, e.g. smoke.sd_log=ABC-123")
+        out[item] = key
+    return out
 
 
 def pytest_configure(config):
@@ -55,6 +73,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "fleet: one unit per shipped radio firmware (Shimmer3)")
     config.addinivalue_line("markers", "soak: long-running, advisory")
     config._hil_collector = hil_report.Collector()
+    config._hil_waivers = _waivers(config)
 
 
 # Processes known to distort a run on this kind of bench. STM32CubeIDE scans
@@ -136,6 +155,11 @@ def pytest_generate_tests(metafunc):
     The platform comes from the test's needs (shimmer3 / shimmer3r). With no
     matching unit the test still appears once, with unit=None, so that it is
     reported as not covered instead of vanishing from the report.
+
+    --unit does not drop the other units: they stay in the run and are skipped
+    as not_covered (pytest_runtest_setup). An item is "pass" only when every
+    test behind it passed, so a report from a --unit run cannot pass an item
+    for a unit it never touched.
     """
     if "unit" not in metafunc.fixturenames:
         return
@@ -144,10 +168,11 @@ def pytest_generate_tests(metafunc):
     needs = set(m.kwargs.get("needs", [])) if m else set()
     platforms = needs & set(rig_config.PLATFORMS)
     only = metafunc.config.getoption("--unit")
+    if only and rig and only not in [u.name for u in rig.units]:
+        raise pytest.UsageError(f"--unit {only}: no such unit in {rig.path}")
     units = []
     if rig:
-        units = [u for u in rig.units
-                 if (not platforms or u.platform in platforms) and (not only or u.name == only)]
+        units = [u for u in rig.units if not platforms or u.platform in platforms]
     if units:
         metafunc.parametrize("unit", units, ids=[u.name for u in units], scope="module")
     else:
@@ -166,6 +191,16 @@ def pytest_collection_modifyitems(config, items):
         return
     with open(cand_path, encoding="utf-8") as f:
         plat = json.load(f).get("platform")
+    # --unit naming another platform's unit would skip every test of this
+    # candidate as not_covered, and a run that tested nothing would look like
+    # a run.
+    only, rig = config.getoption("--unit"), _rig_for_collection(config)
+    if only and rig:
+        unit = next((u for u in rig.units if u.name == only), None)
+        if unit is None:
+            raise pytest.UsageError(f"--unit {only}: no such unit in {rig.path}")
+        if unit.platform != plat:
+            raise pytest.UsageError(f"--unit {only} is a {unit.platform} unit, but the candidate is {plat}")
     keep, drop = [], []
     for item in items:
         _, needs = _item(item)
@@ -197,6 +232,10 @@ def pytest_runtest_setup(item):
         return
     rig = _rig_for_collection(item.config)
     unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
+    only = item.config.getoption("--unit")
+    if only and unit is not None and unit.name != only:
+        item._hil_not_covered = f"not run: --unit {only}"
+        pytest.skip(item._hil_not_covered)
     if rig is None:
         missing = needs or {"rig.toml"}
     else:
@@ -271,11 +310,19 @@ def pytest_sessionfinish(session, exitstatus):
         platform=cand["platform"], commit=cand["commit"],
         firmware_version=cand["firmware_version"],
         bench=rig.bench if rig else "unknown", operator=cfg.getoption("--operator"),
-        extra={"markers": cfg.getoption("-m") or "", "units": [u.name for u in rig.units] if rig else [],
+        extra={"markers": cfg.getoption("-m") or "",
+               "units": [u.name for u in rig.units if not cfg.getoption("--unit") or u.name == cfg.getoption("--unit")]
+               if rig else [],
+               "unit_filter": cfg.getoption("--unit") or "",
                "interference": getattr(cfg, "_hil_interference", []),
                "image_sha256": cand.get("image_sha256"), "host": os.environ.get("COMPUTERNAME", "")},
+        waivers=cfg._hil_waivers,
     )
     path = hil_report.write(rep, Path(out))
+    used = {r["id"] for r in rep["results"] if r.get("waiver")}
+    for item, key in sorted(cfg._hil_waivers.items()):
+        if tr and item not in used:
+            tr.write_line(f"hil: --waive {item}={key} not used: the item passed, or was not run")
     if tr:
         counts = {}
         for r in rep["results"]:
