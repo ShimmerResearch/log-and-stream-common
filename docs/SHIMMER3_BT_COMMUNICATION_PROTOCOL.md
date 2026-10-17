@@ -555,6 +555,23 @@ three fixed argument bytes.
 > last byte arrives. A host that sends a command before the previous one is
 > answered still loses the previous one, as it always has: the parser keeps one
 > command at a time.
+>
+> **A zero payload length is dispatched like any other.** For the
+> length/offset group (`SET_INFOMEM`, `SET_CALIB_DUMP`, `SET_DAUGHTER_CARD_MEM`,
+> `SET_EXG_REGS`) a length byte of 0 means no payload follows, and the command
+> is processed straight after its three fixed bytes, as the name/expId and
+> daughter-card-ID groups already were. Each handler then answers as it does
+> for any other length it is given:
+>
+> - `SET_DAUGHTER_CARD_MEM` refuses a zero-length write with a `NACK`.
+> - `SET_CALIB_DUMP` `NACK`s a zero-length start, which is shorter than the
+>   2-byte length header, and a zero-length chunk with no transfer open. A
+>   zero-length chunk inside an open transfer adds nothing and is `ACK`ed.
+> - `SET_INFOMEM` and `SET_EXG_REGS` write nothing and `ACK`.
+>
+> Earlier firmware
+> armed a zero-byte receive here and never dispatched the command: no response
+> at all, and the host's next bytes were taken as this command's payload.
 
 ### 3.2 Response frame and ACK
 

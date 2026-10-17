@@ -525,8 +525,15 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           {
             waitingForArgsLength = args[0];
           }
-          ShimBt_armArgsPayload();
-          return 0;
+          /* Only return while payload is still expected. A zero length has to
+           * fall through to be dispatched, as in the groups below: arming for
+           * zero bytes would leave the parser waiting for a payload that never
+           * comes, and the command would get no response at all. */
+          if (waitingForArgsLength)
+          {
+            ShimBt_armArgsPayload();
+            return 0;
+          }
         }
         else if ((!waitingForArgsLength) && (waitingForArgs == 2)
             && (gAction == SET_DAUGHTER_CARD_ID_COMMAND))
