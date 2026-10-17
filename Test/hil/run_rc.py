@@ -67,16 +67,21 @@ def fetch(tag: str, out: Path) -> tuple[dict, Path]:
     if len(images) != 1:
         raise SystemExit(f"{tag}: expected one {pattern} image on the release, found {len(images)}")
     info_path = out / "build-info.json"
+    # The report is bound to the commit in build-info.json, and the gate binds
+    # the release to the commit its tag points at, so the two must agree.
+    commit = tag_commit(repo, tag)
     try:
         gh("release", "download", tag, "-R", repo, "-p", "build-info.json", "-D", str(out), "--clobber")
         info = json.loads(info_path.read_text(encoding="utf-8"))
     except subprocess.CalledProcessError:
         info = {"schema": "shimmer-build-info/1", "platform": platform, "tag": tag,
-                "firmware_version": version, "commit": tag_commit(repo, tag),
+                "firmware_version": version, "commit": commit,
                 "image": images[0].name, "synthesised": True}
         info_path.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
     if info["platform"] != platform or normalise_version(info["firmware_version"]) != normalise_version(version):
         raise SystemExit(f"build-info.json does not match the tag: {info}")
+    if str(info.get("commit", "")).lower() != commit:
+        raise SystemExit(f"build-info.json names commit {info.get('commit')}, but {tag} points at {commit}")
     return info, images[0]
 
 

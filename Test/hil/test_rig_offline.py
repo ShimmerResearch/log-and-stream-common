@@ -30,7 +30,7 @@ except ImportError:
     _serial.Serial = object
     sys.modules.update({"serial": _serial, "serial.tools": _tools, "serial.tools.list_ports": _lp})
 
-from rig import bt, flash, power  # noqa: E402
+from rig import bt, flash, power, sdfile  # noqa: E402
 import run_rc  # noqa: E402
 
 
@@ -179,6 +179,87 @@ class TagVersion(unittest.TestCase):
         self.assertEqual((platform, version), ("shimmer3r", "1.01.022"))
         for written in ("1.01.022", "v1.01.022", "V1.01.022"):
             self.assertEqual(run_rc.normalise_version(written), run_rc.normalise_version(version))
+
+
+class TimestampSteps(unittest.TestCase):
+    PERIOD = 128
+
+    def classify(self, last, ts):
+        st = bt.StreamStats()
+        bt.classify_step(st, bt.ts_step(ts, last), self.PERIOD)
+        return st
+
+    def test_a_step_back_is_a_duplicate_not_a_huge_gap(self):
+        st = self.classify(1000, 999)
+        self.assertEqual((st.dupes, st.gaps, st.missing), (1, 0, 0))
+
+    def test_a_wrap_is_a_normal_step(self):
+        st = self.classify(bt.TS_WRAP - 28, 100)
+        self.assertEqual((st.dupes, st.gaps, st.missing, st.jitter), (0, 0, 0, 0))
+
+    def test_a_lost_sample_is_still_a_gap(self):
+        st = self.classify(1000, 1000 + 2 * self.PERIOD)
+        self.assertEqual((st.gaps, st.missing), (1, 1))
+
+
+def sd_file(tmp, n_records, tail=b""):
+    """A Shimmer3R SD file with SD sync on, timestamp-only records, `tail` appended."""
+    head = bytearray(sdfile.HEAD_S3R)
+    head[0:2] = (128).to_bytes(2, "little")
+    head[30:32] = sdfile.HW_SHIMMER3R.to_bytes(2, "big")
+    head[sdfile.SDH_TRIAL_CONFIG0] = sdfile.SDH_TIME_SYNC
+    head[sdfile.SDH_NUM_ENABLED_CHANNELS] = 0
+    body = bytes(sdfile.SYNC_HEAD) + b"".join((1 + 128 * i).to_bytes(3, "little") for i in range(n_records))
+    p = Path(tmp) / "000"
+    p.write_bytes(bytes(head) + body + tail)
+    return p
+
+
+class SdFileTrailing(unittest.TestCase):
+    def test_a_whole_file_has_no_trailing_bytes(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            fc = sdfile.check(sd_file(d, 5))
+        self.assertEqual((fc.records, fc.missing, fc.trailing_bytes), (5, 0, 0))
+
+    def test_part_of_a_sync_header_at_the_end_is_trailing(self):
+        import tempfile
+        per_block = (sdfile.BLOCK - sdfile.SYNC_HEAD) // 3
+        with tempfile.TemporaryDirectory() as d:
+            fc = sdfile.check(sd_file(d, per_block, tail=bytes(5)))
+        self.assertEqual(fc.records, per_block)
+        self.assertEqual(fc.trailing_bytes, 5)
+
+
+class BuildInfoBinding(unittest.TestCase):
+    TAG = "LogAndStream_Shimmer3R_v1.01.022"
+    SHA = "0123456789abcdef0123456789abcdef01234567"
+
+    def fetch_with(self, info_commit):
+        import json
+        import tempfile
+
+        def gh(*args, **kw):
+            out = Path(args[args.index("-D") + 1])
+            if "*.hex" in args:
+                (out / "LogAndStream_Shimmer3R.hex").write_text(":00000001FF\n", encoding="utf-8")
+            else:
+                (out / "build-info.json").write_text(json.dumps(
+                    {"platform": "shimmer3r", "firmware_version": "1.01.022", "commit": info_commit}), encoding="utf-8")
+            return ""
+
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(run_rc, "gh", gh), \
+                mock.patch.object(run_rc, "tag_commit", lambda repo, tag: self.SHA):
+            return run_rc.fetch(self.TAG, Path(d))
+
+    def test_build_info_for_the_tags_commit_is_accepted(self):
+        info, _ = self.fetch_with(self.SHA.upper())
+        self.assertEqual(info["commit"].lower(), self.SHA)
+
+    def test_build_info_for_another_commit_is_refused(self):
+        with self.assertRaisesRegex(SystemExit, "points at"):
+            self.fetch_with("f" * 40)
 
 
 if __name__ == "__main__":

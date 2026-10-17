@@ -99,15 +99,28 @@ class StreamStats:
         return self.packets / self.seconds if self.seconds else 0.0
 
 
-def classify_step(st, d: int, period: int) -> None:
-    """Sort one timestamp step into lost samples, duplicates and jitter.
+def ts_step(ts: int, last: int) -> int:
+    """The signed step from one 24-bit timestamp to the next.
 
-    A sample stamped late shows as one long step followed by one short one,
-    summing to two periods: that is jitter in when the sample was stamped, not
-    a lost sample, and is counted apart from real gaps. Shared with sdfile.py.
+    Across a wrap the step is forward and small. A stamp earlier than the last
+    one is a step backwards, not a wrap: reduced modulo 2^24 alone it would look
+    like a gap of nearly 512 s. No step in a stream or a file is half the range.
+    """
+    d = (ts - last) % TS_WRAP
+    return d - TS_WRAP if d >= TS_WRAP // 2 else d
+
+
+def classify_step(st, d: int, period: int) -> None:
+    """Sort one timestamp step (signed, from ts_step) into lost samples,
+    duplicates and jitter.
+
+    A step backwards, or under half a period, is a duplicate. A sample stamped
+    late shows as one long step followed by one short one, summing to two
+    periods: that is jitter in when the sample was stamped, not a lost sample,
+    and is counted apart from real gaps. Shared with sdfile.py.
     """
     k = round(d / period)
-    if k == 0:
+    if k <= 0:
         st.dupes += 1
         return
     if k >= 2:
@@ -238,7 +251,7 @@ class BtLink:
                         if last_ts is None:
                             st.first_ts = ts
                         else:
-                            d = (ts - last_ts) % TS_WRAP
+                            d = ts_step(ts, last_ts)
                             st.deltas[d] = st.deltas.get(d, 0) + 1
                             classify_step(st, d, inq.divider)
                         last_ts = ts
