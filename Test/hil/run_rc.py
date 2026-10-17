@@ -158,11 +158,14 @@ def main(argv=None) -> int:
         if unflashable:
             raise SystemExit(f"{', '.join(unflashable)}: no usb_serial in rig.toml, so not flashable. Add it, "
                              "or test what the units run now with --no-flash.")
-        # Flashing reaches the unit over USB, and the tests start from docked, so
-        # every unit must be docked before the run. Checked here, rather than
-        # docked by the runner: the hub's control port belongs to the pytest
-        # session that follows, which puts back whatever it switches.
-        undocked = [u for u in units if not s3r_usb.cdc_port(u.usb_serial)]
+        # USB DFU reaches the unit over USB, and the tests start from docked, so
+        # a unit flashed that way must be docked before the run. Checked here,
+        # rather than docked by the runner: the hub's control port belongs to
+        # the pytest session that follows, which puts back whatever it switches.
+        # A unit with its own ST-Link is not checked: SWD is the recovery route
+        # for firmware too broken to come up on USB, and flash() still waits for
+        # it on USB afterwards to read the version it now runs.
+        undocked = [u for u in units if not rig.stlink_for(u) and not s3r_usb.cdc_port(u.usb_serial)]
         if undocked:
             how = "; ".join(f"{u.name}: " + (f"switch hub port {u.hub_port} on" if u.hub_port else "plug its USB-C in")
                             for u in undocked)

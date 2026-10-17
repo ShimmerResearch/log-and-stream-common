@@ -121,6 +121,28 @@ class FlashEveryUnitOrNone(unittest.TestCase):
                 run_rc.main(["LogAndStream_Shimmer3R_v1.01.022"])
         self.assertEqual(flashed, [], "a unit was flashed before the run was refused")
 
+    def test_a_unit_with_an_st_link_is_flashed_though_not_on_usb(self):
+        # SWD is the recovery route for firmware too broken to come up on USB.
+        import tempfile
+        rig = config.Rig(path=Path("rig.toml"), bench="b", stm32_programmer=Path("cli"),
+                         units=[config.Unit("a", "shimmer3r", usb_serial="A", stlink_serial="ST1")])
+        flashed = []
+
+        def flash(*a, **k):
+            flashed.append(a)
+            raise SystemExit("stop after flashing")
+
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(run_rc, "HERE", Path(d)), \
+                mock.patch.object(run_rc.rig_config, "load", lambda p: rig), \
+                mock.patch.object(run_rc, "fetch", lambda tag, out: ({"commit": "0" * 40}, Path("img.hex"))), \
+                mock.patch.object(run_rc.s3r_usb, "cdc_port", lambda s: None), \
+                mock.patch.object(run_rc.rig_flash, "flash", flash):
+            with self.assertRaisesRegex(SystemExit, "stop after flashing"):
+                run_rc.main(["LogAndStream_Shimmer3R_v1.01.022"])
+        self.assertEqual(len(flashed), 1)
+        self.assertEqual((flashed[0][3], flashed[0][4]), ("swd", "ST1"))
+
     def test_run_options_reach_pytest(self):
         import tempfile
         rig = config.Rig(path=Path("rig.toml"), bench="b", units=[config.Unit("a", "shimmer3r", usb_serial="A")])
