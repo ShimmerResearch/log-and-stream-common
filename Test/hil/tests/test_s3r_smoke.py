@@ -194,9 +194,9 @@ def test_sd_log(unit, power, hil_note):
         power.on(unit.hub_port, unit.name)
 
     root = s3r_usb.wait_drive(unit.usb_serial, 60)
-    new = sorted(sdfile.session_dirs(root) - before)
+    new = sorted(sdfile.session_dirs(root) - before)      # relative: the drive letter may have changed
     assert len(new) == 1, f"expected one new session directory, found {len(new)}: {new}"
-    files = sorted(p for p in new[0].iterdir() if p.is_file())
+    files = sorted(p for p in (root / new[0]).iterdir() if p.is_file())
     assert files and files[0].name == "000", f"{new[0]}: no data file 000 ({[f.name for f in files]})"
 
     fc = sdfile.check(files[0])

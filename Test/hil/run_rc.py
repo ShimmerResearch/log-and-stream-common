@@ -10,7 +10,7 @@
    tag, so older builds can be measured too (their report is still bound to
    the tag's commit).
 2. Flashes every rig unit of the candidate's platform (rig.toml: flash method
-   "dfu" by default, "swd" when an ST-Link serial is named), and confirms each
+   "dfu" by default, "swd" through the unit's own ST-Link), and confirms each
    reports the candidate's version.
 3. Runs the tier with pytest, which writes hil-report-<bench>.json.
 4. With --upload, attaches the report and the pytest log (as
@@ -123,10 +123,11 @@ def main(argv=None) -> int:
             if not u.usb_serial:
                 print(f"{u.name}: no usb_serial, not flashed")
                 continue
-            method = "swd" if rig.stlink_serial else "dfu"
+            stlink = rig.stlink_for(u)          # this unit's ST-Link, never another unit's
+            method = "swd" if stlink else "dfu"
             print(f"{u.name}: flashing {image.name} by {method} ...", flush=True)
             v = rig_flash.flash(rig.stm32_programmer, image, u.usb_serial, method,
-                                rig.stlink_serial, expect_version=version)
+                                stlink, expect_version=version)
             print(f"{u.name}: now v{v.text}")
 
     report = out / f"hil-report-{rig.bench}.json"

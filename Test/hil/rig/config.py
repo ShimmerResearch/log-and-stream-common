@@ -38,6 +38,7 @@ class Unit:
     radio: str | None = None        # e.g. "RN42 v6.15", "IF820 v1.4.16.16"
     board: str | None = None        # SR number / revision, free text
     notes: str = ""
+    stlink_serial: str | None = None  # the ST-Link on this unit's SWD header, for flash method "swd"
 
     def capabilities(self) -> set[str]:
         caps = {self.platform}
@@ -77,6 +78,12 @@ class Rig:
     def units_for(self, platform: str) -> list[Unit]:
         return [u for u in self.units if u.platform == platform]
 
+    def stlink_for(self, unit: Unit) -> str | None:
+        """The ST-Link wired to this unit's SWD header: the unit's own, or else the
+        bench's [tools] stlink_serial, which load() allows only when one Shimmer3R
+        unit could be on it."""
+        return unit.stlink_serial or self.stlink_serial
+
 
 def _normalise_mac(mac: str) -> str:
     m = mac.replace(":", "").replace("-", "").upper()
@@ -113,6 +120,7 @@ def load(path: str | os.PathLike | None = None) -> Rig:
             usb_serial=u.get("usb_serial") or None,
             hub_port=int(u["hub_port"]) if u.get("hub_port") else None,
             radio=u.get("radio"), board=u.get("board"), notes=u.get("notes", ""),
+            stlink_serial=u.get("stlink_serial") or None,
         ))
     names = [u.name for u in units]
     if len(set(names)) != len(names):
@@ -120,6 +128,19 @@ def load(path: str | os.PathLike | None = None) -> Rig:
 
     hub = data.get("hub", {})
     tools = data.get("tools", {})
+    # An ST-Link reaches one unit's SWD header. A bench-wide one used for
+    # several units would program the same unit again and again, so each unit
+    # names its own unless only one could be meant.
+    bench_stlink = tools.get("stlink_serial") or None
+    s3r = [u for u in units if u.platform == "shimmer3r"]
+    if bench_stlink and sum(1 for u in s3r if not u.stlink_serial) > 1:
+        raise RigError(f"{p}: [tools] stlink_serial would be used for every Shimmer3R unit that names "
+                       "none, and an ST-Link reaches one unit: give each unit its own stlink_serial")
+    used = [u.stlink_serial for u in s3r if u.stlink_serial]
+    if bench_stlink and any(not u.stlink_serial for u in s3r):
+        used.append(bench_stlink)
+    if len(set(used)) != len(used):
+        raise RigError(f"{p}: two Shimmer3R units name the same ST-Link")
     return Rig(
         path=p, bench=bench, units=units,
         hub_serial=hub.get("serial") or None,

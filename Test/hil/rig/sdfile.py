@@ -115,8 +115,11 @@ def check(path: Path) -> FileCheck:
 
 
 def session_dirs(root: Path) -> set[Path]:
-    """Every <experiment>/<name>-NNNN session directory under /data."""
-    data = Path(root) / "data"
+    """Every <experiment>/<name>-NNNN session directory under /data, relative to
+    the card's root. The card's drive letter can change when the unit re-docks,
+    so absolute paths from two scans would never match."""
+    root = Path(root)
+    data = root / "data"
     if not data.is_dir():
         return set()
-    return {s for e in data.iterdir() if e.is_dir() for s in e.iterdir() if s.is_dir()}
+    return {s.relative_to(root) for e in data.iterdir() if e.is_dir() for s in e.iterdir() if s.is_dir()}

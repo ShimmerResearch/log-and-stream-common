@@ -31,8 +31,50 @@ except ImportError:
     _serial.SerialException = type("SerialException", (OSError,), {})
     sys.modules.update({"serial": _serial, "serial.tools": _tools, "serial.tools.list_ports": _lp})
 
-from rig import bt, dock, flash, power, sdfile  # noqa: E402
+from rig import bt, config, dock, flash, power, sdfile  # noqa: E402
 import run_rc  # noqa: E402
+
+
+def load_rig(text):
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "rig.toml"
+        p.write_text('bench = "b"\n' + text, encoding="utf-8")
+        return config.load(p)
+
+
+S3R_UNIT = '[[unit]]\nname = "{n}"\nplatform = "shimmer3r"\nusb_serial = "{n}"\n'
+
+
+class StLinkPerUnit(unittest.TestCase):
+    def test_a_bench_wide_st_link_serves_a_bench_with_one_unit(self):
+        rig = load_rig('[tools]\nstlink_serial = "ST1"\n' + S3R_UNIT.format(n="a"))
+        self.assertEqual(rig.stlink_for(rig.units[0]), "ST1")
+
+    def test_a_bench_wide_st_link_is_refused_for_two_units(self):
+        with self.assertRaisesRegex(config.RigError, "its own stlink_serial"):
+            load_rig('[tools]\nstlink_serial = "ST1"\n' + S3R_UNIT.format(n="a") + S3R_UNIT.format(n="b"))
+
+    def test_each_unit_uses_its_own(self):
+        rig = load_rig(S3R_UNIT.format(n="a") + 'stlink_serial = "ST1"\n'
+                       + S3R_UNIT.format(n="b") + 'stlink_serial = "ST2"\n' + S3R_UNIT.format(n="c"))
+        self.assertEqual([rig.stlink_for(u) for u in rig.units], ["ST1", "ST2", None])
+
+    def test_two_units_cannot_name_one_st_link(self):
+        with self.assertRaisesRegex(config.RigError, "same ST-Link"):
+            load_rig('[tools]\nstlink_serial = "ST1"\n' + S3R_UNIT.format(n="a") + 'stlink_serial = "ST1"\n'
+                     + S3R_UNIT.format(n="b"))
+
+
+class SessionDirs(unittest.TestCase):
+    def test_sessions_compare_across_a_drive_letter_change(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
+            for root in (d1, d2):
+                (Path(root) / "data" / "exp" / "default-0001").mkdir(parents=True)
+            (Path(d2) / "data" / "exp" / "default-0002").mkdir()
+            new = sdfile.session_dirs(Path(d2)) - sdfile.session_dirs(Path(d1))
+        self.assertEqual(new, {Path("data/exp/default-0002")})
 
 
 class FakeHub:
