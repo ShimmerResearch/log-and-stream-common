@@ -273,6 +273,35 @@ class TimestampSteps(unittest.TestCase):
         st = self.classify(1000, 1000 + 2 * self.PERIOD)
         self.assertEqual((st.gaps, st.missing), (1, 1))
 
+    def steps(self, *ds):
+        st = bt.StreamStats()
+        for d in ds:
+            bt.classify_step(st, d, self.PERIOD)
+        return st
+
+    def test_a_stamp_more_than_half_a_period_late_is_jitter_not_loss(self):
+        p = self.PERIOD
+        late = p // 2 + 13                                   # over half a period late
+        st = self.steps(p, p + late, p - late, p)
+        self.assertEqual((st.gaps, st.missing, st.dupes), (0, 0, 0))
+        self.assertEqual(st.max_jitter_ticks, late)
+
+    def test_a_late_stamp_after_a_lost_sample_keeps_the_loss(self):
+        p = self.PERIOD
+        late = p // 2 + 13
+        st = self.steps(2 * p + late, p - late)              # one lost, then one late
+        self.assertEqual((st.gaps, st.missing, st.dupes), (1, 1, 0))
+
+    def test_a_lost_sample_with_the_next_stamp_early_is_still_loss(self):
+        p = self.PERIOD
+        st = self.steps(2 * p - 1, p + 1)
+        self.assertEqual((st.gaps, st.missing, st.dupes), (1, 1, 0))
+
+    def test_a_lost_sample_then_a_duplicate_is_both(self):
+        p = self.PERIOD
+        st = self.steps(2 * p, 10)                           # a whole period over: not a late stamp
+        self.assertEqual((st.gaps, st.missing, st.dupes), (1, 1, 1))
+
     def test_the_boundaries_are_half_a_period_and_one_and_a_half(self):
         p = self.PERIOD
         cases = {               # step: (dupes, gaps, missing)
@@ -331,14 +360,19 @@ class BuildInfoBinding(unittest.TestCase):
     TAG = "LogAndStream_Shimmer3R_v1.01.022"
     SHA = "0123456789abcdef0123456789abcdef01234567"
 
-    def fetch_with(self, info_commit):
+    def fetch_with(self, info_commit, has_build_info=True, download_fails=False):
         import json
+        import subprocess
         import tempfile
 
         def gh(*args, **kw):
+            if args[:2] == ("release", "view"):
+                return "LogAndStream_Shimmer3R.hex" + ("\nbuild-info.json" if has_build_info else "")
             out = Path(args[args.index("-D") + 1])
             if "*.hex" in args:
                 (out / "LogAndStream_Shimmer3R.hex").write_text(":00000001FF\n", encoding="utf-8")
+            elif download_fails:
+                raise subprocess.CalledProcessError(1, "gh", stderr="HTTP 502")
             else:
                 (out / "build-info.json").write_text(json.dumps(
                     {"platform": "shimmer3r", "firmware_version": "1.01.022", "commit": info_commit}), encoding="utf-8")
@@ -357,6 +391,16 @@ class BuildInfoBinding(unittest.TestCase):
     def test_build_info_for_another_commit_is_refused(self):
         with self.assertRaisesRegex(SystemExit, "points at"):
             self.fetch_with("f" * 40)
+
+    def test_a_release_without_build_info_gets_one_from_the_tag(self):
+        info, _ = self.fetch_with(None, has_build_info=False)
+        self.assertTrue(info["synthesised"])
+        self.assertEqual(info["commit"], self.SHA)
+
+    def test_a_failed_download_stops_the_run_instead_of_synthesising(self):
+        import subprocess
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.fetch_with(self.SHA, download_fails=True)
 
 
 class DockOpenRetries(unittest.TestCase):

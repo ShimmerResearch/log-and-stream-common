@@ -70,10 +70,14 @@ def fetch(tag: str, out: Path) -> tuple[dict, Path]:
     # The report is bound to the commit in build-info.json, and the gate binds
     # the release to the commit its tag points at, so the two must agree.
     commit = tag_commit(repo, tag)
-    try:
+    # Only a release that has no build-info.json gets one synthesised. A
+    # download that fails for any other reason (network, auth) stops the run:
+    # going on would bind the report to metadata nobody read.
+    assets = gh("release", "view", tag, "-R", repo, "--json", "assets", "-q", ".assets[].name").splitlines()
+    if "build-info.json" in assets:
         gh("release", "download", tag, "-R", repo, "-p", "build-info.json", "-D", str(out), "--clobber")
         info = json.loads(info_path.read_text(encoding="utf-8"))
-    except subprocess.CalledProcessError:
+    else:
         info = {"schema": "shimmer-build-info/1", "platform": platform, "tag": tag,
                 "firmware_version": version, "commit": commit,
                 "image": images[0].name, "synthesised": True}

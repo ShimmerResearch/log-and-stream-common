@@ -110,23 +110,14 @@ def ts_step(ts: int, last: int) -> int:
     return d - TS_WRAP if d >= TS_WRAP // 2 else d
 
 
-def classify_step(st, d: int, period: int) -> None:
-    """Sort one timestamp step (signed, from ts_step) into lost samples,
-    duplicates and jitter.
+_STEP_COUNTS = ("gaps", "missing", "max_gap_ticks", "dupes", "jitter", "max_jitter_ticks")
 
-    The step is taken as the nearest whole number of periods, k, halves
-    rounding up. Under half a period, or backwards (k <= 0), is a duplicate.
-    From 1.5 periods (k >= 2) samples were lost: a lost sample is still
-    counted when the stamp after it is a tick early, which a strict "two
-    periods or more" would miss. Whatever the step is off k periods by,
-    beyond a tick, is jitter in when the sample was stamped: a sample stamped
-    late shows as one long step and one short one, and is not a lost sample.
-    Shared with sdfile.py.
-    """
-    k = (2 * d + period) // (2 * period)      # round half up; round() rounds half to even
-    if k <= 0:
-        st.dupes += 1
-        return
+
+def _periods(d: int, period: int) -> int:
+    return (2 * d + period) // (2 * period)       # round half up; round() rounds half to even
+
+
+def _count(st, d: int, k: int, period: int) -> None:
     if k >= 2:
         st.gaps += 1
         st.missing += k - 1
@@ -135,6 +126,45 @@ def classify_step(st, d: int, period: int) -> None:
     if off > 1:
         st.jitter += 1
         st.max_jitter_ticks = max(st.max_jitter_ticks, off)
+
+
+def classify_step(st, d: int, period: int) -> None:
+    """Sort one timestamp step (signed, from ts_step) into lost samples,
+    duplicates and jitter. Call it for each step in order: it pairs a step
+    with the one before.
+
+    The step is taken as the nearest whole number of periods, k, halves
+    rounding up. Under half a period, or backwards (k <= 0), is a duplicate.
+    From 1.5 periods (k >= 2) samples were lost: a lost sample is still
+    counted when the stamp after it is a tick early, which a strict "two
+    periods or more" would miss. Whatever the step is off k periods by,
+    beyond a tick, is jitter in when the sample was stamped.
+
+    A sample stamped late shows as one long step and one short one. Up to
+    half a period late, rounding sees two one-period steps. Later than that
+    the long step rounds up a period and the short one down to nothing, which
+    alone would read as a lost sample and a duplicate. So when a short step
+    follows a long one that was under a period past its whole number, and the
+    two together advance no further than the long one did, they are counted
+    as one late stamp instead. Shared with sdfile.py.
+    """
+    k = _periods(d, period)
+    prev = getattr(st, "_prev_step", None)
+    if prev and k == 0 and d > 0:
+        pd, pk, before = prev
+        if pk >= 2 and pd - (pk - 1) * period < period and _periods(pd + d, period) == pk:
+            for name, value in before.items():
+                setattr(st, name, value)
+            _count(st, pd, pk - 1, period)
+            _count(st, d, 1, period)
+            st._prev_step = None
+            return
+    before = {name: getattr(st, name) for name in _STEP_COUNTS}
+    if k <= 0:
+        st.dupes += 1
+    else:
+        _count(st, d, k, period)
+    st._prev_step = (d, k, before)
 
 
 class BtLink:
