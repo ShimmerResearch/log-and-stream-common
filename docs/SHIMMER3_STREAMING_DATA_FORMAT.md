@@ -290,7 +290,7 @@ emits. `Encoding` and `SDK name` come from the web SDK's channel-format table.
 > (`Shimmer_Driver/hal_adc.c:1036`). `u24` on the temperature row is right for
 > a Shimmer3R carrying a BMP390 and wrong for one carrying a BMP581, whose
 > temperature register is **signed** (§5.5) — those are the only two parts a
-> Shimmer3R can report (`Comms/shimmer_bt_uart.c:2100-2102`), the BMP180 and
+> Shimmer3R can report (`Comms/shimmer_bt_uart.c:2093-2095`), the BMP180 and
 > BMP280 branches being Shimmer3-only (§7.4). Convert against §5 and §7, not
 > against these strings.
 
@@ -714,7 +714,7 @@ Fetch with `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` (0xA7). The reply is
 [0xA6][1 + n][sensorId][coeffs × n]
 ```
 
-— the length byte **counts the sensor id** (`Comms/shimmer_bt_uart.c:2071-2106`;
+— the length byte **counts the sensor id** (`Comms/shimmer_bt_uart.c:2064-2099`;
 ids at `Comms/shimmer_bt_uart.h:297-301`). The id is sent in-band precisely so a
 BMP581's empty coefficient block is distinguishable from an older firmware's
 NACK. The legacy `0x59` and `0xA0` commands are Shimmer3-only and NACK on
@@ -894,7 +894,7 @@ non-zero block size for exactly those ids
 
 > **Unrecognised ids are stored but never applied.** `SET_CALIB_DUMP_COMMAND`
 > writes bytes straight into the calibration RAM blob at a host-chosen offset
-> (`Comms/shimmer_bt_uart.c:1182-1197`), which is then persisted and served
+> (`Comms/shimmer_bt_uart.c:1175-1190`), which is then persisted and served
 > back verbatim. Only the known sensor ids are pushed on into the InfoMem
 > blocks and the SD header
 > (`Calibration/shimmer_calibration.c:1063-1079`). So a round trip through the
