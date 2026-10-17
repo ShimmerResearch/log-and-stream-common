@@ -84,11 +84,11 @@ class Inquiry:
 class StreamStats:
     packets: int = 0
     seconds: float = 0.0
-    gaps: int = 0               # steps of 1.5 periods or more (nearest 2+ periods): samples lost
+    gaps: int = 0               # stamps that skip a slot of the sampling grid: samples lost
     missing: int = 0            # samples implied missing by those steps
     max_gap_ticks: int = 0
-    dupes: int = 0              # steps under half a period, or backwards: stamped twice
-    jitter: int = 0             # steps off a whole number of periods by more than a tick
+    dupes: int = 0              # stamps in a slot already taken, or before it: stamped twice
+    jitter: int = 0             # stamps off their grid slot by more than a tick
     max_jitter_ticks: int = 0
     resyncs: int = 0            # bytes skipped to find a packet boundary
     status_pushes: int = 0
@@ -110,61 +110,38 @@ def ts_step(ts: int, last: int) -> int:
     return d - TS_WRAP if d >= TS_WRAP // 2 else d
 
 
-_STEP_COUNTS = ("gaps", "missing", "max_gap_ticks", "dupes", "jitter", "max_jitter_ticks")
+def classify_step(st, d: int, period: int) -> None:
+    """Sort one timestamp step (signed, from ts_step) into lost samples,
+    duplicates and jitter. Feed the steps in order.
 
-
-def _periods(d: int, period: int) -> int:
-    return (2 * d + period) // (2 * period)       # round half up; round() rounds half to even
-
-
-def _count(st, d: int, k: int, period: int) -> None:
-    if k >= 2:
+    Steps are judged against the sampling grid, not one at a time. Each stamp
+    is placed on the grid by its total distance from the first, so a sample
+    stamped late - one long step then one short, summing to two periods - is
+    one late sample, not a lost one followed by a duplicate. A stamp can be
+    late (interrupt latency) but not early, so anything up to three quarters of
+    a period late still belongs to its own slot: a stamp exactly half a period
+    late, as seen on the bench, is jitter. The sampling timer keeps its phase
+    through a stall, so the grid holds across gaps, and a lost sample whose
+    successor is stamped on time or a little early is still a loss. A stamp
+    that lands in a slot already taken, or before it, is a duplicate. Shared
+    with sdfile.py.
+    """
+    cum = getattr(st, "_cum", 0) + d
+    prev = getattr(st, "_slot", 0)
+    slot = (cum + period // 4) // period
+    st._cum, st._slot = cum, max(prev, slot)
+    step = slot - prev
+    if step <= 0:
+        st.dupes += 1
+        return
+    if step >= 2:
         st.gaps += 1
-        st.missing += k - 1
+        st.missing += step - 1
         st.max_gap_ticks = max(st.max_gap_ticks, d)
-    off = abs(d - k * period)
+    off = abs(cum - slot * period)
     if off > 1:
         st.jitter += 1
         st.max_jitter_ticks = max(st.max_jitter_ticks, off)
-
-
-def classify_step(st, d: int, period: int) -> None:
-    """Sort one timestamp step (signed, from ts_step) into lost samples,
-    duplicates and jitter. Call it for each step in order: it pairs a step
-    with the one before.
-
-    The step is taken as the nearest whole number of periods, k, halves
-    rounding up. Under half a period, or backwards (k <= 0), is a duplicate.
-    From 1.5 periods (k >= 2) samples were lost: a lost sample is still
-    counted when the stamp after it is a tick early, which a strict "two
-    periods or more" would miss. Whatever the step is off k periods by,
-    beyond a tick, is jitter in when the sample was stamped.
-
-    A sample stamped late shows as one long step and one short one. Up to
-    half a period late, rounding sees two one-period steps. Later than that
-    the long step rounds up a period and the short one down to nothing, which
-    alone would read as a lost sample and a duplicate. So when a short step
-    follows a long one that was under a period past its whole number, and the
-    two together advance no further than the long one did, they are counted
-    as one late stamp instead. Shared with sdfile.py.
-    """
-    k = _periods(d, period)
-    prev = getattr(st, "_prev_step", None)
-    if prev and k == 0 and d > 0:
-        pd, pk, before = prev
-        if pk >= 2 and pd - (pk - 1) * period < period and _periods(pd + d, period) == pk:
-            for name, value in before.items():
-                setattr(st, name, value)
-            _count(st, pd, pk - 1, period)
-            _count(st, d, 1, period)
-            st._prev_step = None
-            return
-    before = {name: getattr(st, name) for name in _STEP_COUNTS}
-    if k <= 0:
-        st.dupes += 1
-    else:
-        _count(st, d, k, period)
-    st._prev_step = (d, k, before)
 
 
 class BtLink:

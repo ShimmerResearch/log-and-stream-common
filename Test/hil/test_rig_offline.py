@@ -462,13 +462,16 @@ class TimestampSteps(unittest.TestCase):
         st = self.steps(2 * p, 10)                           # a whole period over: not a late stamp
         self.assertEqual((st.gaps, st.missing, st.dupes), (1, 1, 1))
 
-    def test_the_boundaries_are_half_a_period_and_one_and_a_half(self):
+    def test_the_boundaries_are_three_quarters_of_a_period_either_side(self):
+        # A stamp may be up to three quarters of a period late and keep its
+        # slot (rig/bt.py classify_step), so from the first stamp:
         p = self.PERIOD
         cases = {               # step: (dupes, gaps, missing)
-            p // 2 - 1: (1, 0, 0),
-            p // 2: (0, 0, 0),              # exactly half a period: a late stamp, not a duplicate
-            p + p // 2 - 1: (0, 0, 0),
-            p + p // 2: (0, 1, 1),          # 1.5 periods: a sample lost
+            3 * p // 4 - 1: (1, 0, 0),      # still the first slot: a duplicate
+            3 * p // 4: (0, 0, 0),          # the next slot, a quarter of a period early
+            p + p // 2: (0, 0, 0),          # half a period late: jitter, as seen on the bench
+            p + 3 * p // 4 - 1: (0, 0, 0),
+            p + 3 * p // 4: (0, 1, 1),      # a slot skipped: a sample lost
             2 * p - 1: (0, 1, 1),           # lost, and the next stamp a tick early
         }
         for d, want in cases.items():
