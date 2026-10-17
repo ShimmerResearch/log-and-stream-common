@@ -122,7 +122,7 @@ def test_config_roundtrip(docklink, hil_note):
 def test_bt_identity(btlink, candidate, hil_note):
     assert btlink.hw == 10
     fw_id, major, minor, patch = btlink.fw_version()
-    assert fw_id == 3, f"firmware identifier {fw_id}, expected 3 (LogAndStream)"
+    assert fw_id == 3, f"firmware identifier {fw_id} over Bluetooth, expected 3 (LogAndStream)"
     text = f"{major}.{minor:02d}.{patch:03d}"
     want = _expected_version(candidate)
     if want:
