@@ -15,7 +15,7 @@ import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .bt import HW_SHIMMER3R, TS_WRAP, channel_width, classify_step
+from .bt import HW_SHIMMER3R, channel_width, classify_step, ts_step
 
 HEAD_S3R = 384
 SDH_TRIAL_CONFIG0 = 16
@@ -89,6 +89,10 @@ def check(path: Path) -> FileCheck:
     pos, end = HEAD_S3R, len(raw)
     last = None
     while pos < end:
+        if pos + head + rl > end:
+            # A sync header, whole or not, with no whole record after it: a
+            # truncated block, left as trailing bytes.
+            break
         pos += head
         for _ in range(per_block):
             if pos + rl > end:
@@ -100,7 +104,7 @@ def check(path: Path) -> FileCheck:
                 fc.zero_ts += 1
                 continue
             if last is not None:
-                d = (ts - last) % TS_WRAP
+                d = ts_step(ts, last)
                 fc.deltas[d] = fc.deltas.get(d, 0) + 1
                 fc.span_ticks += d
                 classify_step(fc, d, h.divider)
@@ -108,13 +112,16 @@ def check(path: Path) -> FileCheck:
         else:
             continue
         break
-    fc.trailing_bytes = max(0, end - pos)
+    fc.trailing_bytes = end - pos
     return fc
 
 
 def session_dirs(root: Path) -> set[Path]:
-    """Every <experiment>/<name>-NNNN session directory under /data."""
-    data = Path(root) / "data"
+    """Every <experiment>/<name>-NNNN session directory under /data, relative to
+    the card's root. The card's drive letter can change when the unit re-docks,
+    so absolute paths from two scans would never match."""
+    root = Path(root)
+    data = root / "data"
     if not data.is_dir():
         return set()
-    return {s for e in data.iterdir() if e.is_dir() for s in e.iterdir() if s.is_dir()}
+    return {s.relative_to(root) for e in data.iterdir() if e.is_dir() for s in e.iterdir() if s.is_dir()}

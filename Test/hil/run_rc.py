@@ -10,7 +10,7 @@
    tag, so older builds can be measured too (their report is still bound to
    the tag's commit).
 2. Flashes every rig unit of the candidate's platform (rig.toml: flash method
-   "dfu" by default, "swd" when an ST-Link serial is named), and confirms each
+   "dfu" by default, "swd" through the unit's own ST-Link), and confirms each
    reports the candidate's version.
 3. Runs the tier with pytest, which writes hil-report-<bench>.json.
 4. With --upload, attaches the report and the pytest log (as
@@ -67,16 +67,29 @@ def fetch(tag: str, out: Path) -> tuple[dict, Path]:
     if len(images) != 1:
         raise SystemExit(f"{tag}: expected one {pattern} image on the release, found {len(images)}")
     info_path = out / "build-info.json"
-    try:
+    # The report is bound to the commit in build-info.json, and the gate binds
+    # the release to the commit its tag points at, so the two must agree.
+    commit = tag_commit(repo, tag)
+    # Only a release that has no build-info.json gets one synthesised. A
+    # download that fails for any other reason (network, auth) stops the run:
+    # going on would bind the report to metadata nobody read.
+    assets = gh("release", "view", tag, "-R", repo, "--json", "assets", "-q", ".assets[].name").splitlines()
+    if "build-info.json" in assets:
         gh("release", "download", tag, "-R", repo, "-p", "build-info.json", "-D", str(out), "--clobber")
         info = json.loads(info_path.read_text(encoding="utf-8"))
-    except subprocess.CalledProcessError:
+    else:
         info = {"schema": "shimmer-build-info/1", "platform": platform, "tag": tag,
-                "firmware_version": version, "commit": tag_commit(repo, tag),
+                "firmware_version": version, "commit": commit,
                 "image": images[0].name, "synthesised": True}
         info_path.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
     if info["platform"] != platform or normalise_version(info["firmware_version"]) != normalise_version(version):
         raise SystemExit(f"build-info.json does not match the tag: {info}")
+    if str(info.get("commit", "")).lower() != commit:
+        raise SystemExit(f"build-info.json names commit {info.get('commit')}, but {tag} points at {commit}")
+    # The report needs a lowercase SHA (hil_report.validate_report): use the
+    # tag's, which the API gives in lowercase, whatever case build-info.json had.
+    info["commit"] = commit
+    info_path.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
     return info, images[0]
 
 
@@ -88,6 +101,9 @@ def main(argv=None) -> int:
     ap.add_argument("--rig", default=None)
     ap.add_argument("--no-flash", action="store_true", help="test what is on the units now")
     ap.add_argument("--upload", action="store_true", help="attach the report to the GitHub release")
+    ap.add_argument("--waive", action="append", default=[], metavar="ITEM=ISSUE",
+                    help="accept a known failure or gap of ITEM under ISSUE, e.g. smoke.sd_log=ABC-123; "
+                         "the key goes into the report and the gate shows it (repeatable)")
     ap.add_argument("pytest_args", nargs="*", help="extra pytest arguments, after --")
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
@@ -123,20 +139,25 @@ def main(argv=None) -> int:
     elif not a.no_flash:
         if not rig.stm32_programmer:
             raise SystemExit("rig.toml names no stm32_programmer")
+        # A unit that cannot be flashed would still be tested, on whatever it
+        # runs now, so refuse before flashing any of them.
+        unflashable = [u.name for u in units if not u.usb_serial]
+        if unflashable:
+            raise SystemExit(f"{', '.join(unflashable)}: no usb_serial in rig.toml, so not flashable. Add it, "
+                             "or test what the units run now with --no-flash.")
         for u in units:
-            if not u.usb_serial:
-                print(f"{u.name}: no usb_serial, not flashed")
-                continue
-            method = "swd" if rig.stlink_serial else "dfu"
+            stlink = rig.stlink_for(u)          # this unit's ST-Link, never another unit's
+            method = "swd" if stlink else "dfu"
             print(f"{u.name}: flashing {image.name} by {method} ...", flush=True)
             v = rig_flash.flash(rig.stm32_programmer, image, u.usb_serial, method,
-                                rig.stlink_serial, expect_version=version)
+                                stlink, expect_version=version)
             print(f"{u.name}: now v{v.text}")
 
     report = out / f"hil-report-{rig.bench}.json"
     cmd = [sys.executable, "-m", "pytest", str(HERE / "tests"), "-m", a.tier,
            "--rig", str(rig.path), "--candidate", str(out / "build-info.json"),
-           "--hil-report", str(report), "-p", "no:cacheprovider", "-rA", *a.pytest_args]
+           "--hil-report", str(report), "-p", "no:cacheprovider", "-rA",
+           *[f"--waive={w}" for w in a.waive], *a.pytest_args]
     log = out / "pytest.log"
     with open(log, "w", encoding="utf-8") as f:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

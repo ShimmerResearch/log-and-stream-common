@@ -84,10 +84,10 @@ class Inquiry:
 class StreamStats:
     packets: int = 0
     seconds: float = 0.0
-    gaps: int = 0               # steps spanning 2+ periods: samples lost
+    gaps: int = 0               # steps of 1.5 periods or more (nearest 2+ periods): samples lost
     missing: int = 0            # samples implied missing by those steps
     max_gap_ticks: int = 0
-    dupes: int = 0              # steps under half a period: stamped twice, or backwards
+    dupes: int = 0              # steps under half a period, or backwards: stamped twice
     jitter: int = 0             # steps off a whole number of periods by more than a tick
     max_jitter_ticks: int = 0
     resyncs: int = 0            # bytes skipped to find a packet boundary
@@ -99,17 +99,25 @@ class StreamStats:
         return self.packets / self.seconds if self.seconds else 0.0
 
 
-def classify_step(st, d: int, period: int) -> None:
-    """Sort one timestamp step into lost samples, duplicates and jitter.
+def ts_step(ts: int, last: int) -> int:
+    """The signed step from one 24-bit timestamp to the next.
 
-    A sample stamped late shows as one long step followed by one short one,
-    summing to two periods: that is jitter in when the sample was stamped, not
-    a lost sample, and is counted apart from real gaps. Shared with sdfile.py.
+    Across a wrap the step is forward and small. A stamp earlier than the last
+    one is a step backwards, not a wrap: reduced modulo 2^24 alone it would look
+    like a gap of nearly 512 s. No step in a stream or a file is half the range.
     """
-    k = round(d / period)
-    if k == 0:
-        st.dupes += 1
-        return
+    d = (ts - last) % TS_WRAP
+    return d - TS_WRAP if d >= TS_WRAP // 2 else d
+
+
+_STEP_COUNTS = ("gaps", "missing", "max_gap_ticks", "dupes", "jitter", "max_jitter_ticks")
+
+
+def _periods(d: int, period: int) -> int:
+    return (2 * d + period) // (2 * period)       # round half up; round() rounds half to even
+
+
+def _count(st, d: int, k: int, period: int) -> None:
     if k >= 2:
         st.gaps += 1
         st.missing += k - 1
@@ -118,6 +126,45 @@ def classify_step(st, d: int, period: int) -> None:
     if off > 1:
         st.jitter += 1
         st.max_jitter_ticks = max(st.max_jitter_ticks, off)
+
+
+def classify_step(st, d: int, period: int) -> None:
+    """Sort one timestamp step (signed, from ts_step) into lost samples,
+    duplicates and jitter. Call it for each step in order: it pairs a step
+    with the one before.
+
+    The step is taken as the nearest whole number of periods, k, halves
+    rounding up. Under half a period, or backwards (k <= 0), is a duplicate.
+    From 1.5 periods (k >= 2) samples were lost: a lost sample is still
+    counted when the stamp after it is a tick early, which a strict "two
+    periods or more" would miss. Whatever the step is off k periods by,
+    beyond a tick, is jitter in when the sample was stamped.
+
+    A sample stamped late shows as one long step and one short one. Up to
+    half a period late, rounding sees two one-period steps. Later than that
+    the long step rounds up a period and the short one down to nothing, which
+    alone would read as a lost sample and a duplicate. So when a short step
+    follows a long one that was under a period past its whole number, and the
+    two together advance no further than the long one did, they are counted
+    as one late stamp instead. Shared with sdfile.py.
+    """
+    k = _periods(d, period)
+    prev = getattr(st, "_prev_step", None)
+    if prev and k == 0 and d > 0:
+        pd, pk, before = prev
+        if pk >= 2 and pd - (pk - 1) * period < period and _periods(pd + d, period) == pk:
+            for name, value in before.items():
+                setattr(st, name, value)
+            _count(st, pd, pk - 1, period)
+            _count(st, d, 1, period)
+            st._prev_step = None
+            return
+    before = {name: getattr(st, name) for name in _STEP_COUNTS}
+    if k <= 0:
+        st.dupes += 1
+    else:
+        _count(st, d, k, period)
+    st._prev_step = (d, k, before)
 
 
 class BtLink:
@@ -238,7 +285,7 @@ class BtLink:
                         if last_ts is None:
                             st.first_ts = ts
                         else:
-                            d = (ts - last_ts) % TS_WRAP
+                            d = ts_step(ts, last_ts)
                             st.deltas[d] = st.deltas.get(d, 0) + 1
                             classify_step(st, d, inq.divider)
                         last_ts = ts
