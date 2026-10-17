@@ -199,6 +199,12 @@ uint8_t SdWrBuf_numQueued(const SdWriteBuf *bufsPtr)
 
 uint8_t SdWrBuf_canAccept(const SdWriteBuf *bufsPtr, uint16_t recLen)
 {
+  /* A zero-length record is accepted by SdWrBuf_put however full the buffers
+   * are - there is nothing to store - so it is accepted here too. */
+  if (recLen == 0)
+  {
+    return 1;
+  }
   /* The same two refusals SdWrBuf_put makes for a full set of buffers. */
   if (bufsPtr->numQueued >= NUM_SDWRBUF)
   {
