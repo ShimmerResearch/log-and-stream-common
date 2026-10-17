@@ -1,9 +1,11 @@
 """Power to a unit's USB-C, which on Shimmer3R is also dock/undock.
 
 HubPower switches a port on the Exsys managed hub through bench-tools'
-hubctl.py. ManualPower asks the operator to plug or unplug, so the same test
-runs on a bench without a hub - slower, but it runs. Both have the same
-interface; tests never know which they got.
+hubctl.py. ManualPower asks the operator to plug or unplug, so with
+--manual-power the same test runs on a bench without a hub - slower, but it
+runs. Without the flag such a bench reports the docking tests not_covered, so
+an unattended run never waits on a prompt. Both have the same interface; tests
+never know which they got.
 
 hubctl is imported from a bench-tools checkout named in rig.toml rather than
 copied here: it is the one place the hub's protocol and its safety rules live

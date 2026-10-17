@@ -108,7 +108,7 @@ def test_long_log(unit, power, hil_note):
         root = s3r_usb.wait_drive(unit.usb_serial, 120)
         new = sorted(sdfile.session_dirs(root) - before)
     assert len(new) == 1, f"expected one new session, found {len(new)}"
-    sc = sdfile.check_session(new[0])
+    sc = sdfile.check_session(root / new[0])     # relative: the drive letter may have changed
     per_hour = sc.missing / sc.hours if sc.hours else 0
     hil_note(f"{SOAK_RATE_HZ} Hz, {sc.hours:.2f} h in {len(sc.files)} files: {sc.records} records, "
              f"{sc.missing} lost in {sc.gaps} gaps ({sc.loss_fraction():.3%}, {per_hour:.0f}/h), "

@@ -84,11 +84,11 @@ class Inquiry:
 class StreamStats:
     packets: int = 0
     seconds: float = 0.0
-    gaps: int = 0               # steps spanning 2+ periods: samples lost
+    gaps: int = 0               # stamps that skip a slot of the sampling grid: samples lost
     missing: int = 0            # samples implied missing by those steps
     max_gap_ticks: int = 0
-    dupes: int = 0              # steps under half a period: stamped twice, or backwards
-    jitter: int = 0             # steps off a whole number of periods by more than a tick
+    dupes: int = 0              # stamps in a slot already taken, or before it: stamped twice
+    jitter: int = 0             # stamps off their grid slot by more than a tick
     max_jitter_ticks: int = 0
     resyncs: int = 0            # bytes skipped to find a packet boundary
     status_pushes: int = 0
@@ -105,17 +105,32 @@ class StreamStats:
         return self.packets / self.seconds if self.seconds else 0.0
 
 
+def ts_step(ts: int, last: int) -> int:
+    """The signed step from one 24-bit timestamp to the next.
+
+    Across a wrap the step is forward and small. A stamp earlier than the last
+    one is a step backwards, not a wrap: reduced modulo 2^24 alone it would look
+    like a gap of nearly 512 s. No step in a stream or a file is half the range.
+    """
+    d = (ts - last) % TS_WRAP
+    return d - TS_WRAP if d >= TS_WRAP // 2 else d
+
+
 def classify_step(st, d: int, period: int) -> None:
-    """Sort one timestamp step into lost samples, duplicates and jitter.
+    """Sort one timestamp step (signed, from ts_step) into lost samples,
+    duplicates and jitter. Feed the steps in order.
 
     Steps are judged against the sampling grid, not one at a time. Each stamp
     is placed on the grid by its total distance from the first, so a sample
     stamped late - one long step then one short, summing to two periods - is
     one late sample, not a lost one followed by a duplicate. A stamp can be
     late (interrupt latency) but not early, so anything up to three quarters of
-    a period late still belongs to its own slot. The sampling timer keeps its
-    phase through a stall, so the grid holds across gaps. Shared with
-    sdfile.py; feed the steps in order.
+    a period late still belongs to its own slot: a stamp exactly half a period
+    late, as seen on the bench, is jitter. The sampling timer keeps its phase
+    through a stall, so the grid holds across gaps, and a lost sample whose
+    successor is stamped on time or a little early is still a loss. A stamp
+    that lands in a slot already taken, or before it, is a duplicate. Shared
+    with sdfile.py.
     """
     cum = getattr(st, "_cum", 0) + d
     prev = getattr(st, "_slot", 0)
@@ -140,19 +155,20 @@ class BtLink:
         # Opening an SPP port is what makes Windows page the device; it can take
         # several seconds, and fails outright if the link cannot be made.
         self.ser = _open_spp(port, connect_timeout_s)
-        self.ser.timeout = 1.0
         self.hw: int | None = None
         self.crc_mode = 0
         self._nstatus: int | None = None
-        time.sleep(0.2)
-        self.ser.write(bytes([SET_CRC, 0]))
-        time.sleep(0.5)
-        self.ser.reset_input_buffer()
+        # Until the constructor returns there is no link to close, so if the
+        # first exchange fails the port is closed here: left open, it would
+        # hold the COM port against every later connection.
         try:
+            self.ser.timeout = 1.0
+            time.sleep(0.2)
+            self.ser.write(bytes([SET_CRC, 0]))
+            time.sleep(0.5)
+            self.ser.reset_input_buffer()
             self.hw = self.device_version()
-        except Exception:
-            # A link that opened but never answered: release the port now, not
-            # at garbage collection, or the next open meets "Access is denied".
+        except BaseException:
             self.ser.close()
             raise
 
@@ -349,7 +365,7 @@ class BtLink:
                         if last_ts is None:
                             st.first_ts = ts
                         else:
-                            d = (ts - last_ts) % TS_WRAP
+                            d = ts_step(ts, last_ts)
                             st.deltas[d] = st.deltas.get(d, 0) + 1
                             classify_step(st, d, inq.divider)
                         last_ts = ts
@@ -424,8 +440,18 @@ def _open_spp(port: str, timeout_s: float) -> serial.Serial:
     end = time.monotonic() + PORT_RELEASE_WAIT_S
     paged = False
     while True:
+        # Opened with DTR and RTS low, pyserial's default being high. On
+        # Shimmer3R firmware without the module-frame guard (seen with IF820
+        # v1.4.16.16), a port opened with them raised can have the rest of the
+        # module's connect event run as a command, and on one host that changed
+        # the stored configuration (SHIMMER3_BT_COMMUNICATION_PROTOCOL.md §2).
+        ser = serial.Serial()
+        ser.port, ser.baudrate = port, 115200
+        ser.timeout = ser.write_timeout = timeout_s
+        ser.dtr = ser.rts = False
         try:
-            return serial.Serial(port, 115200, timeout=timeout_s, write_timeout=timeout_s)
+            ser.open()
+            return ser
         except serial.SerialException as e:
             if "semaphore timeout" in str(e) and not paged:
                 # One page timeout is retried: seen right after the unit's USB

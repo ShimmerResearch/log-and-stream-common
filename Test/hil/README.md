@@ -10,6 +10,8 @@ format are in [docs/SHIMMER3_TEST_PROCEDURE.md](../../docs/SHIMMER3_TEST_PROCEDU
 python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022            # flash, run smoke, write the report
 python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022 --upload   # ...and attach it to the pre-release
 python Test/hil/run_rc.py <tag> --no-flash                           # the unit already runs the candidate
+python Test/hil/run_rc.py <tag> --waive smoke.sd_log=ABC-123        # accept a known failure under an issue
+python Test/hil/run_rc.py <tag> --manual-power                       # dock and undock by hand when prompted
 ```
 
 An overnight soak of a Shimmer3R candidate, then of a Shimmer3 one (each run tests its own platform's units):
@@ -19,6 +21,11 @@ set HIL_SOAK_SCALE=3
 python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022 --no-flash --tier soak
 python Test/hil/run_rc.py LogAndStream_Shimmer3_v1.01.007 --no-flash --tier soak
 ```
+
+A failure in the report blocks the release, required item or not, unless it
+carries a waiver. `--waive ITEM=ISSUE` puts the issue key into that item's
+result when it fails or is not covered, as a manual sign-off's waiver does, and
+the gate lists it as waived. A waiver for an item that passed is not used.
 
 Output goes to `Test/hil/out/<tag>/<time>/`: the image, `build-info.json`, the
 pytest log and `hil-report-<bench>.json`.
@@ -97,12 +104,21 @@ plug and unplug.
 
 ## What a timestamp check counts
 
-A step between consecutive sample stamps is sorted three ways:
+Each sample stamp is placed on the sampling grid by its distance from the
+first stamp (`rig/bt.py`, `classify_step`). A stamp may be up to three quarters
+of a period late and keep its slot, because interrupt latency makes stamps
+late, never early. Stamps are then sorted three ways:
 
-- **lost samples:** the step spans two or more periods;
-- **duplicates:** the step is under half a period;
-- **jitter:** the step is off a whole number of periods by more than a tick.
+- **lost samples:** a stamp skips a slot. The grid keeps its phase through a
+  stall, so a lost sample is still counted when the stamp after it is on time
+  or a tick early;
+- **duplicates:** a stamp lands in a slot already taken, or before it;
+- **jitter:** a stamp is off its slot by more than a tick.
 
-A sample stamped late is followed by a short step, so a late stamp is jitter,
-not a loss. Smoke tests fail on any loss or duplicate, and on jitter beyond a
-quarter period.
+So a sample stamped late - a long step then a short one - is one late stamp,
+not a lost sample and a duplicate. That includes one exactly half a period
+late, which a bench run showed. Smoke tests fail on any loss or duplicate, and
+on jitter beyond a quarter period.
+
+`run_rc.py` expects every unit it flashes to be docked (on USB) when it starts,
+as the tests do, and stops before flashing anything if one is not.

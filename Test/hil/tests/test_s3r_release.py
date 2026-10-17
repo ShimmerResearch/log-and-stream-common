@@ -123,9 +123,9 @@ def _start_loss(ts, period) -> int:
 
 
 def _new_session(root: Path, before: set) -> Path:
-    new = sorted(sdfile.session_dirs(root) - before)
+    new = sorted(sdfile.session_dirs(root) - before)      # relative: the drive letter may have changed
     assert len(new) == 1, f"expected one new SD session, found {len(new)}: {new}"
-    files = sorted(p for p in new[0].iterdir() if p.is_file())
+    files = sorted(p for p in (root / new[0]).iterdir() if p.is_file())
     assert files and files[0].name == "000", f"{new[0]}: no data file 000"
     assert len(files) == 1, f"{new[0]}: {len(files)} data files for a short log"
     return files[0]
