@@ -28,9 +28,10 @@ except ImportError:
     _tools.list_ports = _lp
     _serial.tools = _tools
     _serial.Serial = object
+    _serial.SerialException = type("SerialException", (OSError,), {})
     sys.modules.update({"serial": _serial, "serial.tools": _tools, "serial.tools.list_ports": _lp})
 
-from rig import bt, flash, power, sdfile  # noqa: E402
+from rig import bt, dock, flash, power, sdfile  # noqa: E402
 import run_rc  # noqa: E402
 
 
@@ -268,13 +269,38 @@ class BuildInfoBinding(unittest.TestCase):
                 mock.patch.object(run_rc, "tag_commit", lambda repo, tag: self.SHA):
             return run_rc.fetch(self.TAG, Path(d))
 
-    def test_build_info_for_the_tags_commit_is_accepted(self):
+    def test_build_info_for_the_tags_commit_is_accepted_in_lowercase(self):
+        # The report needs a lowercase SHA, whatever case build-info.json had.
         info, _ = self.fetch_with(self.SHA.upper())
-        self.assertEqual(info["commit"].lower(), self.SHA)
+        self.assertEqual(info["commit"], self.SHA)
 
     def test_build_info_for_another_commit_is_refused(self):
         with self.assertRaisesRegex(SystemExit, "points at"):
             self.fetch_with("f" * 40)
+
+
+class DockOpenRetries(unittest.TestCase):
+    def test_a_port_dropped_during_the_first_read_is_retried(self):
+        made = []
+
+        class FakeLink:
+            def __init__(self, port):
+                self.closed = False
+                made.append(self)
+
+            def version(self):
+                if len(made) == 1:
+                    raise dock.serial.SerialException("device disconnected")
+                return "1.01.022"
+
+            def close(self):
+                self.closed = True
+
+        with mock.patch.object(dock, "DockLink", FakeLink), mock.patch.object(dock.time, "sleep", lambda s: None):
+            link = dock.open_when_ready("COM9", attempts=3)
+        self.assertEqual(len(made), 2)
+        self.assertTrue(made[0].closed, "the first link was left open")
+        self.assertIs(link, made[1])
 
 
 if __name__ == "__main__":

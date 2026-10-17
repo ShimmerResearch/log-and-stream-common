@@ -82,6 +82,10 @@ def fetch(tag: str, out: Path) -> tuple[dict, Path]:
         raise SystemExit(f"build-info.json does not match the tag: {info}")
     if str(info.get("commit", "")).lower() != commit:
         raise SystemExit(f"build-info.json names commit {info.get('commit')}, but {tag} points at {commit}")
+    # The report needs a lowercase SHA (hil_report.validate_report): use the
+    # tag's, which the API gives in lowercase, whatever case build-info.json had.
+    info["commit"] = commit
+    info_path.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
     return info, images[0]
 
 
