@@ -108,19 +108,28 @@ class StreamStats:
 def classify_step(st, d: int, period: int) -> None:
     """Sort one timestamp step into lost samples, duplicates and jitter.
 
-    A sample stamped late shows as one long step followed by one short one,
-    summing to two periods: that is jitter in when the sample was stamped, not
-    a lost sample, and is counted apart from real gaps. Shared with sdfile.py.
+    Steps are judged against the sampling grid, not one at a time. Each stamp
+    is placed on the grid by its total distance from the first, so a sample
+    stamped late - one long step then one short, summing to two periods - is
+    one late sample, not a lost one followed by a duplicate. A stamp can be
+    late (interrupt latency) but not early, so anything up to three quarters of
+    a period late still belongs to its own slot. The sampling timer keeps its
+    phase through a stall, so the grid holds across gaps. Shared with
+    sdfile.py; feed the steps in order.
     """
-    k = round(d / period)
-    if k == 0:
+    cum = getattr(st, "_cum", 0) + d
+    prev = getattr(st, "_slot", 0)
+    slot = (cum + period // 4) // period
+    st._cum, st._slot = cum, max(prev, slot)
+    step = slot - prev
+    if step <= 0:
         st.dupes += 1
         return
-    if k >= 2:
+    if step >= 2:
         st.gaps += 1
-        st.missing += k - 1
+        st.missing += step - 1
         st.max_gap_ticks = max(st.max_gap_ticks, d)
-    off = abs(d - k * period)
+    off = abs(cum - slot * period)
     if off > 1:
         st.jitter += 1
         st.max_jitter_ticks = max(st.max_jitter_ticks, off)

@@ -1178,6 +1178,33 @@ Smoke, fleet and release items are not yet on the required lists. They join once
 clean across a few candidates, so a flaky check never blocks a release on its
 first day.
 
+### 10.5 Triage of a failed run
+
+`Test/hil/triage.py <run dir>` asks Claude to explain the items that did not
+pass (`run_rc.py --triage` calls it after a failed run). A clean run is never
+sent.
+
+The model is given the report's failing items, the pytest failure text, the
+commits since the previous public release in both repositories, the bench's
+known-issues list and its bench facts. It may read the firmware source; it has
+no shell, network or connectors, and a spending cap.
+
+For each item it returns:
+- a classification: firmware defect, known issue, bench artifact, harness
+  defect, or unclear;
+- the evidence and the source lines it read;
+- suspect commits;
+- the next experiment.
+
+New defects come back as drafts, which are not filed. The result is
+`triage.md`, attached to the candidate beside the report with `--upload`.
+
+**Triage is advice, never a verdict.** The gate (§10.2) does not read it, and
+a waiver is still a person's decision, recorded with an issue key.
+
+The known-issues list and bench facts live with each bench (`[triage]` in
+`rig.toml`), not in this repository.
+
 ---
 
 ## Still unverified / not found in code
