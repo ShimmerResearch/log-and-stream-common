@@ -57,12 +57,14 @@ def drive(usb_serial: str) -> Path | None:
     return None
 
 
-def dfu_present() -> bool:
-    """ST's system bootloader in DFU mode. It has no COM port, so ask PnP."""
+def dfu_count() -> int:
+    """How many devices are in ST's system bootloader in DFU mode. It has no
+    COM port and reports no serial of the unit, so ask PnP and count."""
     ps = (f"@(Get-PnpDevice -PresentOnly | Where-Object InstanceId -like 'USB\\VID_{DFU_VID:04X}&PID_{DFU_PID:04X}*').Count")
     r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
                        capture_output=True, text=True, encoding="utf-8", timeout=60)
-    return r.stdout.strip() not in ("", "0")
+    out = r.stdout.strip()
+    return int(out) if out.isdigit() else 0
 
 
 def wait_cdc(usb_serial: str, timeout_s: float = 30.0) -> str:

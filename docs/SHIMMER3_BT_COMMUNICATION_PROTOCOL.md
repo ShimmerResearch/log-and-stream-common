@@ -58,6 +58,17 @@ BLE, and over the dock's serial link.
 >   there). The number itself comes from a bench measurement of the Bluetooth
 >   module, not from source; its method and limits are recorded under
 >   [Still unverified](#still-unverified--not-found-in-code).
+> - **Reply priority over data ([§6.3](#63-interleaving)):**
+>   `log-and-stream-common` @ `e5f2252`, which postdates the pin above. Read
+>   from `Comms/shimmer_bt_reply.{h,c}` (`BT_TX_REPLY_RESERVE`,
+>   `ShimBtReply_send`, `ShimBtReply_retry`), `Comms/shimmer_bt_uart.c`
+>   (`ShimBt_sendRsp`, `ShimBt_instreamStatusRespSend`,
+>   `ShimBt_pushBytesToBtTxBufLeaving`, and the Shimmer3R
+>   `ShimBt_writeToTxBufAndSend`) and `Comms/shimmer_sd_file_transfer.c`
+>   (`sdFtEmitPendingStatusFrames`). The Shimmer3 half of the data gate is in
+>   `shimmer3-firmware`'s `Shimmer_Driver/RN4X/RN4X.c`, which the
+>   platform-firmware pins above predate. Treat the Shimmer3 data gate as
+>   unverified here until those pins move to a revision that carries it.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). The **Gen** column in the opcode tables says
@@ -344,6 +355,29 @@ number would suggest — see the note in
 opcode, so it never appears as a first byte from a host. The demultiplexer is
 bypassed whenever the parser is mid-command (`ShimBt_isWaitingForArgs()`), so
 these values are unrestricted **inside** an argument payload.
+
+**A module frame is never split between the two parsers.** The module signals
+data mode on its CYSPP pin, and the firmware routes received bytes to the
+command parser only while that pin says data mode *and* no EZ-Serial frame is
+part-received. A frame that starts in command mode is finished by the module's
+parser, even if the pin drops partway through it. A host therefore receives
+nothing on connect until it sends a command.
+
+> Firmware without this rule can send a host an **unsolicited ACK or NACK about
+> 0.1 s after it opens the classic port with DTR/RTS raised**, the default for
+> pyserial and most serial software. Seen with IF820 v1.4.16.16, not with
+> v1.4.18.18. The module entered data mode while its `bt_connected` event was
+> still arriving, and the rest of that frame, which is the host's own
+> Bluetooth address, went to the command parser and ran as whatever command it
+> spelled. On one bench host it ran `SET_GYRO_SAMPLING_RATE_COMMAND` and
+> changed the stored configuration. A host that sees a byte it did not ask for
+> straight after connecting should not take it as the reply to its first
+> command. Opening the port with DTR/RTS low avoids it.
+>
+> `shimmer3r-firmware` `Shimmer_Driver/CYW20820/hal_CYW20820.c`,
+> `btUartDmaRxCpltCallback()`, the `getEzsPacketLength() == 0U` guard. Not yet
+> in a pinned revision; see
+> [Still unverified](#still-unverified--not-found-in-code).
 
 ### 2.3 Framing guarantees per transport
 
@@ -1227,13 +1261,38 @@ boundary the ring reaches it. The same applies during an SD file transfer, whose
 data frames interleave with command replies by design
 ([§7.13](#713-sd-file-transfer-shimmer3r)).
 
-There is **no host-side flow control**. If the host cannot keep up, the device's
-transmit ring fills and the firmware drops what will not fit rather than blocking
-its sampling loop: `ShimBt_pushBytesToBtTxBuf` returns a failure when the ring
-has insufficient space, and `ShimBt_writeToTxBufAndSend` returns without queueing
-anything.
+There is **no host-side flow control**. If the link cannot keep up with the
+stream, the device's transmit ring fills, and the firmware drops **data packets**
+that will not fit rather than blocking its sampling loop. A host sees each one as
+a gap in the timestamps.
 
-> `Comms/shimmer_bt_uart.c:2721-2766`, `:2979-2993`.
+**Command replies are not dropped.** ACKs, NACKs, responses and status pushes
+take priority over data packets:
+
+- **Space is reserved for replies.** A data packet is refused if it would leave
+  less than `BT_TX_REPLY_RESERVE` bytes free (256 on Shimmer3R, 16 on Shimmer3),
+  so a reply arriving mid-stream normally goes straight into the ring behind
+  the data already queued.
+- **A longer reply is held, not dropped.** A reply that still does not fit is
+  held and sent once the ring has drained enough. Data packets are refused
+  while it waits, so it goes out ahead of them, and replies keep their order.
+  The hold buffer takes `RESPONSE_PACKET_SIZE` bytes plus CRC and a status push.
+  Only a reply that overflows the hold buffer as well is lost, and the firmware
+  counts it.
+
+A reply can therefore arrive late when the link is slow, but it arrives. A host
+should time out on the link, not on a single reply under load.
+
+The SD file transfer's data frames follow the same rule as data packets
+([§7.13](#713-sd-file-transfer-shimmer3r)). Its status frames wait while a reply
+is held, so they cannot overtake it. SD sync packets are sent as before,
+because they carry the time at which they were stamped and must not go out late
+([SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md)).
+
+> `Comms/shimmer_bt_reply.c`; `Comms/shimmer_bt_uart.c` (`ShimBt_writeToTxBufAndSend`
+> on Shimmer3R); `Comms/shimmer_sd_file_transfer.c` (`sdFtEmitPendingStatusFrames`);
+> `shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.c` (the Shimmer3 write
+> functions). Pinned in "Verified against" above.
 
 A disconnect stops streaming unconditionally, whether or not the host asked
 (`ShimBt_handleBtRfCommStateChange`, `:2608-2609`), and on Shimmer3 records a
@@ -3226,7 +3285,8 @@ each of them.
   [§7.5](#75-infomem)
 - **No flow control from the host.** The host cannot ask the device to pause. If
   it cannot keep up, the device's transmit ring fills and the firmware discards
-  what will not fit rather than stalling its sampling loop.
+  data packets that will not fit rather than stalling its sampling loop.
+  Command replies are kept and sent late instead.
   [§6.3](#63-interleaving)
 - **No retransmission.** CRC modes let a host *detect* corruption
   ([§3.3](#33-crc-modes)); nothing in the protocol lets it request a resend. The
@@ -3560,6 +3620,13 @@ them.
   update rests on a bench reproduction (SWO log, October 2026), not on source.
   **Re-check against source and move under Verified against** once that change
   is merged and the Shimmer3R pin is bumped to include it.
+- **Shimmer3R never splits a module frame between the two parsers.** The rule in
+  [§2.2](#22-ble) is in a `shimmer3r-firmware` change that was in review when
+  written, not in the `a8f105e5` pin. The unsolicited ACK/NACK it prevents was
+  reproduced on the bench in October 2026: IF820 v1.4.16.16 with LogAndStream
+  v1.01.021, on every open with DTR/RTS raised (6 of 6). With the change it
+  stopped (0 of 10). **Re-check against source and move under Verified
+  against** once the change is merged and the Shimmer3R pin includes it.
 - **The first firmware tag for several version gates.** Where
   [Appendix A](#appendix-a-firmware-version-gates) shows a `≤` marker, the
   introducing commit predates the earliest tag in that lineage, so the tag shown

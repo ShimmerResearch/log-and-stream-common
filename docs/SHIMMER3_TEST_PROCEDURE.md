@@ -14,6 +14,9 @@ and — as importantly — what each layer of testing cannot tell you.
 > - **Platform firmware:** `shimmer3-firmware` @ `eb6c400`;
 >   `shimmer3r-firmware` @ `4dc5253` — the release workflows and the
 >   Shimmer3R CubeMX guard check.
+> - **`test_platform_seam` and `check_weak_decls.py`:** `log-and-stream-common`
+>   @ `f573f60` — `Test/host/test_platform_seam.c`,
+>   `Test/host/check_weak_decls.py`, `Test/host/Makefile`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
@@ -184,6 +187,12 @@ What the suites cover today:
 | `test_rtc` | `RTC/shimmer_rtc.c` | ×2 | Every day from 2000 to 2099 round-trips; leap years; date validation |
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
 | `test_boards` | `Boards/shimmer_boards.c` | ×2 | Every revision gate, across 25 board revisions |
+| `test_platform_seam` | `Platform/platform_api.c`, `Boards/shimmer_boards.c` | ×2 | A platform's override of a weak hook beats the default even when the default links first; `log_and_stream_globals.h` declares its globals rather than defining them |
+
+`check_weak_decls.py` (`make -C Test/host weak-decls`) is the text-only half of
+`test_platform_seam`: it fails if any header in the repository puts a weak
+attribute on a declaration, which covers the hook headers the host build cannot
+include yet.
 
 Three of them are additionally cross-checked against a reference that shares no
 code with the firmware — an oracle, not a restatement:
@@ -264,7 +273,7 @@ signing off a configuration nobody releases.
 
 | Platform | Build | Note |
 |---|---|---|
-| Shimmer3 | **Debug** | The Release configuration does **not** build. Known and parked — not a regression to chase. See [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
+| Shimmer3 | **Debug** | Release has the same settings and builds the same image until DEV-1217 raises its optimisation; sign off Debug, the configuration that ships. See [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
 | Shimmer3R | **Release**, and Debug as well | A Debug-only failure means something depends on optimisation, which is worth knowing before a customer finds it |
 
 For Shimmer3, `Debug` is the configuration that ships, so it is the one to

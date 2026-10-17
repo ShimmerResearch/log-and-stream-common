@@ -39,6 +39,7 @@ Three kinds of fault are cheap here and expensive or impossible on a bench:
 | `stubs/` | Headers the consuming firmware owns. `stubs/README.md` explains each |
 | `test_*.c` | The suites |
 | `crosscheck_*.py` | Comparisons against references that share no code with the firmware |
+| `check_weak_decls.py` | Fails if any header declares a function weak (`make weak-decls`). `test_platform_seam.c` is the link-time half of the same rule |
 
 Two of them are the odd ones out: they need no compiler and no binary, so they
 run from a bare checkout.

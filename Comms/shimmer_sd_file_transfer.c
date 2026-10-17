@@ -326,7 +326,12 @@ static uint8_t sdFtEmitPendingStatusFrames(void)
 
   while (pendingStatusCount)
   {
-    if (ShimBt_getSpaceInBtTxBuf() < (uint16_t) (SD_FT_STATUS_FRAME_LEN + 1))
+    /* A held command reply goes first (Comms/shimmer_bt_reply.h). These
+     * frames bypass the reply queue, so without this one could overtake it
+     * and reach the host ahead of the reply it is waiting for. Resumed from
+     * the TX-complete space event, as for a full ring. */
+    if (gBtReplyPendingLen != 0U
+        || ShimBt_getSpaceInBtTxBuf() < (uint16_t) (SD_FT_STATUS_FRAME_LEN + 1))
     {
       waitingForTxSpace = 1;
       return 0;
