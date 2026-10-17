@@ -8,6 +8,9 @@ wire, not over the air.
 >
 > - `log-and-stream-common` @ `f3cf73e`; `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
+> - `TEST_LOG_WITH_USB` (§7): `log-and-stream-common` @ `126e9fb` —
+>   `log_and_stream_definitions.h`, `Sensing/shimmer_sensing.c`,
+>   `log_and_stream_common.c`. Only that row was checked at this revision.
 > - Toolchain observations are from the build configurations present in those
 >   repositories at those revisions.
 > - §4.5 is newer. Its settings were read from `shimmer3-firmware` @
@@ -311,12 +314,15 @@ configuration:
 | `USE_FREERTOS` | Selects the RTOS task-list variant (neither generation uses it) |
 | `TEST_TASK_MONITOR` | Enables the stuck-task watchdog |
 | `TEST_RTC_ERR_FLASH_OFF` | Suppresses the RTC-not-set LED warning |
+| `TEST_LOG_WITH_USB` | **Bench builds only, never ship.** Shimmer3R: allows SD logging with USB-C in but not docked, so a battery-less unit can log and be read back without undocking. Starting a log takes the card from USB MSC; it goes back when sensing stops, so with a stream still running after the log, only once that stream ends too. Default 0 |
 | `IS_SUPPORTED_TCXO`, `IS_SUPPORTED_SINGLE_TOUCH` | Capability gates enforced in configuration validation |
 
 > **`TEST_*` symbols are not test-only.** `TEST_TASK_MONITOR` gates the
 > stuck-task watchdog, so a build without it has no protection at all, and
 > `TEST_RTC_ERR_FLASH_OFF` removes a user-visible warning. Check what a shipping
 > build actually defines rather than assuming the names mean development-only.
+> `TEST_LOG_WITH_USB` is the exception: it is genuinely bench-only, and a
+> shipping build must leave it at 0.
 
 ## 8. Verifying a build on hardware
 

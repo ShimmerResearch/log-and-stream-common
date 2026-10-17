@@ -67,12 +67,13 @@ STANDALONE_SUITES := test_swcrc test_packet_ring test_util test_sd_pressure_id \
 
 # Suites built once per SD write-buffer count. That count is a compile-time
 # constant because the buffers are a fixed array, so covering more than one
-# means building more than once. 4 is what both platforms ship; 1 is what
+# means building more than once. 4 is what Shimmer3 ships; 1 is what
 # Shimmer3 shipped before, and that build asserts the record loss it caused, so
 # the count cannot be quietly reduced again; 2 sits between them and catches an
-# off-by-one that 1 and 4 would both hide.
+# off-by-one that 1 and 4 would both hide. 32 is what Shimmer3R ships since
+# DEV-1098, Shimmer3 staying at 4.
 SD_WRBUF_SUITES := test_sd_write_buf
-SD_WRBUF_COUNTS := 1 2 4
+SD_WRBUF_COUNTS := 1 2 4 32
 
 # Suites built once, against the stub platform.
 SINGLE_PLATFORM_SUITES := test_crc
@@ -170,7 +171,19 @@ endef
 $(foreach s,$(SD_WRBUF_SUITES),\
   $(foreach n,$(SD_WRBUF_COUNTS),$(eval $(call SD_WRBUF_RULE,$(s),$(n)))))
 
+# The packet ring is 8 slots on Shimmer3 and 1024 on Shimmer3R, set by the
+# platform define, so its suite also runs at the Shimmer3R depth: that is the
+# only build that exercises the 16-bit indices and the large-ring reset, count
+# and drain.
+RING_DEPTH_SUITES := test_packet_ring
+define RING_DEPTH_RULE
+$(BUILD)/$(1).SHIMMER3R: $$(SRC_$(1)) | $(BUILD)
+	$$(CC) $$(CFLAGS) -DSHIMMER3R $$(INC_$(1)) $$(SRC_$(1)) -o $$@
+endef
+$(foreach s,$(RING_DEPTH_SUITES),$(eval $(call RING_DEPTH_RULE,$(s))))
+
 BINARIES := $(foreach s,$(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES),$(BUILD)/$(s)) \
+            $(foreach s,$(RING_DEPTH_SUITES),$(BUILD)/$(s).SHIMMER3R) \
             $(foreach s,$(DUAL_PLATFORM_SUITES),\
               $(foreach p,$(PLATFORMS),$(BUILD)/$(s).$(p))) \
             $(foreach s,$(SD_WRBUF_SUITES),\
@@ -224,8 +237,12 @@ test: build
 
 # 'make test_rtc' runs both platform builds of that suite; 'make test_util' the
 # single one. Handy while iterating on one module.
-$(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES): %: $(BUILD)/%
+$(filter-out $(RING_DEPTH_SUITES),$(STANDALONE_SUITES)) $(SINGLE_PLATFORM_SUITES): %: $(BUILD)/%
 	@$(BUILD)/$@
+
+# 'make test_packet_ring' runs it at both ring depths, as 'make test' does.
+$(RING_DEPTH_SUITES): %: $(BUILD)/% $(BUILD)/%.SHIMMER3R
+	@$(BUILD)/$@ && $(BUILD)/$@.SHIMMER3R
 
 $(DUAL_PLATFORM_SUITES): %: $(foreach p,$(PLATFORMS),$(BUILD)/%.$(p))
 	@for p in $(PLATFORMS); do $(BUILD)/$@.$$p || exit 1; done

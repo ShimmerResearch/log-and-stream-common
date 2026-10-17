@@ -123,8 +123,13 @@ void ShimSens_configureChannels(void)
  */
 uint8_t ShimSens_checkStartLoggingConditions(void)
 {
-  return shimmerStatus.sdInserted && !shimmerStatus.sdBadFile && shimmerStatus.sdlogReady
-      && !shimmerStatus.sdLogging && !LogAndStream_isDockedOrUsbIn();
+  return shimmerStatus.sdInserted && !shimmerStatus.sdBadFile
+      && shimmerStatus.sdlogReady && !shimmerStatus.sdLogging
+#if TEST_LOG_WITH_USB
+      && !shimmerStatus.docked;
+#else
+      && !LogAndStream_isDockedOrUsbIn();
+#endif
 }
 
 /* Check if the conditions are met to start streaming to BT.
@@ -225,6 +230,15 @@ void ShimSens_startSensing(void)
     if (shimmerStatus.usbPluggedIn)
     {
       USB_deinit();
+#if TEST_LOG_WITH_USB
+      /* The host may have written the card through MSC, so drop FatFs's
+       * cached view: power-cycle, re-init and remount, as an undock does.
+       * Done before the sample timer starts, so it costs no samples. */
+      if (sdLogPendingStart)
+      {
+        Board_sd2Mcu();
+      }
+#endif
     }
 #endif
     ShimSens_stepInit();
@@ -271,6 +285,17 @@ void ShimSens_startSensing(void)
     ShimSens_maxExperimentLengthSecsSet(maxExpLenMins);
     ShimSens_currentExperimentLengthReset();
 
+#if TEST_LOG_WITH_USB && defined(SHIMMER3R)
+    /* A log started while a stream is already running skips the hand-over
+     * above, which only runs when a sensing session begins. Take the card from
+     * USB here too, so fileInit() never works on FatFs's pre-USB view. */
+    if (shimmerStatus.usbPluggedIn && (shimmerStatus.sdOwner != SD_OWNER_MCU))
+    {
+      USB_deinit();
+      Board_sd2Mcu();
+    }
+#endif
+
     ShimSdDataFile_fileInit();
 
     if (shimmerStatus.sdSyncEnabled)
@@ -289,6 +314,10 @@ void ShimSens_startSensing(void)
   shimmerStatus.configuring = 0;
 }
 
+#if defined(SHIMMER3R) && USE_SD
+static void ShimSens_flushRingToSd(void);
+#endif
+
 void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
 {
   /* If not sensing, do nothing */
@@ -300,6 +329,9 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
   /* If stop logging has been activated, stop that activity first. */
   if (shimmerStatus.sdLogging && ShimSens_shouldStopLogging())
   {
+#if defined(SHIMMER3R) && USE_SD
+    ShimSens_flushRingToSd();
+#endif
     shimmerStatus.sdLogging = 0;
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
 
@@ -367,12 +399,18 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     if (enableDockUartIfDocked && shimmerStatus.usbPluggedIn && shimmerStatus.sdPeripheralInit)
     {
       USB_init();
+#if TEST_LOG_WITH_USB
+      shimmerStatus.sdOwner = SD_OWNER_USB;
+#endif
     }
 #endif
 
     ShimSens_stopSensingWrapup();
 
+    /* With TEST_LOG_WITH_USB the host may own the card again by now: never
+     * write it from here while USB-C is in. */
     if (LogAndStream_isSdInfoSyncDelayed() && !shimmerStatus.docked
+        && !(TEST_LOG_WITH_USB && shimmerStatus.usbPluggedIn)
         && LogAndStream_checkSdInSlot())
     {
       LogAndStream_syncConfigAndCalibOnSd();
@@ -655,57 +693,117 @@ void ShimSens_stepDone(void)
 //void ShimSens_step6End(void){}
 #endif
 
+/* Where one drained packet goes: the SD buffers when toSd, and the Bluetooth
+ * stream if it is running. Packets inside the TICKS_TO_SKIP window at the
+ * start of sensing go nowhere. */
+static void ShimSens_routePacket(PACKETBufferTypeDef *slotPtr, uint8_t toSd)
+{
+  uint8_t *dataBufferPtr = &slotPtr->dataBuf[0];
+
+#if TICKS_TO_SKIP
+  if (!sensing.skippingPacketsFlag
+      && ((slotPtr->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
+  {
+    return;
+  }
+#endif //TICKS_TO_SKIP
+  sensing.skippingPacketsFlag = 1;
+#if USE_SD
+  if (toSd)
+  {
+    PeriStat_Set(STAT_PERI_SDMMC);
+    ShimSdDataFile_writeToBuff(&dataBufferPtr[PACKET_TIMESTAMP_IDX], sensing.dataLen - 1);
+    PeriStat_Clr(STAT_PERI_SDMMC);
+  }
+#else
+  (void) toSd;
+#endif
+#if USE_BT
+  if (shimmerStatus.btStreaming && !ShimSens_shouldStopStreaming())
+  {
+    COMMS_CRC_MODE crcMode = ShimBt_getCrcMode();
+    if (crcMode != CRC_OFF)
+    {
+      calculateCrcAndInsert(crcMode, &dataBufferPtr[PACKET_HEADER_IDX], sensing.dataLen);
+    }
+    if (ShimBt_writeToTxBufAndSend(&dataBufferPtr[PACKET_HEADER_IDX],
+            sensing.dataLen + crcMode, SENSOR_DATA))
+    {
+#if defined(SHIMMER3R)
+      /* Refused - TX ring full or a reply held - so this sample is gone from
+       * the stream (it is still in the log). */
+      btTxSensorDataDropped++;
+#endif
+    }
+  }
+#endif
+}
+
 void ShimSens_saveData(void)
 {
   /* Snapshot the count so this task run is bounded: a completion landing while
    * the loop is running queues TASK_SAVEDATA again. */
-  uint8_t budget = PktRing_count(&sensing.ring);
+  uint16_t budget = PktRing_count(&sensing.ring);
   PACKETBufferTypeDef *slotPtr;
 
-  while (budget-- && PktRing_drainNext(&sensing.ring, &slotPtr))
+  while (budget--)
   {
-    uint8_t *dataBufferPtr = &slotPtr->dataBuf[0];
-
-#if TICKS_TO_SKIP
-    if (!sensing.skippingPacketsFlag
-        && ((slotPtr->timestampTicks - sensing.startTs) < TICKS_TO_SKIP))
+#if defined(SHIMMER3R) && USE_SD
+    /* Back-pressure: when the SD buffers would refuse this record, leave the
+     * packets in the ring - deep enough on Shimmer3R to wait out a write-busy
+     * card - rather than lose it. TASK_SDWRITE re-queues this task as each
+     * buffer is released. No re-queue here: TASK_SAVEDATA outranks
+     * TASK_SDWRITE, so it would starve the write it is waiting for. */
+    if (shimmerStatus.sdLogging && !ShimSdDataFile_canAcceptRecord(sensing.dataLen - 1))
     {
-      __NOP();
+      break;
     }
-    else
+#endif
+    if (!PktRing_drainNext(&sensing.ring, &slotPtr))
     {
-#endif //TICKS_TO_SKIP
-      sensing.skippingPacketsFlag = 1;
-#if USE_SD
-      if (shimmerStatus.sdLogging && !ShimSens_shouldStopLogging())
-      {
-        PeriStat_Set(STAT_PERI_SDMMC);
-        ShimSdDataFile_writeToBuff(
-            &dataBufferPtr[PACKET_TIMESTAMP_IDX], sensing.dataLen - 1);
-        PeriStat_Clr(STAT_PERI_SDMMC);
-      }
-#endif
-#if USE_BT
-      if (shimmerStatus.btStreaming && !ShimSens_shouldStopStreaming())
-      {
-        COMMS_CRC_MODE crcMode = ShimBt_getCrcMode();
-        if (crcMode != CRC_OFF)
-        {
-          calculateCrcAndInsert(
-              crcMode, &dataBufferPtr[PACKET_HEADER_IDX], sensing.dataLen);
-        }
-        ShimBt_writeToTxBufAndSend(&dataBufferPtr[PACKET_HEADER_IDX],
-            sensing.dataLen + crcMode, SENSOR_DATA);
-      }
-#endif
-#if TICKS_TO_SKIP
+      break;
     }
-#endif //TICKS_TO_SKIP
+    ShimSens_routePacket(slotPtr, shimmerStatus.sdLogging && !ShimSens_shouldStopLogging());
 
     /* Data packet has moved off dataBuf, device is free to start new packet */
     PktRing_drainDone(&sensing.ring);
   }
 }
+
+#if defined(SHIMMER3R) && USE_SD
+/* At a log stop, write out what the ring holds before the file is closed. On
+ * Shimmer3R the ring can hold up to ~1 s of packets waiting on a busy card
+ * (DEV-1098), and discarding them would cut that off the end of every log
+ * stopped during a stall. Bounded by the count on entry: sampling is still
+ * running, and packets taken after the stop are not part of the log. Each
+ * pass either stores a record or writes a buffer out, and a write always
+ * releases one, so this terminates even on a failing card. */
+static void ShimSens_flushRingToSd(void)
+{
+  /* Bounded by ring position, not by a packet count: PktRing_drainNext() can
+   * step over several incomplete slots in one call, so a count taken on entry
+   * would let a packet completed after the stop began be drained into the log.
+   * Only slots inside the window [rdIdx, wrIdx) seen on entry are flushed. */
+  const uint16_t startIdx = sensing.ring.rdIdx;
+  const uint16_t window = (uint16_t) (sensing.ring.wrIdx - startIdx);
+  PACKETBufferTypeDef *slotPtr;
+
+  while (((uint16_t) (sensing.ring.rdIdx - startIdx) < window)
+      && PktRing_drainNext(&sensing.ring, &slotPtr))
+  {
+    if ((uint16_t) (sensing.ring.rdIdx - startIdx) >= window)
+    {
+      break; /* skipped past the window: this packet came after the stop */
+    }
+    while (!ShimSdDataFile_canAcceptRecord(sensing.dataLen - 1))
+    {
+      ShimSdDataFile_writeToCard();
+    }
+    ShimSens_routePacket(slotPtr, 1);
+    PktRing_drainDone(&sensing.ring);
+  }
+}
+#endif
 
 uint8_t ShimSens_getNumEnabledChannels(void)
 {

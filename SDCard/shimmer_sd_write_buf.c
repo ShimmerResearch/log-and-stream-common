@@ -140,6 +140,21 @@ uint8_t SdWrBuf_peekWrite(const SdWriteBuf *bufsPtr, const uint8_t **dataPtrOut,
   return 1;
 }
 
+uint8_t SdWrBuf_peekQueued(const SdWriteBuf *bufsPtr, uint8_t n, const uint8_t **dataPtrOut, uint16_t *lenPtrOut)
+{
+  uint16_t idx;
+
+  if (n >= bufsPtr->numQueued)
+  {
+    return 0;
+  }
+
+  idx = (uint16_t) ((bufsPtr->wrIdx + n) % NUM_SDWRBUF);
+  *dataPtrOut = &bufsPtr->buf[idx][0];
+  *lenPtrOut = bufsPtr->len[idx];
+  return 1;
+}
+
 /* Releases whatever is at the write index, whatever its length. The old code
  * returned early on a zero-length buffer without decrementing the count, which
  * is how a flush could spin forever. */
@@ -159,9 +174,48 @@ void SdWrBuf_writeDone(SdWriteBuf *bufsPtr)
   bufsPtr->numQueued--;
 }
 
+void SdWrBuf_writePartial(SdWriteBuf *bufsPtr, uint16_t n)
+{
+  uint8_t idx = bufsPtr->wrIdx;
+  uint16_t len = bufsPtr->len[idx];
+
+  if (bufsPtr->numQueued == 0 || n == 0)
+  {
+    return;
+  }
+  if (n >= len)
+  {
+    SdWrBuf_writeDone(bufsPtr);
+    return;
+  }
+  memmove(&bufsPtr->buf[idx][0], &bufsPtr->buf[idx][n], (size_t) (len - n));
+  bufsPtr->len[idx] = (uint16_t) (len - n);
+}
+
 uint8_t SdWrBuf_numQueued(const SdWriteBuf *bufsPtr)
 {
   return bufsPtr->numQueued;
+}
+
+uint8_t SdWrBuf_canAccept(const SdWriteBuf *bufsPtr, uint16_t recLen)
+{
+  /* A zero-length record is accepted by SdWrBuf_put however full the buffers
+   * are - there is nothing to store - so it is accepted here too. */
+  if (recLen == 0)
+  {
+    return 1;
+  }
+  /* The same two refusals SdWrBuf_put makes for a full set of buffers. */
+  if (bufsPtr->numQueued >= NUM_SDWRBUF)
+  {
+    return 0;
+  }
+  if ((bufsPtr->len[bufsPtr->sensIdx] > 0) && (recLen > roomInCurrent(bufsPtr))
+      && ((bufsPtr->numQueued + 1U) >= NUM_SDWRBUF))
+  {
+    return 0;
+  }
+  return 1;
 }
 
 /* 0 when every buffer is queued: there is no open buffer then, and sensIdx is
