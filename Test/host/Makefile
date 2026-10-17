@@ -67,12 +67,13 @@ STANDALONE_SUITES := test_swcrc test_packet_ring test_util test_sd_pressure_id \
 
 # Suites built once per SD write-buffer count. That count is a compile-time
 # constant because the buffers are a fixed array, so covering more than one
-# means building more than once. 4 is what both platforms ship; 1 is what
+# means building more than once. 4 is what Shimmer3 ships; 1 is what
 # Shimmer3 shipped before, and that build asserts the record loss it caused, so
 # the count cannot be quietly reduced again; 2 sits between them and catches an
-# off-by-one that 1 and 4 would both hide.
+# off-by-one that 1 and 4 would both hide. 32 is what Shimmer3R ships since
+# DEV-1098, Shimmer3 staying at 4.
 SD_WRBUF_SUITES := test_sd_write_buf
-SD_WRBUF_COUNTS := 1 2 4
+SD_WRBUF_COUNTS := 1 2 4 32
 
 # Suites built once, against the stub platform.
 SINGLE_PLATFORM_SUITES := test_crc

@@ -413,6 +413,11 @@ static void test_refusal_is_counted_and_recovers(void)
  * one buffer free, and the record that closes the open buffer is refused. A
  * caller that holds records back while canAccept says no must never see a
  * refusal. */
+/* More records than every buffer holds (~24 per 512 B at these lengths), so a
+ * stalled phase always fills them, whatever NUM_SDWRBUF the suite is built
+ * with (Shimmer3R ships 32). */
+#define CANACCEPT_STALL_RECS (NUM_SDWRBUF * 32U + 100U)
+
 static void test_can_accept_predicts_put(void)
 {
   Sim sim;
@@ -427,9 +432,10 @@ static void test_can_accept_predicts_put(void)
   sim_init(&sim, 0);
   for (i = 0; i < 4000; i++)
   {
-    /* Alternate a card that keeps up with one that stalls for 200 records -
-     * long enough to queue every buffer - so every fill level is visited. */
-    if ((((i / 200U) % 2U) == 0U) && ((i % 5U) == 0U))
+    /* Alternate a card that keeps up with one that stalls for
+     * CANACCEPT_STALL_RECS records - long enough to queue every buffer at any
+     * NUM_SDWRBUF - so every fill level is visited. */
+    if ((((i / CANACCEPT_STALL_RECS) % 2U) == 0U) && ((i % 5U) == 0U))
     {
       sim_taskSdWrite(&sim);
     }
@@ -452,7 +458,7 @@ static void test_can_accept_predicts_put(void)
   sim_init(&sim, 0);
   for (i = 0; i < 4000; i++)
   {
-    if ((((i / 200U) % 2U) == 0U) && ((i % 5U) == 0U))
+    if ((((i / CANACCEPT_STALL_RECS) % 2U) == 0U) && ((i % 5U) == 0U))
     {
       sim_taskSdWrite(&sim);
     }
