@@ -154,9 +154,12 @@ def test_bt_stream(btlink, hil_note):
 def test_usb_replug(unit, power):
     """Undock and re-dock: the CDC port, the dock protocol and the SD card must all come back."""
     power.off(unit.hub_port, unit.name)
-    s3r_usb.wait_cdc_gone(unit.usb_serial, 15)
-    time.sleep(2)
-    power.on(unit.hub_port, unit.name)
+    try:
+        s3r_usb.wait_cdc_gone(unit.usb_serial, 15)
+        time.sleep(2)
+    finally:
+        # Whatever happened while undocked, the tests after this one start docked.
+        power.on(unit.hub_port, unit.name)
     port = s3r_usb.wait_cdc(unit.usb_serial, 30)
     with dock.open_when_ready(port) as d:
         d.version()

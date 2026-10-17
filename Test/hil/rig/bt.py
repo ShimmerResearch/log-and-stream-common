@@ -84,10 +84,10 @@ class Inquiry:
 class StreamStats:
     packets: int = 0
     seconds: float = 0.0
-    gaps: int = 0               # steps spanning 2+ periods: samples lost
+    gaps: int = 0               # steps of 1.5 periods or more (nearest 2+ periods): samples lost
     missing: int = 0            # samples implied missing by those steps
     max_gap_ticks: int = 0
-    dupes: int = 0              # steps under half a period: stamped twice, or backwards
+    dupes: int = 0              # steps under half a period, or backwards: stamped twice
     jitter: int = 0             # steps off a whole number of periods by more than a tick
     max_jitter_ticks: int = 0
     resyncs: int = 0            # bytes skipped to find a packet boundary
@@ -114,12 +114,16 @@ def classify_step(st, d: int, period: int) -> None:
     """Sort one timestamp step (signed, from ts_step) into lost samples,
     duplicates and jitter.
 
-    A step backwards, or under half a period, is a duplicate. A sample stamped
-    late shows as one long step followed by one short one, summing to two
-    periods: that is jitter in when the sample was stamped, not a lost sample,
-    and is counted apart from real gaps. Shared with sdfile.py.
+    The step is taken as the nearest whole number of periods, k, halves
+    rounding up. Under half a period, or backwards (k <= 0), is a duplicate.
+    From 1.5 periods (k >= 2) samples were lost: a lost sample is still
+    counted when the stamp after it is a tick early, which a strict "two
+    periods or more" would miss. Whatever the step is off k periods by,
+    beyond a tick, is jitter in when the sample was stamped: a sample stamped
+    late shows as one long step and one short one, and is not a lost sample.
+    Shared with sdfile.py.
     """
-    k = round(d / period)
+    k = (2 * d + period) // (2 * period)      # round half up; round() rounds half to even
     if k <= 0:
         st.dupes += 1
         return

@@ -201,6 +201,21 @@ class TimestampSteps(unittest.TestCase):
         st = self.classify(1000, 1000 + 2 * self.PERIOD)
         self.assertEqual((st.gaps, st.missing), (1, 1))
 
+    def test_the_boundaries_are_half_a_period_and_one_and_a_half(self):
+        p = self.PERIOD
+        cases = {               # step: (dupes, gaps, missing)
+            p // 2 - 1: (1, 0, 0),
+            p // 2: (0, 0, 0),              # exactly half a period: a late stamp, not a duplicate
+            p + p // 2 - 1: (0, 0, 0),
+            p + p // 2: (0, 1, 1),          # 1.5 periods: a sample lost
+            2 * p - 1: (0, 1, 1),           # lost, and the next stamp a tick early
+        }
+        for d, want in cases.items():
+            st = bt.StreamStats()
+            bt.classify_step(st, d, p)
+            with self.subTest(step=d):
+                self.assertEqual((st.dupes, st.gaps, st.missing), want)
+
 
 def sd_file(tmp, n_records, tail=b""):
     """A Shimmer3R SD file with SD sync on, timestamp-only records, `tail` appended."""
