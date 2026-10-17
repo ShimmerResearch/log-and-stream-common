@@ -40,6 +40,9 @@ volatile uint8_t args[MAX_COMMAND_ARG_SIZE], waitingForArgs, waitingForArgsLengt
  * truncated, so the staged command is rejected instead of being dispatched
  * with a length byte that describes more data than args[] actually holds. */
 volatile uint8_t argsPayloadTruncated;
+/* Bytes of an oversized payload still to be received and dropped, and whether
+ * the dropping has started. See ShimBt_armArgsPayload(). */
+volatile uint8_t argsPayloadDropLen, argsPayloadDropping;
 
 #if defined(SHIMMER3)
 volatile char btRxBuffFullResponse[BT_VER_RESPONSE_LARGEST + 1U]; /* +1 to always have a null char */
@@ -126,6 +129,8 @@ void ShimBt_btCommsProtocolInit(void)
   waitingForArgsLength = 0;
   argsSize = 0;
   argsPayloadTruncated = 0;
+  argsPayloadDropLen = 0;
+  argsPayloadDropping = 0;
 
   ShimBt_resetBtRxBuffs();
 
@@ -212,6 +217,12 @@ void ShimBt_resetBtRxVariablesOnConnect(void)
   gAction = ACK_COMMAND_PROCESSED - 1U;
   waitingForArgs = 0;
   waitingForArgsLength = 0;
+  /* A link can drop while an oversized payload is still being dropped, after
+   * argsPayloadTruncated was raised but before its command was processed.
+   * Clear both here, or the first command of the new connection is NACKed. */
+  argsPayloadTruncated = 0;
+  argsPayloadDropLen = 0;
+  argsPayloadDropping = 0;
 }
 
 void ShimBt_resetBtRxBuffs(void)
@@ -223,6 +234,32 @@ void ShimBt_resetBtRxBuffs(void)
 #else
   resetBtRxBuff();
 #endif
+}
+
+/* Arm the receive for the waitingForArgsLength-byte payload that follows a
+ * command's fixed arguments. The length comes from the host and can be larger
+ * than args[] has room for after those arguments. On Shimmer3 it is also
+ * larger than the receive buffer itself, btRxBuff, which the DMA fills from
+ * its start every time. So only the part that fits is received first; the
+ * rest is received afterwards, at most a buffer at a time, and dropped (see
+ * the copy in ShimBt_dmaConversionDone). The whole payload is consumed either
+ * way, so the next byte is parsed as a command, and the command is NACKed
+ * through argsPayloadTruncated. */
+static void ShimBt_armArgsPayload(void)
+{
+  uint8_t fit = MAX_COMMAND_ARG_SIZE - waitingForArgs;
+
+  if (waitingForArgsLength > fit)
+  {
+    argsPayloadDropLen = waitingForArgsLength - fit;
+    setDmaWaitingForResponse(fit);
+  }
+  else
+  {
+    argsPayloadDropLen = 0;
+    setDmaWaitingForResponse(waitingForArgsLength);
+  }
+  argsPayloadDropping = 0;
 }
 
 #if defined(SHIMMER3)
@@ -488,8 +525,15 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           {
             waitingForArgsLength = args[0];
           }
-          setDmaWaitingForResponse(waitingForArgsLength);
-          return 0;
+          /* Only return while payload is still expected. A zero length has to
+           * fall through to be dispatched, as in the groups below: arming for
+           * zero bytes would leave the parser waiting for a payload that never
+           * comes, and the command would get no response at all. */
+          if (waitingForArgsLength)
+          {
+            ShimBt_armArgsPayload();
+            return 0;
+          }
         }
         else if ((!waitingForArgsLength) && (waitingForArgs == 2)
             && (gAction == SET_DAUGHTER_CARD_ID_COMMAND))
@@ -499,7 +543,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           if (args[0])
           {
             waitingForArgsLength = args[0];
-            setDmaWaitingForResponse(waitingForArgsLength);
+            ShimBt_armArgsPayload();
             /* Only return while more payload is still expected. A zero length
              * has to fall through to be dispatched, as in the name/expId
              * group below, or the parser stops without dispatching anything. */
@@ -514,7 +558,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           if (args[0])
           {
             waitingForArgsLength = args[0];
-            setDmaWaitingForResponse(waitingForArgsLength);
+            ShimBt_armArgsPayload();
             return 0;
           }
         }
@@ -575,14 +619,31 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
            * value would turn a malformed oversized request into an accepted
            * partial write of config/calibration/EEPROM. Flag the truncation
            * instead and NACK the command in ShimBt_processCmd(), so no handler
-           * ever sees a length longer than the payload that was copied. */
-          uint16_t argsCopyLen = waitingForArgsLength;
-          if ((uint16_t) (waitingForArgs + argsCopyLen) > MAX_COMMAND_ARG_SIZE)
+           * ever sees a length longer than the payload that was copied.
+           * ShimBt_armArgsPayload() received only the part that fits, so that
+           * is exactly what is in the buffer now. Once it is copied, the excess
+           * that follows is dropped. */
+          if (!argsPayloadDropping)
           {
-            argsCopyLen = MAX_COMMAND_ARG_SIZE - waitingForArgs;
-            argsPayloadTruncated = 1;
+            uint16_t argsCopyLen = waitingForArgsLength;
+            if ((uint16_t) (waitingForArgs + argsCopyLen) > MAX_COMMAND_ARG_SIZE)
+            {
+              argsCopyLen = MAX_COMMAND_ARG_SIZE - waitingForArgs;
+              argsPayloadTruncated = 1;
+            }
+            memcpy((uint8_t *) &args[waitingForArgs], btRxBuffPtr, argsCopyLen);
           }
-          memcpy((uint8_t *) &args[waitingForArgs], btRxBuffPtr, argsCopyLen);
+          if (argsPayloadDropLen)
+          {
+            uint8_t dropNow = (argsPayloadDropLen > MAX_COMMAND_ARG_SIZE) ?
+                MAX_COMMAND_ARG_SIZE :
+                argsPayloadDropLen;
+            argsPayloadDropLen -= dropNow;
+            argsPayloadDropping = 1;
+            setDmaWaitingForResponse(dropNow);
+            return 0;
+          }
+          argsPayloadDropping = 0;
         }
         else
         {
@@ -835,6 +896,20 @@ void ShimBt_processCmd(void)
   uint8_t update_sdconfig = 0, update_calib_dump_file = 0;
   uint8_t fullSyncResp[SYNC_PACKET_MAX_SIZE] = { 0 };
   uint8_t sensorCalibId;
+
+  /* gAction always names the latest command byte, and waitingForArgs stays
+   * non-zero from that byte until the command's last argument or payload
+   * byte is in - including any drop of an oversized payload (see
+   * ShimBt_armArgsPayload). Both places that set TASK_BT_PROCESS_CMD do so
+   * with it at 0. A run that finds it non-zero is therefore one left over
+   * from an earlier command, and it would process the new, incomplete one:
+   * with stale argument bytes, or, for an oversized payload, by NACKing it and
+   * clearing the flag the command's own run needs. That run comes when the
+   * command is complete, so do nothing now. */
+  if (waitingForArgs)
+  {
+    return;
+  }
 
   /* Block non-sync related commands if sync is enabled. Equally, block sync commands if sync is disabled. XOR condition will sendNack if only one is true. */
   if (storedConfigPtr->syncEnable ^ ShimBt_isCmdAllowedWhileSdSyncing(gAction))
@@ -1169,7 +1244,19 @@ void ShimBt_processCmd(void)
         //0x9A, length, offsetLsb, offsetMsb
         calibRamLength = args[0];
         calibRamOffset = args[1] + (args[2] << 8);
-        getCmdWaitingResponse = gAction;
+        /* At most 128 bytes per read, the limit ShimCalib_ramRead() and
+         * SET_CALIB_DUMP already apply. The response is built in a buffer
+         * sized for that (RESPONSE_PACKET_SIZE is 133 on Shimmer3), so a
+         * longer request is NACKed rather than answered. A length within the
+         * limit at an offset past the dump is still answered with zeros. */
+        if (calibRamLength > 128)
+        {
+          sendNack = 1;
+        }
+        else
+        {
+          getCmdWaitingResponse = gAction;
+        }
         break;
       }
       case SET_CALIB_DUMP_COMMAND:
@@ -2632,7 +2719,19 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
     /* Check BT module configuration after disconnection in case
      * sensor configuration (i.e., BT on vs. BT off vs. SD Sync) was changed
      *  during the last connection. */
+#if defined(SHIMMER3)
+    /* On Shimmer3 this handler runs in an interrupt (the connection pin and
+     * the status-string DMA), and the check can stop and start the module.
+     * Starting it is main-loop work there - it powers the module, resets the
+     * driver and formats its names - so the check is queued. Waking the main
+     * loop is the caller's job, as for the other tasks queued here: Port1_ISR
+     * always leaves LPM3 after a connection change, and every
+     * RN4678_parseStatusString() call site returns "bring out of sleep" to
+     * DMA_ISR. */
+    ShimTask_set(TASK_BT_MODE_CHECK);
+#else
     ShimConfig_checkBtModeFromConfig();
+#endif
   }
 
   if (!shimmerStatus.sensing)

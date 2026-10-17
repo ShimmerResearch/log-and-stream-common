@@ -17,6 +17,10 @@ and — as importantly — what each layer of testing cannot tell you.
 > - **`test_platform_seam` and `check_weak_decls.py`:** `log-and-stream-common`
 >   @ `f573f60` — `Test/host/test_platform_seam.c`,
 >   `Test/host/check_weak_decls.py`, `Test/host/Makefile`.
+> - **The release gate (§8, §10):** `log-and-stream-common` @ `42c4d9f` —
+>   `Test/hil/` in full; `shimmer3-firmware` @ `578c9e6` and
+>   `shimmer3r-firmware` @ `b12f711` — `build-release-firmware.yml` and
+>   `promote-release.yml`, on their release-gate pull-request branches.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
@@ -187,6 +191,7 @@ What the suites cover today:
 | `test_rtc` | `RTC/shimmer_rtc.c` | ×2 | Every day from 2000 to 2099 round-trips; leap years; date validation |
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
 | `test_boards` | `Boards/shimmer_boards.c` | ×2 | Every revision gate, across 25 board revisions |
+| `test_calibration` | `Calibration/shimmer_calibration.c` | ×2 | The length and offset bounds on the calibration dump: Bluetooth chunk reads and writes, record copies against the caller's slot, the dump's declared end and the RAM end, the SD calibration file's size, and a card that stops answering |
 | `test_platform_seam` | `Platform/platform_api.c`, `Boards/shimmer_boards.c` | ×2 | A platform's override of a weak hook beats the default even when the default links first; `log_and_stream_globals.h` declares its globals rather than defining them |
 
 `check_weak_decls.py` (`make -C Test/host weak-decls`) is the text-only half of
@@ -346,12 +351,18 @@ Run them against a **factory-reset configuration first**, then against the
 configuration a customer is most likely to have. A device only ever tested from
 a known-good config will not tell you that a config path is broken.
 
-### 4.1 The factory self-test — Shimmer3R
+### 4.1 The factory self-test
 
-Trigger the on-device self-test and read the report. Every fitted part answers
-on its bus; `S3R_TEST_nnnn - PASS|FAIL|WARNING` per line, with a bitmask summary.
-See [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) for the
-registry and the report format.
+Trigger the on-device self-test (`SET_FACTORY_TEST`) and read the report.
+
+- **Shimmer3R:** every fitted part answers on its bus;
+  `S3R_TEST_nnnn - PASS|FAIL|WARNING` per line, with a bitmask summary. See
+  [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) for the
+  registry and the report format.
+- **Shimmer3:** a plain-text report from shimmer3-firmware's
+  `hal_FactoryTest.c`: the model, the MCU and its last reset reason, then the
+  LED, SD card, Bluetooth module, I2C and SPI checks. It has no registry or
+  bitmask.
 
 **Check it against the board revision.** A `FAIL` for a part that revision does
 not carry is a revision-gate problem (§2.4), not a hardware fault — and a `PASS`
@@ -930,9 +941,11 @@ The release itself happens in two steps, and the checklist splits across them
    `promote-release.yml`. The gate reads the reports and makes the release
    public only if every required item is covered on that exact commit.
 
-The items above from "On-device suites pass" through "§7 regression cases" are
-the ones the gate checks. They are listed in `Test/hil/required/`, and
-`Test/hil/hil_signoff.py` records them as a report.
+The gate checks the items a person can read off the candidate: the Shimmer3
+build warnings (§3.2), flash and RAM (§3.4), and everything from "On-device
+suites pass" through "§7 regression cases". They are listed in
+`Test/hil/required/`, and `Test/hil/hil_signoff.py` records them as a report.
+The rest are settled before the build is triggered, or are CI's (§2).
 
 ### 8.1 A shared-library change spans two releases
 
@@ -968,12 +981,12 @@ own, which is what stops a green test from meaning nothing.
 
 | Module | What a test would pin | What it needs first |
 |---|---|---|
-| `SDCard/shimmer_sd_cfg_file.c` | `sdlog.cfg` parse and generate, round-trip, malformed input | A `ff.h` stub |
-| `Configuration/shimmer_config.c` | The 512-byte InfoMem image: validation, defaults, clamping | `ADXL371/`, `LSM6DSV/` header stubs |
+| `SDCard/shimmer_sd_cfg_file.c` | `sdlog.cfg` parse and generate, round-trip, malformed input | More of `ff.h`: the stub carries only what `Calibration/` uses |
+| `Configuration/shimmer_config.c` | The 512-byte InfoMem image: validation, defaults, clamping | An `ADXL371/` stub, and more of the `LSM6DSV/` one |
 | `TaskList/shimmer_taskList.c` | Task priority and the set/clear/get-list bitmask | The firmware-side `shimmer_definitions.h` |
 | `Comms/shimmer_bt_uart.c` | Command framing and the parser, against the protocol document | An `RN4678.h` stub; it is a large module |
 | `GSR/gsr.c` | Auto-range switching and its settling behaviour | Detangling from the HAL headers |
-| `SDCard/shimmer_sd_header.c` | The binary file header, against the SD format document | `ff.h`, `fx_api.h` stubs |
+| `SDCard/shimmer_sd_header.c` | The binary file header, against the SD format document | An `fx_api.h` stub, and more of `ff.h` |
 | `EEPROM/shimmer_eeprom.c` | The memory map and the branding record | The `BAUD_*` enum out of `Comms/` |
 
 Each stub added brings its whole subsystem within reach, so the order above is
@@ -1059,9 +1072,14 @@ hardware-in-the-loop rig writes the same format.
 ```
 
 `kind` is `manual` or `automated`. `status` is `pass`, `fail` or `not_covered`.
-A `waiver` is the issue key under which someone accepted a failure or a gap.
-Without one the gate treats that result as blocking, and the issue is where the
-reason is kept.
+A `waiver` is the issue key under which someone accepted a failure or a gap, and
+the issue is where the reason is kept.
+
+- **An unwaived `fail` blocks** wherever it appears (rule 3).
+- **An unwaived `not_covered` is a gap, not a failure.** It covers nothing, so a
+  required item still blocks unless another report passes it (rule 4). A gap in
+  an item that is not required is listed, and does not block. A bench that cannot
+  run an item says so with `not_covered`, and another bench can cover it.
 
 ### 10.2 The rules
 
@@ -1101,7 +1119,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 |---|---|
 | `smoke.boot_identity` | Hardware 10, LogAndStream identifier, the candidate's version, the MAC that `rig.toml` names |
 | `smoke.config_roundtrip` | The configuration reads back exactly as written, and a rate change round-trips; byte 230 bit 0 is self-set by design |
-| `smoke.bt_identity` | Version over Bluetooth, an SD card present and usable |
+| `smoke.bt_identity` | Over Bluetooth: hardware 10, the LogAndStream identifier and the candidate's version; an SD card present and usable |
 | `smoke.bt_stream` | 10 s stream: packet framing, no lost or duplicate samples, the rate on the device clock |
 | `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
@@ -1169,9 +1187,13 @@ first day.
   offsets be usable.
 - ~~**Which on-device suites are run per release today.**~~ — resolved going
   forward: each release now carries its test reports as assets on the GitHub
-  release (§10), which name the items covered, the bench, the operator and the
-  units. Releases made before the gate existed have no such record.
-- **Shimmer3 factory self-test.** §4.1 covers the Shimmer3R report, which is
-  what [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md)
-  documents. `hal_FactoryTest.h` exists on both platforms; the Shimmer3 report
-  format is not documented here.
+  release (§10), which name the items covered, the bench and the operator.
+  Releases made before the gate existed have no such record.
+- **Which units a release was tested on.** A report has no field for them. A
+  result's note can name them, and `hil_signoff.py` asks for that, but nothing
+  requires it.
+- **Shimmer3 factory self-test report format.** §4.1 lists what the Shimmer3
+  report contains, from the test functions in shimmer3-firmware's
+  `hal_FactoryTest.c`. Its line format is not documented here, as
+  [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) does for
+  the Shimmer3R, so the report is checked by eye.

@@ -46,25 +46,30 @@ def flash_swd(cli: Path, image: Path, stlink_serial: str | None = None) -> str:
 
 
 def flash_dfu(cli: Path, image: Path, usb_serial: str, timeout_s: float = 30) -> str:
-    # The DFU device carries no serial of the unit, and port=USB1 is simply
-    # the first one, so the only way to know USB1 is this unit is for it to be
-    # the only device in DFU: none before ENTER_BOOTLOADER, exactly one after.
-    stale = s3r_usb.dfu_count()
-    if stale:
-        raise FlashError(f"{stale} device(s) already in USB DFU before {usb_serial} was asked "
-                         "to enter it; flashing USB1 could program the wrong one")
+    # ST's DFU bootloader does not identify the unit the way its application
+    # does, and port=USB1 is whichever DFU device the CLI lists first. So the
+    # image goes only to a DFU device that appeared after this unit was sent to
+    # its bootloader, and only if it is the only one: another STM32 left in DFU
+    # (a flash that failed) would otherwise get this unit's image.
+    already = s3r_usb.dfu_devices()
+    if already:
+        raise FlashError(f"{len(already)} STM32 DFU device(s) already present ({', '.join(already)}): "
+                         "cannot tell which is this unit. Flash or power-cycle them first.")
     port = s3r_usb.wait_cdc(usb_serial, 15)
     with dock.open_when_ready(port) as d:
         d.enter_bootloader(1)
     s3r_usb.wait_cdc_gone(usb_serial, 15)
     end = time.monotonic() + timeout_s
-    while (n := s3r_usb.dfu_count()) == 0:
+    while True:
+        found = s3r_usb.dfu_devices()
+        if len(found) == 1:
+            break
+        if len(found) > 1:
+            raise FlashError(f"{len(found)} STM32 DFU devices appeared at once ({', '.join(found)}): "
+                             "cannot tell which is this unit")
         if time.monotonic() > end:
             raise FlashError("unit did not enumerate as USB DFU after ENTER_BOOTLOADER")
         time.sleep(0.5)
-    if n != 1:
-        raise FlashError(f"{n} devices in USB DFU after {usb_serial} entered it; "
-                         "cannot tell which is the unit")
     # -s with no address starts the application from the vector table the image set.
     return _run(cli, ["-c", "port=USB1", "-w", str(image), "-v", "-s"])
 

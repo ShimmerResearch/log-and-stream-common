@@ -26,7 +26,8 @@ The rules, which docs/SHIMMER3_TEST_PROCEDURE.md §10 states for humans:
      bench does not cancel a failure on another.
   4. Every required item is covered: passed in some report, or waived.
      Reports may contain any number of other items; they are listed, not
-     required.
+     required. An unwaived not_covered is a gap, not a failure: it covers
+     nothing, so it blocks only a required item no other report passes.
 
 Standard library only, so it runs in CI and on a Windows desk alike.
 """
@@ -45,10 +46,24 @@ REQUIRED_SCHEMA = "shimmer-hil-required/1"
 PLATFORMS = ("shimmer3", "shimmer3r")
 STATUSES = ("pass", "fail", "not_covered")
 KINDS = ("manual", "automated")
-WAIVER_RE = re.compile(r"^[A-Z][A-Z0-9]+-[0-9]+$")
-SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+# Always fullmatch(): with match(), "$" also matches before a final newline, so
+# "ABC-123\n" would pass as an issue key.
+WAIVER_RE = re.compile(r"[A-Z][A-Z0-9]+-[0-9]+")
+SHA_RE = re.compile(r"[0-9a-f]{40}")
 
 REQUIRED_DIR = Path(__file__).resolve().parent / "required"
+
+# The summary goes into the release notes and the job summary, so anything a
+# report supplied is escaped before it is written there.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
+_MARKUP = re.compile(r"([\\`*_\[\]<>|])")
+
+
+def md(value) -> str:
+    """A report-supplied value made safe for one Markdown table cell or list
+    item: control characters, newlines among them, become spaces, and the
+    characters that start markup or end a cell are escaped."""
+    return _MARKUP.sub(r"\\\1", _CONTROL.sub(" ", str(value)))
 
 
 class InputError(Exception):
@@ -72,7 +87,7 @@ def load_json(path: Path) -> dict:
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-    except (OSError, json.JSONDecodeError) as e:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
         raise InputError(f"{path}: {e}") from e
     if not isinstance(data, dict):
         raise InputError(f"{path}: top level is not an object")
@@ -89,8 +104,10 @@ def load_required(platform: str, path: Path | None = None) -> list[dict]:
     items = data.get("items")
     if not isinstance(items, list) or not items:
         raise InputError(f"{path}: no items")
+    if not all(isinstance(i, dict) for i in items):
+        raise InputError(f"{path}: every item must be an object")
     ids = [i.get("id") for i in items]
-    if len(set(ids)) != len(ids) or not all(isinstance(i, str) and i for i in ids):
+    if not all(isinstance(i, str) and i for i in ids) or len(set(ids)) != len(ids):
         raise InputError(f"{path}: item ids must be unique non-empty strings")
     return items
 
@@ -105,7 +122,7 @@ def validate_report(name: str, rep: dict) -> list[str]:
     for key in ("platform", "commit", "firmware_version", "bench", "operator", "created"):
         if not isinstance(rep.get(key), str) or not rep.get(key):
             p.append(f"{name}: missing {key}")
-    if isinstance(rep.get("commit"), str) and not SHA_RE.match(rep["commit"]):
+    if isinstance(rep.get("commit"), str) and not SHA_RE.fullmatch(rep["commit"]):
         p.append(f"{name}: commit must be a full 40-character lowercase SHA")
     results = rep.get("results")
     if not isinstance(results, list):
@@ -127,7 +144,7 @@ def validate_report(name: str, rep: dict) -> list[str]:
         if r.get("status") not in STATUSES:
             p.append(f"{where} ({rid}): status must be one of {', '.join(STATUSES)}")
         w = r.get("waiver")
-        if w is not None and not (isinstance(w, str) and WAIVER_RE.match(w)):
+        if w is not None and not (isinstance(w, str) and WAIVER_RE.fullmatch(w)):
             p.append(f"{where} ({rid}): waiver must be an issue key such as ABC-123")
     return p
 
@@ -197,19 +214,19 @@ def summary_markdown(platform: str, commit: str, version: str, reports: dict[str
     if reports:
         out += ["| Report | Kind | Bench | Operator | Created |", "|---|---|---|---|---|"]
         for name, rep in reports.items():
-            out.append(f"| {name} | {rep.get('kind', '?')} | {rep.get('bench', '?')} "
-                       f"| {rep.get('operator', '?')} | {rep.get('created', '?')} |")
+            cells = [name] + [rep.get(k, "?") for k in ("kind", "bench", "operator", "created")]
+            out.append("| " + " | ".join(md(c) for c in cells) + " |")
         out.append("")
     out += ["| Required item | Ref | Result |", "|---|---|---|"]
     for item in required:
         rid = item["id"]
-        out.append(f"| {item.get('title', rid)} (`{rid}`) | {item.get('ref', '')} "
-                   f"| {v.covered.get(rid, '**not covered**')} |")
+        how = md(v.covered[rid]) if rid in v.covered else "**not covered**"
+        out.append(f"| {item.get('title', rid)} (`{rid}`) | {item.get('ref', '')} | {how} |")
     if v.extra:
         n_pass = sum(1 for s in v.extra.values() if s == "pass")
         out += ["", f"Additional results: {len(v.extra)} ({n_pass} passed)."]
     if v.problems:
-        out += ["", "**Why it is blocked:**", ""] + [f"- {p}" for p in v.problems]
+        out += ["", "**Why it is blocked:**", ""] + [f"- {md(p)}" for p in v.problems]
     return "\n".join(out) + "\n"
 
 
@@ -228,7 +245,13 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         required = load_required(a.platform, a.required)
-        reports = {p.name: load_json(p) for p in a.reports}
+        # Reports are named by file name, so two with one name would leave one
+        # of them unread.
+        reports = {}
+        for p in a.reports:
+            if p.name in reports:
+                raise InputError(f"{p}: another report is also named {p.name}")
+            reports[p.name] = load_json(p)
     except InputError as e:
         print(f"hil_gate: {e}", file=sys.stderr)
         return 2
