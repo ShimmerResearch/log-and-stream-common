@@ -2526,9 +2526,11 @@ drives the board. Board identities are catalogued in
 > before the command-handler fixes the branch returned without arming for more
 > data **and without dispatching the command** — no response at all and a parser
 > left mid-command, which consumed the next two host bytes as a fresh
-> length/offset pair. A host supporting fielded units should still avoid it. This is the only variable-length
-> command with that shape; the name/expId/configTime group falls through and
-> dispatches with a zero length instead (`:503-514`).
+> length/offset pair. A host supporting fielded units should still avoid it.
+> Earlier firmware had the same shape for the length/offset group
+> (`SET_INFOMEM`, `SET_CALIB_DUMP`, `SET_DAUGHTER_CARD_MEM`, `SET_EXG_REGS`); see
+> [§3.1](#31-command-frame). The name/expId/configTime group has always fallen
+> through and dispatched with a zero length (`:503-514`).
 
 #### User area — `GET_DAUGHTER_CARD_MEM_COMMAND` (0x69) / `SET_DAUGHTER_CARD_MEM_COMMAND` (0x67)
 
