@@ -449,9 +449,11 @@ uint8_t ShimBt_getDataRateTestState(void);
 void ShimBt_loadTxBufForDataRateTest(void);
 #if defined(SHIMMER3R)
 uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType responseType);
-/* Sensor-data packets refused because the TX ring was full, since boot. The
- * stream shows each as a gap; this says the radio side lost it, not sampling.
- * A global so a debugger can read it after a bench run (DEV-1098). */
+/* Stream packets refused by the TX ring, since boot - counted by the sensing
+ * stream, ShimSens_routePacket(), not here: SD file-transfer frames share the
+ * SENSOR_DATA type but are retried, not lost. The stream shows each as a gap;
+ * this says the radio side lost it, not sampling. A global so a debugger can
+ * read it after a bench run (DEV-1098). */
 extern volatile uint32_t btTxSensorDataDropped;
 #endif
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr);

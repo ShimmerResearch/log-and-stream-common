@@ -3044,7 +3044,6 @@ uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType re
   {
     if (gBtReplyPendingLen != 0U)
     {
-      btTxSensorDataDropped++;
       return 1; //fail
     }
     leave = BT_TX_REPLY_RESERVE;
@@ -3052,10 +3051,6 @@ uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType re
 
   if (ShimBt_pushBytesToBtTxBufLeaving(buf, len, leave))
   {
-    if (responseType == SENSOR_DATA)
-    {
-      btTxSensorDataDropped++;
-    }
     return 1; //fail
   }
 

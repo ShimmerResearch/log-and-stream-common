@@ -726,8 +726,15 @@ static void ShimSens_routePacket(PACKETBufferTypeDef *slotPtr, uint8_t toSd)
     {
       calculateCrcAndInsert(crcMode, &dataBufferPtr[PACKET_HEADER_IDX], sensing.dataLen);
     }
-    ShimBt_writeToTxBufAndSend(&dataBufferPtr[PACKET_HEADER_IDX],
-        sensing.dataLen + crcMode, SENSOR_DATA);
+    if (ShimBt_writeToTxBufAndSend(&dataBufferPtr[PACKET_HEADER_IDX],
+            sensing.dataLen + crcMode, SENSOR_DATA))
+    {
+#if defined(SHIMMER3R)
+      /* Refused - TX ring full or a reply held - so this sample is gone from
+       * the stream (it is still in the log). */
+      btTxSensorDataDropped++;
+#endif
+    }
   }
 #endif
 }
@@ -773,18 +780,27 @@ void ShimSens_saveData(void)
  * releases one, so this terminates even on a failing card. */
 static void ShimSens_flushRingToSd(void)
 {
-  uint16_t remaining = PktRing_count(&sensing.ring);
+  /* Bounded by ring position, not by a packet count: PktRing_drainNext() can
+   * step over several incomplete slots in one call, so a count taken on entry
+   * would let a packet completed after the stop began be drained into the log.
+   * Only slots inside the window [rdIdx, wrIdx) seen on entry are flushed. */
+  const uint16_t startIdx = sensing.ring.rdIdx;
+  const uint16_t window = (uint16_t) (sensing.ring.wrIdx - startIdx);
   PACKETBufferTypeDef *slotPtr;
 
-  while (remaining && PktRing_drainNext(&sensing.ring, &slotPtr))
+  while (((uint16_t) (sensing.ring.rdIdx - startIdx) < window)
+      && PktRing_drainNext(&sensing.ring, &slotPtr))
   {
+    if ((uint16_t) (sensing.ring.rdIdx - startIdx) >= window)
+    {
+      break; /* skipped past the window: this packet came after the stop */
+    }
     while (!ShimSdDataFile_canAcceptRecord(sensing.dataLen - 1))
     {
       ShimSdDataFile_writeToCard();
     }
     ShimSens_routePacket(slotPtr, 1);
     PktRing_drainDone(&sensing.ring);
-    remaining--;
   }
 }
 #endif
