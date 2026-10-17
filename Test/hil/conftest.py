@@ -43,7 +43,9 @@ def pytest_addoption(parser):
     g.addoption("--candidate", default=None, help="build-info.json of the release candidate under test")
     g.addoption("--hil-report", default=None, help="where to write the report (needs --candidate)")
     g.addoption("--operator", default=getpass.getuser())
-    g.addoption("--unit", default=None, help="run against this rig unit only (default: every unit the test applies to)")
+    g.addoption("--unit", default=None,
+                help="run against this rig unit only; the others are reported not_covered, so the "
+                     "report never passes an item for a unit it did not test (default: every unit)")
     g.addoption("--manual-power", action="store_true",
                 help="prompt the operator to dock/undock even if the rig has a hub")
 
@@ -135,6 +137,11 @@ def pytest_generate_tests(metafunc):
     The platform comes from the test's needs (shimmer3 / shimmer3r). With no
     matching unit the test still appears once, with unit=None, so that it is
     reported as not covered instead of vanishing from the report.
+
+    --unit does not drop the other units: they stay in the run and are skipped
+    as not_covered (pytest_runtest_setup). An item is "pass" only when every
+    test behind it passed, so a report from a --unit run cannot pass an item
+    for a unit it never touched.
     """
     if "unit" not in metafunc.fixturenames:
         return
@@ -143,10 +150,11 @@ def pytest_generate_tests(metafunc):
     needs = set(m.kwargs.get("needs", [])) if m else set()
     platforms = needs & set(rig_config.PLATFORMS)
     only = metafunc.config.getoption("--unit")
+    if only and rig and only not in [u.name for u in rig.units]:
+        raise pytest.UsageError(f"--unit {only}: no such unit in {rig.path}")
     units = []
     if rig:
-        units = [u for u in rig.units
-                 if (not platforms or u.platform in platforms) and (not only or u.name == only)]
+        units = [u for u in rig.units if not platforms or u.platform in platforms]
     if units:
         metafunc.parametrize("unit", units, ids=[u.name for u in units], scope="module")
     else:
@@ -188,6 +196,10 @@ def pytest_runtest_setup(item):
         return
     rig = _rig_for_collection(item.config)
     unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
+    only = item.config.getoption("--unit")
+    if only and unit is not None and unit.name != only:
+        item._hil_not_covered = f"not run: --unit {only}"
+        pytest.skip(item._hil_not_covered)
     if rig is None:
         missing = needs or {"rig.toml"}
     else:
@@ -257,7 +269,10 @@ def pytest_sessionfinish(session, exitstatus):
         platform=cand["platform"], commit=cand["commit"],
         firmware_version=cand["firmware_version"],
         bench=rig.bench if rig else "unknown", operator=cfg.getoption("--operator"),
-        extra={"markers": cfg.getoption("-m") or "", "units": [u.name for u in rig.units] if rig else [],
+        extra={"markers": cfg.getoption("-m") or "",
+               "units": [u.name for u in rig.units if not cfg.getoption("--unit") or u.name == cfg.getoption("--unit")]
+               if rig else [],
+               "unit_filter": cfg.getoption("--unit") or "",
                "interference": getattr(cfg, "_hil_interference", []),
                "image_sha256": cand.get("image_sha256"), "host": os.environ.get("COMPUTERNAME", "")},
     )
