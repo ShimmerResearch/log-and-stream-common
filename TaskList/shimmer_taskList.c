@@ -189,6 +189,10 @@ void ShimTask_NORM_manage(void)
 #endif
 
 #if defined(SHIMMER3)
+      case TASK_BT_MODE_CHECK:
+        ShimConfig_checkBtModeFromConfig();
+        break;
+
       case TASK_WRITE_RADIO_DETAILS:
         if (ShimEeprom_isPresent())
         {

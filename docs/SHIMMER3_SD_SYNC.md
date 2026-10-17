@@ -18,9 +18,16 @@ firmware's only use of it is to phase its LEDs with the centre's (§7).
 >   (`MAX_NODES`, `MAX_CHARS`). The LED use of the offset in §7, and the
 >   `ledPhaseOffset` copy it reads, postdate `f3cf73e`. They were read from
 >   `ShimSdSync_ledPhaseOffsetPtrGet` in `SDSync/shimmer_sd_sync.c` and
->   `ShimLeds_getLedTime` in `LEDs/shimmer_leds.c`.
+>   `ShimLeds_getLedTime` in `LEDs/shimmer_leds.c`. §6.3 also postdates it;
+>   it was read from `ShimSdSync_startBtForSync`, each platform's
+>   `ShimSdSync_init` call and its `BtStop()`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
->   `shimmer3r-firmware` @ `a8f105e5`.
+>   `shimmer3r-firmware` @ `a8f105e5`. §6.3's Shimmer3 side postdates `2765ff4`,
+>   whose `ShimSdSync_init` start callback is still `InitialiseBtAfterBoot`. It
+>   was read at `shimmer3-firmware` @ `ac30299`, where the callback is
+>   `ShimTask_setInitialiseBluetooth` and `BtStop()` clears a queued
+>   `TASK_BT_TURN_ON_AFTER_BOOT`. Shimmer3R already queues the start at
+>   `a8f105e5`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =
 > Shimmer3R (STM32U5). LogAndStream only. All times are in 32768 Hz ticks
@@ -316,6 +323,29 @@ window. `syncNodeWinExpire` extends by `SYNC_EXTEND` on each response while
 below the limit, so a node in active conversation keeps its window open.
 
 `rcNodeReboot` bounds how long a node waits before restarting its radio.
+
+### 6.3 Starting and stopping the radio
+
+The schedule runs in the sync timer's interrupt: `TIMER0_A1_ISR` on S3, the
+RTC alarm B callback on S3R. The radio is not handled the same way in both
+directions:
+
+- **Start is queued.** `ShimSdSync_startBtForSync` calls the start callback.
+  On both platforms that callback only queues `TASK_BT_TURN_ON_AFTER_BOOT`, and
+  `InitialiseBtAfterBoot()` runs from the main loop. On S3 the timer interrupt
+  wakes the main loop when it has queued anything.
+- **Stop is immediate.** The stop callback is `BtStop()`, called in the
+  interrupt. It hands the TX-buffer reset to `TASK_BT_TX_BUF_CLEAR`. On S3,
+  `BtStop()` also drops a start that is still queued, so a start requested
+  before a stop cannot run after it.
+
+> **The queued start waits only for the main loop.** It sits behind any
+> higher-priority task, such as an SD write, which normally means milliseconds.
+> That is small beside the one-second tick and the module's own bring-up of over
+> two seconds. It is not free, though: after a restart, the centre checks
+> `btIsInitialised` on the next three ticks and restarts the radio again if it
+> is still not up. A main loop held for a large part of a second would show up
+> there first.
 
 ## 7. What a host must do
 
