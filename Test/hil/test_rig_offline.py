@@ -66,6 +66,35 @@ class StLinkPerUnit(unittest.TestCase):
                      + S3R_UNIT.format(n="b"))
 
 
+class RigIdentities(unittest.TestCase):
+    def test_two_units_cannot_share_a_device_or_a_port(self):
+        unit = '[[unit]]\nname = "{n}"\nplatform = "shimmer3r"\n{extra}\n'
+        for extra in ('mac = "AABBCCDDEEFF"', 'usb_serial = "0123456789AB"', "hub_port = 2"):
+            with self.subTest(extra=extra):
+                with self.assertRaisesRegex(config.RigError, "two units share"):
+                    load_rig(unit.format(n="a", extra=extra) + unit.format(n="b", extra=extra))
+
+    def test_different_identities_load(self):
+        rig = load_rig(S3R_UNIT.format(n="a") + "hub_port = 1\n" + S3R_UNIT.format(n="b") + "hub_port = 2\n")
+        self.assertEqual([u.hub_port for u in rig.units], [1, 2])
+
+
+class FlashEveryUnitOrNone(unittest.TestCase):
+    def test_a_unit_that_cannot_be_flashed_stops_the_run_before_any_flash(self):
+        import tempfile
+        rig = config.Rig(path=Path("rig.toml"), bench="b", stm32_programmer=Path("cli"),
+                         units=[config.Unit("a", "shimmer3r", usb_serial="A"), config.Unit("b", "shimmer3r")])
+        flashed = []
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(run_rc, "HERE", Path(d)), \
+                mock.patch.object(run_rc.rig_config, "load", lambda p: rig), \
+                mock.patch.object(run_rc, "fetch", lambda tag, out: ({"commit": "0" * 40}, Path("img.hex"))), \
+                mock.patch.object(run_rc.rig_flash, "flash", lambda *a, **k: flashed.append(a)):
+            with self.assertRaisesRegex(SystemExit, "b: no usb_serial"):
+                run_rc.main(["LogAndStream_Shimmer3R_v1.01.022"])
+        self.assertEqual(flashed, [], "a unit was flashed before the run was refused")
+
+
 class SessionDirs(unittest.TestCase):
     def test_sessions_compare_across_a_drive_letter_change(self):
         import tempfile
@@ -287,6 +316,15 @@ class SdFileTrailing(unittest.TestCase):
             fc = sdfile.check(sd_file(d, per_block, tail=bytes(5)))
         self.assertEqual(fc.records, per_block)
         self.assertEqual(fc.trailing_bytes, 5)
+
+    def test_a_sync_header_with_no_record_after_it_is_trailing(self):
+        import tempfile
+        per_block = (sdfile.BLOCK - sdfile.SYNC_HEAD) // 3
+        for tail, want in ((bytes(sdfile.SYNC_HEAD), sdfile.SYNC_HEAD),            # the header alone
+                           (bytes(sdfile.SYNC_HEAD + 2), sdfile.SYNC_HEAD + 2)):   # and part of a record
+            with self.subTest(tail=len(tail)), tempfile.TemporaryDirectory() as d:
+                fc = sdfile.check(sd_file(d, per_block, tail=tail))
+                self.assertEqual((fc.records, fc.trailing_bytes), (per_block, want))
 
 
 class BuildInfoBinding(unittest.TestCase):

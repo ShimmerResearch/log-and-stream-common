@@ -125,6 +125,13 @@ def load(path: str | os.PathLike | None = None) -> Rig:
     names = [u.name for u in units]
     if len(set(names)) != len(names):
         raise RigError(f"{p}: unit names must be unique")
+    # Two units with one MAC, USB serial or hub port would be one device tested
+    # twice, or the wrong one switched off.
+    for field_name in ("mac", "usb_serial", "hub_port"):
+        values = [getattr(u, field_name) for u in units if getattr(u, field_name)]
+        dupes = sorted({str(v) for v in values if values.count(v) > 1})
+        if dupes:
+            raise RigError(f"{p}: two units share {field_name} {', '.join(dupes)}")
 
     hub = data.get("hub", {})
     tools = data.get("tools", {})

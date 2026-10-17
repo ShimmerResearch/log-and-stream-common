@@ -89,8 +89,10 @@ def check(path: Path) -> FileCheck:
     pos, end = HEAD_S3R, len(raw)
     last = None
     while pos < end:
-        if pos + head > end:
-            break               # part of a sync header: left as trailing bytes
+        if pos + head + rl > end:
+            # A sync header, whole or not, with no whole record after it: a
+            # truncated block, left as trailing bytes.
+            break
         pos += head
         for _ in range(per_block):
             if pos + rl > end:

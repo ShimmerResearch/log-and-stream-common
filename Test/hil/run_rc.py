@@ -119,10 +119,13 @@ def main(argv=None) -> int:
             raise SystemExit("automatic flashing is Shimmer3R only so far; use --no-flash")
         if not rig.stm32_programmer:
             raise SystemExit("rig.toml names no stm32_programmer")
+        # A unit that cannot be flashed would still be tested, on whatever it
+        # runs now, so refuse before flashing any of them.
+        unflashable = [u.name for u in units if not u.usb_serial]
+        if unflashable:
+            raise SystemExit(f"{', '.join(unflashable)}: no usb_serial in rig.toml, so not flashable. Add it, "
+                             "or test what the units run now with --no-flash.")
         for u in units:
-            if not u.usb_serial:
-                print(f"{u.name}: no usb_serial, not flashed")
-                continue
             stlink = rig.stlink_for(u)          # this unit's ST-Link, never another unit's
             method = "swd" if stlink else "dfu"
             print(f"{u.name}: flashing {image.name} by {method} ...", flush=True)
