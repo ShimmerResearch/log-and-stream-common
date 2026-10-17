@@ -100,6 +100,9 @@ def main(argv=None) -> int:
     ap.add_argument("--rig", default=None)
     ap.add_argument("--no-flash", action="store_true", help="test what is on the units now")
     ap.add_argument("--upload", action="store_true", help="attach the report to the GitHub release")
+    ap.add_argument("--waive", action="append", default=[], metavar="ITEM=ISSUE",
+                    help="accept a known failure or gap of ITEM under ISSUE, e.g. smoke.sd_log=ABC-123; "
+                         "the key goes into the report and the gate shows it (repeatable)")
     ap.add_argument("pytest_args", nargs="*", help="extra pytest arguments, after --")
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
@@ -140,7 +143,8 @@ def main(argv=None) -> int:
     report = out / f"hil-report-{rig.bench}.json"
     cmd = [sys.executable, "-m", "pytest", str(HERE / "tests"), "-m", a.tier,
            "--rig", str(rig.path), "--candidate", str(out / "build-info.json"),
-           "--hil-report", str(report), "-p", "no:cacheprovider", "-rA", *a.pytest_args]
+           "--hil-report", str(report), "-p", "no:cacheprovider", "-rA",
+           *[f"--waive={w}" for w in a.waive], *a.pytest_args]
     log = out / "pytest.log"
     with open(log, "w", encoding="utf-8") as f:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

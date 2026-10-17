@@ -74,6 +74,17 @@ class RigIdentities(unittest.TestCase):
                 with self.assertRaisesRegex(config.RigError, "two units share"):
                     load_rig(unit.format(n="a", extra=extra) + unit.format(n="b", extra=extra))
 
+    def test_usb_serials_differing_only_in_case_are_one_device(self):
+        unit = '[[unit]]\nname = "{n}"\nplatform = "shimmer3r"\nusb_serial = "{s}"\n'
+        with self.assertRaisesRegex(config.RigError, "two units share usb_serial"):
+            load_rig(unit.format(n="a", s="abc123") + unit.format(n="b", s="ABC123"))
+
+    def test_a_hub_port_must_be_a_port_number(self):
+        for bad in ("0", "-1", '"1"', "true"):
+            with self.subTest(hub_port=bad):
+                with self.assertRaisesRegex(config.RigError, "hub_port"):
+                    load_rig(S3R_UNIT.format(n="a") + f"hub_port = {bad}\n")
+
     def test_different_identities_load(self):
         rig = load_rig(S3R_UNIT.format(n="a") + "hub_port = 1\n" + S3R_UNIT.format(n="b") + "hub_port = 2\n")
         self.assertEqual([u.hub_port for u in rig.units], [1, 2])

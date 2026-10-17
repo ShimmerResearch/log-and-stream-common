@@ -32,6 +32,7 @@ import pytest
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import hil_gate  # noqa: E402
 import hil_report  # noqa: E402
 from rig import config as rig_config  # noqa: E402
 from rig.power import HubPower, ManualPower  # noqa: E402
@@ -48,6 +49,21 @@ def pytest_addoption(parser):
                      "report never passes an item for a unit it did not test (default: every unit)")
     g.addoption("--manual-power", action="store_true",
                 help="prompt the operator to dock/undock even if the rig has a hub")
+    g.addoption("--waive", action="append", default=[], metavar="ITEM=ISSUE",
+                help="accept a known failure or gap of ITEM under issue ISSUE (e.g. "
+                     "smoke.sd_log=ABC-123): the key goes into the item's result if it does not "
+                     "pass, as a sign-off's waiver does. Repeatable.")
+
+
+def _waivers(config) -> dict[str, str]:
+    out = {}
+    for w in config.getoption("--waive"):
+        item, sep, key = w.partition("=")
+        item, key = item.strip(), key.strip().upper()
+        if not sep or not item or not hil_gate.WAIVER_RE.fullmatch(key):
+            raise pytest.UsageError(f"--waive {w}: expected ITEM=ISSUE, e.g. smoke.sd_log=ABC-123")
+        out[item] = key
+    return out
 
 
 def pytest_configure(config):
@@ -56,6 +72,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "release: the release tier")
     config.addinivalue_line("markers", "soak: long-running, advisory")
     config._hil_collector = hil_report.Collector()
+    config._hil_waivers = _waivers(config)
 
 
 # Processes known to distort a run on this kind of bench. STM32CubeIDE scans
@@ -275,8 +292,13 @@ def pytest_sessionfinish(session, exitstatus):
                "unit_filter": cfg.getoption("--unit") or "",
                "interference": getattr(cfg, "_hil_interference", []),
                "image_sha256": cand.get("image_sha256"), "host": os.environ.get("COMPUTERNAME", "")},
+        waivers=cfg._hil_waivers,
     )
     path = hil_report.write(rep, Path(out))
+    used = {r["id"] for r in rep["results"] if r.get("waiver")}
+    for item, key in sorted(cfg._hil_waivers.items()):
+        if tr and item not in used:
+            tr.write_line(f"hil: --waive {item}={key} not used: the item passed, or was not run")
     if tr:
         counts = {}
         for r in rep["results"]:

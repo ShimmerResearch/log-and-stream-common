@@ -114,11 +114,15 @@ def load(path: str | os.PathLike | None = None) -> Rig:
             raise RigError(f"{where}: platform must be one of {', '.join(PLATFORMS)}")
         if not u.get("name"):
             raise RigError(f"{where}: missing name")
+        hub_port = u.get("hub_port")
+        if hub_port is not None and (isinstance(hub_port, bool) or not isinstance(hub_port, int) or hub_port < 1):
+            raise RigError(f"{where}: hub_port must be a hub port number from 1, not {hub_port!r}")
         units.append(Unit(
             name=u["name"], platform=u["platform"],
             mac=_normalise_mac(u["mac"]) if u.get("mac") else None,
-            usb_serial=u.get("usb_serial") or None,
-            hub_port=int(u["hub_port"]) if u.get("hub_port") else None,
+            # Compared without regard to case wherever it is looked up (s3r_usb).
+            usb_serial=str(u["usb_serial"]).upper() if u.get("usb_serial") else None,
+            hub_port=hub_port,
             radio=u.get("radio"), board=u.get("board"), notes=u.get("notes", ""),
             stlink_serial=u.get("stlink_serial") or None,
         ))

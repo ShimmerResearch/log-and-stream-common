@@ -10,7 +10,13 @@ format are in [docs/SHIMMER3_TEST_PROCEDURE.md](../../docs/SHIMMER3_TEST_PROCEDU
 python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022            # flash, run smoke, write the report
 python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022 --upload   # ...and attach it to the pre-release
 python Test/hil/run_rc.py <tag> --no-flash                           # the unit already runs the candidate
+python Test/hil/run_rc.py <tag> --waive smoke.sd_log=ABC-123        # accept a known failure under an issue
 ```
+
+A failure in the report blocks the release, required item or not, unless it
+carries a waiver. `--waive ITEM=ISSUE` puts the issue key into that item's
+result when it fails or is not covered, as a manual sign-off's waiver does, and
+the gate lists it as waived. A waiver for an item that passed is not used.
 
 Output goes to `Test/hil/out/<tag>/<time>/`: the image, `build-info.json`, the
 pytest log and `hil-report-<bench>.json`.

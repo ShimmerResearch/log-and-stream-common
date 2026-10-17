@@ -52,10 +52,17 @@ class Collector:
             raise ValueError(status)
         self.items.setdefault(item_id, Item(item_id)).add(status, note)
 
-    def results(self) -> list[dict]:
+    def results(self, waivers: dict[str, str] | None = None) -> list[dict]:
+        """Each item's result. `waivers` maps an item id to the issue key under
+        which someone accepted its failure or gap (run_rc.py --waive). It is
+        written into that item's result only if the item did not pass, as a
+        sign-off's waiver is, and the gate treats it the same way."""
+        waivers = waivers or {}
         out = []
         for item in sorted(self.items.values(), key=lambda i: i.id):
             r = {"id": item.id, "status": item.status}
+            if item.status != "pass" and item.id in waivers:
+                r["waiver"] = waivers[item.id]
             if item.notes:
                 # Keep the report readable: the first few notes say enough, and
                 # the full detail is in the pytest log archived beside it.
@@ -67,7 +74,8 @@ class Collector:
         return out
 
     def report(self, *, platform: str, commit: str, firmware_version: str,
-               bench: str, operator: str, extra: dict | None = None) -> dict:
+               bench: str, operator: str, extra: dict | None = None,
+               waivers: dict[str, str] | None = None) -> dict:
         rep = {
             "schema": hil_gate.REPORT_SCHEMA,
             "kind": "automated",
@@ -78,7 +86,7 @@ class Collector:
             "operator": operator,
             "created": dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
                          .isoformat().replace("+00:00", "Z"),
-            "results": self.results(),
+            "results": self.results(waivers),
         }
         if extra:
             rep["run"] = extra

@@ -1110,7 +1110,10 @@ report (`kind: automated`). `run_rc.py <tag>` downloads a candidate, flashes it
 (Shimmer3R, over USB DFU or SWD), runs a tier and writes
 `hil-report-<bench>.json`. Each bench describes its hardware in a `rig.toml`.
 A test the bench cannot run is reported `not_covered` rather than passed, so
-the gate knows another bench must supply it. Setup and layout are in
+the gate knows another bench must supply it. A known failure blocks the
+release like any other (§10.2, rule 3) unless it is accepted:
+`run_rc.py <tag> --waive <item>=<issue>` writes the issue key into that item's
+result, as a sign-off's waiver does (§10.1). Setup and layout are in
 `Test/hil/README.md`.
 
 The **smoke** tier, Shimmer3R over USB-C:
