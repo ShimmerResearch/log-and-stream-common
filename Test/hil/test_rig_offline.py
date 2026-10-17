@@ -105,6 +105,98 @@ class FlashEveryUnitOrNone(unittest.TestCase):
                 run_rc.main(["LogAndStream_Shimmer3R_v1.01.022"])
         self.assertEqual(flashed, [], "a unit was flashed before the run was refused")
 
+    def test_an_undocked_unit_stops_the_run_before_any_flash(self):
+        import tempfile
+        rig = config.Rig(path=Path("rig.toml"), bench="b", stm32_programmer=Path("cli"),
+                         units=[config.Unit("a", "shimmer3r", usb_serial="A"),
+                                config.Unit("b", "shimmer3r", usb_serial="B", hub_port=3)])
+        flashed = []
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(run_rc, "HERE", Path(d)), \
+                mock.patch.object(run_rc.rig_config, "load", lambda p: rig), \
+                mock.patch.object(run_rc, "fetch", lambda tag, out: ({"commit": "0" * 40}, Path("img.hex"))), \
+                mock.patch.object(run_rc.s3r_usb, "cdc_port", lambda s: "COM9" if s == "A" else None), \
+                mock.patch.object(run_rc.rig_flash, "flash", lambda *a, **k: flashed.append(a)):
+            with self.assertRaisesRegex(SystemExit, "b: switch hub port 3 on"):
+                run_rc.main(["LogAndStream_Shimmer3R_v1.01.022"])
+        self.assertEqual(flashed, [], "a unit was flashed before the run was refused")
+
+    def test_a_unit_with_an_st_link_is_flashed_though_not_on_usb(self):
+        # SWD is the recovery route for firmware too broken to come up on USB.
+        import tempfile
+        rig = config.Rig(path=Path("rig.toml"), bench="b", stm32_programmer=Path("cli"),
+                         units=[config.Unit("a", "shimmer3r", usb_serial="A", stlink_serial="ST1")])
+        flashed = []
+
+        def flash(*a, **k):
+            flashed.append(a)
+            raise SystemExit("stop after flashing")
+
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(run_rc, "HERE", Path(d)), \
+                mock.patch.object(run_rc.rig_config, "load", lambda p: rig), \
+                mock.patch.object(run_rc, "fetch", lambda tag, out: ({"commit": "0" * 40}, Path("img.hex"))), \
+                mock.patch.object(run_rc.s3r_usb, "cdc_port", lambda s: None), \
+                mock.patch.object(run_rc.rig_flash, "flash", flash):
+            with self.assertRaisesRegex(SystemExit, "stop after flashing"):
+                run_rc.main(["LogAndStream_Shimmer3R_v1.01.022"])
+        self.assertEqual(len(flashed), 1)
+        self.assertEqual((flashed[0][3], flashed[0][4]), ("swd", "ST1"))
+
+    def test_run_options_reach_pytest(self):
+        import tempfile
+        rig = config.Rig(path=Path("rig.toml"), bench="b", units=[config.Unit("a", "shimmer3r", usb_serial="A")])
+        cmds = []
+
+        class Proc:
+            stdout = iter(())
+
+            def __init__(self, cmd, **kw):
+                cmds.append(cmd)
+
+            def wait(self):
+                return 0
+
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(run_rc, "HERE", Path(d)), \
+                mock.patch.object(run_rc.rig_config, "load", lambda p: rig), \
+                mock.patch.object(run_rc, "fetch", lambda tag, out: ({"commit": "0" * 40}, Path("img.hex"))), \
+                mock.patch.object(run_rc.subprocess, "Popen", Proc):
+            run_rc.main(["LogAndStream_Shimmer3R_v1.01.022", "--no-flash", "--manual-power",
+                         "--waive", "smoke.sd_log=ABC-1"])
+        self.assertIn("--manual-power", cmds[0])
+        self.assertIn("--waive=smoke.sd_log=ABC-1", cmds[0])
+
+    def test_a_report_from_a_run_that_stopped_early_is_not_uploaded(self):
+        import json
+        import tempfile
+        rig = config.Rig(path=Path("rig.toml"), bench="b", units=[config.Unit("a", "shimmer3r", usb_serial="A")])
+        for pytest_rc, uploads in ((1, True), (2, False)):     # tests failed: evidence; interrupted: maybe partial
+            uploaded = []
+
+            class Proc:
+                stdout = iter(())
+
+                def __init__(self, cmd, **kw):
+                    report = Path(cmd[cmd.index("--hil-report") + 1])
+                    report.write_text(json.dumps({"results": [{"id": "smoke.x", "status": "pass"}]}),
+                                      encoding="utf-8")
+
+                def wait(self):
+                    return pytest_rc
+
+            gate = types.SimpleNamespace(returncode=1, stdout="", stderr="")
+            with self.subTest(pytest_rc=pytest_rc), tempfile.TemporaryDirectory() as d, \
+                    mock.patch.object(run_rc, "HERE", Path(d)), \
+                    mock.patch.object(run_rc.rig_config, "load", lambda p: rig), \
+                    mock.patch.object(run_rc, "fetch", lambda tag, out: ({"commit": "0" * 40}, Path("img.hex"))), \
+                    mock.patch.object(run_rc.subprocess, "Popen", Proc), \
+                    mock.patch.object(run_rc.subprocess, "run", lambda *a, **k: gate), \
+                    mock.patch.object(run_rc, "gh", lambda *a, **k: uploaded.append(a) or ""):
+                rc = run_rc.main(["LogAndStream_Shimmer3R_v1.01.022", "--no-flash", "--upload"])
+                self.assertEqual(bool(uploaded), uploads)
+                self.assertEqual(rc, pytest_rc)
+
 
 class SessionDirs(unittest.TestCase):
     def test_sessions_compare_across_a_drive_letter_change(self):
@@ -238,6 +330,63 @@ def bt_link(hw, fw):
     return link
 
 
+class BtPortOpen(unittest.TestCase):
+    def test_the_port_opens_with_dtr_and_rts_low(self):
+        class FakeSerial:
+            opened_with = None
+
+            def __init__(self, *a, **k):
+                self.dtr = self.rts = True              # pyserial's default
+                self.port = None
+                self.replies = bytearray([bt.ACK, bt.DEVICE_VERSION_RSP, bt.HW_SHIMMER3R])
+
+            def open(self):
+                FakeSerial.opened_with = (self.port, self.dtr, self.rts)
+
+            def write(self, b):
+                pass
+
+            def reset_input_buffer(self):
+                pass
+
+            def read(self, n):
+                out, self.replies = bytes(self.replies[:n]), self.replies[n:]
+                return out
+
+        with mock.patch.object(bt.serial, "Serial", FakeSerial), mock.patch.object(bt.time, "sleep", lambda s: None):
+            link = bt.BtLink("COM9")
+        self.assertEqual(FakeSerial.opened_with, ("COM9", False, False))
+        self.assertEqual(link.hw, bt.HW_SHIMMER3R)
+
+    def test_a_link_that_fails_its_first_exchange_closes_its_port(self):
+        made = []
+
+        class SilentSerial:
+            def __init__(self, *a, **k):
+                self.closed = False
+                made.append(self)
+
+            def open(self):
+                pass
+
+            def write(self, b):
+                pass
+
+            def reset_input_buffer(self):
+                pass
+
+            def read(self, n):
+                return b""                              # nothing answers
+
+            def close(self):
+                self.closed = True
+
+        with mock.patch.object(bt.serial, "Serial", SilentSerial), mock.patch.object(bt.time, "sleep", lambda s: None):
+            with self.assertRaises(bt.BtError):
+                bt.BtLink("COM9")
+        self.assertTrue(made[0].closed, "the port was left open")
+
+
 class StatusLength(unittest.TestCase):
     def test_shimmer3r_before_1_00_024_sends_one_status_byte(self):
         link = bt_link(bt.HW_SHIMMER3R, (3, 1, 0, 23))
@@ -366,6 +515,15 @@ class SdFileTrailing(unittest.TestCase):
                 fc = sdfile.check(sd_file(d, per_block, tail=tail))
                 self.assertEqual((fc.records, fc.trailing_bytes), (per_block, want))
 
+    def test_a_header_claiming_more_channels_than_a_shimmer3r_has_is_refused(self):
+        raw = bytearray(sdfile.HEAD_S3R)
+        raw[30:32] = sdfile.HW_SHIMMER3R.to_bytes(2, "big")
+        raw[sdfile.SDH_NUM_ENABLED_CHANNELS] = sdfile.S3R_MAX_CHANNELS
+        sdfile.read_header(bytes(raw))                       # 50 is the most it records
+        raw[sdfile.SDH_NUM_ENABLED_CHANNELS] = sdfile.S3R_MAX_CHANNELS + 1
+        with self.assertRaisesRegex(sdfile.SdFileError, "at most"):
+            sdfile.read_header(bytes(raw))
+
 
 class BuildInfoBinding(unittest.TestCase):
     TAG = "LogAndStream_Shimmer3R_v1.01.022"
@@ -412,6 +570,23 @@ class BuildInfoBinding(unittest.TestCase):
         import subprocess
         with self.assertRaises(subprocess.CalledProcessError):
             self.fetch_with(self.SHA, download_fails=True)
+
+
+class RunnerExitStatus(unittest.TestCase):
+    def results(self, *rs):
+        return {"results": [dict(zip(("id", "status", "waiver"), r)) for r in rs]}
+
+    def test_an_unwaived_failure_fails_the_run_even_if_pytest_passed(self):
+        self.assertEqual(run_rc.exit_status(0, 1, self.results(("a", "pass"), ("b", "fail"))), 1)
+
+    def test_a_waived_failure_and_uncovered_required_items_do_not(self):
+        # One bench report cannot cover the items a person signs off; the gate
+        # judges all the candidate's reports together.
+        self.assertEqual(run_rc.exit_status(0, 1, self.results(("a", "pass"), ("b", "fail", "ABC-1"))), 0)
+
+    def test_an_unusable_report_and_a_failed_test_fail_the_run(self):
+        self.assertEqual(run_rc.exit_status(0, 2, self.results(("a", "pass"))), 2)
+        self.assertEqual(run_rc.exit_status(1, 0, self.results(("a", "pass"))), 1)
 
 
 class DockOpenRetries(unittest.TestCase):

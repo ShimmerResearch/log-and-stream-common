@@ -191,6 +191,16 @@ def pytest_collection_modifyitems(config, items):
         return
     with open(cand_path, encoding="utf-8") as f:
         plat = json.load(f).get("platform")
+    # --unit naming another platform's unit would skip every test of this
+    # candidate as not_covered, and a run that tested nothing would look like
+    # a run.
+    only, rig = config.getoption("--unit"), _rig_for_collection(config)
+    if only and rig:
+        unit = next((u for u in rig.units if u.name == only), None)
+        if unit is None:
+            raise pytest.UsageError(f"--unit {only}: no such unit in {rig.path}")
+        if unit.platform != plat:
+            raise pytest.UsageError(f"--unit {only} is a {unit.platform} unit, but the candidate is {plat}")
     keep, drop = [], []
     for item in items:
         _, needs = _item(item)

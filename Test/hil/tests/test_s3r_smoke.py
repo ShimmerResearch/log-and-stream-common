@@ -28,6 +28,15 @@ RATE_TOLERANCE = 1e-3
 # Judgement, not specification: past a quarter of a period, a host that infers
 # sample time from the stamp is misled enough to matter.
 MAX_JITTER_FRACTION = 0.25
+# A missing tail leaves no gap between the samples that did arrive, so the
+# samples' own timestamps must span the time asked for. A stream's stamps fall
+# short of the host's stream time by the start latency and the samples in
+# flight when it stops: 0.25 to 0.29 s on the bench (497 and 499 of 512 at
+# 51.2 Hz). A log's records cover at least the time between the host seeing
+# the logging bit and sending STOP (771 of 768 at 51.2 Hz). Past these the end
+# of the data is missing.
+STREAM_TAIL_S = 0.5
+LOG_TAIL_S = 0.25
 
 # InfoMem bits the firmware changes by itself when a configuration is written,
 # by design: (offset, mask). flagWriteCfgToSd is set on every write so that
@@ -137,17 +146,19 @@ def test_bt_identity(btlink, candidate, hil_note):
 def test_bt_stream(btlink, hil_note):
     inq = btlink.inquiry()
     st = btlink.stream(STREAM_SECONDS, inq)
-    expected = STREAM_SECONDS * inq.rate_hz
-    assert st.packets > 0.8 * expected, f"{st.packets} packets in {st.seconds:.1f} s, expected ~{expected:.0f}"
+    assert st.packets > 1, f"{st.packets} packets in {st.seconds:.1f} s"
     assert st.resyncs == 0, f"{st.resyncs} bytes did not frame as packets"
     problems = _timing_problems(st, inq.divider)
     assert not problems, "; ".join(problems)
     span = sum(d * n for d, n in st.deltas.items())
+    covered_s = (span + inq.divider) / bt.TICKS_PER_S
+    assert st.seconds - covered_s <= STREAM_TAIL_S, \
+        f"the stamps cover {covered_s:.2f} s of a {st.seconds:.2f} s stream: the end is missing, or it started late"
     device_rate = (st.packets - 1) * bt.TICKS_PER_S / span
     assert abs(device_rate / inq.rate_hz - 1) < RATE_TOLERANCE, \
         f"device-clock rate {device_rate:.3f} Hz, configured {inq.rate_hz:.3f} Hz"
-    hil_note(f"{st.packets} packets at {inq.rate_hz:.1f} Hz, {len(inq.channels)} channels, no loss, "
-             f"{st.jitter} late stamps (max {st.max_jitter_ticks} ticks)")
+    hil_note(f"{st.packets} packets at {inq.rate_hz:.1f} Hz over {covered_s:.2f} of {st.seconds:.2f} s, "
+             f"{len(inq.channels)} channels, no loss, {st.jitter} late stamps (max {st.max_jitter_ticks} ticks)")
 
 
 @pytest.mark.hil("smoke.usb_replug", needs=["shimmer3r", "usb", "hub_port"])
@@ -204,11 +215,13 @@ def test_sd_log(unit, power, hil_note):
     assert h.mac == unit.mac, f"header MAC {h.mac}"
     assert h.divider == inq.divider, f"header divider {h.divider}, inquiry said {inq.divider}"
     assert h.channels == inq.channels, f"header channels {h.channels}, inquiry said {inq.channels}"
-    expected = LOG_SECONDS * inq.rate_hz
-    assert fc.records > 0.8 * expected, f"{fc.records} records for {LOG_SECONDS:.0f} s at {inq.rate_hz:.1f} Hz"
+    assert fc.records > 1, f"{fc.records} records"
     assert fc.zero_ts == 0, f"{fc.zero_ts} records with a zero timestamp"
     problems = _timing_problems(fc, h.divider)
     assert not problems, "; ".join(problems)
     assert fc.trailing_bytes == 0, f"{fc.trailing_bytes} bytes after the last whole record"
-    hil_note(f"{new[0].parent.name}/{new[0].name}: {fc.records} records, no loss, "
+    covered_s = (fc.span_ticks + h.divider) / bt.TICKS_PER_S
+    assert covered_s >= LOG_SECONDS - LOG_TAIL_S, \
+        f"the records cover {covered_s:.2f} s of a {LOG_SECONDS:.0f} s log: the end is missing"
+    hil_note(f"{new[0].parent.name}/{new[0].name}: {fc.records} records over {covered_s:.2f} s, no loss, "
              f"{fc.jitter} late stamps (max {fc.max_jitter_ticks} ticks)")

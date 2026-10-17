@@ -171,15 +171,32 @@ class BtLink:
     def __init__(self, port: str, connect_timeout_s: float = 10.0):
         # Opening an SPP port is what makes Windows page the device; it can take
         # several seconds, and fails outright if the link cannot be made.
-        self.ser = serial.Serial(port, 115200, timeout=connect_timeout_s, write_timeout=connect_timeout_s)
-        self.ser.timeout = 1.0
+        #
+        # Open with DTR and RTS low, pyserial's default being high. On Shimmer3R
+        # firmware without the module-frame guard (seen with IF820 v1.4.16.16),
+        # a port opened with them raised can have the rest of the module's
+        # connect event run as a command, and on one host that changed the
+        # stored configuration (SHIMMER3_BT_COMMUNICATION_PROTOCOL.md §2).
+        self.ser = serial.Serial()
+        self.ser.port, self.ser.baudrate = port, 115200
+        self.ser.timeout = self.ser.write_timeout = connect_timeout_s
+        self.ser.dtr = self.ser.rts = False
+        self.ser.open()
         self.hw: int | None = None
         self._nstatus: int | None = None
-        time.sleep(0.2)
-        self.ser.write(bytes([SET_CRC, 0]))
-        time.sleep(0.5)
-        self.ser.reset_input_buffer()
-        self.hw = self.device_version()
+        # Until the constructor returns there is no link to close, so if the
+        # first exchange fails the port is closed here: left open, it would
+        # hold the COM port against every later connection.
+        try:
+            self.ser.timeout = 1.0
+            time.sleep(0.2)
+            self.ser.write(bytes([SET_CRC, 0]))
+            time.sleep(0.5)
+            self.ser.reset_input_buffer()
+            self.hw = self.device_version()
+        except BaseException:
+            self.ser.close()
+            raise
 
     def close(self):
         self.ser.close()

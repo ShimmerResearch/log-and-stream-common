@@ -36,9 +36,13 @@ sys.path.insert(0, str(HERE))
 from hil_gate import normalise_version  # noqa: E402
 from rig import config as rig_config  # noqa: E402
 from rig import flash as rig_flash  # noqa: E402
+from rig import s3r_usb  # noqa: E402
 
 REPOS = {"LogAndStream_Shimmer3R_v": ("shimmer3r", "ShimmerResearch/shimmer3r-firmware", "*.hex"),
          "LogAndStream_Shimmer3_v": ("shimmer3", "ShimmerResearch/shimmer3-firmware", "*.txt")}
+# pytest's exit statuses for a session that ran to the end: all passed, or
+# some tests failed.
+PYTEST_FINISHED = (0, 1)
 
 
 def gh(*args, **kw) -> str:
@@ -93,6 +97,25 @@ def fetch(tag: str, out: Path) -> tuple[dict, Path]:
     return info, images[0]
 
 
+def exit_status(pytest_rc: int, gate_rc: int, report: dict) -> int:
+    """The runner's exit status.
+
+    Nonzero when the report is unusable (the gate's 2), when a test failed, or
+    when the report holds a failure nobody waived: each of those blocks the
+    release. Not when this report alone leaves required items uncovered: the
+    required list includes items a person signs off, so no bench report covers
+    it alone, and the gate judges the reports attached to the candidate
+    together.
+    """
+    if gate_rc == 2:
+        return 2
+    if pytest_rc:
+        return pytest_rc
+    if any(r["status"] == "fail" and not r.get("waiver") for r in report.get("results", [])):
+        return 1
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("tag")
@@ -100,6 +123,9 @@ def main(argv=None) -> int:
                     help="pytest -m expression (default: \"smoke or fleet\" - each platform runs its own)")
     ap.add_argument("--rig", default=None)
     ap.add_argument("--no-flash", action="store_true", help="test what is on the units now")
+    ap.add_argument("--manual-power", action="store_true",
+                    help="the operator docks and undocks when prompted, instead of the hub; without a hub "
+                         "and without this, the docking tests are reported not_covered")
     ap.add_argument("--upload", action="store_true", help="attach the report to the GitHub release")
     ap.add_argument("--waive", action="append", default=[], metavar="ITEM=ISSUE",
                     help="accept a known failure or gap of ITEM under ISSUE, e.g. smoke.sd_log=ABC-123; "
@@ -145,6 +171,18 @@ def main(argv=None) -> int:
         if unflashable:
             raise SystemExit(f"{', '.join(unflashable)}: no usb_serial in rig.toml, so not flashable. Add it, "
                              "or test what the units run now with --no-flash.")
+        # USB DFU reaches the unit over USB, and the tests start from docked, so
+        # a unit flashed that way must be docked before the run. Checked here,
+        # rather than docked by the runner: the hub's control port belongs to
+        # the pytest session that follows, which puts back whatever it switches.
+        # A unit with its own ST-Link is not checked: SWD is the recovery route
+        # for firmware too broken to come up on USB, and flash() still waits for
+        # it on USB afterwards to read the version it now runs.
+        undocked = [u for u in units if not rig.stlink_for(u) and not s3r_usb.cdc_port(u.usb_serial)]
+        if undocked:
+            how = "; ".join(f"{u.name}: " + (f"switch hub port {u.hub_port} on" if u.hub_port else "plug its USB-C in")
+                            for u in undocked)
+            raise SystemExit(f"not docked, so not flashable - dock them and run again ({how})")
         for u in units:
             stlink = rig.stlink_for(u)          # this unit's ST-Link, never another unit's
             method = "swd" if stlink else "dfu"
@@ -157,6 +195,7 @@ def main(argv=None) -> int:
     cmd = [sys.executable, "-m", "pytest", str(HERE / "tests"), "-m", a.tier,
            "--rig", str(rig.path), "--candidate", str(out / "build-info.json"),
            "--hil-report", str(report), "-p", "no:cacheprovider", "-rA",
+           *(["--manual-power"] if a.manual_power else []),
            *[f"--waive={w}" for w in a.waive], *a.pytest_args]
     log = out / "pytest.log"
     with open(log, "w", encoding="utf-8") as f:
@@ -175,6 +214,18 @@ def main(argv=None) -> int:
                            "--required", str(HERE / "required" / f"{platform}.json"), str(report)],
                           capture_output=True, text=True, encoding="utf-8")
     print("\nThis report alone, against the required list:\n" + gate.stdout)
+    if gate.returncode == 2:
+        # The gate cannot read the report, so neither could the promote step.
+        print(f"the gate cannot use this report, so it is not attached:\n{gate.stderr}")
+        return 2
+    # pytest's 1 is "some tests failed": the report records them, and that is
+    # evidence. Anything higher - interrupted, an internal or usage error,
+    # nothing collected - may have stopped the run part way, and a partial
+    # report would look like a complete one, so it is not attached.
+    if rc not in PYTEST_FINISHED:
+        print(f"pytest stopped with exit status {rc}, so the run may not have finished: "
+              f"the report is not attached. It is in {out}.")
+        return rc
 
     # The log goes up under the bench's name, so two benches' logs do not
     # overwrite each other on the release. It does not match hil-report*.json,
@@ -186,7 +237,7 @@ def main(argv=None) -> int:
         print(f"attached {report.name} and {attached.name} to {repo} {a.tag}")
     else:
         print(f"report: {report}\nattach with: gh release upload {a.tag} \"{report}\" \"{attached}\" -R {repo}")
-    return rc
+    return exit_status(rc, gate.returncode, json.loads(report.read_text(encoding="utf-8")))
 
 
 if __name__ == "__main__":
