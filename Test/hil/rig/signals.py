@@ -19,16 +19,20 @@ from .decode import VBATT, Calib, triplet
 G = 9.80665
 ACCEL_TOLERANCE = 0.10          # |a| within 10 % of 1 g on the calibrated accelerometers
 GYRO_MAX_MEAN_DPS = 5.0         # resting mean per axis
-MAX_STAIRCASE_RUN = 8           # identical consecutive raw values on a high-resolution IMU axis
+MAX_STAIRCASE_RUN = 8           # identical consecutive raw samples (all three axes) on a high-resolution IMU
 MIN_NOISE_LSB = 2.0             # resting sample-to-sample spread needed before a run means anything
+MIN_NOISY_AXES = 2              # axes that must carry that noise before a whole-sample run means anything
 VBATT_MV = (3000, 4300)
 I16_LIMITS = (-32768, 32767)
 
 
 def longest_run(x: np.ndarray) -> int:
+    """Longest run of identical consecutive values; for a 2-D array, of
+    identical consecutive rows."""
     if len(x) < 2:
         return len(x)
-    change = np.flatnonzero(np.diff(x) != 0)
+    d = np.diff(x, axis=0)
+    change = np.flatnonzero(np.any(d != 0, axis=1) if d.ndim > 1 else d != 0)
     edges = np.concatenate(([-1], change, [len(x) - 1]))
     return int(np.max(np.diff(edges)))
 
@@ -70,21 +74,35 @@ def check_rest(chans: dict[int, np.ndarray], calibs: dict[str, Calib], packet_ra
     # Staircase: a sensor running slower than the packet rate repeats readings
     # with fresh timestamps (INFOMEM §10.6). The LSM6DSV is fast and fine
     # enough that a resting axis changes every sample or nearly so.
-    # Only on an axis whose resting noise spans a few counts: at a coarse range
-    # (±16 g, ±1000 dps) a still axis legitimately repeats its value, and a run
-    # there says nothing about the ODR.
+    # A stale sensor repeats its whole sample, so the run is of whole samples,
+    # all three axes at once. One axis alone is not evidence: at resting noise
+    # of a couple of counts it repeats its last value about one sample in five,
+    # so nine in a row turns up by chance about once in a five-minute 512 Hz
+    # log - and did, failing a good build. Three axes repeating together eight
+    # times over by chance is out of reach.
+    # Only with at least two axes whose resting noise spans a few counts: at a
+    # coarse range (±16 g, ±1000 dps) a still axis legitimately repeats its
+    # value, and a run there says nothing about the ODR.
     for name in ("ln_accel", "gyro"):
         raw = triplet(chans, name)
         if raw is None:
             continue
-        runs = [longest_run(raw[:, i]) for i in range(3) if np.std(np.diff(raw[:, i])) >= MIN_NOISE_LSB]
-        if runs and max(runs) > MAX_STAIRCASE_RUN:
-            problems.append(f"{name}: {max(runs)} identical consecutive samples - ODR below the packet rate?")
+        # The noise is measured between samples that changed: a staircase
+        # repeats most samples, and the zero steps between them would make the
+        # sensor look quiet - the very case this check is for.
+        fresh = raw[np.concatenate(([True], np.any(np.diff(raw, axis=0) != 0, axis=1)))]
+        noisy = sum(np.std(np.diff(fresh[:, i])) >= MIN_NOISE_LSB for i in range(3))
+        if noisy < MIN_NOISY_AXES:
+            continue
+        run = longest_run(raw)
+        if run > MAX_STAIRCASE_RUN:
+            problems.append(f"{name}: {run} identical consecutive samples - ODR below the packet rate?")
     raw = triplet(chans, "mag")
     if raw is not None:
         # The LIS2MDL tops out at 100 Hz, so above that repeats are expected.
+        # Whole samples, as above: a still axis repeats on its own.
         allowed = MAX_STAIRCASE_RUN * max(1.0, packet_rate_hz / mag_ceiling_hz)
-        run = max(longest_run(raw[:, i]) for i in range(3))
+        run = longest_run(raw)
         if run > allowed:
             problems.append(f"mag: {run} identical consecutive samples (allowed {allowed:.0f})")
 

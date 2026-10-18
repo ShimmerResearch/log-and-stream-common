@@ -31,6 +31,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The HIL signal checks (Test/hil/rig/signals.py) need numpy, and their
+      # unit tests skip without it - which on a runner without numpy would
+      # pass them having checked nothing.
+      - name: Python packages for the HIL unit tests
+        run: python3 -m pip install --user numpy
+
       # Compile every host-clean module for BOTH platforms before running
       # anything. This library is a submodule of both shimmer3-firmware
       # (MSP430) and shimmer3r-firmware (STM32U5), and AGENTS.md calls that the

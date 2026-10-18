@@ -66,7 +66,14 @@ the firmware checkouts the model may read, and a spending cap
    one creates GATT services and no COM port, and the Bluetooth tests then
    report not_covered. `python -m serial.tools.list_ports -v` should show a
    BTHENUM port whose hardware ID contains the unit's MAC.
-4. Close STM32CubeIDE and Consensys before a release run. The suite warns if
+4. Units configured for SD sync, or with Bluetooth disabled, keep their radio
+   off. The run handles that itself (`rig/btmode.py`): before the first test,
+   each unit whose tests need Bluetooth has those two bits of InfoMem byte 217
+   cleared and is reset, and after the last its InfoMem is written back byte
+   for byte and it is reset again. A Shimmer3 is reset through its Base6 slot;
+   a Shimmer3R through its ST-Link if `rig.toml` names one, otherwise through
+   the ST bootloader. A unit that cannot be put back fails the run.
+5. Close STM32CubeIDE and Consensys before a release run. The suite warns if
    they are open: the IDE pages every Bluetooth COM port when USB devices
    arrive, which distorts Bluetooth timing for most of a minute.
 

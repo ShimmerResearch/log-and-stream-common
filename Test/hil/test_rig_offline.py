@@ -425,6 +425,111 @@ class BtPortOpen(unittest.TestCase):
                 bt.BtLink("COM9")
         self.assertTrue(made[0].closed, "the port was left open")
 
+    def flaky_open(self, errors):
+        """A port whose first opens fail with these messages, in order."""
+        opens = []
+
+        class FlakySerial:
+            def __init__(self, *a, **k):
+                self.port = None
+
+            def open(self):
+                opens.append(1)
+                if len(opens) <= len(errors):
+                    raise bt.serial.SerialException(errors[len(opens) - 1])
+
+        with mock.patch.object(bt.serial, "Serial", FlakySerial), \
+                mock.patch.object(bt.serial, "SerialException", Exception), \
+                mock.patch.object(bt.time, "sleep", lambda s: None):
+            try:
+                bt._open_spp("COM18", 1.0)
+                return len(opens), None
+            except Exception as e:
+                return len(opens), e
+
+    DROP = "could not open port 'COM18': OSError(22, 'The device is not connected.', None, 1167)"
+
+    def test_a_dropped_link_is_opened_again(self):
+        opens, err = self.flaky_open([self.DROP])
+        self.assertIsNone(err)
+        self.assertEqual(opens, 2)
+
+    def test_a_second_drop_is_reported(self):
+        opens, err = self.flaky_open([self.DROP, self.DROP])
+        self.assertIsNotNone(err)
+        self.assertEqual(opens, 2)
+
+
+class BtMode(unittest.TestCase):
+    """rig/btmode.py: SD sync and bluetoothDisable cleared for a run, put back after."""
+
+    class Unit:
+        def __init__(self, name):
+            self.name = name
+
+    class Dock:
+        def __init__(self, im):
+            self.im = bytearray(im)
+
+        def read_infomem(self, offset=0, length=None):
+            return bytes(self.im[offset:offset + (length or len(self.im))])
+
+        def write_infomem(self, data, offset=0):
+            self.im[offset:offset + len(data)] = data
+
+    def bench(self, byte217, refused=False):
+        from contextlib import contextmanager
+
+        from rig import btmode
+        im = bytearray(range(256)) * 2
+        im[btmode.SYNC_CFG_OFFSET] = byte217
+        d, resets = self.Dock(im), []
+
+        @contextmanager
+        def access(unit):
+            yield d
+
+        def reset(unit):
+            resets.append(unit.name)
+            if refused:                                  # the firmware sets sync again on boot
+                d.im[btmode.SYNC_CFG_OFFSET] |= btmode.SYNC_ENABLE
+        return btmode.BtMode(access, reset, log=lambda m: None), d, bytes(im), resets
+
+    def test_sync_on_is_cleared_and_put_back(self):
+        mode, d, original, resets = self.bench(0x15)
+        mode.enable(self.Unit("s3"))
+        self.assertEqual(d.im[217], 0x11)
+        self.assertEqual(bytes(d.im[:217]) + bytes(d.im[218:]), original[:217] + original[218:])
+        self.assertEqual(mode.restore(), [])
+        self.assertEqual(bytes(d.im), original)
+        self.assertEqual(resets, ["s3", "s3"])
+
+    def test_bluetooth_disabled_is_cleared_too(self):
+        mode, d, _, _ = self.bench(0x0B)
+        mode.enable(self.Unit("s3"))
+        self.assertEqual(d.im[217], 0x03)
+
+    def test_a_unit_already_on_is_left_alone(self):
+        mode, d, original, resets = self.bench(0x11)
+        mode.enable(self.Unit("s3r"))
+        self.assertEqual(mode.restore(), [])
+        self.assertEqual(bytes(d.im), original)
+        self.assertEqual(resets, [])
+
+    def test_a_unit_is_handled_once_per_run(self):
+        mode, _, _, resets = self.bench(0x15)
+        mode.enable(self.Unit("s3"))
+        mode.enable(self.Unit("s3"))
+        self.assertEqual(resets, ["s3"])
+
+    def test_firmware_that_sets_it_again_stops_the_run_and_is_still_restored(self):
+        from rig import btmode
+        mode, d, original, _ = self.bench(0x15, refused=True)
+        with self.assertRaises(btmode.BtModeError):
+            mode.enable(self.Unit("s3"))
+        self.assertEqual(mode.restore(), [])
+        self.assertEqual(d.im[217], original[217])
+
 
 class PushedStatusFrame(unittest.TestCase):
     """A status frame the firmware pushes as a query goes out lands where the

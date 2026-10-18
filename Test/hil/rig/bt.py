@@ -454,7 +454,7 @@ def _open_spp(port: str, timeout_s: float) -> serial.Serial:
     for rather than reported. Any other error is raised at once.
     """
     end = time.monotonic() + PORT_RELEASE_WAIT_S
-    paged = False
+    paged = dropped = False
     while True:
         # Opened with DTR and RTS low, pyserial's default being high. On
         # Shimmer3R firmware without the module-frame guard (seen with IF820
@@ -474,6 +474,14 @@ def _open_spp(port: str, timeout_s: float) -> serial.Serial:
                 # re-enumerates on re-dock. A second one is reported.
                 paged = True
                 time.sleep(5.0)
+                continue
+            if "not connected" in str(e) and not dropped:
+                # Windows error 1167, "The device is not connected": the PC's
+                # Bluetooth stack dropping the outgoing link while it is set up,
+                # about once a 22-row release run on this bench (18 Oct 2026).
+                # The next open connects. Retried once; a second is reported.
+                dropped = True
+                time.sleep(3.0)
                 continue
             if "Access is denied" not in str(e) or time.monotonic() > end:
                 raise
