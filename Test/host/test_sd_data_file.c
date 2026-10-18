@@ -368,7 +368,23 @@ uint8_t ShimSdHead_sdHeadTextGet(uint8_t *buf, uint16_t offset, uint16_t length)
   return 1;
 }
 
+/* With SD sync on, every buffer starts with a 9-byte head: the sync offset the
+ * writer takes from ShimSdSync_myTimeDiffPtrGet() and then resets. Each head
+ * here carries its own number, so read-back can tell them apart. */
 static uint8_t syncHead[SYNC_PACKET_PAYLOAD_SIZE];
+static uint32_t syncHeadsIssued;
+
+static void head_make(uint32_t n, uint8_t *head)
+{
+  uint8_t i;
+
+  head[0] = 0xC3;
+  for (i = 0; i < 4U; i++)
+  {
+    head[1U + i] = (uint8_t) (n >> (8U * i));
+    head[5U + i] = (uint8_t) ~(n >> (8U * i));
+  }
+}
 
 uint8_t *ShimSdSync_myTimeDiffPtrGet(void)
 {
@@ -377,6 +393,7 @@ uint8_t *ShimSdSync_myTimeDiffPtrGet(void)
 
 void ShimSdSync_resetMyTimeDiff(void)
 {
+  head_make(++syncHeadsIssued, syncHead);
 }
 
 /* ---- a logging session ---------------------------------------------------- */
@@ -392,6 +409,8 @@ typedef struct
   /* A stall forced to start at this record, for stallLen records. */
   uint32_t stallAt;
   uint32_t stallLen;
+  /* SD sync on: every buffer starts with a sync head. */
+  uint8_t sync;
 } Session;
 
 static uint32_t rec_ts(const Session *s, uint32_t seq)
@@ -436,6 +455,8 @@ static void session_start(Session *s, uint32_t baseTs, uint32_t fileCrTs)
   memset(&sensing, 0, sizeof(sensing));
   sensing.dataLen = (uint8_t) (REC_LEN + 1U);
   shimmerStatus.sdSyncEnabled = 0;
+  syncHeadsIssued = 0;
+  head_make(0, syncHead);
 
   ShimSdDataFile_init();
   set_clock(fileCrTs);
@@ -522,8 +543,13 @@ static void session_stop(Session *s)
 
 /* ---- reading the card back ------------------------------------------------ */
 
+/* Records in a full buffer that starts with a sync head. */
+#define RECS_PER_SYNC_BUF \
+  ((SD_WRITE_BUF_SIZE - SYNC_PACKET_PAYLOAD_SIZE) / REC_LEN)
+
 typedef struct
 {
+  uint32_t heads;     /* sync heads read back, in order */
   uint32_t records;   /* records read back, all files */
   uint32_t bad;       /* records out of sequence or corrupt */
   uint32_t straddles; /* files whose data is not whole records */
@@ -544,11 +570,66 @@ static void read_back(const Session *s, ReadBack *rb)
     uint32_t dataLen = cf->len - cf->headLen;
     uint32_t off;
 
+    rb->firstSeq[f] = expect;
+    if (s->sync)
+    {
+      /* A head, then RECS_PER_SYNC_BUF records - fewer only in the buffer the
+       * stop flush closed, which is the last thing in the last file. */
+      uint8_t wantHead[SYNC_PACKET_PAYLOAD_SIZE];
+
+      off = cf->headLen;
+      while (off < cf->len)
+      {
+        uint32_t left;
+        uint32_t n;
+        uint32_t r;
+
+        head_make(rb->heads, wantHead);
+        if ((off + SYNC_PACKET_PAYLOAD_SIZE > cf->len)
+            || (memcmp(&cf->data[off], wantHead, SYNC_PACKET_PAYLOAD_SIZE) != 0))
+        {
+          if (rb->bad == 0U)
+          {
+            printf("         file %d offset %lu: expected sync head %lu\n", f,
+                (unsigned long) off, (unsigned long) rb->heads);
+          }
+          rb->bad++;
+          break;
+        }
+        rb->heads++;
+        off += SYNC_PACKET_PAYLOAD_SIZE;
+        left = cf->len - off;
+        n = (left >= RECS_PER_SYNC_BUF * REC_LEN) ? RECS_PER_SYNC_BUF : (left / REC_LEN);
+        if ((n < RECS_PER_SYNC_BUF) && ((left % REC_LEN) != 0U))
+        {
+          rb->straddles++;
+        }
+        for (r = 0; r < n; r++, off += REC_LEN)
+        {
+          rec_make(s, expect, want);
+          if (memcmp(&cf->data[off], want, REC_LEN) != 0)
+          {
+            if (rb->bad == 0U)
+            {
+              printf("         file %d offset %lu: expected record %lu\n", f,
+                  (unsigned long) off, (unsigned long) expect);
+            }
+            rb->bad++;
+          }
+          expect++;
+          rb->nRecs[f]++;
+        }
+        if (n < RECS_PER_SYNC_BUF)
+        {
+          break;
+        }
+      }
+      continue;
+    }
     if ((dataLen % REC_LEN) != 0U)
     {
       rb->straddles++;
     }
-    rb->firstSeq[f] = expect;
     for (off = cf->headLen; off + REC_LEN <= cf->len; off += REC_LEN)
     {
       rec_make(s, expect, want);
@@ -761,6 +842,46 @@ static void test_split_through_short_writes(void)
 /* The regression c02dbda fixed: the first records of a file are the backlog
  * sampled while it was being created, older than sdFileCrTs. An unsigned age
  * wrapped and split the file on its first write. */
+/* The file format with SD sync on: every buffer starts with its sync head, so
+ * batching and short-write recovery must carry the heads through as well as
+ * the records - each head exactly once, in front of the records it led. */
+static void test_sync_heads(uint32_t shortEvery, uint32_t failEvery)
+{
+  Session s;
+  ReadBack rb;
+
+  session_start(&s, 0, 0);
+  s.sync = 1;
+  shimmerStatus.sdSyncEnabled = 1;
+  card.shortEvery = shortEvery;
+  card.failEvery = failEvery;
+  run(&s, 120000U);
+  card.shortEvery = 0;
+  card.failEvery = 0;
+  session_stop(&s);
+  expect_lossless(&s, 1);
+  read_back(&s, &rb);
+  expectU("every buffer's sync head reached the card, in order", rb.heads, syncHeadsIssued);
+  expectTrue("the backlog after a stall went out batched", card.batchWrites > 0U);
+  expectU("every batch starts word-aligned to the file position", card.misalignedBatches, 0);
+}
+
+static void test_sync_heads_survive_batching(void)
+{
+  testCase("sync heads survive batched writes");
+  rng = 29;
+  test_sync_heads(0, 0);
+}
+
+static void test_sync_heads_survive_short_writes(void)
+{
+  testCase("sync heads survive short and part-failed batched writes");
+  rng = 31;
+  test_sync_heads(6, 9);
+  expectTrue("short writes happened", card.shortWrites > 10U);
+  expectTrue("failed writes happened", card.failedWrites > 10U);
+}
+
 static void test_backlog_older_than_file_does_not_split(void)
 {
   Session s;
@@ -815,6 +936,8 @@ int main(void)
   test_split_through_short_writes();
   test_split_waits_out_a_short_write();
   test_backlog_older_than_file_does_not_split();
+  test_sync_heads_survive_batching();
+  test_sync_heads_survive_short_writes();
   test_freed_buffer_resumes_the_drain();
 
   card_reset();
