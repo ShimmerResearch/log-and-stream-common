@@ -52,6 +52,12 @@ extern "C"
   uint32_t platform_crcData16(uint8_t *buf, uint16_t len);
   bool platform_isDockUartInitialised(void);
   bool platform_isUsbUartInitialised(void);
+  /* Called by ShimTask_NORM_manage() with interrupts masked, once it has found
+   * the task list empty. Sleep in a way that an interrupt already pending, or
+   * raised while masked, still wakes the part (MSP430: LPM3 | GIE in one
+   * instruction; Cortex-M: WFI), and unmask before returning. Unmasking before
+   * the sleep instead reopens the window this closes: a task queued in it is
+   * slept through. */
   void platform_sleepWhenNoTask(void);
   /* LED phase lock (LEDs/shimmer_leds.c). The first returns the time since the
    * LED blink timer last fired, in 32768 Hz ticks; the second moves its next

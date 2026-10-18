@@ -45,10 +45,19 @@ document is about consumption.
 `ShimTask_NORM_manage` sleeps whenever the task bitmask is empty:
 
 ```c
-executingTask = ShimTask_popNext();
-if (executingTask == TASK_NONE)
-    platform_sleepWhenNoTask();
+TASK_IRQ_DISABLE();
+if (taskList == 0U)
+    platform_sleepWhenNoTask();   /* entered with interrupts masked */
+TASK_IRQ_ENABLE();
 ```
+
+> **The hook is entered with interrupts masked, and must sleep that way.** The
+> check and the sleep are one step so that a task queued by an interrupt in
+> between cannot be slept through (DEV-1222). MSP430's `LPM3_bits + GIE`
+> unmasks and sleeps in one instruction; Cortex-M's `WFI` wakes on an
+> interrupt that is pending while masked, and the hook unmasks after it. A hook
+> that unmasks *before* sleeping brings the race back. See
+> [SHIMMER3_ARCHITECTURE_OVERVIEW.md](SHIMMER3_ARCHITECTURE_OVERVIEW.md) §4.2.
 
 > **`platform_sleepWhenNoTask` is `PLATFORM_WEAK` with an empty default body.**
 > A platform that does not override it never sleeps — the main loop spins. The
@@ -227,13 +236,18 @@ A caution from experience rather than from the source:
   sample timer and RTC keep counting (`main.c`). **Shimmer3R**
   (`platform_sleepWhenNoTask`, `main.c`): if the USB stack is initialised, a
   bare `__WFI()` (Sleep, SysTick running, for SOF and CDC traffic); otherwise
-  `HAL_PWR_EnableSleepOnExit()` followed by `Power_SleepUntilInterrupt()` =
-  `HAL_SuspendTick` + `HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON,
-  PWR_SLEEPENTRY_WFI)` + `HAL_ResumeTick`. That is **Sleep mode with the main
-  regulator on — never Stop**. `Power_StopUntilInterrupt()` exists in
-  `hal_Power.c` but has no callers, and its deeper options are commented out.
-  Sleep-on-exit means the core returns to sleep after any ISR that does not
-  queue a task (`ShimTask_set` clears the bit).
+  `HAL_PWR_EnableSleepOnExit()` followed by `HAL_SuspendTick` +
+  `HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI)` +
+  `HAL_ResumeTick`. That is **Sleep mode with the main regulator on — never
+  Stop**. `Power_StopUntilInterrupt()` exists in `hal_Power.c` but has no
+  callers, and its deeper options are commented out. Sleep-on-exit means the
+  core returns to sleep after any ISR that does not queue a task
+  (`ShimTask_set` clears the bit). Since DEV-1222 both paths `WFI` with
+  interrupts still masked and unmask straight after it; the second does so
+  before `HAL_ResumeTick`, so the tick stays suspended while sleep-on-exit
+  keeps the core asleep. Before DEV-1222 that path called
+  `Power_SleepUntilInterrupt()`, which is the same three calls, with
+  interrupts unmasked.
 - **Current consumption figures.** No numbers appear in the firmware. Nothing
   in this document quantifies consumption, only what drives it.
 - ~~The other `SENSE_PWR_*` domains~~ — resolved (`sense_pwr_flg_t`,

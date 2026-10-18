@@ -81,7 +81,7 @@ PLATFORM_WEAK bool platform_isUsbUartInitialised(void)
 
 PLATFORM_WEAK void platform_sleepWhenNoTask(void)
 {
-  //default no-op
+  //default no-op: the main loop spins, and ShimTask_NORM_manage() unmasks interrupts
 }
 
 PLATFORM_WEAK uint16_t platform_ledTickElapsedRtcTicks(void)

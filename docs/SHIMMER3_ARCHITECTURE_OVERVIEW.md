@@ -240,16 +240,32 @@ the enum order is the scheduling policy.
 ```c
 void ShimTask_NORM_manage(void)
 {
+    TASK_IRQ_DISABLE();
+    if (taskList == 0U)
+        platform_sleepWhenNoTask();   /* entered with interrupts masked */
+    TASK_IRQ_ENABLE();
+
     executingTask = ShimTask_popNext();
-    if (executingTask == TASK_NONE)
-        platform_sleepWhenNoTask();
-    else
+    if (executingTask != TASK_NONE)
         switch (executingTask) { /* dispatch */ }
 }
 ```
 
 Cooperative and run-to-completion: a task runs to the end before the next is
 considered. **There is no preemption between tasks.**
+
+> **The empty check and the sleep are one step.** If an interrupt queued a task
+> between them, its wake-up request would find the CPU still awake and do
+> nothing, and the part would then sleep with the task pending until some
+> unrelated interrupt (DEV-1222). So the check runs with interrupts masked and
+> `platform_sleepWhenNoTask` is entered with them still masked. It has to sleep
+> in a way that a pending interrupt still ends: `LPM3_bits + GIE` on MSP430,
+> which unmasks and sleeps in one instruction, or `WFI` on Cortex-M, which
+> wakes on an interrupt that is pending while masked. **Unmasking before the
+> sleep reopens the window.** Only the check is masked, not the
+> `ShimTask_popNext` scan, which would otherwise hold interrupts off for tens of
+> microseconds on Shimmer3. Before DEV-1222 the check was `popNext` itself, made
+> with interrupts on.
 
 > **A long task delays everything, including sampling.** The sample path runs
 > as `TASK_GATHER_DATA`, so a slow SD write or a long Bluetooth response pushes
