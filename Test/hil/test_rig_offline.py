@@ -463,8 +463,9 @@ class TimestampSteps(unittest.TestCase):
         self.assertEqual((st.gaps, st.missing, st.dupes), (1, 1, 1))
 
     def test_the_boundaries_are_three_quarters_of_a_period_either_side(self):
-        # A stamp may be up to three quarters of a period late and keep its
-        # slot (rig/bt.py classify_step), so from the first stamp:
+        # A stamp less than three quarters of a period late keeps its slot,
+        # and exactly three quarters late is the next slot (rig/bt.py
+        # classify_step), so from the first stamp:
         p = self.PERIOD
         cases = {               # step: (dupes, gaps, missing)
             3 * p // 4 - 1: (1, 0, 0),      # still the first slot: a duplicate

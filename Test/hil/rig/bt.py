@@ -118,9 +118,10 @@ def classify_step(st, d: int, period: int) -> None:
     is placed on the grid by its total distance from the first, so a sample
     stamped late - one long step then one short, summing to two periods - is
     one late sample, not a lost one followed by a duplicate. A stamp can be
-    late (interrupt latency) but not early, so anything up to three quarters of
-    a period late still belongs to its own slot: a stamp exactly half a period
-    late, as seen on the bench, is jitter. The sampling timer keeps its phase
+    late (interrupt latency) but not early, so anything less than three
+    quarters of a period late still belongs to its own slot, and exactly three
+    quarters late counts as the next slot. A stamp exactly half a period late,
+    as seen on the bench, is jitter. The sampling timer keeps its phase
     through a stall, so the grid holds across gaps, and a lost sample whose
     successor is stamped on time or a little early is still a loss. A stamp
     that lands in a slot already taken, or before it, is a duplicate. Shared
