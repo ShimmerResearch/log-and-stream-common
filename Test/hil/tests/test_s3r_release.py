@@ -24,6 +24,7 @@ The unit's own configuration is restored when the module finishes.
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -39,7 +40,9 @@ except ModuleNotFoundError:     # pragma: no cover
 
 pytestmark = pytest.mark.release
 
-MATRIX = Path(__file__).resolve().parents[1] / "matrix" / "s3r_release.toml"
+# HIL_MATRIX points at another matrix file - an experiment's rows, say. A run
+# bound to a release candidate must use the default (run_rc.py does).
+MATRIX = Path(os.environ.get("HIL_MATRIX") or Path(__file__).resolve().parents[1] / "matrix" / "s3r_release.toml")
 with open(MATRIX, "rb") as f:
     _M = tomllib.load(f)
 SETS = {k: set(v) for k, v in _M["sets"].items()}
@@ -249,7 +252,9 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
         probs += [f"log: {p}" for p in lp]
         notes.append(f"{fc.records} records, {note}")
         if st is not None:
-            probs += [f"stream: {p}" for p in _stream_checks(st, inq, cfg, row)]
+            # Same opening window as the log: start-of-log loss belongs to
+            # release.sd_log_start, not to every row that also streams.
+            probs += [f"stream: {p}" for p in _stream_checks(st, inq, cfg, row, skip_first_s=LOG_START_S)]
             logged = set(zip(fc.ts, fc.rows))
             missing = sum(1 for t, r in zip(st.ts, st.rows) if (t, r) not in logged)
             if missing:
@@ -276,7 +281,7 @@ def _answers_after_stop(link) -> bool:
         return False
 
 
-def _stream_checks(st, inq, cfg: S3rConfig, row) -> list[str]:
+def _stream_checks(st, inq, cfg: S3rConfig, row, skip_first_s: float = 0.0) -> list[str]:
     out = []
     if inq.divider != cfg.divider:
         out.append(f"inquiry divider {inq.divider}, config {cfg.divider}")
@@ -287,7 +292,7 @@ def _stream_checks(st, inq, cfg: S3rConfig, row) -> list[str]:
     expected = row["seconds"] * cfg.rate_hz
     if st.packets < 0.8 * expected:
         out.append(f"{st.packets} packets in {st.seconds:.1f} s, expected ~{expected:.0f}")
-    out += _timing(st, inq.divider)
+    out += _timing(st, inq.divider, skip_first_s=skip_first_s)
     span = sum(d * n for d, n in st.deltas.items())
     if span and st.packets > 1:
         rate = (st.packets - 1) * 32768 / span

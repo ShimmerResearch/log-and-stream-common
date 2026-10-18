@@ -298,6 +298,11 @@ def pytest_sessionfinish(session, exitstatus):
             tr.write_line("hil: no --candidate/--hil-report, so no report written "
                           "(an unbound run is not release evidence)")
         return
+    if os.environ.get("HIL_MATRIX"):
+        if tr:
+            tr.write_line("hil: HIL_MATRIX is set - an experiment's rows are not release evidence, "
+                          "so no report written")
+        return
     with open(cand_path, encoding="utf-8") as f:
         cand = json.load(f)
     rig = _rig_for_collection(cfg)

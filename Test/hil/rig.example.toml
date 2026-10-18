@@ -49,3 +49,14 @@ platform = "shimmer3"
 mac = "000666AABBCC"
 base6_slot = 3
 radio = "RN42 Ver 6.15"
+
+[triage]
+# For triage.py. Keep issue keys out of this public repo: the known-issues file
+# belongs to the bench (bench-tools hil/known_issues.md on ours).
+# known_issues = "C:/dev/bench-tools/hil/known_issues.md"
+# source_dirs = ["C:/dev/stm32/shimmer3r-firmware", "C:/dev/msp430/shimmer3-firmware"]
+# budget_usd = 2.0
+# claude = "C:/path/to/claude.exe"      # default: PATH, then the Claude desktop app's copy
+# bench_facts = """
+# - anything about this bench that can masquerade as a firmware fault
+# """

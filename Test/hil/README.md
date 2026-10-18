@@ -34,6 +34,17 @@ cannot name the build it tested is not evidence about any build.
 For the items no rig covers yet, a person records a sign-off with
 `hil_signoff.py --tag <tag> --upload`.
 
+When something fails, `--triage` (or `python Test/hil/triage.py <run dir>`)
+asks Claude for a classification of each failing item and writes `triage.md`
+beside the report. `--dry-run` writes the prompt and sends nothing. It needs
+the Claude Code CLI signed in. It is found on PATH, inside the Claude desktop
+app, or at `[triage] claude` in `rig.toml`. Triage is advice; the gate does not
+read it.
+
+`[triage]` in `rig.toml` names the bench's known-issues file, its bench facts,
+the firmware checkouts the model may read, and a spending cap
+(`budget_usd`, default 2).
+
 ## Setting up a bench
 
 1. `pip install pytest pyserial tomli` (Python 3.10+; `tomli` only before 3.11).
@@ -80,6 +91,7 @@ plug and unplug.
 | `rig/signals.py` | Checks on a resting unit: 1 g, gyro ≈ 0, stuck/staircase/saturated axes, VBatt |
 | `matrix/s3r_release.toml` | The Shimmer3R release matrix: one row per configuration |
 | `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (the matrix) or `soak` |
+| `triage.py` | Claude triage of a failed run: advice in `triage.md`, never a verdict |
 | `test_hil_*.py` | Unit tests for the above that need no hardware; run by `make -C Test/host` |
 
 ## What a timestamp check counts

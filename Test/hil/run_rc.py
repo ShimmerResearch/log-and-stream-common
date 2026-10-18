@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -127,6 +128,8 @@ def main(argv=None) -> int:
                     help="the operator docks and undocks when prompted, instead of the hub; without a hub "
                          "and without this, the docking tests are reported not_covered")
     ap.add_argument("--upload", action="store_true", help="attach the report to the GitHub release")
+    ap.add_argument("--triage", action="store_true",
+                    help="if anything did not pass, ask Claude to triage it (triage.py; costs model usage)")
     ap.add_argument("--waive", action="append", default=[], metavar="ITEM=ISSUE",
                     help="accept a known failure or gap of ITEM under ISSUE, e.g. smoke.sd_log=ABC-123; "
                          "the key goes into the report and the gate shows it (repeatable)")
@@ -195,6 +198,8 @@ def main(argv=None) -> int:
             print(f"{u.name}: now v{v.text}")
 
     report = out / f"hil-report-{rig.bench}.json"
+    # A release report always runs the committed matrix, never an experiment's.
+    os.environ.pop("HIL_MATRIX", None)
     cmd = [sys.executable, "-m", "pytest", str(HERE / "tests"), "-m", a.tier,
            "--rig", str(rig.path), "--candidate", str(out / "build-info.json"),
            "--hil-report", str(report), "-p", "no:cacheprovider", "-rA",
@@ -230,6 +235,15 @@ def main(argv=None) -> int:
               f"the report is not attached. It is in {out}.")
         return rc
 
+    triage_md = out / "triage.md"
+    if a.triage:
+        rep = json.loads(report.read_text(encoding="utf-8"))
+        if any(r["status"] != "pass" for r in rep["results"]):
+            print("\nAsking Claude to triage the items that did not pass ...", flush=True)
+            subprocess.run([sys.executable, str(HERE / "triage.py"), str(out), "--rig", str(rig.path)])
+        else:
+            print("every item passed - no triage needed")
+
     # The log goes up under the bench's name, so two benches' logs do not
     # overwrite each other on the release. It does not match hil-report*.json,
     # so the gate never reads it as a report.
@@ -238,6 +252,12 @@ def main(argv=None) -> int:
     if a.upload:
         gh("release", "upload", a.tag, str(report), str(attached), "-R", repo, "--clobber")
         print(f"attached {report.name} and {attached.name} to {repo} {a.tag}")
+        if triage_md.exists():
+            # Under the bench's name too, so one bench's triage never replaces another's.
+            triage_attached = out / f"hil-triage-{rig.bench}.md"
+            shutil.copyfile(triage_md, triage_attached)
+            gh("release", "upload", a.tag, str(triage_attached), "-R", repo, "--clobber")
+            print(f"attached {triage_attached.name} to {repo} {a.tag}")
     else:
         print(f"report: {report}\nattach with: gh release upload {a.tag} \"{report}\" \"{attached}\" -R {repo}")
     return exit_status(rc, gate.returncode, json.loads(report.read_text(encoding="utf-8")))
