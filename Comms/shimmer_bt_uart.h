@@ -28,8 +28,14 @@
  * Must remain a power of 2.
  * Note, the CYW20820 PUART features a 256 byte FIFO on both RX/TX which is
  * normally ready byte-by-byte, so the ring depth here is about keeping bulk
- * transfers queued rather than about matching the module's FIFO. */
-#define BT_TX_BUF_SIZE      4096U /* serial buffer in bytes (power 2)  */
+ * transfers queued rather than about matching the module's FIFO.
+ *
+ * 32 KB rather than 4 KB for DEV-1098: during stream + log an SD write can
+ * hold the main loop for ~0.3-0.5 s while the packet ring fills, and when it
+ * returns the ring releases that backlog at once - ~9 KB at 1024 Hz with
+ * 30-byte packets - which a 4 KB ring dropped. Must stay a power of 2 no
+ * larger than 32768: rdIdx/wrIdx are free-running uint16_t, masked at use. */
+#define BT_TX_BUF_SIZE      32768U /* serial buffer in bytes (power 2)  */
 /* Upper bound on a single transfer handed to the BT driver, independent of
  * the ring depth. In non-transparent SPP mode every chunk is one EZ-Serial
  * SPP_SEND command/response round trip, so throughput is chunk_size / RTT
@@ -443,6 +449,12 @@ uint8_t ShimBt_getDataRateTestState(void);
 void ShimBt_loadTxBufForDataRateTest(void);
 #if defined(SHIMMER3R)
 uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType responseType);
+/* Stream packets refused by the TX ring, since boot - counted by the sensing
+ * stream, ShimSens_routePacket(), not here: SD file-transfer frames share the
+ * SENSOR_DATA type but are retried, not lost. The stream shows each as a gap;
+ * this says the radio side lost it, not sampling. A global so a debugger can
+ * read it after a bench run (DEV-1098). */
+extern volatile uint32_t btTxSensorDataDropped;
 #endif
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr);
 

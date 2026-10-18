@@ -3119,6 +3119,8 @@ void ShimBt_loadTxBufForDataRateTest(void)
 }
 
 #if defined(SHIMMER3R)
+volatile uint32_t btTxSensorDataDropped;
+
 uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType responseType)
 {
   /* Data packets and SD file-transfer data frames stay out of the space kept

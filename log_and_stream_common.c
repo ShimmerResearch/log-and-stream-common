@@ -216,7 +216,7 @@ void LogAndStream_dockedStateChange(void)
     time_newUnDockEvent = RTC_get64();
   }
 
-  if (shimmerStatus.docked || shimmerStatus.usbPluggedIn)
+  if (shimmerStatus.docked || (shimmerStatus.usbPluggedIn && !TEST_LOG_WITH_USB))
   {
     shimmerStatus.sdlogReady = 0;
   }
@@ -520,6 +520,16 @@ void LogAndStream_setupDock(void)
   }
 #endif
 
+#if TEST_LOG_WITH_USB
+  /* USB-C only, not docked: keep the card available for a log start. Judged
+   * after the hand-over above, which is where a cold boot first initialises
+   * the card and clears sdBadFile. */
+  if (!shimmerStatus.docked)
+  {
+    shimmerStatus.sdlogReady = LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile;
+  }
+#endif
+
   ShimBatt_setBatteryInterval(BATT_INTERVAL_SECS_DOCKED);
   /* Reset battery critical count on dock to allow logging to begin again if
    * auto-stop on low-power is enabled. */
@@ -531,6 +541,16 @@ void LogAndStream_setupDock(void)
 void LogAndStream_setupUndock(void)
 {
   ShimBatt_setBatteryInterval(BATT_INTERVAL_SECS_UNDOCKED);
+
+#if TEST_LOG_WITH_USB && defined(SHIMMER3R)
+  /* A bench log started on USB-C already holds the card: unplugging the cable
+   * must not power-cycle and remount it under that log. A release build never
+   * gets here while logging - logging only starts undocked. */
+  if (shimmerStatus.sdLogging && (shimmerStatus.sdOwner == SD_OWNER_MCU))
+  {
+    return;
+  }
+#endif
 
   /* Release any external SD ownership before reclaiming for sensor recording */
   LogAndStream_releaseSdToMcu();

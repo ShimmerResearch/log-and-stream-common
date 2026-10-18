@@ -32,6 +32,15 @@ channel encodings are identical, only the framing around them differs.
 >   `PressureSensor_detect()`, `PressureSensor_wasIdentifiedByChipId()`. Only
 >   the claims about that field were checked at these revisions; the rest of
 >   this document stays pinned as above.
+> - **Write buffering and the sample ring ([§4.1](#41-buffering-sync-and-rollover)):**
+>   `log-and-stream-common` @ `126e9fb` — `SDCard/shimmer_sd_write_buf.{h,c}`
+>   (`NUM_SDWRBUF`, `SdWrBuf_canAccept`, `SdWrBuf_peekQueued`,
+>   `SdWrBuf_writePartial`), `SDCard/shimmer_sd_data_file.c`
+>   (`ShimSdDataFile_writeToCard`: `SD_WR_BATCH_BUFS`,
+>   `SD_WR_BATCH_SPLIT_GUARD_TICKS`, failed-write handling),
+>   `Sensing/shimmer_packet_ring.h` (`DATA_BUF_QTY`), `Sensing/shimmer_sensing.c`
+>   (`ShimSens_saveData` back-pressure, `ShimSens_flushRingToSd`). Only §4.1's
+>   claims about these were checked at this revision.
 > - **When `center=` is written:** `log-and-stream-common` @ `f573f60` —
 >   `ShimSdCfgFile_generate()` in `SDCard/shimmer_sd_cfg_file.c`. Only that
 >   claim was checked at this revision.
@@ -449,20 +458,45 @@ sample records using the header alone.
 | Constant | Value | Meaning |
 |---|---:|---|
 | `SD_WRITE_BUF_SIZE` | 512 | One write buffer |
-| `NUM_SDWRBUF` | 4 | Number of buffers, both platforms |
+| `NUM_SDWRBUF` | 4 (Shimmer3), 32 (Shimmer3R) | Number of buffers |
+| `SD_WR_BATCH_BUFS` | 16 (Shimmer3R only) | Most queued buffers one `f_write` takes |
 | `BIN_FILE_SYNC_TIME_TICKS` | 32768 × 60 | `f_sync` every 60 s |
 | `BIN_FILE_SPLIT_TIME_TICKS` | 32768 × 3600 | New file every 3600 s |
 
 Samples accumulate into a 512-byte buffer. A record that does not fit the
 buffer in progress closes it: the full buffer is queued for `TASK_SDWRITE`,
-which writes it with one `f_write`, and the record begins the next buffer.
-Buffers therefore end on record boundaries, and a write is never more than 512
-bytes. Both platforms rotate four buffers, so sensing continues into a fresh one
-while the previous waits for the card.
+and the record begins the next buffer. Buffers therefore end on record
+boundaries. Sensing continues into a fresh buffer while earlier ones wait for
+the card.
 
-That is what sets how long a card may stall without costing a sample. One buffer
-takes `recordsPerBlock / sampleRate` to fill — about 46 ms at 504 Hz with a
-21-byte record — and four of them absorb roughly four times that.
+**How the queue is written differs by platform:**
+- **Shimmer3** writes one buffer per `f_write`, so a write is never more than
+  512 bytes.
+- **Shimmer3R** writes every queued buffer, up to `SD_WR_BATCH_BUFS`, in one
+  `f_write` of up to 8 KB, packed into a word-aligned staging buffer so the SD
+  driver takes its multi-block DMA path. While the card keeps up, only one
+  buffer is ever queued, so writes stay 512 bytes; a write grows only with the
+  backlog a slow card leaves. A busy card costs about the same time
+  per write whatever its size, so this raises throughput exactly when the card
+  is slow. Two limits keep it from changing anything else:
+  - **Near the hourly split it writes one buffer at a time** (within
+    `SD_WR_BATCH_SPLIT_GUARD_TICKS`, 4 s). The split is checked after each
+    write, so a file still ends at most one buffer past the hour, as on
+    Shimmer3.
+  - **A failed or short write releases only what reached the file**: the
+    buffers it wrote in full, and the written head of one it ended inside,
+    whose unwritten tail stays queued so the next write continues the file
+    exactly where this one stopped (`SdWrBuf_writePartial`). A write that moved
+    nothing releases one buffer, as the one-buffer path always did, so a flush
+    on a dead card still ends.
+
+The bytes reaching the file are the same either way, sync heads included:
+buffers stay 512 bytes, the unit of the file layout.
+
+On Shimmer3, the buffers set how long a card may stall without costing a
+sample. One buffer takes `recordsPerBlock / sampleRate` to fill — about 46 ms
+at 504 Hz with a 21-byte record — and four of them absorb roughly four times
+that.
 
 If every buffer is waiting — the card has stalled for longer than the rest take
 to fill — the record is dropped and counted in `sdWrBuf.diag.putsRefusedFull`.
@@ -470,8 +504,15 @@ That counter is cleared when logging starts and never while it runs, so a bench
 run can be read out afterwards. The file then shows a gap of whole sample
 periods at a block boundary; it never shows a partial record.
 
+**On Shimmer3R the drain does not get that far.** Before handing a record on, it
+asks `SdWrBuf_canAccept()`; if the buffers would refuse it, the drain stops and
+leaves the packets in the sample ring, and `TASK_SDWRITE` restarts the drain
+once a buffer is released. The ring, not the SD buffers, absorbs a stall there.
+
 When logging stops, the partially filled buffer is queued and every queued
-buffer is written before the file is closed.
+buffer is written before the file is closed. On Shimmer3R the packets still in
+the sample ring are written first (`ShimSens_flushRingToSd`), so a stop that
+lands during a stall does not cut the end off the log.
 
 > **Earlier Shimmer3 firmware had a single buffer**, so there was nowhere for a
 > record to go between a buffer filling and its write reaching the card, and
@@ -479,8 +520,10 @@ buffer is written before the file is closed.
 > firmware can show a gap of several consecutive samples at roughly every block
 > boundary. Those are real missing samples, not a parsing artefact.
 
-Behind that sits the sample ring (`Sensing/shimmer_packet_ring.c`): eight slots,
-six usable, with one packet being filled at a time. A sample tick starts a
+Behind that sits the sample ring (`Sensing/shimmer_packet_ring.c`): on Shimmer3,
+eight slots, six usable; on Shimmer3R, 1024 slots, 1022 usable — about 1 s at
+1024 Hz, because a single blocking `f_write` was measured holding the main loop
+for up to ~470 ms. One packet is filled at a time. A sample tick starts a
 packet and stamps it; the platform gathers the enabled channels; a completion
 closes the slot and the drain hands it to the SD and Bluetooth writers. Ticks
 are refused while the ring is full or while a gather is still outstanding, so
@@ -498,9 +541,17 @@ never reset while sensing, so a bench run can be read out afterwards.
 Every 60 seconds of sample time the file is `f_sync`ed, bounding data loss on
 power failure to about a minute. Every 3600 seconds a new file is opened.
 
-> **Both intervals are measured in sample ticks, not wall time.** They use
-> `sensing.latestTs`, so a file spans an hour *of sampling*. This matters when
-> comparing against wall-clock expectations for a paused or restarted trial.
+> **Both intervals are measured in sample ticks, not wall time**, so a file
+> spans an hour *of sampling*. This matters when comparing against wall-clock
+> expectations for a paused or restarted trial. The sync uses
+> `sensing.latestTs`, the newest sample taken. The split uses it on Shimmer3;
+> on Shimmer3R it uses the timestamp of the newest record just written, because
+> the deeper ring and buffers can hold a second or more of older samples during
+> a card stall. Shimmer3R also never splits after a failed or short write:
+> whatever it left unwritten (a buffer's tail, or whole buffers when it stopped
+> on a boundary) belongs to the file it started in, so the split waits until a
+> write completes - and one that carries at least a whole record, whose
+> timestamp it can read.
 
 > **File splits are not aligned to any wall-clock boundary.** A file starts when
 > logging starts and ends 3600 seconds of sample time later. Do not assume file
