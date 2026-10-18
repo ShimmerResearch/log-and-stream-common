@@ -159,17 +159,24 @@ FRESULT f_open(FIL *fp, const TCHAR *path, BYTE mode)
 
 FRESULT f_write(FIL *fp, const void *buff, UINT btw, UINT *bw)
 {
-  CardFile *f = &card.files[card.cur];
+  CardFile *f;
   const uint8_t *src = (const uint8_t *) buff;
-  const uint8_t *bufsLo = &sdWrBuf.buf[0][0];
-  const uint8_t *bufsHi = bufsLo + sizeof(sdWrBuf.buf);
+  /* Addresses, compared as integers: ordering pointers into different
+   * objects is undefined in C. */
+  const uintptr_t bufsLo = (uintptr_t) &sdWrBuf.buf[0][0];
+  const uintptr_t bufsHi = bufsLo + sizeof(sdWrBuf.buf);
   uint32_t n = btw;
   FRESULT res = FR_OK;
   uint8_t isBatch;
   uint8_t forcedShort = 0;
 
   *bw = 0;
-  if ((card.cur < 0) || (f->len + btw > CARD_FILE_CAP))
+  if (card.cur < 0)
+  {
+    return FR_DISK_ERR;
+  }
+  f = &card.files[card.cur];
+  if (f->len + btw > CARD_FILE_CAP)
   {
     return FR_DISK_ERR;
   }
@@ -188,7 +195,7 @@ FRESULT f_write(FIL *fp, const void *buff, UINT btw, UINT *bw)
 
   /* A batched write comes from the writer's own staging buffer; a single
    * buffer is written straight out of sdWrBuf. */
-  isBatch = (src < bufsLo) || (src >= bufsHi);
+  isBatch = ((uintptr_t) src < bufsLo) || ((uintptr_t) src >= bufsHi);
   card.dataWrites++;
   if (card.dataWrites > RUNAWAY_WRITES)
   {
