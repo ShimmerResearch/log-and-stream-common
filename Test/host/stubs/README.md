@@ -44,7 +44,7 @@ test would keep passing while the device was wrong.
 | `BMPX80/bmpX80.h` | `Shimmer_Driver/BMPX80/bmpX80.h` (Shimmer3 only) | `isBmp280InUse()` predicate only |
 | `MPU9150/mpu9150.h` | `Shimmer_Driver/MPU9150/mpu9150.h` (Shimmer3 only) | declaration only |
 | `hal_FactoryTest.h` | both firmwares' `hal_FactoryTest.h` | declaration only |
-| `ff.h` | Shimmer3 `Shimmer_Driver/FatFs/ff.h` (FatFs R0.08b); Shimmer3R `Middlewares/Third_Party/FatFs/src/ff.h` (R0.12c) | `_FATFS` 8237 / 68300; the `FRESULT` codes; `FA_READ` 0x01, `FA_OPEN_EXISTING` 0x00, `FA_WRITE` 0x02, `FA_CREATE_ALWAYS` 0x08; Shimmer3R's `FSIZE_t` is 64-bit (`_FS_EXFAT` 1 in its `ffconf.h`). Struct members only, not layouts |
+| `ff.h` | Shimmer3 `Shimmer_Driver/FatFs/ff.h` (FatFs R0.08b); Shimmer3R `Middlewares/Third_Party/FatFs/src/ff.h` (R0.12c) | `_FATFS` 8237 / 68300; the `FRESULT` codes; `FA_READ` 0x01, `FA_OPEN_EXISTING` 0x00, `FA_WRITE` 0x02, `FA_CREATE_ALWAYS` 0x08, `FA_CREATE_NEW` 0x04; Shimmer3R's `FSIZE_t` is 64-bit (`_FS_EXFAT` 1 in its `ffconf.h`), `_MAX_LFN` 255, `AM_DIR` 0x10, and `f_size()` reads `obj.objsize` as the real macro does. Struct members only, not layouts |
 | `shimmer_definitions.h` | both firmwares' `Shimmer_Driver/shimmer_definitions.h` | `DEVICE_VER` 3 (Shimmer3) / 10 (Shimmer3R); `FW_IDENTIFIER` 3 on both |
 | `version.h` | both firmwares' `Shimmer_Driver/version.h` | release-stamped: v1.01.006 / v1.01.021 when written. Drift is harmless, because nothing asserts a version |
 | `Shimmer_Driver/hal_Infomem.h` | Shimmer3R `Shimmer_Driver/hal_Infomem.h` | `INFOMEM_CALIB_SIZE` 0x400, which sizes the calibration RAM |
@@ -55,6 +55,8 @@ test would keep passing while the device was wrong.
 | `Shimmer_Driver/5xx_HAL/hal_RTC.h` | Shimmer3 `Shimmer_Driver/5xx_HAL/hal_RTC.h` | declarations only |
 | `msp430.h` | the TI compiler's MSP430 device header | `_delay_cycles()` as a no-op |
 | `stm32u5xx.h` | Shimmer3R's CMSIS device header, which includes `stm32u5xx_hal.h` | `HAL_Delay()` declaration only |
+| `stm32u5xx_hal.h` | Shimmer3R `Core/Inc/stm32u5xx_hal_conf.h` (`USE_FULL_ASSERT` 1) | `assert_param()` as that header defines it; `assert_failed()` is the suite's, as it is an empty function in the firmware's `main.c` |
+| `main.h`, `fatfs.h` | the Shimmer3R firmware headers of those names | empty — `SDCard/shimmer_sd_data_file.c` includes them and takes nothing from them that a host test reaches |
 | `Shimmer_Driver/5xx_HAL/hal_Board.h`, `LSM303AHTR/lsm303ahtr.h`, `LSM303DLHC/lsm303dlhc.h`, `RN4X/RN4X.h` | the Shimmer3 headers of those names | empty — `Calibration/` includes them and takes nothing from them |
 
 If one of those real headers changes a value, change it here in the same PR.

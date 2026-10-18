@@ -4,14 +4,33 @@ duplicates and jitter. Run: python Test/hil/test_hil_timing.py (no hardware).
 
 A miscount here fails release rows for the wrong reason, or passes them, so the
 cases include the one that did: a stamp exactly half a period late, which an
-earlier step-by-step rounding counted as a lost sample plus a duplicate.
+earlier step-by-step rounding counted as a lost sample plus jitter.
+
+No hardware and no pyserial needed: rig.bt imports pyserial, so where it is not
+installed (CI) a stand-in is put in its place, as test_rig_offline.py does.
 """
 
 import sys
+import types
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+try:
+    import serial  # noqa: F401
+    from serial.tools import list_ports  # noqa: F401
+except ImportError:
+    _serial = types.ModuleType("serial")
+    _tools = types.ModuleType("serial.tools")
+    _lp = types.ModuleType("serial.tools.list_ports")
+    _lp.comports = lambda: []
+    _tools.list_ports = _lp
+    _serial.tools = _tools
+    _serial.Serial = object
+    _serial.SerialException = type("SerialException", (OSError,), {})
+    sys.modules.update({"serial": _serial, "serial.tools": _tools, "serial.tools.list_ports": _lp})
+
 from rig.bt import StreamStats, classify_step  # noqa: E402
 
 

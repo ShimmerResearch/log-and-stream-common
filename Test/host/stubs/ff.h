@@ -53,13 +53,21 @@ typedef struct
 
 #elif defined(SHIMMER3R)
 
-#define _FATFS 68300 /* Revision ID */
+#define _FATFS     68300 /* Revision ID */
 
 typedef uint64_t QWORD;
 typedef QWORD FSIZE_t; /* _FS_EXFAT is 1 in the Shimmer3R ffconf.h */
 
+#define _MAX_LFN   255 /* the Shimmer3R ffconf.h */
+
 typedef struct
 {
+  FSIZE_t objsize; /* Object size */
+} _FDID;
+
+typedef struct
+{
+  _FDID obj;    /* Object identifier - f_size() reads its size */
   FSIZE_t fptr; /* File read/write pointer (Zeroed on file open) */
 } FIL;
 
@@ -70,8 +78,19 @@ typedef struct
 
 typedef struct
 {
-  FSIZE_t fsize; /* File size */
+  FSIZE_t fsize;             /* File size */
+  BYTE fattrib;              /* File attribute */
+  TCHAR fname[_MAX_LFN + 1]; /* Primary file name (_USE_LFN 2) */
 } FILINFO;
+
+/* The file system object - only declared, as the SD module's extern. */
+typedef struct
+{
+  BYTE fs_type; /* File system type (0:N/A) */
+} FATFS;
+
+#define f_size(fp) ((fp)->obj.objsize)
+#define AM_DIR     0x10 /* Directory */
 
 #endif
 
@@ -106,6 +125,7 @@ typedef enum
 #define FA_OPEN_EXISTING 0x00
 #define FA_WRITE         0x02
 #define FA_CREATE_ALWAYS 0x08
+#define FA_CREATE_NEW    0x04
 
 FRESULT f_open(FIL *fp, const TCHAR *path, BYTE mode);
 FRESULT f_close(FIL *fp);
@@ -115,6 +135,10 @@ FRESULT f_write(FIL *fp, const void *buff, UINT btw, UINT *bw);
 FRESULT f_opendir(DIRS *dp, const TCHAR *path);
 #elif defined(SHIMMER3R)
 FRESULT f_opendir(DIR *dp, const TCHAR *path);
+FRESULT f_closedir(DIR *dp);
+FRESULT f_readdir(DIR *dp, FILINFO *fno);
+FRESULT f_lseek(FIL *fp, FSIZE_t ofs);
+FRESULT f_sync(FIL *fp);
 #endif
 FRESULT f_mkdir(const TCHAR *path);
 FRESULT f_stat(const TCHAR *path, FILINFO *fno);

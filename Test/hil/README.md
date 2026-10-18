@@ -97,9 +97,9 @@ plug and unplug.
 ## What a timestamp check counts
 
 Each sample stamp is placed on the sampling grid by its distance from the
-first stamp (`rig/bt.py`, `classify_step`). A stamp may be up to three quarters
-of a period late and keep its slot, because interrupt latency makes stamps
-late, never early. Stamps are then sorted three ways:
+first stamp (`rig/bt.py`, `classify_step`). A stamp less than three quarters
+of a period late keeps its slot, because interrupt latency makes stamps late,
+never early; exactly three quarters late counts as the next slot. Stamps are then sorted three ways:
 
 - **lost samples:** a stamp skips a slot. The grid keeps its phase through a
   stall, so a lost sample is still counted when the stamp after it is on time

@@ -49,6 +49,27 @@ void ShimSdDataFile_closeDataFile(void);
  * read in the debugger after a bench run. */
 SdWriteBuf sdWrBuf;
 
+#if defined(SHIMMER3R)
+/* DEV-1098: the most queued buffers one f_write takes (8 KB). A busy card
+ * costs about the same time per write whatever its size, so the backlog that
+ * builds while it is slow is written in one go. The buffers are not adjacent
+ * in memory (each ends after its last whole record), so they are packed here
+ * first; the bytes reaching the file are exactly those of buffer-at-a-time. */
+#define SD_WR_BATCH_BUFS              16U
+/* No batching this close to the hourly split: longer than the ring (~1 s at
+ * 1024 Hz) and the buffers can hold between them, so every buffer still queued
+ * when batching stops was filled before the split time. */
+#define SD_WR_BATCH_SPLIT_GUARD_TICKS (4UL * 32768UL)
+/* FatFs passes the whole sectors in the middle of a write straight to the SD
+ * driver, from wherever they fall in this buffer, and sd_diskio.c only takes
+ * its multi-block DMA path for a word-aligned address - otherwise it writes a
+ * sector at a time, which is what this is here to avoid. The data is placed at
+ * an offset congruent to the file position mod 4, so every sector boundary of
+ * the file lands on an aligned address; hence the 4 spare bytes. */
+static uint8_t sdWrBatch[SD_WR_BATCH_BUFS * SD_WRITE_BUF_SIZE + 4U]
+    __attribute__((aligned(32)));
+#endif
+
 uint8_t fileName[64], dirName[64], expDirName[32];
 uint16_t fileNum, dirCounter;
 uint64_t sdFileCrTs, sdFileSyncTs;
@@ -354,6 +375,12 @@ void ShimSdDataFile_writeToCard(void)
 #endif //USE_FATFS
   const uint8_t *writing_buf;
   uint16_t writing_buf_len;
+  uint8_t bufsInWrite = 1;
+  uint32_t splitTs;
+  uint8_t splitAllowed = 1;
+#if defined(SHIMMER3R)
+  uint16_t partBytes = 0;
+#endif
 
   __NOP();
 
@@ -361,6 +388,35 @@ void ShimSdDataFile_writeToCard(void)
   {
     return;
   }
+
+#if defined(SHIMMER3R)
+  /* Batch only well clear of the hourly split. The split is checked after the
+   * write, so a batch spanning the threshold would put up to SD_WR_BATCH_BUFS
+   * buffers of post-split records into the old file. Near the split, write a
+   * buffer at a time as before, which overshoots by at most one buffer. */
+  if ((SdWrBuf_numQueued(&sdWrBuf) > 1)
+      && (((uint32_t) sensing.latestTs - (uint32_t) sdFileCrTs)
+          < ((uint32_t) BIN_FILE_SPLIT_TIME_TICKS - SD_WR_BATCH_SPLIT_GUARD_TICKS)))
+  {
+    const uint8_t *bufPtr;
+    uint16_t bufLen;
+    uint16_t total = 0;
+    uint8_t *basePtr = &sdWrBatch[0];
+
+#if USE_FATFS
+    basePtr += (uint32_t) f_size(&dataFile) & 3U;
+#endif
+    for (bufsInWrite = 0; (bufsInWrite < SD_WR_BATCH_BUFS)
+         && SdWrBuf_peekQueued(&sdWrBuf, bufsInWrite, &bufPtr, &bufLen);
+         bufsInWrite++)
+    {
+      memcpy(&basePtr[total], bufPtr, bufLen);
+      total = (uint16_t) (total + bufLen);
+    }
+    writing_buf = basePtr;
+    writing_buf_len = total;
+  }
+#endif
 
   sensing.inSdWr = 1;
   sensing.isSdOperating = 1;
@@ -371,13 +427,77 @@ void ShimSdDataFile_writeToCard(void)
   assert_param(file_status == FR_OK);
   file_status = f_write(&dataFile, writing_buf, writing_buf_len, &bw);
   assert_param(file_status == FR_OK);
+#if defined(SHIMMER3R)
+  /* A failed or short write releases only what reached the file: the buffers
+   * it wrote in full, and the written head of one it ended inside, whose
+   * unwritten tail stays queued so the next write continues the file exactly
+   * where this one stopped. A write that moved nothing releases one buffer,
+   * as the one-buffer path always did, so a flush on a dead card still ends. */
+  if ((file_status != FR_OK) || (bw < writing_buf_len))
+  {
+    const uint8_t *bufPtr;
+    uint16_t bufLen;
+    uint32_t done = 0;
+    uint8_t whole = 0;
+
+    while ((whole < bufsInWrite) && SdWrBuf_peekQueued(&sdWrBuf, whole, &bufPtr, &bufLen)
+        && ((done + bufLen) <= bw))
+    {
+      done += bufLen;
+      whole++;
+    }
+    partBytes = (uint16_t) (bw - done);
+    bufsInWrite = ((whole == 0U) && (partBytes == 0U)) ? 1U : whole;
+    /* Whatever was left unwritten - a tail, or whole buffers when the write
+     * stopped on a boundary - belongs to this file, ahead of everything after
+     * it. No split until a write completes; the next one carries on. */
+    splitAllowed = 0;
+  }
+#endif
 #endif
 
   __NOP();
   __NOP();
 
   /* split file every hour upwards from 000 */
-  if ((uint32_t) sensing.latestTs - (uint32_t) sdFileCrTs >= (uint32_t) BIN_FILE_SPLIT_TIME_TICKS)
+  splitTs = (uint32_t) sensing.latestTs;
+#if defined(SHIMMER3R)
+  /* Judge the hour by the newest record this write put in the file, not the
+   * newest sample taken: the ring and buffers can hold a second or more of
+   * older data during a stall, and splitting on the sample clock would end
+   * the file that much past an hour of sampling. Records begin with their
+   * 24-bit timestamp; take the upper bits from latestTs, which is at most a
+   * few seconds newer. */
+  if (splitAllowed && (writing_buf_len >= (uint16_t) (sensing.dataLen - 1U)))
+  {
+    const uint8_t *recPtr
+        = &writing_buf[writing_buf_len - (uint16_t) (sensing.dataLen - 1U)];
+    uint32_t ts24 = (uint32_t) recPtr[0] | ((uint32_t) recPtr[1] << 8)
+        | ((uint32_t) recPtr[2] << 16);
+    uint32_t full = (splitTs & 0xFF000000UL) | ts24;
+
+    if (full > splitTs)
+    {
+      full -= 0x01000000UL;
+    }
+    splitTs = full;
+  }
+  else
+  {
+    /* Too short to hold a whole record - the retried tail of a short write -
+     * so its last record's timestamp cannot be read, and falling back to the
+     * sample clock could split with older buffers still queued. Leave the
+     * decision to the next write that carries a whole record. */
+    splitAllowed = 0;
+  }
+#endif
+  /* Signed: on Shimmer3R splitTs is a record's own time, and the first records
+   * in a file - the backlog sampled while it was being created - are older
+   * than sdFileCrTs. Unsigned, that negative age wrapped to "far over an hour"
+   * and split every file as soon as it was opened. An hour of ticks fits an
+   * int32_t many times over, and on Shimmer3 (splitTs = latestTs, never older)
+   * this is the same test as before. */
+  if (splitAllowed && ((int32_t) (splitTs - (uint32_t) sdFileCrTs) >= (int32_t) BIN_FILE_SPLIT_TIME_TICKS))
   {
     sdFileSyncTs = sdFileCrTs = RTC_get64();
 
@@ -400,11 +520,28 @@ void ShimSdDataFile_writeToCard(void)
 
   sensing.isSdOperating = 0;
 
-  SdWrBuf_writeDone(&sdWrBuf);
+  while (bufsInWrite--)
+  {
+    SdWrBuf_writeDone(&sdWrBuf);
+  }
+#if defined(SHIMMER3R)
+  if (partBytes > 0U)
+  {
+    SdWrBuf_writePartial(&sdWrBuf, partBytes);
+  }
+#endif
   if (ShimSdDataFile_getNumberOfFullBuffers() > 0)
   {
     ShimTask_set(TASK_SDWRITE);
   }
+#if defined(SHIMMER3R)
+  /* A buffer is free again: resume a drain that ShimSens_saveData() paused
+   * because every buffer was queued (DEV-1098). */
+  if (!PktRing_isEmpty(&sensing.ring))
+  {
+    ShimTask_set(TASK_SAVEDATA);
+  }
+#endif
 
 #if USE_FATFS
   if (file_status != 0)
@@ -441,6 +578,20 @@ void ShimSdDataFile_writeAllBufsToSd(void)
 uint8_t ShimSdDataFile_getNumberOfFullBuffers(void)
 {
   return SdWrBuf_numQueued(&sdWrBuf);
+}
+
+/* SdWrBuf_canAccept does not refuse an oversize record, because waiting on one
+ * would never end. So prove here that a ring record (one slot less its header
+ * byte) behind a sync head always fits one buffer. */
+#if !defined(DATA_BUF_SIZE) || !defined(SYNC_PACKET_PAYLOAD_SIZE) || !defined(SD_WRITE_BUF_SIZE)
+#error "the record size check below needs the packet ring, SD sync and write buffer sizes"
+#elif ((DATA_BUF_SIZE - 1U) + SYNC_PACKET_PAYLOAD_SIZE) > SD_WRITE_BUF_SIZE
+#error "a packet ring record plus its sync head must fit one SD write buffer"
+#endif
+
+uint8_t ShimSdDataFile_canAcceptRecord(uint16_t len)
+{
+  return SdWrBuf_canAccept(&sdWrBuf, len);
 }
 
 uint16_t ShimSdDataFile_getBytesInCurrentSensingBuffer(void)
