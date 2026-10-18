@@ -27,6 +27,9 @@ class FlashError(Exception):
     pass
 
 
+APP_START = "0x08000000"
+
+
 def _run(cli: Path, args: list[str], timeout_s: float = 300) -> str:
     r = subprocess.run([str(cli), *args], capture_output=True, text=True,
                        encoding="utf-8", errors="replace", timeout=timeout_s)
@@ -45,12 +48,30 @@ def flash_swd(cli: Path, image: Path, stlink_serial: str | None = None) -> str:
     return _run(cli, [*conn, "-w", str(image), "-v", "-rst"])
 
 
-def flash_dfu(cli: Path, image: Path, usb_serial: str, timeout_s: float = 30) -> str:
+def reset_swd(cli: Path, stlink_serial: str | None = None) -> str:
+    """Reboot the unit into its application through the ST-Link: a hardware reset."""
+    conn = ["-c", "port=SWD", "mode=UR", "reset=HWrst"]
+    if stlink_serial:
+        conn.append(f"sn={stlink_serial}")
+    return _run(cli, [*conn, "-rst"], timeout_s=60)
+
+
+def reset_dfu(cli: Path, usb_serial: str, timeout_s: float = 30) -> str:
+    """Reboot the unit through ST's bootloader: ENTER_BOOTLOADER over the dock,
+    then start the application again without writing anything."""
+    _enter_dfu(usb_serial, timeout_s)
+    # With nothing written there is no image to take a start address from, so
+    # name it: the application's vector table (FLASH ORIGIN in
+    # STM32U5A5VJTXQ_FLASH.ld).
+    return _run(cli, ["-c", "port=USB1", "-s", APP_START], timeout_s=60)
+
+
+def _enter_dfu(usb_serial: str, timeout_s: float) -> None:
     # ST's DFU bootloader does not identify the unit the way its application
     # does, and port=USB1 is whichever DFU device the CLI lists first. So the
-    # image goes only to a DFU device that appeared after this unit was sent to
-    # its bootloader, and only if it is the only one: another STM32 left in DFU
-    # (a flash that failed) would otherwise get this unit's image.
+    # programmer talks only to a DFU device that appeared after this unit was
+    # sent to its bootloader, and only if it is the only one: another STM32
+    # left in DFU (a flash that failed) would otherwise get this unit's image.
     already = s3r_usb.dfu_devices()
     if already:
         raise FlashError(f"{len(already)} STM32 DFU device(s) already present ({', '.join(already)}): "
@@ -70,6 +91,10 @@ def flash_dfu(cli: Path, image: Path, usb_serial: str, timeout_s: float = 30) ->
         if time.monotonic() > end:
             raise FlashError("unit did not enumerate as USB DFU after ENTER_BOOTLOADER")
         time.sleep(0.5)
+
+
+def flash_dfu(cli: Path, image: Path, usb_serial: str, timeout_s: float = 30) -> str:
+    _enter_dfu(usb_serial, timeout_s)
     # -s with no address starts the application from the vector table the image set.
     return _run(cli, ["-c", "port=USB1", "-w", str(image), "-v", "-s"])
 

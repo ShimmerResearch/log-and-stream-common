@@ -138,6 +138,41 @@ def power(rig, pytestconfig):
     p.close()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _bt_on(request):
+    """Bluetooth on for every unit this run tests over Bluetooth (rig/btmode.py).
+
+    Session-scoped and autouse, so it runs before any test module opens a dock
+    or Base6 port and finishes after they have all closed theirs. A unit's
+    InfoMem goes back at the end even when the run failed, and a unit that
+    could not be put back fails the run loudly - left changed, it would no
+    longer sync in the field.
+    """
+    from rig.btmode import BtMode, bench_routes
+
+    units = {}
+    for item in request.session.items:
+        _, needs = _item(item)
+        unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
+        only = request.config.getoption("--unit")
+        if unit is not None and "bt" in needs and (not only or unit.name == only):
+            units[unit.name] = unit
+    if not units:
+        yield
+        return
+    tr = request.config.pluginmanager.get_plugin("terminalreporter")
+    log = (lambda m: tr.write_line(f"hil: {m}")) if tr else print
+    mode = BtMode(*bench_routes(request.getfixturevalue("rig")), log=log)
+    try:
+        for unit in units.values():
+            mode.enable(unit)
+        yield
+    finally:
+        problems = mode.restore()
+        if problems:
+            pytest.fail("; ".join(problems), pytrace=False)
+
+
 # --- per-unit parametrisation ------------------------------------------------
 
 def _rig_for_collection(config):

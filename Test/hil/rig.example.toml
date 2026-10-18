@@ -39,7 +39,8 @@ hub_port = 1                   # hub port powering its USB-C (power-off = undock
 radio = "IF820 v1.4.16.16"
 board = ""
 notes = ""
-# stlink_serial = "..."        # the ST-Link on this unit's SWD header: flash by SWD, not USB DFU
+# stlink_serial = "..."        # the ST-Link on this unit's SWD header: flash and reset by SWD, not
+#                              # through ST's bootloader, which on occasion never comes back as DFU
 
 # One Shimmer3 per radio firmware that shipped: RN42 v4.77, RN42 v6.15,
 # RN4678 v1.00.5, RN4678 v1.23. Pair each one's classic side in Windows.
