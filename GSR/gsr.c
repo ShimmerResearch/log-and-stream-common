@@ -81,6 +81,8 @@
 //Settling time for a hardware resistor change (80 ms)
 #define SETTLING_TIME           2621 //32768*0.08=2621.44
 
+static uint32_t GSR_FEEDBACK_RESISTORS_OHMS[] = { 40200, 287000, 1000000, 3300000 };
+
 uint8_t last_active_resistor, transient_active_resistor, got_first_sample;
 uint16_t transient_sample, transient_smoothing_samples, max_resistance_step;
 uint32_t last_resistance;
