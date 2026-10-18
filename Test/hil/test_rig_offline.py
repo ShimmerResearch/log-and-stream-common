@@ -426,6 +426,46 @@ class BtPortOpen(unittest.TestCase):
         self.assertTrue(made[0].closed, "the port was left open")
 
 
+class PushedStatusFrame(unittest.TestCase):
+    """A status frame the firmware pushes as a query goes out lands where the
+    query's reply should be: ACK, then 0x8A instead of the response opcode."""
+
+    class Spp(FakeSpp):
+        def __init__(self, pushes):
+            super().__init__(1)
+            self.pushes, self.writes = pushes, []
+
+        def write(self, data):
+            self.writes.append(bytes(data))
+            if self.pushes:
+                self.pushes -= 1
+                self.buf += bytes([bt.ACK, bt.INSTREAM, bt.STATUS_RSP, 0x20])
+            self.buf += bytes([bt.ACK, bt.DEVICE_VERSION_RSP, bt.HW_SHIMMER3R])
+
+    def link(self, pushes):
+        link = bt.BtLink.__new__(bt.BtLink)
+        link.hw, link._nstatus, link.crc_mode = bt.HW_SHIMMER3R, 1, 0
+        link.ser = self.Spp(pushes)
+        link.quiesce = lambda quiet_s=0.3, max_s=5.0: link.ser.buf.clear()
+        return link
+
+    def test_a_query_behind_a_pushed_status_frame_is_asked_again(self):
+        link = self.link(pushes=1)
+        self.assertEqual(link.device_version(), bt.HW_SHIMMER3R)
+        self.assertEqual(len(link.ser.writes), 2)
+
+    def test_it_gives_up_after_three_attempts(self):
+        link = self.link(pushes=3)
+        with self.assertRaises(bt.BtError):
+            link.device_version()
+        self.assertEqual(len(link.ser.writes), 3)
+
+    def test_a_start_or_stop_is_never_sent_twice(self):
+        link = self.link(pushes=1)
+        link.command(bt.START_LOGGING)
+        self.assertEqual(link.ser.writes, [bytes([bt.START_LOGGING])])
+
+
 class StatusLength(unittest.TestCase):
     def test_shimmer3r_before_1_00_024_sends_one_status_byte(self):
         link = bt_link(bt.HW_SHIMMER3R, (3, 1, 0, 23), sent=1)
