@@ -605,6 +605,24 @@ class SdFileTrailing(unittest.TestCase):
                 fc = sdfile.check(sd_file(d, per_block, tail=tail))
                 self.assertEqual((fc.records, fc.trailing_bytes), (per_block, want))
 
+    def test_a_session_split_across_files_reads_as_one_recording(self):
+        # check_session (the soak tier's) joins 000, 001, ... and judges the
+        # step across each split like any other.
+        import shutil
+        import tempfile
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as d2:
+            first = sd_file(d, 5)                            # stamps 1, 129, ... 513
+            shutil.copyfile(first, Path(d2) / "000")
+            raw = bytearray(first.read_bytes())              # the same, carried on by five periods
+            for i in range(5):
+                pos = sdfile.HEAD_S3R + sdfile.SYNC_HEAD + 3 * i
+                raw[pos:pos + 3] = (1 + 128 * (i + 5)).to_bytes(3, "little")
+            (Path(d2) / "001").write_bytes(bytes(raw))
+            sc = sdfile.check_session(Path(d2))
+        self.assertEqual(sc.files, ["000", "001"])
+        self.assertEqual((sc.records, sc.missing, sc.dupes), (10, 0, 0))
+        self.assertEqual(sc.joins, [("001", 128)])
+
     def test_a_header_claiming_more_channels_than_a_shimmer3r_has_is_refused(self):
         raw = bytearray(sdfile.HEAD_S3R)
         raw[30:32] = sdfile.HW_SHIMMER3R.to_bytes(2, "big")

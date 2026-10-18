@@ -14,6 +14,14 @@ python Test/hil/run_rc.py <tag> --waive smoke.sd_log=ABC-123        # accept a k
 python Test/hil/run_rc.py <tag> --manual-power                       # dock and undock by hand when prompted
 ```
 
+An overnight soak of a Shimmer3R candidate, then of a Shimmer3 one (each run tests its own platform's units):
+
+```
+set HIL_SOAK_SCALE=3
+python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022 --no-flash --tier soak
+python Test/hil/run_rc.py LogAndStream_Shimmer3_v1.01.007 --no-flash --tier soak
+```
+
 A failure in the report blocks the release, required item or not, unless it
 carries a waiver. `--waive ITEM=ISSUE` puts the issue key into that item's
 result when it fails or is not covered, as a manual sign-off's waiver does, and
@@ -90,7 +98,7 @@ plug and unplug.
 | `rig/decode.py` | Packets or SD records to per-channel arrays; calibration from a blob, an SD header or InfoMem |
 | `rig/signals.py` | Checks on a resting unit: 1 g, gyro ≈ 0, stuck/staircase/saturated axes, VBatt |
 | `matrix/s3r_release.toml` | The Shimmer3R release matrix: one row per configuration |
-| `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (the matrix) or `soak` |
+| `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (the matrix) or `soak` (long-running, advisory; `HIL_SOAK_SCALE` sets the length) |
 | `triage.py` | Claude triage of a failed run: advice in `triage.md`, never a verdict |
 | `test_hil_*.py` | Unit tests for the above that need no hardware; run by `make -C Test/host` |
 
