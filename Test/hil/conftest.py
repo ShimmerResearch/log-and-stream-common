@@ -138,8 +138,10 @@ def power(rig, pytestconfig):
     p.close()
 
 
-# The capability rig/btmode.py reaches each platform's InfoMem through.
-DOCK_ROUTE = {"shimmer3r": "usb", "shimmer3": "dock"}
+# What rig/btmode.py needs to change a unit's InfoMem and then reset it: a
+# Shimmer3R's USB dock and STM32_Programmer_CLI (every Shimmer3R reset route,
+# SWD or bootloader, goes through it); a Shimmer3's Base6 slot, which does both.
+DOCK_ROUTE = {"shimmer3r": {"usb", "programmer:shimmer3r"}, "shimmer3": {"dock"}}
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -157,10 +159,10 @@ def _bt_on(request):
     # Only units a Bluetooth test will actually run against: one the bench
     # cannot serve is reported not_covered by pytest_runtest_setup, and
     # reaching for its dock here would fail the run before that. The fixture
-    # also needs the dock route itself to change InfoMem - USB for a
-    # Shimmer3R, the Base6 for a Shimmer3 - which a Bluetooth-only test does
-    # not declare (smoke.bt_stream needs only "bt"). A unit without it is
-    # left as it is, and its Bluetooth tests run against whatever it is set to.
+    # also needs its own route to change InfoMem and reset the unit
+    # (DOCK_ROUTE), which a Bluetooth-only test does not declare
+    # (smoke.bt_stream needs only "bt"). A unit without it is left as it is,
+    # and its Bluetooth tests run against whatever it is set to.
     units = {}
     only = request.config.getoption("--unit")
     for item in request.session.items:
@@ -168,7 +170,7 @@ def _bt_on(request):
         unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
         if not (item_id and unit is not None and "bt" in needs and (not only or unit.name == only)):
             continue
-        route = {DOCK_ROUTE[unit.platform]} if unit.platform in DOCK_ROUTE else set()
+        route = DOCK_ROUTE.get(unit.platform, set())
         if not _missing(request.config, unit, needs | route):
             units[unit.name] = unit
     if not units:
