@@ -70,8 +70,13 @@
 #include "Platform/platform_api.h"
 #include "RTC/shimmer_rtc.h"
 #include "SDCard/shimmer_sd.h"
+#include "SDCard/shimmer_sd_data_file.h"
 #include "SDCard/shimmer_sd_header.h"
+#include "SDCard/shimmer_sd_write_buf.h"
+#include "SDSync/shimmer_sd_sync.h"
 #include "Sensing/shimmer_packet_ring.h"
+#include "Sensing/shimmer_sensing.h"
+#include "TaskList/shimmer_taskList.h"
 #include "Util/shimmer_util.h"
 #include "log_and_stream_common.h"
 #include "log_and_stream_definitions.h"
@@ -90,16 +95,5 @@
 
 /* Comms/shimmer_bt_uart.h - needs firmware-side RN4X/RN4678.h */
 char *ShimBt_macIdStrPtrGet(void);
-
-/* TaskList/shimmer_taskList.h - needs firmware-side shimmer_definitions.h */
-void ShimTask_setStopSensing(void);
-void ShimTask_setStopLogging(void);
-void ShimTask_setStopStreaming(void);
-void ShimTask_setStartLoggingIfReady(void);
-void ShimTask_setStartStreamingIfReady(void);
-
-/* Sensing/shimmer_sensing.h - needs firmware-side shimmer_include.h */
-uint8_t ShimSens_isSamplingRateInvalid(void);
-void ShimSens_gatherData(void);
 
 #endif /* HOST_TEST_LOG_AND_STREAM_INCLUDES_H_ */

@@ -75,8 +75,10 @@ STANDALONE_SUITES := test_swcrc test_packet_ring test_util test_sd_pressure_id \
 SD_WRBUF_SUITES := test_sd_write_buf
 SD_WRBUF_COUNTS := 1 2 4 32
 
-# Suites built once, against the stub platform.
-SINGLE_PLATFORM_SUITES := test_crc
+# Suites built once, against the stub platform, as Shimmer3R. test_sd_data_file
+# is Shimmer3R-only by nature: the writer's batching, alignment offset, split
+# guard and short-write recovery exist only there.
+SINGLE_PLATFORM_SUITES := test_crc test_sd_data_file
 
 # Suites built twice, once per platform. See the note above.
 DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards test_bt_reply \
@@ -94,6 +96,11 @@ SRC_test_sd_pressure_id := test_sd_pressure_id.c \
 SRC_test_sd_write_buf := test_sd_write_buf.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c
 SRC_test_leds_phase  := test_leds_phase.c $(REPO)/LEDs/shimmer_leds_phase.c
+SRC_test_sd_data_file := test_sd_data_file.c \
+                        $(REPO)/SDCard/shimmer_sd_data_file.c \
+                        $(REPO)/SDCard/shimmer_sd_write_buf.c \
+                        $(REPO)/Sensing/shimmer_packet_ring.c \
+                        $(REPO)/Util/shimmer_util.c
 SRC_test_crc         := test_crc.c $(REPO)/CRC/shimmer_crc.c \
                         $(REPO)/CRC/shimmer_swCrc.c $(REPO)/Platform/platform_api.c
 SRC_test_rtc         := test_rtc.c $(REPO)/RTC/shimmer_rtc.c
