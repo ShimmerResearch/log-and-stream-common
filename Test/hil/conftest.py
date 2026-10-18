@@ -150,18 +150,32 @@ def _bt_on(request):
     """
     from rig.btmode import BtMode, bench_routes
 
+    # Only units a Bluetooth test will actually run against: one the bench
+    # cannot serve is reported not_covered by pytest_runtest_setup, and
+    # reaching for its dock here would fail the run before that.
     units = {}
+    only = request.config.getoption("--unit")
     for item in request.session.items:
-        _, needs = _item(item)
+        item_id, needs = _item(item)
         unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
-        only = request.config.getoption("--unit")
-        if unit is not None and "bt" in needs and (not only or unit.name == only):
+        if (item_id and unit is not None and "bt" in needs and (not only or unit.name == only)
+                and not _missing(request.config, unit, needs)):
             units[unit.name] = unit
     if not units:
         yield
         return
     tr = request.config.pluginmanager.get_plugin("terminalreporter")
-    log = (lambda m: tr.write_line(f"hil: {m}")) if tr else print
+    def log(m):
+        if tr is None:
+            print(m)
+            return
+        # At teardown the progress dots are still on the line; without a fresh
+        # line the restore confirmation is glued to them ("..hil: ..."). The
+        # reporter's ensure_newline() tracks file paths, not what is on the
+        # line, so ask the terminal writer.
+        if getattr(tr._tw, "width_of_current_line", 0):
+            tr.write("\n")
+        tr.write_line(f"hil: {m}")
     mode = BtMode(*bench_routes(request.getfixturevalue("rig")), log=log)
     try:
         for unit in units.values():
@@ -261,26 +275,31 @@ def _item(item):
     return item_id, set(m.kwargs.get("needs", []))
 
 
+def _missing(config, unit, needs: set[str]) -> set[str]:
+    """What the bench lacks of `needs` for this unit: the tests it makes skip."""
+    rig = _rig_for_collection(config)
+    if rig is None:
+        return needs or {"rig.toml"}
+    have = rig.capabilities(unit)
+    if config.getoption("--manual-power"):
+        # Without the hub the operator is the switch, so docking is possible.
+        have.add("hub_port")
+    missing = needs - have
+    if unit is None and needs & set(rig_config.PLATFORMS):
+        missing |= needs & set(rig_config.PLATFORMS)
+    return missing
+
+
 def pytest_runtest_setup(item):
     item_id, needs = _item(item)
     if not item_id:
         return
-    rig = _rig_for_collection(item.config)
     unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
     only = item.config.getoption("--unit")
     if only and unit is not None and unit.name != only:
         item._hil_not_covered = f"not run: --unit {only}"
         pytest.skip(item._hil_not_covered)
-    if rig is None:
-        missing = needs or {"rig.toml"}
-    else:
-        have = rig.capabilities(unit)
-        if item.config.getoption("--manual-power"):
-            # Without the hub the operator is the switch, so docking is possible.
-            have.add("hub_port")
-        missing = needs - have
-        if unit is None and needs & set(rig_config.PLATFORMS):
-            missing |= needs & set(rig_config.PLATFORMS)
+    missing = _missing(item.config, unit, needs)
     if missing:
         item._hil_not_covered = f"bench lacks: {', '.join(sorted(missing))}"
         pytest.skip(item._hil_not_covered)

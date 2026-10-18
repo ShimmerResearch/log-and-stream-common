@@ -85,12 +85,16 @@ def check_rest(chans: dict[int, np.ndarray], calibs: dict[str, Calib], packet_ra
     # value, and a run there says nothing about the ODR.
     for name in ("ln_accel", "gyro"):
         raw = triplet(chans, name)
-        if raw is None:
+        # Too short to have steps to judge: an empty or one-record capture is
+        # the record-count check's to report, not this one's to crash on.
+        if raw is None or len(raw) < 2:
             continue
         # The noise is measured between samples that changed: a staircase
         # repeats most samples, and the zero steps between them would make the
         # sensor look quiet - the very case this check is for.
         fresh = raw[np.concatenate(([True], np.any(np.diff(raw, axis=0) != 0, axis=1)))]
+        if len(fresh) < 3:
+            continue                                     # no steps between changes: nothing to judge
         noisy = sum(np.std(np.diff(fresh[:, i])) >= MIN_NOISE_LSB for i in range(3))
         if noisy < MIN_NOISY_AXES:
             continue

@@ -85,6 +85,13 @@ class Staircase(unittest.TestCase):
                             for p in self.problems(raw, rate=100.0, ids=mag_ids)))
 
 
+    def test_an_empty_or_one_record_capture_does_not_crash(self):
+        for n in (0, 1, 2):
+            with self.subTest(records=n):
+                raw = resting(n, seed=6) if n else np.zeros((0, 3), dtype=int)
+                self.assertEqual([p for p in self.problems(raw) if "identical" in p], [])
+
+
 @unittest.skipIf(np is None, "numpy not installed")
 class LongestRun(unittest.TestCase):
     def test_one_dimensional(self):

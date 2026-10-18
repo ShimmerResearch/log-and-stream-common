@@ -22,6 +22,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+from .s3_flash import _masked
+
 SYNC_CFG_OFFSET = 217            # NV_SD_TRIAL_CONFIG0 (Configuration/shimmer_config.h)
 SYNC_ENABLE, BT_DISABLE = 0x04, 0x08
 BT_BLOCKING = SYNC_ENABLE | BT_DISABLE
@@ -61,10 +63,10 @@ class BtMode:
             if not blocks_bt(original):
                 self.saved[unit.name] = (unit, None)
                 return
+            # Saved before the write: if the write, the reset or anything after
+            # them fails, restore() still puts the original back.
+            self.saved[unit.name] = (unit, original)
             d.write_infomem(unblocked(original), offset=SYNC_CFG_OFFSET)
-        # Saved before the reset: if anything below fails, restore() still
-        # puts the original back.
-        self.saved[unit.name] = (unit, original)
         self.reset(unit)
         with self.access(unit) as d:
             now = d.read_infomem(SYNC_CFG_OFFSET, 1)[0]
@@ -87,9 +89,12 @@ class BtMode:
                     d.write_infomem(original)
                     back = bytes(d.read_infomem())
                 self.reset(unit)
-                if back[SYNC_CFG_OFFSET] != original[SYNC_CFG_OFFSET]:
-                    raise BtModeError(f"byte {SYNC_CFG_OFFSET} reads {back[SYNC_CFG_OFFSET]:#04x}, "
-                                      f"wrote {original[SYNC_CFG_OFFSET]:#04x}")
+                # Byte for byte, as promised, but for the bit the firmware sets
+                # itself on every config write (s3_flash.SELF_SET_BITS).
+                diff = [i for i, (a, b) in enumerate(zip(_masked(original), _masked(back))) if a != b]
+                if len(back) != len(original) or diff:
+                    raise BtModeError(f"read back {len(back)} bytes, wrote {len(original)}; "
+                                      f"differs at offsets {diff[:20]}")
                 self.log(f"{name}: InfoMem restored (byte {SYNC_CFG_OFFSET} {original[SYNC_CFG_OFFSET]:#04x})")
             except Exception as e:                        # keep going: the other units still need theirs
                 problems.append(f"{name}: InfoMem not restored: {e}")
