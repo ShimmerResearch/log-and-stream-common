@@ -499,6 +499,22 @@ ADC at `ADC_RESOLUTION_12B` (`Shimmer_Driver/hal_adc.c:131,729,749,785`). Bits
 Accelerometer, gyroscope and magnetometer axes: `int16`, little-endian on both
 platforms.
 
+> **On Shimmer3R the magnetometer repeats its last reading when it has no new
+> one.** The LIS2MDL converts at up to 100 Hz, and a packet that finds no fresh
+> conversion carries the previous reading rather than zeros. The
+> sample-and-hold is in `I2cSens_sensorNext()` in shimmer3r-firmware's
+> `Core/Src/i2c.c`, at the pinned revision above. At packet rates above
+> 100 Hz, runs of identical magnetometer samples are therefore normal: a host
+> should not read them as a stuck sensor. Runs much longer than the packet rate
+> divided by 100 still point to a fault.
+>
+> Firmware newer than the pinned revision extends this. A packet whose read
+> could not start because the one before it was still on the bus also holds
+> the previous reading, and a read that completes after its packet has gone is
+> dropped, never written into a later packet, and counted in
+> `i2cStaleCompletions`, which is readable over SWD. These two are not yet
+> verified against a pinned revision (see *Still unverified* below).
+
 The alternate accelerometer (`0x14`-`0x16`) is 12-bit data in a 16-bit field on
 Shimmer3 (`i12`), and needs sign extension from bit 11 rather than bit 15.
 
@@ -955,6 +971,12 @@ to look.
 
 ## Still unverified / not found in code
 
+- **The Shimmer3R magnetometer's busy-bus hold and dropped late reads**
+  (§5.2). They come from a shimmer3r-firmware change newer than the pinned
+  `8f800952`, so they are described here but not yet verified against a pinned
+  revision. The hold for no fresh conversion is verified at `8f800952`. Re-pin
+  the Shimmer3R packers once that change is on `main`, and check this item
+  off.
 - ~~**The Shimmer3R ADS7028 reference voltage and resolution.**~~ — resolved:
   **12-bit at 3.0 V**, on every Shimmer3R analog path. The packer masks with
   `0x0FFF` (`Core/Src/spi.c:1415-1419`), the driver's own conversion is
