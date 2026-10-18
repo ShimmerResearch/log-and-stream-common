@@ -152,8 +152,6 @@ FRESULT ShimSd_setFileTimestamp(char *path)
 {
 #if defined(SHIMMER3R)
   FILINFO fno;
-  RTC_TimeTypeDef RTC_TimeStructure;
-  RTC_DateTypeDef RTC_DateStructure;
 
   SHIM_RTC_t data;
   RTC_getDateTime(&data);

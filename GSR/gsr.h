@@ -54,8 +54,6 @@ enum
   GSR_AUTORANGE
 };
 
-static uint32_t GSR_FEEDBACK_RESISTORS_OHMS[] = { 40200, 287000, 1000000, 3300000 };
-
 void GSR_init(uint8_t gsrRangeToSet, uint16_t gsrSamplingRateToSet);
 
 void GSR_range(uint8_t *buf);
