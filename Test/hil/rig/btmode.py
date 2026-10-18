@@ -7,7 +7,10 @@ and reads like a radio or link failure. Units are shipped and kept that way:
 every Shimmer3 on our Base6 has sync on.
 
 So for each unit whose tests need Bluetooth, the run clears those two bits
-first and puts the unit's InfoMem back, byte for byte, when it ends. A dock
+first and puts the unit's InfoMem back, byte for byte, when it ends. The
+read-back is checked against the original everywhere but byte 230 bit 0
+(flagWriteCfgToSd), which the firmware sets itself on every configuration
+write - the same exception s3_flash makes. A dock
 InfoMem write only stores the configuration (Comms/shimmer_dock_usart.c); the
 firmware decides whether the radio is on when it boots
 (ShimConfig_checkBtModeFromConfig), so each change is followed by a reset:

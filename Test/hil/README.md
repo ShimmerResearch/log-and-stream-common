@@ -70,7 +70,10 @@ the firmware checkouts the model may read, and a spending cap
    off. The run handles that itself (`rig/btmode.py`): before the first test,
    each unit whose tests need Bluetooth has those two bits of InfoMem byte 217
    cleared and is reset, and after the last its InfoMem is written back byte
-   for byte and it is reset again. A Shimmer3 is reset through its Base6 slot;
+   for byte and it is reset again. The read-back must match everywhere but
+   byte 230 bit 0, `flagWriteCfgToSd`, which the firmware sets itself on
+   every configuration write; that bit differing is expected, not a failed
+   restore. A Shimmer3 is reset through its Base6 slot;
    a Shimmer3R through its ST-Link if `rig.toml` names one, otherwise through
    the ST bootloader. A unit that cannot be put back fails the run.
 5. Close STM32CubeIDE and Consensys before a release run. The suite warns if
