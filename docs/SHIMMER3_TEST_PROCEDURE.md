@@ -1127,7 +1127,22 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
 
-Smoke items are not yet on the required lists. They join once they have run
+The **fleet** tier is §5.1 made automatic: Shimmer3, one unit per radio
+firmware that shipped (RN42 v4.77 and v6.15, RN4678 v1.00.5 and v1.23), all
+docked in a Base6. `run_rc.py` flashes each unit through its slot with the
+MSP430 bootloader, CRC-verifying every block. Mass erase also clears
+information memory B-D, which holds the unit's configuration and calibration,
+so InfoMem is read over the dock and saved first, then written back after the
+flash.
+
+| Item | Checks |
+|---|---|
+| `fleet.boot_identity` | Hardware 3, LogAndStream identifier, the candidate's version, and a radio banner on the shipped list |
+| `fleet.config_roundtrip` | The configuration reads back exactly as written |
+| `fleet.reboot` | Five resets through the RST line; every boot answers the dock with the same radio banner (§5.1.5) |
+| `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
+
+Smoke and fleet items are not yet on the required lists. They join once they have run
 clean across a few candidates, so a flaky check never blocks a release on its
 first day.
 

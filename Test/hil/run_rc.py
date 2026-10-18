@@ -119,7 +119,8 @@ def exit_status(pytest_rc: int, gate_rc: int, report: dict) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("tag")
-    ap.add_argument("--tier", default="smoke", help="pytest -m expression (default: smoke)")
+    ap.add_argument("--tier", default="smoke or fleet",
+                    help="pytest -m expression (default: \"smoke or fleet\" - each platform runs its own)")
     ap.add_argument("--rig", default=None)
     ap.add_argument("--no-flash", action="store_true", help="test what is on the units now")
     ap.add_argument("--manual-power", action="store_true",
@@ -147,9 +148,24 @@ def main(argv=None) -> int:
     if not units:
         print(f"rig {rig.bench} has no {platform} unit - nothing to test")
         return 1
-    if not a.no_flash:
-        if platform != "shimmer3r":
-            raise SystemExit("automatic flashing is Shimmer3R only so far; use --no-flash")
+    if not a.no_flash and platform == "shimmer3":
+        if not rig.base6_serial:
+            raise SystemExit("rig.toml names no Base6; Shimmer3 flashing goes through its slots")
+        # As for Shimmer3R: a unit that cannot be flashed would still be tested,
+        # on whatever it runs now, so refuse before flashing any of them.
+        unflashable = [u.name for u in units if not u.base6_slot]
+        if unflashable:
+            raise SystemExit(f"{', '.join(unflashable)}: no base6_slot in rig.toml, so not flashable. Add it, "
+                             "or test what the units run now with --no-flash.")
+        from rig.base6 import Base6
+        from rig.s3_flash import flash_slot
+        # InfoMem backups live beside the run: the one copy of each unit's
+        # configuration and calibration if a flash fails half way.
+        with Base6(rig.base6_serial) as b6:
+            for u in units:
+                print(f"{u.name}: flashing {image.name} through Base6 slot {u.base6_slot} ...", flush=True)
+                flash_slot(b6, u.base6_slot, image, out / "infomem-backup", expect_version=version)
+    elif not a.no_flash:
         if not rig.stm32_programmer:
             raise SystemExit("rig.toml names no stm32_programmer")
         # A unit that cannot be flashed would still be tested, on whatever it
