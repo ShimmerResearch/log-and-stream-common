@@ -530,6 +530,56 @@ class BtMode(unittest.TestCase):
         self.assertEqual(mode.restore(), [])
         self.assertEqual(d.im[217], original[217])
 
+    def test_a_write_that_fails_part_way_is_still_restored(self):
+        mode, d, original, _ = self.bench(0x15)
+        real = d.write_infomem
+        state = {"failed": False}
+
+        def write_then_fail(data, offset=0):
+            real(data, offset)
+            if not state["failed"]:
+                state["failed"] = True
+                raise IOError("dock link dropped after the write")
+        d.write_infomem = write_then_fail
+        with self.assertRaises(IOError):
+            mode.enable(self.Unit("s3"))
+        self.assertEqual(mode.restore(), [])
+        self.assertEqual(bytes(d.im), original)
+
+    def test_a_short_read_changes_nothing(self):
+        from rig import btmode
+        mode, d, original, resets = self.bench(0x15)
+        d.read_infomem = lambda offset=0, length=None: bytes(d.im[:300])
+        with self.assertRaises(btmode.BtModeError):
+            mode.enable(self.Unit("s3"))
+        self.assertEqual(bytes(d.im), original)
+        self.assertEqual(resets, [])
+        self.assertEqual(mode.restore(), [])
+
+    def test_restore_checks_every_byte(self):
+        mode, d, _, _ = self.bench(0x15)
+        mode.enable(self.Unit("s3"))
+        real = d.write_infomem
+
+        def write_corrupting(data, offset=0):
+            real(data, offset)
+            d.im[40] ^= 0xFF                              # far from byte 217
+        d.write_infomem = write_corrupting
+        problems = mode.restore()
+        self.assertEqual(len(problems), 1)
+        self.assertIn("offsets [40]", problems[0])
+
+    def test_the_self_set_config_flag_is_not_a_difference(self):
+        mode, d, _, _ = self.bench(0x15)
+        mode.enable(self.Unit("s3"))
+        real = d.write_infomem
+
+        def write_setting_flag(data, offset=0):
+            real(data, offset)
+            d.im[230] |= 0x01                             # flagWriteCfgToSd, set by the firmware
+        d.write_infomem = write_setting_flag
+        self.assertEqual(mode.restore(), [])
+
 
 class PushedStatusFrame(unittest.TestCase):
     """A status frame the firmware pushes as a query goes out lands where the

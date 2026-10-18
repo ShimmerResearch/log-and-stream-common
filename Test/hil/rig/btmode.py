@@ -7,7 +7,10 @@ and reads like a radio or link failure. Units are shipped and kept that way:
 every Shimmer3 on our Base6 has sync on.
 
 So for each unit whose tests need Bluetooth, the run clears those two bits
-first and puts the unit's InfoMem back, byte for byte, when it ends. A dock
+first and puts the unit's InfoMem back, byte for byte, when it ends. The
+read-back is checked against the original everywhere but byte 230 bit 0
+(flagWriteCfgToSd), which the firmware sets itself on every configuration
+write - the same exception s3_flash makes. A dock
 InfoMem write only stores the configuration (Comms/shimmer_dock_usart.c); the
 firmware decides whether the radio is on when it boots
 (ShimConfig_checkBtModeFromConfig), so each change is followed by a reset:
@@ -21,6 +24,9 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+
+from .dock import INFOMEM_SIZE
+from .s3_flash import _masked
 
 SYNC_CFG_OFFSET = 217            # NV_SD_TRIAL_CONFIG0 (Configuration/shimmer_config.h)
 SYNC_ENABLE, BT_DISABLE = 0x04, 0x08
@@ -58,13 +64,19 @@ class BtMode:
             return
         with self.access(unit) as d:
             original = bytes(d.read_infomem())
+            if len(original) != INFOMEM_SIZE:
+                # A short read is not an original to restore from: written
+                # back, it would leave the rest as the run left it, and a
+                # read-back of the same short length would pass as restored.
+                raise BtModeError(f"{unit.name}: InfoMem read gave {len(original)} bytes, "
+                                  f"expected {INFOMEM_SIZE}; nothing was changed")
             if not blocks_bt(original):
                 self.saved[unit.name] = (unit, None)
                 return
+            # Saved before the write: if the write, the reset or anything after
+            # them fails, restore() still puts the original back.
+            self.saved[unit.name] = (unit, original)
             d.write_infomem(unblocked(original), offset=SYNC_CFG_OFFSET)
-        # Saved before the reset: if anything below fails, restore() still
-        # puts the original back.
-        self.saved[unit.name] = (unit, original)
         self.reset(unit)
         with self.access(unit) as d:
             now = d.read_infomem(SYNC_CFG_OFFSET, 1)[0]
@@ -87,9 +99,12 @@ class BtMode:
                     d.write_infomem(original)
                     back = bytes(d.read_infomem())
                 self.reset(unit)
-                if back[SYNC_CFG_OFFSET] != original[SYNC_CFG_OFFSET]:
-                    raise BtModeError(f"byte {SYNC_CFG_OFFSET} reads {back[SYNC_CFG_OFFSET]:#04x}, "
-                                      f"wrote {original[SYNC_CFG_OFFSET]:#04x}")
+                # Byte for byte, as promised, but for the bit the firmware sets
+                # itself on every config write (s3_flash.SELF_SET_BITS).
+                diff = [i for i, (a, b) in enumerate(zip(_masked(original), _masked(back))) if a != b]
+                if len(back) != len(original) or diff:
+                    raise BtModeError(f"read back {len(back)} bytes, wrote {len(original)}; "
+                                      f"differs at offsets {diff[:20]}")
                 self.log(f"{name}: InfoMem restored (byte {SYNC_CFG_OFFSET} {original[SYNC_CFG_OFFSET]:#04x})")
             except Exception as e:                        # keep going: the other units still need theirs
                 problems.append(f"{name}: InfoMem not restored: {e}")
