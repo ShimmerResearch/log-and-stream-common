@@ -499,6 +499,18 @@ ADC at `ADC_RESOLUTION_12B` (`Shimmer_Driver/hal_adc.c:131,729,749,785`). Bits
 Accelerometer, gyroscope and magnetometer axes: `int16`, little-endian on both
 platforms.
 
+> **On Shimmer3R the magnetometer repeats its last reading when it has no new
+> one.** The LIS2MDL converts at up to 100 Hz, and a packet that finds no fresh
+> conversion carries the previous reading rather than zeros. So does a packet
+> whose read could not start because the one before it was still on the bus.
+> The sample-and-hold is in `I2cSens_sensorNext()` in shimmer3r-firmware's
+> `Core/Src/i2c.c`. At packet rates above 100 Hz, runs of identical
+> magnetometer samples are therefore normal: a host should not read them as a
+> stuck sensor. Runs much longer than the packet rate divided by 100 still
+> point to a fault. A read that completes after its packet has gone is
+> dropped, never written into a later packet, and is counted in
+> `i2cStaleCompletions`, which is readable over SWD.
+
 The alternate accelerometer (`0x14`-`0x16`) is 12-bit data in a 16-bit field on
 Shimmer3 (`i12`), and needs sign extension from bit 11 rather than bit 15.
 
