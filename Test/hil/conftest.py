@@ -214,8 +214,16 @@ def pytest_collection_modifyitems(config, items):
 # --- capability check and outcome recording ----------------------------------
 
 def _item(item):
+    """(report item id, needs). The id may name test parameters - "release.{row}" -
+    which are filled from the test's parameters; a dict parameter contributes its "id"."""
     m = item.get_closest_marker("hil")
-    return (m.args[0], set(m.kwargs.get("needs", []))) if m and m.args else (None, set())
+    if not (m and m.args):
+        return None, set()
+    item_id = m.args[0]
+    if "{" in item_id and hasattr(item, "callspec"):
+        params = {k: (v.get("id") if isinstance(v, dict) else v) for k, v in item.callspec.params.items()}
+        item_id = item_id.format(**params)
+    return item_id, set(m.kwargs.get("needs", []))
 
 
 def pytest_runtest_setup(item):

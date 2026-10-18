@@ -331,13 +331,41 @@ class DfuTargetsOnlyThisUnit(unittest.TestCase):
         self.assertIn("port=USB1", runs[0])
 
 
-def bt_link(hw, fw):
+class FakeSpp:
+    """The serial side of a BtLink: answers GET_STATUS with one status frame
+    carrying `nstatus` status bytes, the first of them 0x20."""
+
+    def __init__(self, nstatus):
+        self.nstatus, self.buf, self.timeout = nstatus, bytearray(), 1.0
+
+    @property
+    def in_waiting(self):
+        return len(self.buf)
+
+    def reset_input_buffer(self):
+        self.buf.clear()
+
+    def write(self, data):
+        if data == bytes([bt.GET_STATUS]):
+            self.buf += bytes([bt.ACK, bt.INSTREAM, bt.STATUS_RSP, 0x20]) + bytes(self.nstatus - 1)
+
+    def read(self, n=1):
+        out = bytes(self.buf[:n])
+        del self.buf[:n]
+        return out
+
+
+def bt_link(hw, fw, sent):
+    """A BtLink on a FakeSpp whose firmware sends `sent` status bytes."""
     link = bt.BtLink.__new__(bt.BtLink)
-    link.hw, link._nstatus = hw, None
-    link.reads = []
-    link.command = lambda *a, **k: None
-    link.fw_version = lambda: fw
-    link._read = lambda n: link.reads.append(n) or bytes(n)
+    link.hw, link._nstatus, link.crc_mode = hw, None, 0
+    link.ser = FakeSpp(sent)
+    link.asked = 0
+
+    def fw_version():
+        link.asked += 1
+        return fw
+    link.fw_version = fw_version
     return link
 
 
@@ -398,22 +426,69 @@ class BtPortOpen(unittest.TestCase):
         self.assertTrue(made[0].closed, "the port was left open")
 
 
+class PushedStatusFrame(unittest.TestCase):
+    """A status frame the firmware pushes as a query goes out lands where the
+    query's reply should be: ACK, then 0x8A instead of the response opcode."""
+
+    class Spp(FakeSpp):
+        def __init__(self, pushes):
+            super().__init__(1)
+            self.pushes, self.writes = pushes, []
+
+        def write(self, data):
+            self.writes.append(bytes(data))
+            if self.pushes:
+                self.pushes -= 1
+                self.buf += bytes([bt.ACK, bt.INSTREAM, bt.STATUS_RSP, 0x20])
+            self.buf += bytes([bt.ACK, bt.DEVICE_VERSION_RSP, bt.HW_SHIMMER3R])
+
+    def link(self, pushes):
+        link = bt.BtLink.__new__(bt.BtLink)
+        link.hw, link._nstatus, link.crc_mode = bt.HW_SHIMMER3R, 1, 0
+        link.ser = self.Spp(pushes)
+        link.quiesce = lambda quiet_s=0.3, max_s=5.0: link.ser.buf.clear()
+        return link
+
+    def test_a_query_behind_a_pushed_status_frame_is_asked_again(self):
+        link = self.link(pushes=1)
+        self.assertEqual(link.device_version(), bt.HW_SHIMMER3R)
+        self.assertEqual(len(link.ser.writes), 2)
+
+    def test_it_gives_up_after_three_attempts(self):
+        link = self.link(pushes=3)
+        with self.assertRaises(bt.BtError):
+            link.device_version()
+        self.assertEqual(len(link.ser.writes), 3)
+
+    def test_a_start_or_stop_is_never_sent_twice(self):
+        link = self.link(pushes=1)
+        link.command(bt.START_LOGGING)
+        self.assertEqual(link.ser.writes, [bytes([bt.START_LOGGING])])
+
+
 class StatusLength(unittest.TestCase):
     def test_shimmer3r_before_1_00_024_sends_one_status_byte(self):
-        link = bt_link(bt.HW_SHIMMER3R, (3, 1, 0, 23))
-        link.status()
-        self.assertEqual(link.reads, [1])
+        link = bt_link(bt.HW_SHIMMER3R, (3, 1, 0, 23), sent=1)
+        self.assertEqual(link.status_len(), 1)
+        self.assertEqual(link.status(timeout_s=0.2), 0x20)
 
     def test_shimmer3r_from_1_00_024_sends_two(self):
-        link = bt_link(bt.HW_SHIMMER3R, (3, 1, 1, 0))
-        link.status()
-        link.status()
-        self.assertEqual(link.reads, [2, 2])
+        link = bt_link(bt.HW_SHIMMER3R, (3, 1, 1, 0), sent=2)
+        self.assertEqual(link.status(timeout_s=0.2), 0x20)
+        self.assertEqual(link.status(timeout_s=0.2), 0x20)
+        self.assertEqual(link.status_len(), 2)
+        self.assertEqual(link.asked, 1, "the version is asked once, not per status")
+
+    def test_a_two_byte_read_of_a_one_byte_reply_times_out(self):
+        # What the fixed length used to do to pre-v1.00.024 Shimmer3R firmware.
+        link = bt_link(bt.HW_SHIMMER3R, (3, 1, 1, 0), sent=1)
+        with self.assertRaises(bt.BtError):
+            link.status(timeout_s=0.2)
 
     def test_shimmer3_always_sends_one_and_is_not_asked_its_version(self):
-        link = bt_link(bt.HW_SHIMMER3, None)
-        link.status()
-        self.assertEqual(link.reads, [1])
+        link = bt_link(bt.HW_SHIMMER3, None, sent=1)
+        self.assertEqual(link.status(timeout_s=0.2), 0x20)
+        self.assertEqual(link.asked, 0)
 
 
 class TagVersion(unittest.TestCase):

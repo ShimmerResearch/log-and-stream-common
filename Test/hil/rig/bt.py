@@ -29,7 +29,7 @@ GET_STATUS, STATUS_RSP = 0x72, 0x71
 SET_CRC = 0x8B
 START_STREAMING, STOP_STREAMING = 0x07, 0x20
 START_LOGGING, STOP_LOGGING = 0x92, 0x93
-STOP_SDBT = 0x97
+START_SDBT, STOP_SDBT = 0x70, 0x97
 
 STATUS_DOCKED, STATUS_SENSING, STATUS_LOGGING, STATUS_STREAMING = 0x01, 0x02, 0x08, 0x10
 STATUS_SD_INSERTED, STATUS_SD_BAD_FILE = 0x20, 0x40
@@ -94,6 +94,12 @@ class StreamStats:
     status_pushes: int = 0
     first_ts: int | None = None
     deltas: dict = field(default_factory=dict)
+    crc_errors: int = 0
+    stop_ack: bool = False      # the stop command's ACK arrived at a frame boundary
+    after_stop: int = 0         # packets that arrived after the stop was sent
+    misframes: list = field(default_factory=list)   # hex of the first few frames that failed to confirm
+    ts: list = field(default_factory=list)       # kept with stream(keep=True)
+    rows: list = field(default_factory=list)
 
     def rate_hz(self) -> float:
         return self.packets / self.seconds if self.seconds else 0.0
@@ -149,18 +155,9 @@ class BtLink:
     def __init__(self, port: str, connect_timeout_s: float = 10.0):
         # Opening an SPP port is what makes Windows page the device; it can take
         # several seconds, and fails outright if the link cannot be made.
-        #
-        # Open with DTR and RTS low, pyserial's default being high. On Shimmer3R
-        # firmware without the module-frame guard (seen with IF820 v1.4.16.16),
-        # a port opened with them raised can have the rest of the module's
-        # connect event run as a command, and on one host that changed the
-        # stored configuration (SHIMMER3_BT_COMMUNICATION_PROTOCOL.md §2).
-        self.ser = serial.Serial()
-        self.ser.port, self.ser.baudrate = port, 115200
-        self.ser.timeout = self.ser.write_timeout = connect_timeout_s
-        self.ser.dtr = self.ser.rts = False
-        self.ser.open()
+        self.ser = _open_spp(port, connect_timeout_s)
         self.hw: int | None = None
+        self.crc_mode = 0
         self._nstatus: int | None = None
         # Until the constructor returns there is no link to close, so if the
         # first exchange fails the port is closed here: left open, it would
@@ -191,22 +188,37 @@ class BtLink:
             raise BtError(f"timed out: wanted {n} bytes, got {len(b)}")
         return b
 
-    def command(self, op: int, args: bytes = b"", rsp: int | None = None, wrapped: bool = False) -> None:
-        """Send op, consume the ACK and (if rsp) the response opcode. Payload is the caller's to read."""
-        self.ser.reset_input_buffer()
-        self.ser.write(bytes([op]) + args)
-        a = self._read(1)[0]
-        if a == NACK:
-            raise BtError(f"NACK for {op:#04x}")
-        if a != ACK:
-            raise BtError(f"expected ACK for {op:#04x}, got {a:#04x}")
-        if wrapped:
-            if self._read(1)[0] != INSTREAM:
-                raise BtError(f"expected in-stream wrapper for {op:#04x}")
-        if rsp is not None:
+    def command(self, op: int, args: bytes = b"", rsp: int | None = None, wrapped: bool = False,
+                attempts: int = 3) -> None:
+        """Send op, consume the ACK and (if rsp) the response opcode. Payload is the caller's to read.
+
+        The firmware also pushes status frames of its own, ACK 0x8A 0x71 ...,
+        whenever its state changes (§5.3) - a log file closing, the SD card
+        settling after a stop. One that leaves just as a query goes out puts
+        its ACK where the query's should be, and the 0x8A after it where the
+        response opcode should be. So a query (rsp set, not wrapped) that gets
+        ACK 0x8A drains the link and asks again. Only queries are retried: a
+        start or stop sent twice is a different command.
+        """
+        for attempt in range(attempts if rsp is not None and not wrapped else 1):
+            self.ser.reset_input_buffer()
+            self.ser.write(bytes([op]) + args)
+            a = self._read(1)[0]
+            if a == NACK:
+                raise BtError(f"NACK for {op:#04x}")
+            if a != ACK:
+                raise BtError(f"expected ACK for {op:#04x}, got {a:#04x}")
+            if wrapped:
+                if self._read(1)[0] != INSTREAM:
+                    raise BtError(f"expected in-stream wrapper for {op:#04x}")
+            if rsp is None:
+                return
             r = self._read(1)[0]
-            if r != rsp:
+            if r == rsp:
+                return
+            if r != INSTREAM or wrapped or attempt == attempts - 1:
                 raise BtError(f"expected response {rsp:#04x} for {op:#04x}, got {r:#04x}")
+            self.quiesce(quiet_s=0.2, max_s=2.0)  # the pushed frame, and any reply behind it
 
     def device_version(self) -> int:
         self.command(GET_DEVICE_VERSION, rsp=DEVICE_VERSION_RSP)
@@ -228,11 +240,29 @@ class BtLink:
                 self._nstatus = 2 if (major, minor, patch) >= S3R_TWO_STATUS_BYTES_FROM else 1
         return self._nstatus
 
-    def status(self) -> int:
-        """Status byte 0 (byte 1, Shimmer3R's usbPluggedIn, is read and dropped)."""
+    def status(self, timeout_s: float = 3.0) -> int:
+        """Status byte 0 (byte 1, Shimmer3R's usbPluggedIn, is read and dropped).
+
+        The reply is found by its frame, ACK 0x8A 0x71, rather than assumed to
+        be the next byte: after a stop at a high rate a stale data packet can
+        still be in the device's transmit ring, and it goes out ahead of the
+        reply (seen with STOP_SDBT at 256 Hz). Reading status therefore also
+        flushes the link for the command after it.
+        """
         n = self.status_len()
-        self.command(GET_STATUS, rsp=STATUS_RSP, wrapped=True)
-        return self._read(n)[0]
+        pattern = bytes([ACK, INSTREAM, STATUS_RSP])
+        self.ser.reset_input_buffer()
+        self.ser.write(bytes([GET_STATUS]))
+        buf = bytearray()
+        end = time.monotonic() + timeout_s
+        while time.monotonic() < end:
+            buf += self.ser.read(max(1, self.ser.in_waiting))
+            i = buf.find(pattern)
+            if i >= 0 and len(buf) >= i + 3 + n:
+                time.sleep(0.05)
+                self.ser.reset_input_buffer()     # its CRC, if a mode is on
+                return buf[i + 3]
+        raise BtError(f"no status reply within {timeout_s:.0f} s (got {bytes(buf[:24]).hex()})")
 
     def inquiry(self) -> Inquiry:
         self.command(INQUIRY, rsp=INQUIRY_RSP)
@@ -242,6 +272,11 @@ class BtLink:
         nch, bufsize = head[fixed - 2], head[fixed - 1]
         chans = list(self._read(nch))
         return Inquiry(divider, chans, bufsize, head[2:fixed - 2])
+
+    def all_calibration(self) -> bytes:
+        """GET_ALL_CALIBRATION: 4 x 21 bytes on Shimmer3, 6 x 21 on Shimmer3R (§7.6)."""
+        self.command(0x2C, rsp=0x2D)
+        return self._read(126 if self.hw == HW_SHIMMER3R else 84)
 
     def wait_status(self, mask: int, want: bool, timeout_s: float = 10.0) -> int:
         end = time.monotonic() + timeout_s
@@ -259,24 +294,90 @@ class BtLink:
 
     # --- streaming -----------------------------------------------------------
 
-    def stream(self, seconds: float, inq: Inquiry | None = None) -> StreamStats:
-        """Stream for `seconds`, checking packet framing and timestamp continuity."""
+    def set_crc(self, mode: int) -> None:
+        """SET_CRC 0/1/2 (§3.3). The reply's own trailing bytes depend on which
+        mode applies to it, so it is drained rather than parsed."""
+        self.ser.reset_input_buffer()
+        self.ser.write(bytes([SET_CRC, mode]))
+        # Wait for the ACK itself: just after a stop the firmware is busy
+        # closing the SD file and can take well over a second to answer, and a
+        # late reply would otherwise sit in front of the next command's.
+        old = self.ser.timeout
+        self.ser.timeout = 5.0
+        try:
+            a = self.ser.read(1)
+        finally:
+            self.ser.timeout = old
+        if a != bytes([ACK]):
+            raise BtError(f"SET_CRC {mode}: expected ACK, got {a.hex() or 'nothing'}")
+        self.quiesce(quiet_s=0.2, max_s=1.0)     # its CRC bytes, in whichever mode applied
+        self.crc_mode = mode
+
+    def stream(self, seconds: float, inq: Inquiry | None = None, *, keep: bool = False,
+               start_op: int = START_STREAMING, stop_op: int = STOP_STREAMING) -> StreamStats:
+        """Stream for `seconds`, checking framing, CRCs and timestamp continuity.
+
+        With keep=True the timestamps and channel bytes of every packet are kept
+        (st.ts, st.rows) for decoding. start_op/stop_op select plain streaming
+        or START_SDBT/STOP_SDBT (stream and log together).
+        """
         inq = inq or self.inquiry()
-        plen = 4 + sum(channel_width(c, self.hw) for c in inq.channels)
-        push_len = 3 + self.status_len()          # [ACK][0x8A][0x71][status...]
+        crc_n = getattr(self, "crc_mode", 0)
+        body = 4 + sum(channel_width(c, self.hw) for c in inq.channels)
+        plen = body + crc_n
+        push_len = 3 + self.status_len() + crc_n  # [ACK][0x8A][0x71][status...][CRC]; asked before the start
         st = StreamStats()
-        self.command(START_STREAMING)
+        self.command(start_op)
+        if crc_n:
+            self._read(crc_n)                    # the ACK's own CRC
         buf = bytearray()
         last_ts = None
         t0 = time.monotonic()
+        stop_t = None               # set once the stop command has gone out
+        old_timeout = self.ser.timeout
         try:
-            while time.monotonic() - t0 < seconds:
-                buf += self.ser.read(max(1, self.ser.in_waiting))
+            while True:
+                now = time.monotonic()
+                if stop_t is None and now - t0 >= seconds:
+                    st.seconds = now - t0
+                    self.ser.write(bytes([stop_op]))
+                    stop_t = now
+                    self.ser.timeout = 0.3
+                if stop_t is None:
+                    buf += self.ser.read(max(1, self.ser.in_waiting))
+                else:
+                    # After the stop: keep parsing what is still in flight -
+                    # those are real samples - and look for the stop's ACK,
+                    # until the link has been quiet for 0.3 s (or 5 s pass).
+                    chunk = self.ser.read(4096)
+                    buf += chunk
+                    final = not chunk or now - stop_t > 5.0
                 while buf:
                     if buf[0] == 0x00:
-                        if len(buf) < plen:
+                        need = plen + (0 if stop_t is not None and final else 1)
+                        if len(buf) < need:              # +1: peek at the next frame's first byte
                             break
                         ts = buf[1] | (buf[2] << 8) | (buf[3] << 16)
+                        # A 0x00 is not proof of a packet boundary. Confirm it: the
+                        # next frame must start with 0x00 or an ACK; with a CRC on,
+                        # the CRC must match; without one, the timestamp must step
+                        # by a plausible number of periods. A frame that fails is
+                        # re-searched a byte later and counted - it means bytes the
+                        # parser did not expect arrived (and are kept for diagnosis).
+                        if len(buf) > plen and buf[plen] not in (0x00, ACK):
+                            ok = False
+                        elif crc_n:
+                            ok = _crc_ok(buf[:body], buf[body:plen])
+                            if not ok:
+                                st.crc_errors += 1
+                        else:
+                            ok = last_ts is None or _plausible_step((ts - last_ts) % TS_WRAP, inq.divider)
+                        if not ok:
+                            st.resyncs += 1
+                            if len(st.misframes) < 3:
+                                st.misframes.append(bytes(buf[:plen + 8]).hex())
+                            del buf[:1]
+                            continue
                         if last_ts is None:
                             st.first_ts = ts
                         else:
@@ -285,20 +386,103 @@ class BtLink:
                             classify_step(st, d, inq.divider)
                         last_ts = ts
                         st.packets += 1
+                        if stop_t is not None:
+                            st.after_stop += 1
+                        if keep:
+                            st.ts.append(ts)
+                            st.rows.append(bytes(buf[4:body]))
                         del buf[:plen]
                     elif buf[0] == ACK and len(buf) >= 2 and buf[1] == INSTREAM:
                         if len(buf) < push_len:
                             break
                         st.status_pushes += 1
                         del buf[:push_len]
+                    elif buf[0] == ACK and stop_t is not None and (len(buf) >= 2 or final):
+                        # A bare ACK at a frame boundary after the stop: the stop's.
+                        st.stop_ack = True
+                        del buf[:1 + crc_n]
                     elif buf[0] == ACK and len(buf) < 2:
                         break
                     else:
                         st.resyncs += 1
+                        if len(st.misframes) < 3:
+                            st.misframes.append(bytes(buf[:plen + 8]).hex())
                         del buf[:1]
+                if stop_t is not None and final:
+                    break
         finally:
-            st.seconds = time.monotonic() - t0
-            self.ser.write(bytes([STOP_STREAMING]))
-            time.sleep(0.5)
-            self.ser.reset_input_buffer()
+            if stop_t is None:                   # left early on an exception
+                st.seconds = time.monotonic() - t0
+                self.ser.write(bytes([stop_op]))
+            self.ser.timeout = old_timeout
+            self.quiesce()
         return st
+
+    def quiesce(self, quiet_s: float = 0.3, max_s: float = 5.0) -> None:
+        """Drain until the link has been silent for quiet_s.
+
+        After a stop, packets already queued in the device and the radio keep
+        arriving for a while - longer at high rates - and would otherwise sit in
+        front of the next command's reply.
+        """
+        end = time.monotonic() + max_s
+        old = self.ser.timeout
+        self.ser.timeout = quiet_s
+        try:
+            while time.monotonic() < end:
+                if not self.ser.read(4096):
+                    break
+        finally:
+            self.ser.timeout = old
+
+
+def _plausible_step(d: int, period: int) -> bool:
+    """A step of 1..(10 s) worth of ticks, within a quarter period of a whole number of periods."""
+    k = round(d / period)
+    return 1 <= k and d <= 10 * TICKS_PER_S and abs(d - k * period) <= period // 4
+
+
+PORT_RELEASE_WAIT_S = 30.0
+
+
+def _open_spp(port: str, timeout_s: float) -> serial.Serial:
+    """Open an SPP COM port, waiting out Windows' release of the previous link.
+
+    Closing an SPP port returns before Windows has torn the link down; until it
+    has, opening that port - and on this bench sometimes another unit's - fails
+    with "Access is denied". That is the PC, not the device, so it is waited
+    for rather than reported. Any other error is raised at once.
+    """
+    end = time.monotonic() + PORT_RELEASE_WAIT_S
+    paged = False
+    while True:
+        # Opened with DTR and RTS low, pyserial's default being high. On
+        # Shimmer3R firmware without the module-frame guard (seen with IF820
+        # v1.4.16.16), a port opened with them raised can have the rest of the
+        # module's connect event run as a command, and on one host that changed
+        # the stored configuration (SHIMMER3_BT_COMMUNICATION_PROTOCOL.md §2).
+        ser = serial.Serial()
+        ser.port, ser.baudrate = port, 115200
+        ser.timeout = ser.write_timeout = timeout_s
+        ser.dtr = ser.rts = False
+        try:
+            ser.open()
+            return ser
+        except serial.SerialException as e:
+            if "semaphore timeout" in str(e) and not paged:
+                # One page timeout is retried: seen right after the unit's USB
+                # re-enumerates on re-dock. A second one is reported.
+                paged = True
+                time.sleep(5.0)
+                continue
+            if "Access is denied" not in str(e) or time.monotonic() > end:
+                raise
+            time.sleep(1.0)
+
+
+def _crc_ok(frame: bytes, got: bytes) -> bool:
+    """The link CRC (§3.3): Shimmer CRC-16 over the frame, low byte first; mode 1 sends only the low byte."""
+    from .dock import crc16
+    c = crc16(bytes(frame))
+    want = bytes([c & 0xFF, c >> 8])[:len(got)]
+    return bytes(got) == want
