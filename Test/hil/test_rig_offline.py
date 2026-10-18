@@ -546,6 +546,16 @@ class BtMode(unittest.TestCase):
         self.assertEqual(mode.restore(), [])
         self.assertEqual(bytes(d.im), original)
 
+    def test_a_short_read_changes_nothing(self):
+        from rig import btmode
+        mode, d, original, resets = self.bench(0x15)
+        d.read_infomem = lambda offset=0, length=None: bytes(d.im[:300])
+        with self.assertRaises(btmode.BtModeError):
+            mode.enable(self.Unit("s3"))
+        self.assertEqual(bytes(d.im), original)
+        self.assertEqual(resets, [])
+        self.assertEqual(mode.restore(), [])
+
     def test_restore_checks_every_byte(self):
         mode, d, _, _ = self.bench(0x15)
         mode.enable(self.Unit("s3"))

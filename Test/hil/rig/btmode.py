@@ -25,6 +25,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+from .dock import INFOMEM_SIZE
 from .s3_flash import _masked
 
 SYNC_CFG_OFFSET = 217            # NV_SD_TRIAL_CONFIG0 (Configuration/shimmer_config.h)
@@ -63,6 +64,12 @@ class BtMode:
             return
         with self.access(unit) as d:
             original = bytes(d.read_infomem())
+            if len(original) != INFOMEM_SIZE:
+                # A short read is not an original to restore from: written
+                # back, it would leave the rest as the run left it, and a
+                # read-back of the same short length would pass as restored.
+                raise BtModeError(f"{unit.name}: InfoMem read gave {len(original)} bytes, "
+                                  f"expected {INFOMEM_SIZE}; nothing was changed")
             if not blocks_bt(original):
                 self.saved[unit.name] = (unit, None)
                 return
