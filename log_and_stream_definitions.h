@@ -10,10 +10,25 @@
 
 #include <stdint.h>
 
-#define TEST_UNDOCKED             0
-#define TEST_RTC_ERR_FLASH_OFF    0
-#define TEST_PRESS2UNDOCK         0
-#define TEST_TASK_MONITOR         0
+#define TEST_UNDOCKED          0
+#define TEST_RTC_ERR_FLASH_OFF 0
+#define TEST_PRESS2UNDOCK      0
+#define TEST_TASK_MONITOR      0
+/* Shimmer3R bench builds only (DEV-1098). 1: allow SD logging while USB-C is
+ * plugged in but the unit is not docked, so a battery-less unit can be logged
+ * and read back without undocking. Starting a log takes the card from USB MSC
+ * (USB stack down, card power-cycled and remounted, as on an undock); the card
+ * goes back to USB when sensing stops - with a stream still running after the
+ * log, when that stream ends too. Never ship with this set: it relies on the
+ * USB stack being torn down before the MCU touches the card. */
+#ifndef TEST_LOG_WITH_USB
+#define TEST_LOG_WITH_USB 0
+#endif
+/* The USB hand-over it relies on exists only on Shimmer3R; elsewhere the flag
+ * would let the MCU log while the host holds the card. */
+#if TEST_LOG_WITH_USB && !defined(SHIMMER3R)
+#error "TEST_LOG_WITH_USB is Shimmer3R-only"
+#endif
 
 #define IS_SUPPORTED_SINGLE_TOUCH 0
 /* 1: the LED blink phase follows the real-world clock (on an SD-sync node, the

@@ -96,10 +96,10 @@ static uint8_t sim_gather_complete(Sim *sim)
 
 /* One TASK_SAVEDATA run. Records the timestamp of every packet handed to the
  * SD and Bluetooth writers, which is exactly what ends up in a .bin file. */
-static uint8_t sim_drain(Sim *sim, uint32_t *emittedOut, uint8_t emittedMax)
+static uint16_t sim_drain(Sim *sim, uint32_t *emittedOut, uint16_t emittedMax)
 {
-  uint8_t budget = PktRing_count(&sim->ring);
-  uint8_t emitted = 0;
+  uint16_t budget = PktRing_count(&sim->ring);
+  uint16_t emitted = 0;
   PACKETBufferTypeDef *slotPtr;
 
   while (budget-- && PktRing_drainNext(&sim->ring, &slotPtr))
@@ -262,7 +262,7 @@ static void test_ring_full(void)
 {
   Sim sim;
   uint32_t emitted[DATA_BUF_QTY];
-  uint8_t i;
+  uint16_t i; /* the Shimmer3R build fills 1022 slots */
 
   printf("test_ring_full\n");
   sim_init(&sim, PKT_RING_STALL_LIMIT_DEFAULT);

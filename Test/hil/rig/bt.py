@@ -124,9 +124,10 @@ def classify_step(st, d: int, period: int) -> None:
     is placed on the grid by its total distance from the first, so a sample
     stamped late - one long step then one short, summing to two periods - is
     one late sample, not a lost one followed by a duplicate. A stamp can be
-    late (interrupt latency) but not early, so anything up to three quarters of
-    a period late still belongs to its own slot: a stamp exactly half a period
-    late, as seen on the bench, is jitter. The sampling timer keeps its phase
+    late (interrupt latency) but not early, so anything less than three
+    quarters of a period late still belongs to its own slot, and exactly three
+    quarters late counts as the next slot. A stamp exactly half a period late,
+    as seen on the bench, is jitter. The sampling timer keeps its phase
     through a stall, so the grid holds across gaps, and a lost sample whose
     successor is stamped on time or a little early is still a loss. A stamp
     that lands in a slot already taken, or before it, is a duplicate. Shared
@@ -187,22 +188,37 @@ class BtLink:
             raise BtError(f"timed out: wanted {n} bytes, got {len(b)}")
         return b
 
-    def command(self, op: int, args: bytes = b"", rsp: int | None = None, wrapped: bool = False) -> None:
-        """Send op, consume the ACK and (if rsp) the response opcode. Payload is the caller's to read."""
-        self.ser.reset_input_buffer()
-        self.ser.write(bytes([op]) + args)
-        a = self._read(1)[0]
-        if a == NACK:
-            raise BtError(f"NACK for {op:#04x}")
-        if a != ACK:
-            raise BtError(f"expected ACK for {op:#04x}, got {a:#04x}")
-        if wrapped:
-            if self._read(1)[0] != INSTREAM:
-                raise BtError(f"expected in-stream wrapper for {op:#04x}")
-        if rsp is not None:
+    def command(self, op: int, args: bytes = b"", rsp: int | None = None, wrapped: bool = False,
+                attempts: int = 3) -> None:
+        """Send op, consume the ACK and (if rsp) the response opcode. Payload is the caller's to read.
+
+        The firmware also pushes status frames of its own, ACK 0x8A 0x71 ...,
+        whenever its state changes (§5.3) - a log file closing, the SD card
+        settling after a stop. One that leaves just as a query goes out puts
+        its ACK where the query's should be, and the 0x8A after it where the
+        response opcode should be. So a query (rsp set, not wrapped) that gets
+        ACK 0x8A drains the link and asks again. Only queries are retried: a
+        start or stop sent twice is a different command.
+        """
+        for attempt in range(attempts if rsp is not None and not wrapped else 1):
+            self.ser.reset_input_buffer()
+            self.ser.write(bytes([op]) + args)
+            a = self._read(1)[0]
+            if a == NACK:
+                raise BtError(f"NACK for {op:#04x}")
+            if a != ACK:
+                raise BtError(f"expected ACK for {op:#04x}, got {a:#04x}")
+            if wrapped:
+                if self._read(1)[0] != INSTREAM:
+                    raise BtError(f"expected in-stream wrapper for {op:#04x}")
+            if rsp is None:
+                return
             r = self._read(1)[0]
-            if r != rsp:
+            if r == rsp:
+                return
+            if r != INSTREAM or wrapped or attempt == attempts - 1:
                 raise BtError(f"expected response {rsp:#04x} for {op:#04x}, got {r:#04x}")
+            self.quiesce(quiet_s=0.2, max_s=2.0)  # the pushed frame, and any reply behind it
 
     def device_version(self) -> int:
         self.command(GET_DEVICE_VERSION, rsp=DEVICE_VERSION_RSP)

@@ -31,6 +31,7 @@ void ShimSdDataFile_writeToBuff(uint8_t *buf, uint16_t len);
 void ShimSdDataFile_writeToCard(void);
 void ShimSdDataFile_writeAllBufsToSd(void);
 uint8_t ShimSdDataFile_getNumberOfFullBuffers(void);
+uint8_t ShimSdDataFile_canAcceptRecord(uint16_t len);
 uint16_t ShimSdDataFile_getBytesInCurrentSensingBuffer(void);
 
 uint8_t ShimSdDataFile_isFileStatusOk(void);
