@@ -32,6 +32,7 @@ ATT_HEADER = 3                                          # opcode and handle, out
 SCAN_S = 15.0
 CONNECT_S = 30.0
 WRITE_S = 10.0
+CANCEL_S = 5.0
 
 
 class BleError(Exception):
@@ -77,10 +78,21 @@ class BleSerial:
     # --- the asyncio side -------------------------------------------------
 
     def _call(self, coro, timeout_s: float):
+        fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
         try:
-            return asyncio.run_coroutine_threadsafe(coro, self._loop).result(timeout_s)
+            return fut.result(timeout_s)
         except (FutureTimeout, TimeoutError) as e:   # one class from Python 3.11, two on 3.10
+            # A timed-out scan, connect or write would otherwise go on running
+            # on the loop. Cancelling the future cancels its task there.
+            fut.cancel()
             raise BleError(f"{self.address}: no answer within {timeout_s:.0f} s") from e
+
+    @staticmethod
+    async def _cancel_pending() -> None:
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _connect(self, scan_s: float) -> None:
         from bleak import BleakClient, BleakScanner
@@ -166,6 +178,12 @@ class BleSerial:
                 self._lost = True
                 self._cond.notify_all()
             if self._loop.is_running():
+                # Anything still in flight - a timed-out operation, a notification
+                # handler - is cancelled and waited for before the loop stops.
+                try:
+                    asyncio.run_coroutine_threadsafe(self._cancel_pending(), self._loop).result(CANCEL_S)
+                except Exception:
+                    pass
                 self._loop.call_soon_threadsafe(self._loop.stop)
             self._thread.join(5.0)
             if not self._thread.is_alive() and not self._loop.is_closed():

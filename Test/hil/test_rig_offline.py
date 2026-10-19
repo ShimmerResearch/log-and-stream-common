@@ -1223,6 +1223,12 @@ class BleEnableBit(unittest.TestCase):
         # CARD_MEM reads EEPROM from offset + 16, so the page at 2032 is offset 2016, 16 bytes.
         self.assertEqual(sent, [(dock.CMD_GET, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM, bytes([16, 0xE0, 0x07]))])
 
+    def test_a_short_radio_page_is_an_error(self):
+        d = dock.DockLink.__new__(dock.DockLink)
+        d._transact = lambda cmd, comp, prop, data=b"": bytes([3, 12, 0xFF])
+        with self.assertRaisesRegex(dock.DockError, "gave 3 bytes"):
+            d.radio_settings()
+
     def test_ble_enabled_reads_byte_2_bit_0(self):
         self.assertTrue(dock.ble_enabled(bytes([3, 12, 0xFF]) + bytes(13)))   # 15BC: unprogrammed, both on
         self.assertTrue(dock.ble_enabled(bytes([3, 12, 0x01]) + bytes(13)))
@@ -1282,6 +1288,47 @@ class BleSerialReads(unittest.TestCase):
         t.join(2.0)
         self.assertFalse(t.is_alive(), "read() still blocked after close()")
         self.assertEqual(len(raised), 1)
+
+    def _running_loop(self, s):
+        s._loop = asyncio.new_event_loop()
+        s._thread = threading.Thread(target=s._loop.run_forever, daemon=True)
+        s._thread.start()
+
+    def test_a_timed_out_operation_is_cancelled(self):
+        s = _ble_serial()
+        self._running_loop(s)
+        cancelled = threading.Event()
+
+        async def slow():
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        with self.assertRaises(ble.BleError):
+            s._call(slow(), 0.1)
+        self.assertTrue(cancelled.wait(2.0), "the timed-out operation is still running")
+        s.close()
+        self.assertTrue(s._loop.is_closed())
+
+    def test_close_cancels_what_is_still_in_flight(self):
+        s = _ble_serial()
+        self._running_loop(s)
+        cancelled = threading.Event()
+
+        async def slow():
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        asyncio.run_coroutine_threadsafe(slow(), s._loop)
+        time.sleep(0.05)
+        s.close()
+        self.assertTrue(cancelled.is_set())
+        self.assertTrue(s._loop.is_closed())
 
     def test_reset_input_buffer_drops_what_is_queued(self):
         s = _ble_serial()
