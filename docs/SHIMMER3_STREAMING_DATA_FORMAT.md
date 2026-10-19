@@ -269,8 +269,14 @@ your port against that file.
 >   none at 512 Hz.
 > - **Shimmer3R** samples on the RTC wake-up timer, which the hardware reloads
 >   itself, so latency has never changed its period. That timer counts at half
->   the 32768 Hz rate (`RTC_wakeUpSet`), so an odd `samplingRateTicks` gives a
->   period one tick shorter than configured.
+>   the 32768 Hz rate (`RTC_wakeUpSet`), so the period is
+>   `2 × floor(samplingRateTicks / 2)` ticks and an odd `samplingRateTicks`
+>   samples one tick faster than configured. Measured on a device, every step
+>   was 32 ticks at a setting of 33, 64 at 65, 130 at 131, 326 at 327 and 654
+>   at 655, while even settings were exact: 1024 Hz where `32768 / 33` says
+>   993.0 Hz, and 0.15% to 3.1% fast across those rates. `INQUIRY_RESPONSE` and
+>   the SD header still report the configured value, so a host must take the
+>   rate from the timestamps, or from `32768 / (2 × floor(samplingRateTicks / 2))`.
 >
 > A step of about a whole number of periods is a skipped slot, not a timing
 > fault.
@@ -1005,8 +1011,13 @@ to look.
 - **The Shimmer3 sample-timer re-arm is not yet on `main` or in a release**
   (§2.1). It was read from `shimmer3-firmware` @ `8c13b48`. Pin the **Verified
   against** block to the first release that carries it, and check this item
-  off. The Shimmer3R period for an odd `samplingRateTicks` was read from the
-  code and has not been measured on a device.
+  off.
+- ~~**The Shimmer3R period for an odd `samplingRateTicks`.**~~ — resolved:
+  measured on a Shimmer3R running v1.01.021, whose `RTC_wakeUpSet` is the one
+  at `c8c69e71`. In seven 15 s SD logs, every step was exactly
+  `2 × floor(samplingRateTicks / 2)` ticks: 32 → 32, 33 → 32, 65 → 64,
+  131 → 130, 327 → 326, 654 → 654 and 655 → 654 (§2.1). The SD file's stamps
+  are the same packet bytes the stream sends.
 - **The Shimmer3R magnetometer's busy-bus hold and dropped late reads**
   (§5.2). They come from a shimmer3r-firmware change newer than the pinned
   `8f800952`, so they are described here but not yet verified against a pinned
