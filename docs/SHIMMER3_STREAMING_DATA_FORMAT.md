@@ -22,6 +22,16 @@ logging, so a parser written from this document reads both.
 >   `Shimmer_Driver/BMPX80/bmpX80.h` for the pressure/temperature widths);
 >   `shimmer3r-firmware` @ `8f800952` — `LogAndStream_Shimmer3R/Core/Src/i2c.c`,
 >   `Core/Src/spi.c`, `Shimmer_Driver/hal_adc.c`.
+> - **Sample spacing (§2.1):** Shimmer3 at `shimmer3-firmware` @ `8c13b48`,
+>   newer than `2765ff4` — `LogAndStream_Shimmer3/main.c` (`TIMER0_B0_ISR`,
+>   `TIMER0_B1_ISR`, `SampleTimerNextCompare`, `SampleTimerStart`). Shimmer3R
+>   at `shimmer3r-firmware` @ `c8c69e71` — `Core/Src/rtc.c` (`RTC_wakeUpSet`,
+>   `HAL_RTCEx_WakeUpTimerEventCallback`), which `Sensing/shimmer_sensing.c`
+>   starts with `samplingRateTicks`. The figures for older Shimmer3 firmware
+>   are bench measurements, not read from code: 1024 Hz streams over RN42
+>   v6.15 with the link overloaded, on `shimmer3-firmware` @ `d82c9ef`, which
+>   still re-armed from the counter, gave a mean of 32.0006 ticks per period
+>   (about 19 ppm low); 512 Hz streams gave exactly 64.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/Configuration.java` (`Shimmer3.Channel`,
 >   `SensorBitmap`, `SENSOR_ID`), `driver/ShimmerObject.java`
@@ -243,6 +253,40 @@ your port against that file.
 > Bluetooth buffering and retransmission mean packets can arrive late, in
 > bursts, and with jitter that the timestamp does not show. Always plot against
 > the timestamp, never against arrival time.
+
+> **Sample spacing.** The stamp is taken in the sample interrupt, so a late
+> interrupt can put one stamp a tick (about 30.5 µs) late. What that does to
+> the samples after it depends on the platform and the firmware:
+>
+> - **Shimmer3** re-arms its sample timer from the compare that just fired, so
+>   the samples sit on a fixed grid of `samplingRateTicks` and the rate is
+>   exactly `32768 / samplingRateTicks`. A stamp a tick late is followed by a
+>   step a tick short, so the error never accumulates. An interrupt so late
+>   that the next compare is already due skips the missed slots and keeps the
+>   grid. The magnetometer and pressure pre-sample compares keep their offsets
+>   from it for the whole session.
+> - **Shimmer3 v1.01.006 and earlier** re-armed from the counter as the
+>   interrupt ran, so each tick of latency was added to that period and moved
+>   the grid for good. The mean step is `samplingRateTicks` plus the mean
+>   latency, so a rate measured from the timestamps reads slightly low: under
+>   50 ppm in bench streams at 1024 Hz with the Bluetooth link overloaded, and
+>   none at 512 Hz.
+> - **Shimmer3R** samples on the RTC wake-up timer, which the hardware reloads
+>   itself, so latency has never changed its period. That timer counts at half
+>   the 32768 Hz rate (`RTC_wakeUpSet`), so the period is
+>   `2 × floor(samplingRateTicks / 2)` ticks and an odd `samplingRateTicks`
+>   samples one tick faster than configured. Measured on a device, every step
+>   was 32 ticks at a setting of 33, 64 at 65, 130 at 131, 326 at 327 and 654
+>   at 655, while even settings were exact (32 at 32, 654 at 654). So a setting
+>   of 33 streams at 1024 Hz by its timestamps where `32768 / 33` says 993.0 Hz,
+>   and the odd settings measured ran 0.15% to 3.1% fast. `INQUIRY_RESPONSE` and
+>   the SD header still report the configured value, so a host must take the
+>   rate from the timestamps, or from `32768 / (2 × floor(samplingRateTicks / 2))`.
+>
+> A step of about two or more whole periods is a missing sample, not jitter.
+> The stamps alone do not say why it is missing: a slot the firmware skipped
+> and a packet lost on the link leave the same gap, so a host should not read
+> it as either without other evidence.
 
 ### 2.2 CRC
 
@@ -971,6 +1015,16 @@ to look.
 
 ## Still unverified / not found in code
 
+- **The Shimmer3 sample-timer re-arm is on `main` but not yet in a release**
+  (§2.1). It was read from `shimmer3-firmware` @ `8c13b48`, which `main` merged
+  as `ebc21c2`. Pin the **Verified against** block to the first release that
+  carries it, and check this item off.
+- ~~**The Shimmer3R period for an odd `samplingRateTicks`.**~~ — resolved:
+  measured on a Shimmer3R running a Release build of `c8c69e71` (it reports
+  v1.01.021). In seven 15 s SD logs, every step was exactly
+  `2 × floor(samplingRateTicks / 2)` ticks: 32 → 32, 33 → 32, 65 → 64,
+  131 → 130, 327 → 326, 654 → 654 and 655 → 654 (§2.1). The SD file's stamps
+  are the same packet bytes the stream sends.
 - **The Shimmer3R magnetometer's busy-bus hold and dropped late reads**
   (§5.2). They come from a shimmer3r-firmware change newer than the pinned
   `8f800952`, so they are described here but not yet verified against a pinned

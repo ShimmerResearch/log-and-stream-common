@@ -270,7 +270,9 @@ generations give a byte different meanings both are shown.
 ### 3.1 Sampling rate (bytes 0-1)
 
 `samplingRateTicks` is a **clock divider, not a frequency**. The stored `uint16`
-is the number of 32768 Hz ticks between samples:
+is the configured number of 32768 Hz ticks between samples. It is the actual
+interval on Shimmer3 and for an even value on Shimmer3R; an odd value on
+Shimmer3R samples a tick sooner (below):
 
 ```
 frequency_Hz = 32768.0 / samplingRateTicks
@@ -279,6 +281,11 @@ samplingRateTicks = round(32768.0 / frequency_Hz)
 
 `ShimConfig_getShimmerSamplingFreq` performs the first; `ShimConfig_freqDiv`
 performs the second, via `samplingClockFreqGet()`.
+
+That is the **configured** rate, which is also what `INQUIRY_RESPONSE` and the
+SD header report. On Shimmer3R an odd `samplingRateTicks` samples one tick
+faster, every `2 × floor(samplingRateTicks / 2)` ticks; see
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1.
 
 Two consequences for hosts:
 
@@ -722,7 +729,9 @@ protocol couples the two. The invariant they must satisfy is:
 
 > **A sensor's output rate must be at or above the packet rate.**
 
-The packet rate is `32768 / samplingRateTicks` (§3.1). The Java driver states
+The packet rate is `32768 / samplingRateTicks` (§3.1), except on Shimmer3R
+with an odd `samplingRateTicks`, where it is `32768 / (2 × floor(samplingRateTicks / 2))`
+and so slightly higher; check the invariant against that rate. The Java driver states
 this in comment after comment — *"as close to the Shimmer sampling rate as
 possible, sensor sampling rate >= shimmer sampling rate"* — and the firmware's
 own defaults follow it, e.g. `ShimConfig_setDefaultConfig` selecting the LSM6DSV
@@ -827,6 +836,11 @@ Two limits on relying on it:
   ceiling rather than reaching the invariant. A LIS2MDL tops out at 100 Hz, so a
   512 Hz trial simply runs the magnetometer at 100 Hz. The correction is applied
   once and not repeated, so this does not churn the stored image.
+- It judges the packet rate as `ShimConfig_getShimmerSamplingFreq()`, which is
+  the configured `32768 / samplingRateTicks`. On Shimmer3R with an odd
+  `samplingRateTicks` the real rate is slightly higher (above), so an ODR that
+  covers the configured rate but not the real one is left alone. Checking
+  against the real rate is the host's job.
 
 Hosts should still derive rather than depend on the correction, so that a device
 running firmware without it is not left in the bad state.

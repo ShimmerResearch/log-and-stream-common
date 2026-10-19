@@ -598,7 +598,7 @@ and a bench unit is the only place the whole chain runs:
 |---|---|---|
 | 5.4.4a | Enable derived channels | Computed values match the inputs they are derived from — `derivedChannels.py` |
 | 5.4.4b | Sweep known resistances into GSR | Each auto-range band **entered, held and reported** correctly, including the 80 ms settling hold ([GSR](SHIMMER3_GSR_AUTORANGE.md) §5.1). The Shimmer3R tree carries a rig driver for exactly this — `Shimmer_Driver/GSRTestRig/`, an AD5242 pot and ADG715 switch bank presenting known resistances to 1 MΩ, which makes this a calibration check rather than "the number moved" |
-| 5.4.4c | Configure each supported sampling rate | The packet rate is `32768 / samplingRateTicks` and matches — `samplingRate.py` |
+| 5.4.4c | Configure each supported sampling rate with `samplingRate.py`, then stream at each | The divider reads back as written. The rate measured from the packet timestamps is `32768 / samplingRateTicks`, or on Shimmer3R with an odd `samplingRateTicks` `32768 / (2 × floor(samplingRateTicks / 2))`, one tick fast by design ([streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1). Shimmer3 v1.01.006 and earlier re-arm from the counter, so their measured rate reads slightly low under load; record it rather than fail on it. `samplingRate.py` only sets and reads the divider and prints the configured rate, so it cannot show the measured one |
 | 5.4.4d | GSR boards with reversed control pins (SR48-4-1) | The reversal flag applied — values not out by a large constant factor ([GSR](SHIMMER3_GSR_AUTORANGE.md) §2) |
 | 5.4.4e | Set an illegal channel combination | Silently corrected, and corrected the same way the InfoMem document says ([InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §10) |
 | 5.4.4f | Enable skin temperature alongside GSR | GSR wins the shared ADC input — documented, and the config read-back should show it (§10.2) |
@@ -736,7 +736,8 @@ Caveats:
 > regression and is not one.
 
 Sampling rate is stored as a tick divider — the packet rate is
-`32768 / samplingRateTicks` — so the ladder is not linear in the configured
+`32768 / samplingRateTicks`, or `32768 / (2 × floor(samplingRateTicks / 2))` on
+Shimmer3R when it is odd (5.4.4c) — so the ladder is not linear in the configured
 value. [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md)
 §3.1 has the encoding.
 
