@@ -1315,6 +1315,17 @@ class BleSerialReads(unittest.TestCase):
         s.close()
         self.assertTrue(s._loop.is_closed())
 
+    def test_a_bleak_failure_comes_back_as_ble_error(self):
+        s = _ble_serial()
+        self._running_loop(s)
+
+        async def fails():
+            raise OSError("adapter gone")
+
+        with self.assertRaisesRegex(ble.BleError, "OSError: adapter gone"):
+            s._call(fails(), 1.0)
+        s.close()
+
     def test_close_cancels_what_is_still_in_flight(self):
         s = _ble_serial()
         self._running_loop(s)

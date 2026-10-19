@@ -79,6 +79,8 @@ class BleSerial:
     # --- the asyncio side -------------------------------------------------
 
     def _call(self, coro, timeout_s: float):
+        """Run a coroutine on the link's loop. Every failure comes back as BleError,
+        bleak's own exceptions included, so callers handle one type."""
         fut = asyncio.run_coroutine_threadsafe(coro, self._loop)
         try:
             return fut.result(timeout_s)
@@ -87,6 +89,10 @@ class BleSerial:
             # on the loop. Cancelling the future cancels its task there.
             fut.cancel()
             raise BleError(f"{self.address}: no answer within {timeout_s:.0f} s") from e
+        except BleError:
+            raise
+        except Exception as e:
+            raise BleError(f"{self.address}: {type(e).__name__}: {e}") from e
 
     @staticmethod
     async def _cancel_pending() -> None:
