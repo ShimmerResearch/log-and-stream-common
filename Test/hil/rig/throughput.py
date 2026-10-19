@@ -19,6 +19,10 @@ delivers moves with the timing of that path. A sample-timer ISR change that was
 functionally correct cost 9.8% of delivered samples (DEV-1222), and a
 reply-path change once cost a fifth (DEV-1150).
 
+On a Shimmer3R both also run over BLE (smoke.ble_throughput): BtLink takes
+rig/ble.py's link, which reads and writes like the SPP port, so nothing here
+knows which link it is on.
+
 The link test runs first because on Shimmer3R classic throughput stays low for
 about a minute after a stream stops, a bench effect seen with the data-rate
 test itself.
@@ -224,9 +228,10 @@ def defects(rate: DataRate, st: bt.StreamStats, inq: bt.Inquiry) -> list[str]:
     return out
 
 
-def as_toml(measured: dict[str, float]) -> str:
-    """The figures as a rig.toml line, to record them as a unit's baseline."""
-    return "throughput = { " + ", ".join(f"{k} = {measured[k]:g}" for k in THROUGHPUT_KEYS) + " }"
+def as_toml(measured: dict[str, float], key: str = "throughput") -> str:
+    """The figures as a rig.toml line, to record them as a unit's baseline
+    (`throughput`, or `ble_throughput` for the BLE figures)."""
+    return f"{key} = {{ " + ", ".join(f"{k} = {measured[k]:g}" for k in THROUGHPUT_KEYS) + " }"
 
 
 def compare(measured: dict[str, float], baseline: dict[str, float]) -> tuple[list[str], list[str]]:

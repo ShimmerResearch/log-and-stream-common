@@ -21,10 +21,15 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - 3.10 benches
     import tomli as tomllib
 
+from .ble import available as ble_available
+
 PLATFORMS = ("shimmer3", "shimmer3r")
 # A unit's throughput baseline (rig/throughput.py): what the last release gave
 # on this bench, in these units. `tolerance` (a fraction) may replace the
 # default margin below it, for figures known to move more from day to day.
+# Classic (SPP) and BLE baselines have the same keys, in tables of their own:
+# [throughput_by_radio] and a unit's `throughput`, [ble_throughput_by_radio]
+# and a unit's `ble_throughput`.
 THROUGHPUT_KEYS = ("link_bytes_per_s", "stream_samples_per_s")
 
 
@@ -58,11 +63,16 @@ class Unit:
     notes: str = ""
     stlink_serial: str | None = None  # the ST-Link on this unit's SWD header, for flash method "swd"
     throughput: dict[str, float] = field(default_factory=dict)  # baseline figures, THROUGHPUT_KEYS
+    ble_throughput: dict[str, float] = field(default_factory=dict)  # the same, over BLE
 
     def capabilities(self) -> set[str]:
         caps = {self.platform}
         if self.mac:
             caps.add("bt")
+            # A Shimmer3R's IF820 also takes BLE, under the same address; this
+            # host reaches it only with bleak installed.
+            if self.platform == "shimmer3r" and ble_available():
+                caps.add("ble")
         if self.usb_serial and self.platform == "shimmer3r":
             caps.add("usb")
         if self.hub_port:
@@ -86,6 +96,7 @@ class Rig:
     # `radio` is exactly that key. A radio's figures follow its firmware build,
     # and a unit's module can be re-flashed, so they are kept by build.
     throughput_by_radio: dict[str, dict[str, float]] = field(default_factory=dict)
+    ble_throughput_by_radio: dict[str, dict[str, float]] = field(default_factory=dict)
     extra: dict = field(default_factory=dict)
 
     def throughput_baseline(self, unit: Unit) -> dict[str, float]:
@@ -94,8 +105,11 @@ class Rig:
         Empty unless it has a figure to judge: a tolerance alone would let the
         item pass without comparing anything, where it should be not_covered.
         """
-        merged = {**self.throughput_by_radio.get(unit.radio or "", {}), **unit.throughput}
-        return merged if any(k in merged for k in THROUGHPUT_KEYS) else {}
+        return _merged(self.throughput_by_radio, unit.radio, unit.throughput)
+
+    def ble_throughput_baseline(self, unit: Unit) -> dict[str, float]:
+        """The same over BLE, from [ble_throughput_by_radio] and the unit's ble_throughput."""
+        return _merged(self.ble_throughput_by_radio, unit.radio, unit.ble_throughput)
 
     def capabilities(self, unit: Unit | None = None) -> set[str]:
         caps: set[str] = set()
@@ -120,6 +134,24 @@ class Rig:
         bench's [tools] stlink_serial, which load() allows only when one Shimmer3R
         unit could be on it."""
         return unit.stlink_serial or self.stlink_serial
+
+
+def _merged(by_radio: dict, radio: str | None, own: dict[str, float]) -> dict[str, float]:
+    merged = {**by_radio.get(radio or "", {}), **own}
+    return merged if any(k in merged for k in THROUGHPUT_KEYS) else {}
+
+
+def _by_radio(data: dict, table: str, p: Path) -> dict[str, dict[str, float]]:
+    rows = data.get(table, {})
+    if not isinstance(rows, dict):
+        raise RigError(f"{p}: [{table}] must be a table of radio builds")
+    rows = {radio: _baseline(row, f"{p}: {table}.{radio!r}") for radio, row in rows.items()}
+    # A baseline with no figure judges nothing. A unit's own may carry only a
+    # tolerance, but then its radio's row must supply the figures.
+    for radio, row in rows.items():
+        if not any(k in row for k in THROUGHPUT_KEYS):
+            raise RigError(f"{p}: {table}.{radio!r} has no figure ({', '.join(THROUGHPUT_KEYS)})")
+    return rows
 
 
 def _normalise_mac(mac: str) -> str:
@@ -155,6 +187,7 @@ def load(path: str | os.PathLike | None = None) -> Rig:
         if hub_port is not None and (isinstance(hub_port, bool) or not isinstance(hub_port, int) or hub_port < 1):
             raise RigError(f"{where}: hub_port must be a hub port number from 1, not {hub_port!r}")
         throughput = _baseline(u.get("throughput", {}), f"{where}: throughput")
+        ble_throughput = _baseline(u.get("ble_throughput", {}), f"{where}: ble_throughput")
         units.append(Unit(
             name=u["name"], platform=u["platform"],
             mac=_normalise_mac(u["mac"]) if u.get("mac") else None,
@@ -164,7 +197,7 @@ def load(path: str | os.PathLike | None = None) -> Rig:
             base6_slot=int(u["base6_slot"]) if u.get("base6_slot") else None,
             radio=u.get("radio"), board=u.get("board"), notes=u.get("notes", ""),
             stlink_serial=u.get("stlink_serial") or None,
-            throughput=throughput,
+            throughput=throughput, ble_throughput=ble_throughput,
         ))
     names = [u.name for u in units]
     if len(set(names)) != len(names):
@@ -192,20 +225,14 @@ def load(path: str | os.PathLike | None = None) -> Rig:
         used.append(bench_stlink)
     if len(set(used)) != len(used):
         raise RigError(f"{p}: two Shimmer3R units name the same ST-Link")
-    by_radio = data.get("throughput_by_radio", {})
-    if not isinstance(by_radio, dict):
-        raise RigError(f"{p}: [throughput_by_radio] must be a table of radio builds")
-    by_radio = {radio: _baseline(row, f"{p}: throughput_by_radio.{radio!r}") for radio, row in by_radio.items()}
-    # A baseline with no figure judges nothing. A unit's own may carry only a
-    # tolerance, but then its radio's row must supply the figures.
-    for radio, row in by_radio.items():
-        if not any(k in row for k in THROUGHPUT_KEYS):
-            raise RigError(f"{p}: throughput_by_radio.{radio!r} has no figure ({', '.join(THROUGHPUT_KEYS)})")
+    by_radio = _by_radio(data, "throughput_by_radio", p)
+    ble_by_radio = _by_radio(data, "ble_throughput_by_radio", p)
     for u in units:
-        if u.throughput and not any(k in {**by_radio.get(u.radio or "", {}), **u.throughput}
-                                    for k in THROUGHPUT_KEYS):
-            raise RigError(f"{p}: unit {u.name}: throughput has no figure, and no [throughput_by_radio] "
-                           f"row for its radio {u.radio!r} supplies one")
+        for own, rows, key in ((u.throughput, by_radio, "throughput"),
+                               (u.ble_throughput, ble_by_radio, "ble_throughput")):
+            if own and not _merged(rows, u.radio, own):
+                raise RigError(f"{p}: unit {u.name}: {key} has no figure, and no [{key}_by_radio] "
+                               f"row for its radio {u.radio!r} supplies one")
     return Rig(
         path=p, bench=bench, units=units,
         hub_serial=hub.get("serial") or None,
@@ -214,6 +241,8 @@ def load(path: str | os.PathLike | None = None) -> Rig:
         stm32_programmer=Path(tools["stm32_programmer"]) if tools.get("stm32_programmer") else None,
         stlink_serial=tools.get("stlink_serial") or None,
         throughput_by_radio=by_radio,
+        ble_throughput_by_radio=ble_by_radio,
         extra={k: v for k, v in data.items()
-               if k not in ("bench", "unit", "hub", "tools", "base6", "throughput_by_radio")},
+               if k not in ("bench", "unit", "hub", "tools", "base6", "throughput_by_radio",
+                            "ble_throughput_by_radio")},
     )

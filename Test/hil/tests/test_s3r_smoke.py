@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from rig import bt, dock, s3r_usb, sdfile, throughput
+from rig import ble, bt, dock, s3r_usb, sdfile, throughput
 
 pytestmark = pytest.mark.smoke
 
@@ -228,6 +228,55 @@ def test_bt_throughput(rig, unit, cdc, btlink, hil_note):
     if not baseline:
         pytest.skip(f"no throughput baseline for {unit.name} ({unit.radio}) in rig.toml; "
                     f"measured {throughput.as_toml(measured)}")
+    short, note = throughput.judge(measured, baseline, unit.name)
+    hil_note(note)
+    assert not short, "; ".join(short)
+
+
+@pytest.mark.hil("smoke.ble_throughput", needs=["shimmer3r", "bt", "ble", "usb"])
+def test_ble_throughput(rig, unit, cdc, hil_note):
+    """smoke.bt_throughput's two measurements over BLE instead of SPP (TEST_PROCEDURE §5.5).
+
+    The link is the IF820's CYSPP service with data as notifications, as the
+    web SDK receives it (rig/ble.py). The figures are judged against this
+    bench's BLE figures for the unit's module build ([ble_throughput_by_radio]
+    in rig.toml) and any of the unit's own (ble_throughput); without any the
+    item is not_covered, with the figures to record. "bt" is among its needs so
+    that the run turns the radio on (conftest._bt_on). A unit whose EEPROM has
+    BLE switched off (bleEnabled, EEPROM_MEMORY_MAP §4.2) is not_covered too:
+    the bench cannot reach it over BLE, and the run does not change the EEPROM.
+    The load is stored configuration, so InfoMem is saved to disk and put back.
+    """
+    with dock.open_when_ready(cdc) as d:
+        # A dock that cannot read the page fails the item: that is a broken
+        # dock or device, not a unit without BLE.
+        radio = d.radio_settings()
+        if not dock.ble_enabled(radio):
+            pytest.skip(f"{unit.name}: BLE is off in its EEPROM (radio settings byte 2 = {radio[2]:#04x}, "
+                        "bleEnabled clear)")
+        reported = d.bt_version()
+        original = bytes(d.read_infomem())
+    mismatch = throughput.radio_mismatch(unit.radio, reported)
+    assert not mismatch, mismatch
+    baseline = rig.ble_throughput_baseline(unit)
+    backup = throughput.save_infomem(unit.name, original)
+    error = None
+    try:
+        with bt.BtLink(ser=ble.BleSerial(unit.mac)) as link:
+            hil_note(link.ser.describe())
+            rate = throughput.data_rate_test(link, LINK_SECONDS)
+            st, inq = throughput.load_stream(link, LOAD_SECONDS)
+    except BaseException as e:
+        error = e
+        raise
+    finally:
+        _restore_infomem(unit, original, backup, error)
+    problems = throughput.defects(rate, st, inq)
+    assert not problems, "; ".join(problems)
+    measured = throughput.figures(rate, st, inq)
+    if not baseline:
+        pytest.skip(f"no BLE throughput baseline for {unit.name} ({unit.radio}) in rig.toml; "
+                    f"measured {throughput.as_toml(measured, 'ble_throughput')}")
     short, note = throughput.judge(measured, baseline, unit.name)
     hil_note(note)
     assert not short, "; ".join(short)

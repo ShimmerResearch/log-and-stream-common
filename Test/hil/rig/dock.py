@@ -33,6 +33,13 @@ PROP_MAC, PROP_VER, PROP_RWC_CFG_TIME, PROP_CURR_TIME, PROP_INFOMEM = 0x02, 0x03
 PROP_ENTER_BOOTLOADER = 0x09
 PROP_BAT_VALUE = 0x02
 PROP_BT_VER = 0x03
+PROP_CARD_MEM = 0x03            # COMP_DAUGHTER_CARD: EEPROM from offset + 16 (DOCK_PROTOCOL)
+CARD_MEM_BASE = 16
+# The EEPROM's radio settings page (SHIMMER3_EEPROM_MEMORY_MAP.md §4): byte 2
+# bit 0 is bleEnabled, which the firmware brings BLE up by (§4.2).
+EEPROM_RADIO_PAGE = 2032
+RADIO_PAGE_SIZE = 16
+RADIO_BLE_ENABLED = 0x01
 
 INFOMEM_SIZE = 0x200
 INFOMEM_CHUNK = 128
@@ -141,6 +148,18 @@ class DockLink:
     def bt_version(self) -> str:
         return self.get(COMP_BLUETOOTH, PROP_BT_VER).decode("ascii", "replace").strip("\x00\r\n ")
 
+    def radio_settings(self) -> bytes:
+        """The EEPROM's 16-byte radio settings page: radioHwVer, baud, the radio-enable bits.
+
+        A reply of any other length is an error, not a page: its bits would be
+        read as settings.
+        """
+        page = self.get(COMP_DAUGHTER_CARD, PROP_CARD_MEM,
+                        struct.pack("<BH", RADIO_PAGE_SIZE, EEPROM_RADIO_PAGE - CARD_MEM_BASE))
+        if len(page) != RADIO_PAGE_SIZE:
+            raise DockError(f"radio settings read gave {len(page)} bytes, expected {RADIO_PAGE_SIZE}")
+        return page
+
     def read_infomem(self, offset: int = 0, length: int = INFOMEM_SIZE) -> bytes:
         out = b""
         while length > 0:
@@ -158,6 +177,11 @@ class DockLink:
     def enter_bootloader(self, seconds: int = 1) -> None:
         """Shimmer3R: reboot into ST's system bootloader (USB DFU). The CDC port vanishes."""
         self.set(COMP_SHIMMER, PROP_ENTER_BOOTLOADER, bytes([seconds]))
+
+
+def ble_enabled(radio_page: bytes) -> bool:
+    """Whether the radio settings page lets the firmware bring BLE up (bleEnabled)."""
+    return len(radio_page) > 2 and bool(radio_page[2] & RADIO_BLE_ENABLED)
 
 
 def open_when_ready(port: str, attempts: int = 10, delay_s: float = 0.5) -> DockLink:

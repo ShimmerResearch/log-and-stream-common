@@ -1,5 +1,8 @@
 """Classic Bluetooth (SPP) link to a Shimmer3 / Shimmer3R, and a stream checker.
 
+BtLink also runs over a Shimmer3R's BLE link (rig/ble.py), which carries the
+same protocol: BtLink(ser=ble.BleSerial(mac)).
+
 Only what the tests need, written against
 docs/SHIMMER3_BT_COMMUNICATION_PROTOCOL.md and
 docs/SHIMMER3_STREAMING_DATA_FORMAT.md rather than against any host API, so a
@@ -152,10 +155,11 @@ def classify_step(st, d: int, period: int) -> None:
 
 
 class BtLink:
-    def __init__(self, port: str, connect_timeout_s: float = 10.0):
+    def __init__(self, port: str | None = None, connect_timeout_s: float = 10.0, *, ser=None):
         # Opening an SPP port is what makes Windows page the device; it can take
-        # several seconds, and fails outright if the link cannot be made.
-        self.ser = _open_spp(port, connect_timeout_s)
+        # several seconds, and fails outright if the link cannot be made. `ser`
+        # is a link opened already, with the same interface: rig/ble.py's.
+        self.ser = ser if ser is not None else _open_spp(port, connect_timeout_s)
         self.hw: int | None = None
         self.crc_mode = 0
         self._nstatus: int | None = None

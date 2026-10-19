@@ -657,7 +657,40 @@ path's timing:
 - **Sample-timer ISR:** a change to it cost 9.8%.
 
 Both changes were functionally correct, and both were invisible to every
-other check. 5.5.2 to 5.5.4 stay manual.
+other check.
+
+`smoke.ble_throughput` is the same short form over the Shimmer3R's BLE link,
+which makes 5.5.2 automatic for the Shimmer3R. It connects to the IF820's
+CYSPP serial service and takes data as notifications, as the web SDK does.
+A Shimmer3 with an RN4678 supports BLE too (§2.2 of the protocol document),
+but no item measures it yet, so on a Shimmer3 5.5.2 stays manual. 5.5.3 and
+5.5.4 stay manual on both.
+
+**Shimmer3R BLE link rate.** The data-rate test over BLE, with
+notifications at ATT MTU 517 from Windows 11 on an Intel AX201:
+
+| When | Firmware | Module build | BLE data-rate test |
+|---|---|---|---|
+| 19 Oct 2026, each arm a fresh flash | v1.01.021 release, and main, interleaved | v1.4.18.18, one of the Infineon test builds | 74.2–75.7 KB/s, the two builds the same |
+| 2 Oct 2026 | earlier firmware | v1.4.18.18 public release | 110–126 KB/s (indications: about 32 KB/s) |
+| 19 Oct 2026, before the unit was re-flashed | main | as above | 37.5–39.2 KB/s |
+| 19 Oct 2026, the module re-flashed by OTA | main, and v1.01.021 with v1.4.16.16 | each of v1.4.16.16, the v1.4.18.18 public release and the test build | 72.4–75.2 KB/s on every one |
+
+The release and main agree to within 2%. Every module build read the same,
+the public release module that gave 110–126 KB/s on 2 Oct included. Two
+other hosts (another Windows PC and an Android phone) read the same as this
+one. So what moves the BLE figure is neither this firmware, nor the module
+build, nor one host's Bluetooth stack. What is left is the bench's radio
+environment, or settings kept in this unit's module that the firmware does
+not rewrite at boot (the module's settings were reset to factory defaults on
+10 Oct, between the high readings and the others). Packet sizes stayed about the same (400 to 450 bytes); what moved was
+how many went per second. What gave the high and the low readings is not
+known. A 1024 Hz stream with LN
+accel, gyro, mag, WR accel and VBatt arrives whole over BLE.
+
+So a bench's BLE row for a build is the low end of fresh-flash runs, with a
+10% margin (§10.4). Repeat a BLE shortfall, and A/B it against the release
+on the same unit, before believing it.
 
 **Shimmer3R classic link rate by IF820 module build.** These figures are the
 Shimmer3R classic baselines. The link rate follows the module's firmware build
@@ -1173,6 +1206,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
 | `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt |
+| `smoke.ble_throughput` | As `smoke.bt_throughput`, over BLE (the IF820's CYSPP service, data as notifications), against this unit's BLE baseline. `not_covered` when the unit's EEPROM has BLE off (`bleEnabled`, EEPROM memory map §4.2) |
 
 The **fleet** tier is §5.1 made automatic: Shimmer3, one unit per radio
 firmware that shipped (RN42 v4.77 and v6.15, RN4678 v1.00.5 and v1.23), all
@@ -1203,7 +1237,11 @@ bench, from `rig.toml`, built up in two layers:
   `throughput = { link_bytes_per_s = ..., stream_samples_per_s = ... }`
   entry, which overrides its radio row key by key. A Shimmer3's figures are
   what the previous release gave on that unit.
-- **Module check:** the Shimmer3R item first checks that the module reports
+- **BLE:** `smoke.ble_throughput` has its own two layers,
+  `[ble_throughput_by_radio]` and the unit's `ble_throughput`, built the same
+  way. A BLE figure depends on the connection the host negotiates as well as
+  on the module build, so it is never judged against a classic one.
+- **Module check:** the Shimmer3R items first check that the module reports
   the version its `radio` names. Test builds report their release's version,
   so which build of a version is fitted is for `rig.toml` to say.
 
@@ -1320,6 +1358,9 @@ The known-issues list and bench facts live with each bench (`[triage]` in
     more than the baseline's tolerance below them (§10.4).
   - **Shimmer3R:** classic figures now exist per IF820 module build (§5.5).
     They come from one unit, one host adapter and the transparent path.
+  - **Shimmer3R BLE:** one module build has a figure (§5.5), from one unit and
+    one host. The same link has read from half to one and a half times it,
+    with the firmware unchanged, and what moves it is not known.
   - **What is still open:** for Shimmer3 radios, the figures are still a
     bench's, not a module's. A figure that belongs to the radio, independent
     of the bench, is not known, so the manual steps still say "compare with

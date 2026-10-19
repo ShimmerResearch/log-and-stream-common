@@ -55,17 +55,21 @@ the firmware checkouts the model may read, and a spending cap
 
 ## Setting up a bench
 
-1. `pip install pytest pyserial tomli` (Python 3.10+; `tomli` only before 3.11).
+1. `pip install pytest pyserial tomli bleak` (Python 3.10+; `tomli` only before 3.11; `bleak` for
+   the Shimmer3R's BLE items, which are `not_covered` without it).
 2. Copy `rig.example.toml` to `rig.toml` (git-ignored), or keep it anywhere and
    set `HIL_RIG`. Describe each unit by MAC and USB serial, never by COM number.
 3. Pair each unit's Bluetooth once in Windows. Current LogAndStream asks for
-   no PIN; only a unit with SD sync enabled uses the legacy "1234". The tests
-   need the **classic** side, which creates a "Standard Serial over Bluetooth
-   link" COM port. An RN4678 is dual-mode and Windows lists it twice under the
-   same name; the BLE entry is the one shown with a **PC** icon. Pairing that
-   one creates GATT services and no COM port, and the Bluetooth tests then
-   report not_covered. `python -m serial.tools.list_ports -v` should show a
-   BTHENUM port whose hardware ID contains the unit's MAC.
+   no PIN; only a unit with SD sync enabled uses the legacy "1234". The
+   classic items need the **classic** side, which creates a "Standard Serial
+   over Bluetooth link" COM port. A dual-mode unit (a Shimmer3 with an RN4678,
+   or a Shimmer3R) is listed twice under the same name; the BLE entry is the
+   one shown with a **PC** icon. Pairing only that one creates GATT services
+   and no COM port, and the classic items then report not_covered.
+   `python -m serial.tools.list_ports -v` should show a BTHENUM port whose
+   hardware ID contains the unit's MAC. `smoke.ble_throughput` needs no
+   pairing at all: it connects over BLE by the unit's MAC, through bleak, and
+   needs the unit not connected to any other host.
 4. Units configured for SD sync, or with Bluetooth disabled, keep their radio
    off. The run handles that itself (`rig/btmode.py`): before the first test,
    each unit whose tests need Bluetooth has those two bits of InfoMem byte 217
@@ -160,6 +164,18 @@ radio = "IF820 v1.4.16.16"
   `radio` up to date by hand when a unit is re-flashed.
 - **Overrides:** a unit's own `throughput` overrides its radio row key by
   key.
+
+`smoke.ble_throughput` makes the same two measurements over the Shimmer3R's
+BLE link: the IF820's CYSPP serial service, with data as notifications, as
+the web SDK receives it (`rig/ble.py`). Its figures go in tables of their own,
+`[ble_throughput_by_radio]` and a unit's `ble_throughput`, keyed and judged
+the same way. They are kept apart because a BLE figure depends on the
+connection the host negotiates as well as on the module build:
+
+```toml
+[ble_throughput_by_radio]
+"IF820 v1.4.16.16" = { link_bytes_per_s = ..., stream_samples_per_s = ..., tolerance = 0.10 }
+```
 
 How each figure is judged:
 
