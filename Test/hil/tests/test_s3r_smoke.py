@@ -245,14 +245,8 @@ def test_ble_throughput(rig, unit, cdc, hil_note):
     that the run turns the radio on (conftest._bt_on). A unit whose EEPROM has
     BLE switched off (bleEnabled, EEPROM_MEMORY_MAP §4.2) is not_covered too:
     the bench cannot reach it over BLE, and the run does not change the EEPROM.
-    So is a run while Phone Link is open on the PC: its own Bluetooth link cut
-    this figure by more than a third (§5.5), so a reading then says nothing
-    about the firmware.
     The load is stored configuration, so InfoMem is saved to disk and put back.
     """
-    hogs = ble.running(ble.BLE_INTERFERING)
-    if hogs:
-        pytest.skip(f"{', '.join(hogs)} is running on this PC and cuts BLE throughput: close it and rerun")
     with dock.open_when_ready(cdc) as d:
         # A dock that cannot read the page fails the item: that is a broken
         # dock or device, not a unit without BLE.
