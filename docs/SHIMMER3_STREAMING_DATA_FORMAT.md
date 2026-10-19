@@ -27,7 +27,11 @@ logging, so a parser written from this document reads both.
 >   `TIMER0_B1_ISR`, `SampleTimerNextCompare`, `SampleTimerStart`). Shimmer3R
 >   at `shimmer3r-firmware` @ `c8c69e71` — `Core/Src/rtc.c` (`RTC_wakeUpSet`,
 >   `HAL_RTCEx_WakeUpTimerEventCallback`), which `Sensing/shimmer_sensing.c`
->   starts with `samplingRateTicks`.
+>   starts with `samplingRateTicks`. The figures for older Shimmer3 firmware
+>   are bench measurements, not read from code: 1024 Hz streams over RN42
+>   v6.15 with the link overloaded, on `shimmer3-firmware` @ `d82c9ef`, which
+>   still re-armed from the counter, gave a mean of 32.0006 ticks per period
+>   (about 19 ppm low); 512 Hz streams gave exactly 64.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/Configuration.java` (`Shimmer3.Channel`,
 >   `SensorBitmap`, `SENSOR_ID`), `driver/ShimmerObject.java`
@@ -279,8 +283,10 @@ your port against that file.
 >   the SD header still report the configured value, so a host must take the
 >   rate from the timestamps, or from `32768 / (2 × floor(samplingRateTicks / 2))`.
 >
-> A step of about a whole number of periods is a skipped slot, not a timing
-> fault.
+> A step of about two or more whole periods is a missing sample, not jitter.
+> The stamps alone do not say why it is missing: a slot the firmware skipped
+> and a packet lost on the link leave the same gap, so a host should not read
+> it as either without other evidence.
 
 ### 2.2 CRC
 
