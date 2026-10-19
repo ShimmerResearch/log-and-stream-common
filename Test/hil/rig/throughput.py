@@ -213,9 +213,13 @@ def radio_mismatch(named: str | None, reported: str) -> str | None:
     their release's version, so which build of a version is fitted is for
     rig.toml to say, and a wrong one shows as a figure far off its baseline.
     """
-    want = re.search(r"\d+(?:\.\d+){1,3}", named or "")
-    got = re.search(r"\d+(?:\.\d+){1,3}", reported)
-    if want and got and want.group() != got.group():
+    def version(text):
+        # As numbers: the Shimmer3R dock reports "app=v01.04.18.18" for v1.4.18.18.
+        m = re.search(r"\d+(?:\.\d+){1,3}", text or "")
+        return tuple(int(x) for x in m.group().split(".")) if m else None
+
+    want, got = version(named), version(reported)
+    if want and got and want != got:
         return (f"rig.toml names radio {named!r} but the unit reports {reported!r}: "
                 "update its radio, which picks its throughput baseline")
     return None

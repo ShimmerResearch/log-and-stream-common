@@ -1066,6 +1066,10 @@ class ThroughputByRadio(unittest.TestCase):
 
     def test_the_module_version_must_match_the_named_build(self):
         self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.18.18 test build", "1.4.18.18"))
+        # What the Shimmer3R dock reports, zero-padded.
+        reported = "CYW20820 app=v01.04.18.18, stack=0x00000000, protocol=0x0104, hardware=0xf1"
+        self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.18.18", reported))
+        self.assertIn("update its radio", throughput.radio_mismatch("IF820 v1.4.16.16", reported))
         self.assertIn("update its radio", throughput.radio_mismatch("IF820 v1.4.16.16", "v1.4.18.18"))
         self.assertIsNone(throughput.radio_mismatch(None, "1.4.18.18"))
         self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.16.16", "unreadable"))
