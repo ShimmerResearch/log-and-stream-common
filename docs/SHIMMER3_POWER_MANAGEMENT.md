@@ -61,8 +61,10 @@ TASK_IRQ_ENABLE();
 > check and the sleep are one step so that a task queued by an interrupt in
 > between cannot be slept through. MSP430's `LPM3_bits + GIE`
 > unmasks and sleeps in one instruction; Cortex-M's `WFI` wakes on an
-> interrupt that is pending while masked, and the hook unmasks after it. A hook
-> that unmasks *before* sleeping brings the race back. See
+> interrupt that is pending while masked, and the waking handler runs once
+> interrupts are unmasked after it (by the hook, and in any case by
+> `ShimTask_NORM_manage` when the hook returns). A hook that unmasks *before*
+> sleeping brings the race back. See
 > [SHIMMER3_ARCHITECTURE_OVERVIEW.md](SHIMMER3_ARCHITECTURE_OVERVIEW.md) §4.2.
 
 > **`platform_sleepWhenNoTask` is `PLATFORM_WEAK` with an empty default body.**
