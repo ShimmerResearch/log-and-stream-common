@@ -945,6 +945,55 @@ class StreamCoverage(unittest.TestCase):
         self.assertIn("end is missing", "; ".join(throughput.defects(self.CLEAN, st, INQ_32HZ)))
 
 
+class StreamShortPacket(unittest.TestCase):
+    """A packet that arrives a byte short - the second byte lost, as on the
+    RN42 when two starts of the TX chain race (TEST_PROCEDURE §5.5) - is
+    plen - 1 bytes that do not frame, and the defect names them."""
+
+    CHANNELS = list(range(0x0D))          # the load's 13 two-byte channels: 30-byte packets
+
+    class Spp(FakeSpp):
+        def __init__(self, stream):
+            super().__init__(1)
+            self.stream = stream
+
+        def write(self, data):
+            if data == bytes([bt.START_STREAMING]):
+                self.buf += bytes([bt.ACK]) + self.stream
+            elif data == bytes([bt.STOP_STREAMING]):
+                self.buf += bytes([bt.ACK])
+
+    @staticmethod
+    def packet(ts):
+        return bytes([0]) + ts.to_bytes(3, "little") + bytes(range(0x10, 0x10 + 26))
+
+    def stream(self, drop=None):
+        pkts = [self.packet(1000 + 32 * i) for i in range(10)]
+        if drop is not None:
+            p = pkts[5]
+            pkts[5] = p[:drop] + p[drop + 1:]
+        link = bt.BtLink.__new__(bt.BtLink)
+        link.hw, link._nstatus, link.crc_mode = bt.HW_SHIMMER3, 1, 0
+        link.ser = self.Spp(b"".join(pkts))
+        link.ser.timeout = 0.0
+        return link.stream(0.0, bt.Inquiry(32, self.CHANNELS, 0, b""))
+
+    def test_a_whole_stream_frames(self):
+        st = self.stream()
+        self.assertEqual((st.packets, st.resyncs, st.stop_ack), (10, 0, True))
+
+    def test_a_packet_a_byte_short_is_29_stray_bytes(self):
+        st = self.stream(drop=1)
+        self.assertEqual((st.packets, st.resyncs), (9, 29))
+        short = self.packet(1000 + 32 * 5)
+        self.assertTrue(st.misframes[0].startswith((short[:1] + short[2:]).hex()))
+
+    def test_the_defect_carries_the_bytes(self):
+        st = self.stream(drop=1)
+        msg = "; ".join(throughput.defects(StreamCoverage.CLEAN, st, bt.Inquiry(32, self.CHANNELS, 0, b"")))
+        self.assertIn("29 bytes did not frame as packets (first from 00", msg)
+
+
 class FakeClock:
     def __init__(self):
         self.t = 0.0
