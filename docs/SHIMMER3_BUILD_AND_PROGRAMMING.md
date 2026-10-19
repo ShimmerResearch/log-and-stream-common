@@ -27,6 +27,14 @@ wire, not over the air.
 >   revision's `msp430_clock_enable()` and `BtStop()`. A build that lacks either
 >   commit still lets interrupts nest, and needs room for `main` plus two
 >   handlers.
+> - §4.2's optimisation settings, and §4.5's `-O2` stack figures, are newer
+>   still. The settings were read from `shimmer3-firmware` @ `a886ad7` with
+>   Release raised to `-O2 --opt_for_speed=2`. The figures and §4.2's
+>   throughput bench used `shimmer3-firmware` @ `d82c9ef` with this repository
+>   @ `08c84d8` as its submodule.
+> - What CI builds (§4.2, and "Whether CI builds both platforms" under "Still
+>   unverified") was read from `build-check.yml` in `shimmer3-firmware` @
+>   `f67cf0a` and `shimmer3r-firmware` @ `c8c69e71`.
 
 **Source references:**
 
@@ -121,12 +129,22 @@ Windows PowerShell 5.1, run these through `cmd /c`: it splits arguments such as
 ### 4.2 Shimmer3 ships from the *Debug* configuration
 
 > **Releases are produced from the Debug CCS configuration**, at `-O0`. The
-> release workflow's `build_mode` input defaults to `Debug`; keep it there.
+> release workflow's `build_mode` input defaults to `Debug`; keep it there
+> until the optimised Release configuration has passed the bench procedure.
 
-`Release` has the same compiler and linker settings as `Debug`, so both build
-the same image. A headless build of either at `LogAndStream_Shimmer3_v1.01.006`
-is byte-identical to that release's `.txt`. Before DEV-1217 the Release
-configuration was a stale template that did not build:
+`Release` has the same compiler and linker settings as `Debug` apart from the
+optimisation level:
+
+| Configuration | Optimisation | Ships |
+|---|---|---|
+| `Debug` | `-O0 --opt_for_speed=0` | yes |
+| `Release` | `-O2 --opt_for_speed=2` | not yet: the optimised candidate |
+
+In both, `main.c` overrides only the speed trade-off, to `--opt_for_speed=5`,
+so it takes its configuration's `-O` level. A headless Debug build at
+`LogAndStream_Shimmer3_v1.01.006` is byte-identical to that release's `.txt`.
+Before it was brought in line with Debug, the Release configuration was a
+stale template that did not build:
 
 - no include paths
 - no `SHIMMER3` define
@@ -135,14 +153,40 @@ configuration was a stale template that did not build:
 - a 160-byte stack and heap, which never boots
 - `libc.a` before `libmath.a`
 
-Release is where an optimised build will be developed. DEV-1217 plans to raise
-its `--opt_level` once the pre-existing defects that optimisation can expose are
-fixed and it has passed the bench procedure. Until that lands, build `Debug` to
-produce a release or to judge whether a change is safe.
+**Why `-O2` at speed 2.** The choice was between speeds 2 and 3, and a bench
+on 19 Oct 2026 found no reason to pay for 3:
+
+- **Throughput.** At 1024 Hz with five sensors over an RN42 v6.15 link, which
+  the data outruns, both delivered what v1.01.006 does: about 19,600 packets
+  per 20 s. The same source at `-O0` delivered 14% fewer. That loss is a timing
+  effect, not a cost: a few cycles in the I2C wait loop moved it.
+- **Code.** Speed 3 spends about 4 KB more flash, inlining command handling and
+  SD configuration code. The sampling and Bluetooth paths are essentially the
+  same at both.
+- **Stack.** The worst case is the same at both (§4.5).
+
+**Before Release ships**, it still needs three things:
+
+1. The sample-timer re-arm and task-loop lost wake-up fixes, in the image
+   under test. Optimisation makes both races likelier, so the bench must run
+   with them in.
+2. The full bench procedure on that Release image.
+3. The release workflow's default, its Debug-only candidate check and
+   `promote-release.yml` changed to Release.
+
+Until then, build `Debug` to produce a release or to judge whether a change is
+safe. When a change touches interrupt handlers, the Bluetooth data path or the
+I2C wait, bench Release as well: optimisation moves exactly that timing.
 
 **Keep the two configurations in step.** Make project-setting changes under
 *[All configurations]* in CCS, so Release cannot drift from Debug again. The
-only intended difference is the optimisation level, once DEV-1217 sets it.
+optimisation level is the only intended difference.
+
+**CI builds both.** `shimmer3-firmware`'s `build-check.yml` builds Debug and
+Release on every pull request and every push to `main`, one matrix leg each.
+A setting that breaks only Release now fails in review. Before, nothing built
+Release, so it went stale unnoticed. A green Release leg shows only that
+Release compiles and links. It is not a substitute for the bench.
 
 ### 4.3 Do not commit regenerated makefiles
 
@@ -197,6 +241,12 @@ the table above. A build without the two changes above still needs that
 1,982 B. The size stays at 2,200 B until the run-time high-water mark below has
 been read on units and the image has been re-measured at the optimisation level
 that ships.
+
+**At `-O2` the bound is about the same.** For Release, `-O2
+--opt_for_speed=2`, the same three paths measure 1,080, 452 and 448 B. `main`
+plus one interrupt is 1,532 B, which leaves 668 B of margin. Speed 3 gives the
+same figures. The functions that can turn GIE on are the same nine as at
+`-O0`, so the one-handler bound holds there too (step 6 below).
 
 A frame that holds a FatFs `FIL` costs over 500 bytes, because each `FIL`
 carries a sector buffer. The `sdlog.cfg` parser keeps its `FIL` and its
@@ -343,16 +393,21 @@ and IC. See
   version and are not recorded in either repository. Capture your own before
   relying on the comparison.
 - ~~Whether CI builds both platforms on a `common` change~~ — resolved: **no**.
-  `log-and-stream-common/.github/workflows` holds only `clang-format-check.yml`.
-  Each platform repository has a `build-release-firmware.yml`, but both are
-  `workflow_dispatch` only (manual: pick the version part to bump and the
-  build mode) — Shimmer3R via `xanderhendriks/action-build-stm32cubeide`,
-  Shimmer3 via a cached CCS install under `/opt/ti/ccs`. Nothing builds on push
-  or pull request, so a `common` change is compile-checked only when someone
-  runs those workflows or builds locally.
-- ~~The Shimmer3 Release configuration failure~~ — resolved in DEV-1217. Release
+  This repository's workflows (`clang-format-check.yml`, `host-tests.yml`,
+  `docs-in-step.yml`) build neither platform.
+  - Each platform repository's `build-check.yml` builds only that platform, on
+    every pull request and push to `main`. Shimmer3R builds its Release
+    configuration, and Shimmer3 builds both Debug and Release.
+  - So a `common` change is compile-checked against a platform only by that
+    platform's pull request bumping the pin.
+  - Each platform's `build-release-firmware.yml` is `workflow_dispatch` only
+    (manual: pick the version part to bump and the build mode). Shimmer3R
+    builds via `xanderhendriks/action-build-stm32cubeide`, Shimmer3 via a
+    cached CCS install under `/opt/ti/ccs`.
+- ~~The Shimmer3 Release configuration failure~~ — resolved. Release
   lacked the include paths, then the `SHIMMER3` define, and had several other
-  stale settings. It now matches Debug (§4.2).
+  stale settings. It now matches Debug apart from its optimisation level
+  (§4.2).
 - ~~STM32 bootloader specifics~~ — resolved as far as the firmware goes. Two
   entry paths, both into ST's **system-memory bootloader at `0x0BF90000`**
   (`Shimmer_Driver/hal_bootloader.c`): (1) at boot, `JumpToBootloaderIfRequired`
