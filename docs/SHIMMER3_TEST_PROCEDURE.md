@@ -598,7 +598,7 @@ and a bench unit is the only place the whole chain runs:
 |---|---|---|
 | 5.4.4a | Enable derived channels | Computed values match the inputs they are derived from — `derivedChannels.py` |
 | 5.4.4b | Sweep known resistances into GSR | Each auto-range band **entered, held and reported** correctly, including the 80 ms settling hold ([GSR](SHIMMER3_GSR_AUTORANGE.md) §5.1). The Shimmer3R tree carries a rig driver for exactly this — `Shimmer_Driver/GSRTestRig/`, an AD5242 pot and ADG715 switch bank presenting known resistances to 1 MΩ, which makes this a calibration check rather than "the number moved" |
-| 5.4.4c | Configure each supported sampling rate | The packet rate is `32768 / samplingRateTicks` and matches — `samplingRate.py` |
+| 5.4.4c | Configure each supported sampling rate | The packet rate is `32768 / samplingRateTicks` and matches — `samplingRate.py`. On Shimmer3R an odd `samplingRateTicks` runs at `32768 / (2 × floor(samplingRateTicks / 2))`, one tick fast by design ([streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1) |
 | 5.4.4d | GSR boards with reversed control pins (SR48-4-1) | The reversal flag applied — values not out by a large constant factor ([GSR](SHIMMER3_GSR_AUTORANGE.md) §2) |
 | 5.4.4e | Set an illegal channel combination | Silently corrected, and corrected the same way the InfoMem document says ([InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §10) |
 | 5.4.4f | Enable skin temperature alongside GSR | GSR wins the shared ADC input — documented, and the config read-back should show it (§10.2) |

@@ -273,8 +273,9 @@ your port against that file.
 >   `2 × floor(samplingRateTicks / 2)` ticks and an odd `samplingRateTicks`
 >   samples one tick faster than configured. Measured on a device, every step
 >   was 32 ticks at a setting of 33, 64 at 65, 130 at 131, 326 at 327 and 654
->   at 655, while even settings were exact: 1024 Hz where `32768 / 33` says
->   993.0 Hz, and 0.15% to 3.1% fast across those rates. `INQUIRY_RESPONSE` and
+>   at 655, while even settings were exact (32 at 32, 654 at 654). So a setting
+>   of 33 streams at 1024 Hz by its timestamps where `32768 / 33` says 993.0 Hz,
+>   and the odd settings measured ran 0.15% to 3.1% fast. `INQUIRY_RESPONSE` and
 >   the SD header still report the configured value, so a host must take the
 >   rate from the timestamps, or from `32768 / (2 × floor(samplingRateTicks / 2))`.
 >

@@ -280,6 +280,11 @@ samplingRateTicks = round(32768.0 / frequency_Hz)
 `ShimConfig_getShimmerSamplingFreq` performs the first; `ShimConfig_freqDiv`
 performs the second, via `samplingClockFreqGet()`.
 
+That is the **configured** rate, which is also what `INQUIRY_RESPONSE` and the
+SD header report. On Shimmer3R an odd `samplingRateTicks` samples one tick
+faster, every `2 × floor(samplingRateTicks / 2)` ticks; see
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1.
+
 Two consequences for hosts:
 
 - **Not every frequency is representable.** The default of 51.2 Hz stores 640
