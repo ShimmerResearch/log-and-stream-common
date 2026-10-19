@@ -21,7 +21,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - 3.10 benches
     import tomli as tomllib
 
-from .ble import available as ble_available
+from .ble import available as ble_available, profile_for as ble_profile_for
 
 PLATFORMS = ("shimmer3", "shimmer3r")
 # A unit's throughput baseline (rig/throughput.py): what the last release gave
@@ -69,9 +69,10 @@ class Unit:
         caps = {self.platform}
         if self.mac:
             caps.add("bt")
-            # A Shimmer3R's IF820 also takes BLE, under the same address; this
-            # host reaches it only with bleak installed.
-            if self.platform == "shimmer3r" and ble_available():
+            # A Shimmer3R's IF820, and a Shimmer3's RN4678, also take BLE under
+            # the same address; this host reaches them only with bleak installed.
+            dual = self.platform == "shimmer3r" or ble_profile_for(self.radio) is not None
+            if dual and ble_available():
                 caps.add("ble")
         if self.usb_serial and self.platform == "shimmer3r":
             caps.add("usb")

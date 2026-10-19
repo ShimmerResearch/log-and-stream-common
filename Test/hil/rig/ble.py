@@ -1,18 +1,22 @@
-"""Bluetooth LE link to a Shimmer3R, through its IF820's CYSPP serial service.
+"""Bluetooth LE link to a Shimmer3R or a Shimmer3 with an RN4678, through the
+module's own BLE serial service.
 
-The IF820 bridges CYSPP to the same UART as its SPP link, so the protocol over
-it is the one SHIMMER3_BT_COMMUNICATION_PROTOCOL.md describes for Bluetooth.
+The module bridges that service to the same UART as its SPP link, so the
+protocol over it is the one SHIMMER3_BT_COMMUNICATION_PROTOCOL.md describes
+for Bluetooth. Each module family has its own service (Profile): the IF820's
+CYSPP, and the RN4678's Microchip transparent UART.
 BleSerial is the part of pyserial's Serial that BtLink and rig/throughput.py
 use - read with a timeout, in_waiting, write, reset_input_buffer, close - so a
 measurement written for SPP runs over BLE unchanged: BtLink(ser=BleSerial(mac)).
 
-Data arrives as notifications on CYSPP's Unacknowledged Data characteristic,
-the way the web SDK receives it, and commands go out on it as writes without
-response. The module's RX flow characteristic is subscribed to as well, as the
-web SDK does: it tells the module the host honours its flow control.
+Data arrives as notifications and commands go out as writes without response.
+On CYSPP both use the Unacknowledged Data characteristic, the way the web SDK
+does, and the RX flow characteristic is subscribed to as well: it tells the
+module the host honours its flow control. On the RN4678 data comes on the
+transparent UART's TX characteristic and goes out on its RX one.
 
-The IF820 advertises under its classic MAC, so a unit is found by rig.toml's
-`mac`. Needs bleak. Its asyncio loop runs in a background thread, so the
+Both modules advertise under their classic MAC (the RN4678 as "S3BLE-xxxx"),
+so a unit is found by rig.toml's `mac`. Needs bleak. Its asyncio loop runs in a background thread, so the
 callers stay synchronous.
 """
 
@@ -24,10 +28,41 @@ import threading
 import time
 from concurrent.futures import TimeoutError as FutureTimeout
 
+from dataclasses import dataclass
+
 SERVICE = "65333333-a115-11e2-9e9a-0800200ca100"
 UNACKED_DATA = "65333333-a115-11e2-9e9a-0800200ca102"   # write without response; notify
 RX_FLOW = "65333333-a115-11e2-9e9a-0800200ca103"        # indicate
 ATT_HEADER = 3                                          # opcode and handle, out of each ATT MTU
+
+
+@dataclass(frozen=True)
+class Profile:
+    """A module family's BLE serial service: where data comes in and goes out."""
+    name: str
+    service: str
+    notify: str              # module -> host, as notifications
+    write: str               # host -> module, written without response
+    flow: str | None = None  # flow control to subscribe to, where the module has it
+
+
+CYSPP = Profile("IF820 CYSPP", SERVICE, UNACKED_DATA, UNACKED_DATA, RX_FLOW)
+# Microchip's transparent UART on the RN4678 (bench, 19 Oct 2026: ATT MTU 160,
+# 157 bytes per write without response, advertising as "S3BLE-xxxx").
+MCHP_TRANSPARENT = Profile("RN4678 transparent UART", "49535343-fe7d-4ae5-8fa9-9fafd205e455",
+                           notify="49535343-1e4d-4bd9-ba61-23c647249616",
+                           write="49535343-8841-43f4-a8d4-ecbe34729bb3")
+
+
+def profile_for(radio: str | None) -> Profile | None:
+    """The BLE serial service of the module rig.toml's `radio` names, or None
+    for a module that has no BLE side (an RN41 or RN42)."""
+    r = (radio or "").upper()
+    if r.startswith("IF820"):
+        return CYSPP
+    if r.startswith("RN4678"):
+        return MCHP_TRANSPARENT
+    return None
 
 SCAN_S = 15.0
 CONNECT_S = 30.0
@@ -57,7 +92,8 @@ class BleSerial:
     left still works; past that, read() and write() raise BleError.
     """
 
-    def __init__(self, mac: str, timeout: float | None = 1.0, scan_s: float = SCAN_S):
+    def __init__(self, mac: str, timeout: float | None = 1.0, scan_s: float = SCAN_S, profile: Profile = CYSPP):
+        self.profile = profile
         self.timeout = timeout
         self.address = _address(mac)
         self.mtu = 0
@@ -113,15 +149,16 @@ class BleSerial:
         # close() still has the client to disconnect.
         self._client = client
         await client.connect()
-        await client.start_notify(UNACKED_DATA, self._on_data)
-        try:
-            await client.start_notify(RX_FLOW, self._on_flow)
-        except Exception:   # best effort, as in the web SDK
-            pass
+        await client.start_notify(self.profile.notify, self._on_data)
+        if self.profile.flow:
+            try:
+                await client.start_notify(self.profile.flow, self._on_flow)
+            except Exception:   # best effort, as in the web SDK
+                pass
         self.mtu = client.mtu_size
         # What one write without response may carry: the characteristic's own
         # figure where the platform gives it, else the ATT payload of the MTU.
-        char = client.services.get_characteristic(UNACKED_DATA)
+        char = client.services.get_characteristic(self.profile.write)
         size = getattr(char, "max_write_without_response_size", 0) if char else 0
         self.write_size = max(20, size or self.mtu - ATT_HEADER)
 
@@ -168,7 +205,7 @@ class BleSerial:
             raise BleError(f"{self.address}: BLE link dropped")
         step = self.write_size
         for i in range(0, len(data), step):
-            self._call(self._client.write_gatt_char(UNACKED_DATA, bytes(data[i:i + step]), response=False),
+            self._call(self._client.write_gatt_char(self.profile.write, bytes(data[i:i + step]), response=False),
                        WRITE_S)
         return len(data)
 
@@ -204,4 +241,4 @@ class BleSerial:
                 self._loop.close()
 
     def describe(self) -> str:
-        return f"BLE {self.address}, ATT MTU {self.mtu}, notifications"
+        return f"BLE {self.address} ({self.profile.name}), ATT MTU {self.mtu}, notifications"

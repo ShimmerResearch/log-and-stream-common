@@ -326,8 +326,20 @@ which carry far more than indications do, and subscribing to RX flow tells
 the module the host honours its flow control. On the bench (19 Oct 2026,
 Windows 11 on an Intel AX201, module builds v1.4.16.16 and v1.4.18.18) the
 link came up at ATT MTU 517, with 514 bytes per write without response;
-another host may negotiate less. The RN4678's BLE service on a Shimmer3 has
-different UUIDs, which no host here uses.
+another host may negotiate less.
+
+On a Shimmer3 with an RN4678 the service is Microchip's transparent UART,
+advertised as `S3BLE-` and the last four digits of the MAC, under the classic
+MAC. The HIL rig uses it (`fleet.ble_throughput`):
+
+| Role | UUID | Properties |
+|---|---|---|
+| Transparent UART service | `49535343-fe7d-4ae5-8fa9-9fafd205e455` | |
+| TX, module to host | `49535343-1e4d-4bd9-ba61-23c647249616` | notify (also indicate, read, write) |
+| RX, host to module | `49535343-8841-43f4-a8d4-ecbe34729bb3` | write without response; write |
+
+On the bench (19 Oct 2026, RN4678 v1.23, Windows 11) it negotiated ATT MTU
+160, 157 bytes per write, which matches the firmware's `BLE_MTU_SIZE` 157.
 
 **MTU and fragmentation.** A BLE notification carries at most one ATT MTU worth
 of payload, so any response longer than that is split across notifications. The
@@ -3606,15 +3618,13 @@ them.
   v1.4.18.x all use the transparent bridge, which never sends `SPP_SEND`.
   **Needs re-measuring** before any other `SPP_SEND`-path module firmware is
   used, since a limit set even one byte too high stops all data.
-- **The Shimmer3's BLE GATT UUIDs, and the ATT MTU it negotiates.** No
-  firmware source declares a GATT service: the Bluetooth module terminates GATT
-  itself and hands the firmware a reassembled byte stream ([§2.2](#22-ble)).
-  For the Shimmer3R this is settled on the bench: the CYSPP UUIDs in §2.2,
-  ATT MTU 517 against Windows 11. The one MTU figure in the Shimmer3 firmware
-  is `BLE_MTU_SIZE` 157 (`shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.h:242`),
-  the RN4678's working value and not necessarily what a given host negotiates.
-  **Needs a capture** on a Shimmer3 with an RN4678, and on the Shimmer3R from
-  a host other than Windows.
+- **The negotiated BLE ATT MTU from hosts other than Windows.** No firmware
+  source declares a GATT service: the Bluetooth module terminates GATT itself
+  and hands the firmware a reassembled byte stream ([§2.2](#22-ble)). Both
+  generations are settled on the bench against Windows 11: the CYSPP UUIDs
+  and ATT MTU 517 on the Shimmer3R, and the RN4678 transparent UART UUIDs and
+  ATT MTU 160 on the Shimmer3 (the firmware's `BLE_MTU_SIZE` 157 plus the
+  header). **Needs a capture** from another host stack.
 - **Whether BLE ever coalesces two firmware messages into one notification.**
   [§2.2](#22-ble) tells hosts to assume it can, which is the safe assumption, but
   the firmware hands each response to the UART as a single write and the
