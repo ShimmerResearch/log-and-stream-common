@@ -242,10 +242,19 @@ def test_ble_throughput(rig, unit, cdc, hil_note):
     bench's BLE figures for the unit's module build ([ble_throughput_by_radio]
     in rig.toml) and any of the unit's own (ble_throughput); without any the
     item is not_covered, with the figures to record. "bt" is among its needs so
-    that the run turns the radio on (conftest._bt_on). The load is stored
-    configuration, so InfoMem is saved to disk and put back.
+    that the run turns the radio on (conftest._bt_on). A unit whose EEPROM has
+    BLE switched off (bleEnabled, EEPROM_MEMORY_MAP §4.2) is not_covered too:
+    the bench cannot reach it over BLE, and the run does not change the EEPROM.
+    The load is stored configuration, so InfoMem is saved to disk and put back.
     """
     with dock.open_when_ready(cdc) as d:
+        try:
+            radio = d.radio_settings()
+        except dock.DockError as e:
+            pytest.skip(f"{unit.name}: no EEPROM radio settings ({e}), so the firmware runs classic only")
+        if not dock.ble_enabled(radio):
+            pytest.skip(f"{unit.name}: BLE is off in its EEPROM (radio settings byte 2 = {radio[2]:#04x}, "
+                        "bleEnabled clear)")
         reported = d.bt_version()
         original = bytes(d.read_infomem())
     mismatch = throughput.radio_mismatch(unit.radio, reported)

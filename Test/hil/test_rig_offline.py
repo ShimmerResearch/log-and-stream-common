@@ -1214,6 +1214,21 @@ class BleBaselineConfig(unittest.TestCase):
         self.assertEqual(line, "ble_throughput = { link_bytes_per_s = 115000, stream_samples_per_s = 1024 }")
 
 
+class BleEnableBit(unittest.TestCase):
+    def test_the_radio_page_is_read_from_its_eeprom_address(self):
+        d = dock.DockLink.__new__(dock.DockLink)
+        sent = []
+        d._transact = lambda cmd, comp, prop, data=b"": sent.append((cmd, comp, prop, data)) or bytes(range(3, 19))
+        self.assertEqual(d.radio_settings(), bytes(range(3, 19)))
+        # CARD_MEM reads EEPROM from offset + 16, so the page at 2032 is offset 2016, 16 bytes.
+        self.assertEqual(sent, [(dock.CMD_GET, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM, bytes([16, 0xE0, 0x07]))])
+
+    def test_ble_enabled_reads_byte_2_bit_0(self):
+        self.assertTrue(dock.ble_enabled(bytes([3, 12, 0xFF]) + bytes(13)))   # 15BC: unprogrammed, both on
+        self.assertTrue(dock.ble_enabled(bytes([3, 12, 0x01]) + bytes(13)))
+        self.assertFalse(dock.ble_enabled(bytes([3, 12, 0x02]) + bytes(13)))  # classic only
+        self.assertFalse(dock.ble_enabled(b""))
+
 def _ble_serial(timeout=0.2):
     """A BleSerial with no radio behind it: notifications are fed by hand."""
     s = ble.BleSerial.__new__(ble.BleSerial)

@@ -1203,7 +1203,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
 | `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt |
-| `smoke.ble_throughput` | As `smoke.bt_throughput`, over BLE (the IF820's CYSPP service, data as notifications), against this unit's BLE baseline |
+| `smoke.ble_throughput` | As `smoke.bt_throughput`, over BLE (the IF820's CYSPP service, data as notifications), against this unit's BLE baseline. `not_covered` when the unit's EEPROM has BLE off (`bleEnabled`, EEPROM memory map §4.2) |
 
 The **fleet** tier is §5.1 made automatic: Shimmer3, one unit per radio
 firmware that shipped (RN42 v4.77 and v6.15, RN4678 v1.00.5 and v1.23), all
