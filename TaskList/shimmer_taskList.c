@@ -54,17 +54,37 @@
 
 /* Masks interrupts around the empty check in ShimTask_NORM_manage(), so the
  * check and the sleep that follows it are one step (DEV-1222). Unmasking after
- * the sleep is unconditional because the main loop runs with interrupts on. */
+ * the sleep is unconditional because the main loop runs with interrupts on.
+ *
+ * TASK_IRQ_SAVE() and TASK_IRQ_RESTORE() bracket each read-modify-write of
+ * taskList (DEV-1233). Main and interrupts at several priorities set and clear
+ * tasks, and on Cortex-M the update is a load, a modify and a store: a task
+ * that an interrupt set in between would be overwritten by the stale copy. The
+ * previous mask state is put back rather than unmasked, as callers may be ISRs
+ * or already masked. They are one pair per scope, as SAVE declares the saved
+ * state. MSP430 needs neither: cl430 updates each 16-bit half of taskList with
+ * one OR.W or AND.W on memory, from -O0 to -O4, and interrupts are taken
+ * between instructions. */
 #if defined(__MSP430__)
 #define TASK_IRQ_DISABLE() __disable_interrupt()
 #define TASK_IRQ_ENABLE()  __enable_interrupt()
+#define TASK_IRQ_SAVE()
+#define TASK_IRQ_RESTORE()
 #elif defined(__arm__) || defined(__ARM_ARCH)
 #define TASK_IRQ_DISABLE() __disable_irq()
 #define TASK_IRQ_ENABLE()  __enable_irq()
-#else
+#define TASK_IRQ_SAVE()                            \
+  uint32_t const taskIrqPrimask = __get_PRIMASK(); \
+  __disable_irq()
+#define TASK_IRQ_RESTORE() __set_PRIMASK(taskIrqPrimask)
+#elif defined(SHIMMER_HOST_TEST)
 /* Host builds have no interrupts to mask */
 #define TASK_IRQ_DISABLE()
 #define TASK_IRQ_ENABLE()
+#define TASK_IRQ_SAVE()
+#define TASK_IRQ_RESTORE()
+#else
+#error "TASK_IRQ_DISABLE/ENABLE/SAVE/RESTORE need an implementation for this MCU"
 #endif
 
 static volatile uint32_t taskList = 0;
@@ -270,17 +290,21 @@ TaskId_t ShimTask_NORM_popNext(void)
 
 void ShimTask_NORM_clear(TaskId_t task_id)
 {
+  TASK_IRQ_SAVE();
   taskList &= ~task_id;
+  TASK_IRQ_RESTORE();
 }
 
 uint8_t ShimTask_NORM_set(TaskId_t task_id)
 {
   uint8_t is_sleeping = 0;
+  TASK_IRQ_SAVE();
   if (!taskList && !executingTask)
   {
     is_sleeping = 1;
   }
   taskList |= task_id;
+  TASK_IRQ_RESTORE();
 #if defined(SHIMMER3R)
   /* if called from an ISR, force main context to run:
      - Pend PendSV to wake the scheduler / main loop
