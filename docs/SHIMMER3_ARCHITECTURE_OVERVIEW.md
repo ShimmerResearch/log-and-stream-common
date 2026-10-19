@@ -32,6 +32,13 @@ read before adding a subsystem.
 >   @ `f573f60`, from `Platform/platform_api.{h,c}`, `Boards/shimmer_boards.{h,c}`,
 >   `Comms/shimmer_bt_uart.{h,c}`, `Sensing/shimmer_sensing.{h,c}` and
 >   `Test/shimmer_test.{h,c}`.
+> - **Task-list masking** (§4.3) postdates `f3cf73e`.
+>   - **Source:** read at `log-and-stream-common` @ `9435d2b`, from
+>     `TaskList/shimmer_taskList.c`.
+>   - **Cortex-M sequences:** disassembled from a Release build of
+>     `shimmer3r-firmware` @ `38be31b4` with that commit (STM32CubeIDE 1.15.1).
+>   - **MSP430 sequences:** cl430 21.6.1 output for the same file at -O0, -O2,
+>     -O3 and -O4.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A, Code
 > Composer Studio); **S3R** = Shimmer3R (STM32U5, STM32CubeIDE). LogAndStream
@@ -293,7 +300,7 @@ sleep and the task would not run until something else woke the part.
 > several NVIC priorities set and clear tasks, and on Cortex-M GCC does `|=` and
 > `&= ~` as a load, a modify and a store. If an interrupt set a task between
 > the load and the store, the store would put back the stale copy and the task
-> would be lost (DEV-1233). So `ShimTask_set` (with its idle check),
+> would be lost. So `ShimTask_set` (with its idle check),
 > `ShimTask_clear` and the clear in `ShimTask_popNext` save PRIMASK, mask, and
 > restore it. The window is the update alone, and the `popNext` scan stays
 > unmasked (§4.2). Restoring, rather than unmasking, keeps an ISR or an
