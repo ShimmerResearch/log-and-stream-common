@@ -1057,7 +1057,7 @@ class ThroughputByRadio(unittest.TestCase):
             load_rig('[throughput_by_radio]\n"IF820 v1.4.16.16" = { link_bytes_per_s = -1 }\n')
 
     def test_a_rows_own_tolerance_replaces_the_default(self):
-        # DEV-573: test_254 read 168.8-170.3 KB/s one day and 152-161 two days later.
+        # DEV-573: one test build read 168.8-170.3 KB/s one day and 152-161 two days later.
         base = {"link_bytes_per_s": 168.8 * 1024, "tolerance": 0.10}
         self.assertEqual(throughput.compare({"link_bytes_per_s": 152 * 1024, "stream_samples_per_s": 1}, base),
                          ([], []))
@@ -1065,7 +1065,7 @@ class ThroughputByRadio(unittest.TestCase):
         self.assertEqual(len(short), 1)
 
     def test_the_module_version_must_match_the_named_build(self):
-        self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.18.18 test_254", "1.4.18.18"))
+        self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.18.18 test build", "1.4.18.18"))
         self.assertIn("update its radio", throughput.radio_mismatch("IF820 v1.4.16.16", "v1.4.18.18"))
         self.assertIsNone(throughput.radio_mismatch(None, "1.4.18.18"))
         self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.16.16", "unreadable"))
