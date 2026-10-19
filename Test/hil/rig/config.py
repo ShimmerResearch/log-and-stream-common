@@ -22,6 +22,9 @@ except ModuleNotFoundError:  # pragma: no cover - 3.10 benches
     import tomli as tomllib
 
 PLATFORMS = ("shimmer3", "shimmer3r")
+# A unit's throughput baseline (rig/throughput.py): what the last release gave
+# on this bench, in these units.
+THROUGHPUT_KEYS = ("link_bytes_per_s", "stream_samples_per_s")
 
 
 class RigError(Exception):
@@ -40,6 +43,7 @@ class Unit:
     board: str | None = None        # SR number / revision, free text
     notes: str = ""
     stlink_serial: str | None = None  # the ST-Link on this unit's SWD header, for flash method "swd"
+    throughput: dict[str, float] = field(default_factory=dict)  # baseline figures, THROUGHPUT_KEYS
 
     def capabilities(self) -> set[str]:
         caps = {self.platform}
@@ -123,6 +127,14 @@ def load(path: str | os.PathLike | None = None) -> Rig:
         hub_port = u.get("hub_port")
         if hub_port is not None and (isinstance(hub_port, bool) or not isinstance(hub_port, int) or hub_port < 1):
             raise RigError(f"{where}: hub_port must be a hub port number from 1, not {hub_port!r}")
+        throughput = u.get("throughput", {})
+        if not isinstance(throughput, dict):
+            raise RigError(f"{where}: throughput must be a table, e.g. throughput = {{ link_bytes_per_s = 28900 }}")
+        for k, v in throughput.items():
+            if k not in THROUGHPUT_KEYS:
+                raise RigError(f"{where}: throughput.{k} is not one of {', '.join(THROUGHPUT_KEYS)}")
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not v > 0:
+                raise RigError(f"{where}: throughput.{k} must be a positive number, not {v!r}")
         units.append(Unit(
             name=u["name"], platform=u["platform"],
             mac=_normalise_mac(u["mac"]) if u.get("mac") else None,
@@ -132,6 +144,7 @@ def load(path: str | os.PathLike | None = None) -> Rig:
             base6_slot=int(u["base6_slot"]) if u.get("base6_slot") else None,
             radio=u.get("radio"), board=u.get("board"), notes=u.get("notes", ""),
             stlink_serial=u.get("stlink_serial") or None,
+            throughput={k: float(v) for k, v in throughput.items()},
         ))
     names = [u.name for u in units]
     if len(set(names)) != len(names):

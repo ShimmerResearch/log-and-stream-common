@@ -18,7 +18,7 @@ import time
 
 import pytest
 
-from rig import bt, dock
+from rig import bt, dock, throughput
 from rig.base6 import Base6
 
 pytestmark = pytest.mark.fleet
@@ -26,6 +26,15 @@ pytestmark = pytest.mark.fleet
 SHIPPED_RADIOS = {("RN42", "4.77"), ("RN42", "6.15"), ("RN4678", "1.00.5"), ("RN4678", "1.23")}
 STREAM_SECONDS = 10.0
 SELF_SET_BITS = [(230, 0x01)]   # flagWriteCfgToSd, set on every config write by design
+
+
+def masked(im: bytes) -> bytes:
+    """InfoMem (or its first bytes) with the bits the firmware sets itself cleared."""
+    b = bytearray(im)
+    for off, mask in SELF_SET_BITS:
+        if off < len(b):
+            b[off] &= ~mask & 0xFF
+    return bytes(b)
 
 
 def parse_radio(banner: str) -> tuple[str, str] | None:
@@ -100,12 +109,6 @@ def test_boot_identity(unit, docklink, candidate, hil_note):
 
 @pytest.mark.hil("fleet.config_roundtrip", needs=["shimmer3", "dock"])
 def test_config_roundtrip(docklink):
-    def masked(im):
-        b = bytearray(im)
-        for off, mask in SELF_SET_BITS:
-            b[off] &= ~mask & 0xFF
-        return bytes(b)
-
     original = docklink.read_infomem()
     docklink.write_infomem(original)
     back = docklink.read_infomem()
@@ -118,7 +121,7 @@ RESTORE_ATTEMPTS = 3
 
 
 def restore_infomem(base6, original: bytes, stream_error: BaseException | None) -> list[str]:
-    """Put the unit's own sampling rate back; return what each failed attempt saw.
+    """Write the unit's own InfoMem (from offset 0) back; return what each failed attempt saw.
 
     Runs in a finally block, so a failure here must not replace the stream's
     own exception: when both fail, the DockError names the stream's error and
@@ -129,13 +132,13 @@ def restore_infomem(base6, original: bytes, stream_error: BaseException | None) 
         try:
             with dock.open_when_ready(base6.uart_port) as d:
                 d.write_infomem(original, offset=0)
-                if d.read_infomem(0, len(original)) != original:
+                if masked(d.read_infomem(0, len(original))) != masked(original):
                     raise dock.DockError("read back differs")
             return seen
         except dock.DockError as e:
             seen.append(str(e))
             time.sleep(1.0)
-    msg = f"could not restore the sampling rate over the dock: {seen}"
+    msg = f"could not restore the configuration over the dock: {seen}"
     if stream_error is not None:
         raise dock.DockError(f"{msg} - after the stream itself failed with {stream_error!r}") from stream_error
     raise dock.DockError(msg)
@@ -180,6 +183,44 @@ def test_bt_stream(unit, base6, hil_note):
     assert st.dupes == 0, f"{st.dupes} duplicate or backwards stamps"
     assert st.max_jitter_ticks <= 0.25 * inq.divider, f"stamp jitter up to {st.max_jitter_ticks} ticks"
     hil_note(f"{st.packets} packets at {inq.rate_hz:.1f} Hz, {len(inq.channels)} channels, no loss")
+
+
+LINK_SECONDS = 10.0
+LOAD_SECONDS = 20.0
+
+
+@pytest.mark.hil("fleet.bt_throughput", needs=["shimmer3", "bt", "dock"])
+def test_bt_throughput(unit, base6, hil_note):
+    """What the radio carries, and how much of a stream that outruns it arrives (§5.5).
+
+    rig/throughput.py has the two measurements. Both are judged against the
+    figures the last release gave on this unit and bench, from rig.toml; a
+    unit without them is reported not_covered with the figures to record.
+    The load is stored configuration, so the whole InfoMem is put back.
+    """
+    base6.select(unit.base6_slot)
+    with dock.open_when_ready(base6.uart_port) as d:
+        original = d.read_infomem()
+    error = None
+    try:
+        with open_bt(unit) as link:
+            rate = throughput.data_rate_test(link, LINK_SECONDS)
+            st, inq = throughput.load_stream(link, LOAD_SECONDS)
+    except BaseException as e:
+        error = e
+        raise
+    finally:
+        retries = restore_infomem(base6, original, error)
+        if retries:
+            hil_note(f"configuration restore needed {len(retries)} retries: {'; '.join(retries)}")
+    problems = throughput.defects(rate, st)
+    assert not problems, "; ".join(problems)
+    measured = throughput.figures(rate, st, inq)
+    if not unit.throughput:
+        pytest.skip(f"no throughput baseline for {unit.name} in rig.toml; measured {throughput.as_toml(measured)}")
+    short, note = throughput.judge(measured, unit.throughput, unit.name)
+    hil_note(note)
+    assert not short, "; ".join(short)
 
 
 REBOOTS = 5

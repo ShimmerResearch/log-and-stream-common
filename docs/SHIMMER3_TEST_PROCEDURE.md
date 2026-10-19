@@ -642,6 +642,23 @@ separates *link* throughput from *sampling* throughput.
 | 5.5.3 | Repeat at each baud the fitted module supports | See the ladder below |
 | 5.5.4 | Climb the sampling-rate ladder with all channels on until packets drop | Note the rate it breaks at, and compare with the previous release |
 
+**Automated part.** `fleet.bt_throughput` (Shimmer3) and `smoke.bt_throughput`
+(Shimmer3R) run a short form of 5.5.1 at the unit's own baud, with 10 s
+instead of 10 min. They then add a fixed point on the ladder: 1024 Hz with LN
+accel, gyro, mag, WR accel and VBatt, which outruns every shipped Shimmer3
+radio. Each figure is compared with what the previous release gave on the same
+unit and bench (§10.4).
+
+The fixed load matters as much as the link rate. The data-rate test bypasses
+the sample path, but how much of a saturated stream arrives follows that
+path's timing:
+- **DEV-1150:** a change to the reply path cost a fifth of the delivered
+  samples on the RN42 v6.15.
+- **DEV-1222:** a change to the sample-timer ISR cost 9.8%.
+
+Both changes were functionally correct, and both were invisible to every
+other check. 5.5.2 to 5.5.4 stay manual.
+
 **The baud ladder is per module, and the constraints are real:**
 
 | Baud | Supported on |
@@ -1126,6 +1143,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.bt_stream` | 10 s stream: packet framing, no lost or duplicate samples, the rate on the device clock |
 | `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
+| `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt |
 
 The **fleet** tier is §5.1 made automatic: Shimmer3, one unit per radio
 firmware that shipped (RN42 v4.77 and v6.15, RN4678 v1.00.5 and v1.23), all
@@ -1141,6 +1159,25 @@ flash.
 | `fleet.config_roundtrip` | The configuration reads back exactly as written |
 | `fleet.reboot` | Five resets through the RST line; every boot answers the dock with the same radio banner (§5.1.5) |
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
+| `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |
+
+**The throughput baselines.** Neither the firmware nor these documents give an
+acceptance rate per radio or baud, so the two throughput items judge each unit
+against the previous release. Its figures on the same unit and bench go in
+that unit's `rig.toml` entry:
+`throughput = { link_bytes_per_s = ..., stream_samples_per_s = ... }`.
+
+- **Below:** a figure more than 5% under its baseline fails. The same build
+  repeats within 0.3% when run interleaved, so the margin is for bench drift.
+- **Above:** a figure more than 5% over it is noted.
+- **No baseline:** the unit is reported `not_covered`, with the measured
+  figures in the reason.
+- **Restore:** the load is stored configuration, so InfoMem is written back
+  afterwards.
+
+Treat a shortfall as a finding, and confirm it with an interleaved A/B of
+release and candidate on that unit before acting on it.
+`Test/hil/README.md` says how to record a baseline.
 
 The **release** tier (Shimmer3R so far) runs the configuration matrix in
 `Test/hil/matrix/s3r_release.toml`. There are about 22 rows, chosen so every
@@ -1233,11 +1270,13 @@ The known-issues list and bench facts live with each bench (`[triage]` in
   without a number deliberately.
 - **Throughput acceptance figures (§5.5).** `SET_DATA_RATE_TEST` and the
   `SpeedTest/` scripts measure a rate, but no expected rate is recorded anywhere
-  in the firmware or docs, per module or per baud. The steps therefore say
-  "record and compare with the previous release" rather than naming a threshold.
-  **Capturing one release's numbers would turn §5.5 from a trend check into a
-  pass/fail gate**, and is the single cheapest improvement available to this
-  section.
+  in the firmware or docs, per module or per baud.
+  - **What is now a gate:** each bench records the previous release's figures
+    per unit in its `rig.toml`. The throughput items fail a candidate that falls
+    more than 5% below them (§10.4).
+  - **What is still open:** those figures are a bench's, not a module's. A
+    figure that belongs to the radio, independent of the bench, is still not
+    known, so the manual steps still say "compare with the previous release".
 - **Which CYW20820 / EZ-Serial firmware versions are qualified (§5.1).** The
   Shimmer3 side names six RN4678 versions and three RN41/RN42 versions in code,
   so the matrix rows are exact. The Shimmer3R side has no equivalent version

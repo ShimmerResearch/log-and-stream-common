@@ -31,7 +31,7 @@ except ImportError:
     _serial.SerialException = type("SerialException", (OSError,), {})
     sys.modules.update({"serial": _serial, "serial.tools": _tools, "serial.tools.list_ports": _lp})
 
-from rig import bt, config, dock, flash, power, sdfile  # noqa: E402
+from rig import bt, config, dock, flash, power, sdfile, throughput  # noqa: E402
 import run_rc  # noqa: E402
 
 
@@ -874,6 +874,151 @@ class DockOpenRetries(unittest.TestCase):
         self.assertEqual(len(made), 2)
         self.assertTrue(made[0].closed, "the first link was left open")
         self.assertIs(link, made[1])
+
+
+def rate_packets(counters) -> bytes:
+    return b"".join(bytes([throughput.DATA_RATE_TEST_RESPONSE]) + c.to_bytes(4, "little") for c in counters)
+
+
+class DataRateScan(unittest.TestCase):
+    def test_contiguous_packets_have_no_gaps(self):
+        st = throughput.scan_data_rate(rate_packets(range(100)))
+        self.assertEqual((st.packets, st.gaps, st.lost, st.resyncs), (100, 0, 0, 0))
+
+    def test_a_counter_jump_is_packets_lost(self):
+        st = throughput.scan_data_rate(rate_packets([*range(10), *range(12, 20)]))
+        self.assertEqual((st.packets, st.gaps, st.lost), (18, 1, 2))
+
+    def test_a_first_counter_above_zero_is_packets_lost(self):
+        st = throughput.scan_data_rate(rate_packets(range(3, 10)))
+        self.assertEqual((st.gaps, st.lost), (1, 3))
+
+    def test_a_stray_byte_is_counted_and_framing_resumes(self):
+        data = rate_packets(range(5)) + b"\x00" + rate_packets(range(5, 10))
+        st = throughput.scan_data_rate(data)
+        self.assertEqual((st.packets, st.gaps, st.resyncs), (10, 0, 1))
+
+    def test_a_dropped_byte_loses_that_packet_and_no_more(self):
+        data = bytearray(rate_packets(range(10)))
+        del data[5 * 5 + 2]                     # one counter byte of packet 5
+        st = throughput.scan_data_rate(bytes(data))
+        self.assertEqual((st.packets, st.gaps, st.lost, st.resyncs), (9, 1, 1, 4))
+
+    def test_a_partial_packet_at_the_end_is_not_counted(self):
+        st = throughput.scan_data_rate(rate_packets(range(4)) + b"\xa5\x04\x00")
+        self.assertEqual((st.packets, st.resyncs), (4, 0))
+
+
+class FakeClock:
+    def __init__(self):
+        self.t = 0.0
+
+    def monotonic(self):
+        self.t += 0.01
+        return self.t
+
+
+class DataRateSpp(FakeSpp):
+    """SET_DATA_RATE_TEST: ACK, then packets on every read until the stop,
+    which (if `obeys`) flushes them and is ACKed."""
+
+    def __init__(self, obeys=True):
+        super().__init__(1)
+        self.obeys, self.flooding, self.counter = obeys, False, 0
+
+    def write(self, data):
+        if data == bytes([throughput.SET_DATA_RATE_TEST, 1]):
+            self.buf += bytes([bt.ACK])
+            self.flooding = True
+        elif data == bytes([throughput.SET_DATA_RATE_TEST, 0]) and self.obeys:
+            self.flooding = False
+            self.buf[:] = bytes([bt.ACK])
+
+    def read(self, n=1):
+        if not self.buf and self.flooding:
+            self.buf += rate_packets(range(self.counter, self.counter + 4))
+            self.counter += 4
+        return super().read(n)
+
+
+class DataRateTest(unittest.TestCase):
+    def run_test(self, spp):
+        link = bt.BtLink.__new__(bt.BtLink)
+        link.hw, link._nstatus, link.crc_mode, link.ser = bt.HW_SHIMMER3, 1, 0, spp
+        with mock.patch.object(throughput, "time", FakeClock()):
+            return throughput.data_rate_test(link, 0.5)
+
+    def test_a_flood_that_stops_on_command(self):
+        st = self.run_test(DataRateSpp())
+        self.assertTrue(st.stopped and st.stop_ack)
+        self.assertGreater(st.packets, 0)
+        self.assertEqual((st.gaps, st.resyncs), (0, 0))
+        # Every byte counts towards the rate; only a partial packet at the cut is not a packet.
+        self.assertTrue(0 <= st.bytes - st.packets * throughput.PACKET < throughput.PACKET)
+        self.assertEqual(throughput.defects(st, bt.StreamStats(packets=1)), [])
+
+    def test_a_flood_that_ignores_the_stop_is_a_defect(self):
+        st = self.run_test(DataRateSpp(obeys=False))
+        self.assertFalse(st.stopped)
+        self.assertIn("still busy", "; ".join(throughput.defects(st, bt.StreamStats(packets=1))))
+
+
+class ThroughputJudgement(unittest.TestCase):
+    BASE = {"link_bytes_per_s": 28900.0, "stream_samples_per_s": 842.0}
+
+    def test_samples_per_s_is_the_rate_times_the_slots_that_arrived(self):
+        st = bt.StreamStats(packets=750, missing=250)
+        self.assertAlmostEqual(throughput.samples_per_s(st, bt.Inquiry(32, [], 0, b"")), 768.0)
+
+    def test_within_tolerance_passes(self):
+        short, gain = throughput.compare({"link_bytes_per_s": 28000, "stream_samples_per_s": 830}, self.BASE)
+        self.assertEqual((short, gain), ([], []))
+
+    def test_more_than_five_percent_below_fails(self):
+        # The DEV-1222 #119 figure against main's.
+        short, _ = throughput.compare({"link_bytes_per_s": 28900, "stream_samples_per_s": 759}, self.BASE)
+        self.assertEqual(len(short), 1)
+        self.assertIn("stream_samples_per_s 759 is 9.9% below", short[0])
+
+    def test_above_is_noted_not_failed(self):
+        short, note = throughput.judge({"link_bytes_per_s": 33000, "stream_samples_per_s": 842}, self.BASE, "u")
+        self.assertEqual(short, [])
+        self.assertIn("above the baseline", note)
+
+    def test_a_figure_without_a_baseline_is_not_judged(self):
+        short, _ = throughput.compare({"link_bytes_per_s": 1, "stream_samples_per_s": 842},
+                                      {"stream_samples_per_s": 842.0})
+        self.assertEqual(short, [])
+
+    def test_a_shortfall_says_to_confirm_it_interleaved(self):
+        short, _ = throughput.judge({"link_bytes_per_s": 20000, "stream_samples_per_s": 842}, self.BASE, "u")
+        self.assertIn("interleaved A/B", short[0])
+
+    def test_the_figures_print_as_a_rig_toml_line(self):
+        line = throughput.as_toml({"link_bytes_per_s": 28900, "stream_samples_per_s": 842.4})
+        self.assertEqual(line, "throughput = { link_bytes_per_s = 28900, stream_samples_per_s = 842.4 }")
+        unit = load_rig('[[unit]]\nname = "a"\nplatform = "shimmer3"\n' + line + "\n").units[0]
+        self.assertEqual(unit.throughput, {"link_bytes_per_s": 28900.0, "stream_samples_per_s": 842.4})
+
+
+class ThroughputBaselineConfig(unittest.TestCase):
+    UNIT = '[[unit]]\nname = "a"\nplatform = "shimmer3"\n'
+
+    def test_no_baseline_is_empty(self):
+        self.assertEqual(load_rig(self.UNIT).units[0].throughput, {})
+
+    def test_an_unknown_key_is_refused(self):
+        with self.assertRaisesRegex(config.RigError, "throughput.link_kbps is not one of"):
+            load_rig(self.UNIT + "throughput = { link_kbps = 28.9 }\n")
+
+    def test_a_figure_must_be_a_positive_number(self):
+        for bad in ("0", "-5", "true", '"842"'):
+            with self.subTest(bad=bad), self.assertRaisesRegex(config.RigError, "positive number"):
+                load_rig(self.UNIT + f"throughput = {{ stream_samples_per_s = {bad} }}\n")
+
+    def test_it_must_be_a_table(self):
+        with self.assertRaisesRegex(config.RigError, "must be a table"):
+            load_rig(self.UNIT + "throughput = 842\n")
 
 
 if __name__ == "__main__":

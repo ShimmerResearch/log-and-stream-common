@@ -41,6 +41,7 @@ board = ""
 notes = ""
 # stlink_serial = "..."        # the ST-Link on this unit's SWD header: flash and reset by SWD, not
 #                              # through ST's bootloader, which on occasion never comes back as DFU
+# throughput = { ... }         # as for the Shimmer3 below; smoke.bt_throughput reads it
 
 # One Shimmer3 per radio firmware that shipped: RN42 v4.77, RN42 v6.15,
 # RN4678 v1.00.5, RN4678 v1.23. Pair each one's classic side in Windows.
@@ -50,6 +51,10 @@ platform = "shimmer3"
 mac = "000666AABBCC"
 base6_slot = 3
 radio = "RN42 Ver 6.15"
+# What the last release gave on this unit and bench, for fleet.bt_throughput.
+# Without it the item is not_covered, and its reason prints this line with the
+# figures it measured. Record them from a run of the release, not a candidate.
+# throughput = { link_bytes_per_s = 28900, stream_samples_per_s = 842 }
 
 [triage]
 # For triage.py. Keep issue keys out of this public repo: the known-issues file

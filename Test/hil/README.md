@@ -97,6 +97,7 @@ plug and unplug.
 | `rig/power.py` | Hub port power (through bench-tools `hub/hubctl.py`), or the operator |
 | `rig/dock.py` | The dock protocol over the Shimmer3R USB CDC port |
 | `rig/bt.py` | Bluetooth SPP: commands, status, streaming with timestamp checks |
+| `rig/throughput.py` | Bluetooth throughput: the firmware's data-rate test, and a stream that outruns the link, against each unit's baseline |
 | `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial |
 | `rig/sdfile.py` | Reads a Shimmer3R SD data file and checks its records |
 | `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version. USB DFU flashes only a DFU device that appeared after this unit was sent to its bootloader, and only if it is the only one |
@@ -111,6 +112,43 @@ plug and unplug.
 | `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (the matrix) or `soak` (long-running, advisory; `HIL_SOAK_SCALE` sets the length) |
 | `triage.py` | Claude triage of a failed run: advice in `triage.md`, never a verdict |
 | `test_hil_*.py` | Unit tests for the above that need no hardware; run by `make -C Test/host` |
+
+## Throughput baselines
+
+`fleet.bt_throughput` and `smoke.bt_throughput` measure two figures for each
+unit:
+
+- `link_bytes_per_s`: what the firmware's own data-rate test gets through the
+  link;
+- `stream_samples_per_s`: how many samples arrive per second of a 1024 Hz
+  stream with LN accel, gyro, mag, WR accel and VBatt. That load outruns every
+  shipped Shimmer3 radio.
+
+No acceptance figure exists per radio, so each unit is judged against what
+the last release gave on the same unit and bench. Record that in `rig.toml`:
+
+```toml
+[[unit]]
+name = "s3-rn42-615"
+# ...
+throughput = { link_bytes_per_s = 28900, stream_samples_per_s = 842 }
+```
+
+- **Below:** a figure more than 5% below its baseline fails.
+- **Above:** one more than 5% above is noted, to be recorded once that build
+  is released.
+- **No baseline:** the unit is reported `not_covered`, and the reason carries
+  the line to paste. Take it from a run of the released image, not a
+  candidate.
+
+**A shortfall is a finding, not yet a verdict.** On the RN42 v6.15 a
+saturated stream's throughput moves with the timing of the firmware's data
+path. Two functionally correct changes cost 10-20% this way, and each build
+repeats its figure within a fraction of a percent. So confirm a shortfall
+with an interleaved A/B of the release and the candidate on that unit before
+acting on it. Bench conditions move the figures too:
+- close STM32CubeIDE and Consensys;
+- keep other Bluetooth links on the PC idle during the run.
 
 ## What a timestamp check counts
 

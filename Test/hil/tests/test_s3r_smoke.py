@@ -15,11 +15,13 @@ from pathlib import Path
 
 import pytest
 
-from rig import bt, dock, s3r_usb, sdfile
+from rig import bt, dock, s3r_usb, sdfile, throughput
 
 pytestmark = pytest.mark.smoke
 
 STREAM_SECONDS = 10.0
+LINK_SECONDS = 10.0
+LOAD_SECONDS = 20.0
 LOG_SECONDS = 15.0
 # Device-clock rate must match the configured divider exactly; this allows for
 # one tick of quantisation over the run, nothing more.
@@ -159,6 +161,34 @@ def test_bt_stream(btlink, hil_note):
         f"device-clock rate {device_rate:.3f} Hz, configured {inq.rate_hz:.3f} Hz"
     hil_note(f"{st.packets} packets at {inq.rate_hz:.1f} Hz over {covered_s:.2f} of {st.seconds:.2f} s, "
              f"{len(inq.channels)} channels, no loss, {st.jitter} late stamps (max {st.max_jitter_ticks} ticks)")
+
+
+@pytest.mark.hil("smoke.bt_throughput", needs=["shimmer3r", "bt", "usb"])
+def test_bt_throughput(unit, docklink, btlink, hil_note):
+    """What the link carries, and how much of a 1024 Hz stream arrives (TEST_PROCEDURE §5.5).
+
+    rig/throughput.py has the two measurements, judged against the figures
+    the last release gave on this unit and bench (rig.toml); without them
+    the item is not_covered, with the figures to record. If the IF820 carries
+    the whole load, the stream figure sits near 1024 and a fall is samples
+    lost. The load is stored configuration, so InfoMem is put back.
+    """
+    original = docklink.read_infomem()
+    try:
+        rate = throughput.data_rate_test(btlink, LINK_SECONDS)
+        st, inq = throughput.load_stream(btlink, LOAD_SECONDS)
+    finally:
+        docklink.write_infomem(original)
+        restored = _masked(docklink.read_infomem()) == _masked(original)
+    assert restored, "configuration not restored after the throughput load"
+    problems = throughput.defects(rate, st)
+    assert not problems, "; ".join(problems)
+    measured = throughput.figures(rate, st, inq)
+    if not unit.throughput:
+        pytest.skip(f"no throughput baseline for {unit.name} in rig.toml; measured {throughput.as_toml(measured)}")
+    short, note = throughput.judge(measured, unit.throughput, unit.name)
+    hil_note(note)
+    assert not short, "; ".join(short)
 
 
 @pytest.mark.hil("smoke.usb_replug", needs=["shimmer3r", "usb", "hub_port"])
