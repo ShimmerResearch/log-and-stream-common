@@ -16,6 +16,12 @@ document is about consumption.
 >   `LogAndStream_blinkTimerCommon` and `TASK_LED_PHASE_SYNC`. The queued
 >   disconnect check in §3 also postdates `ff242a6`. It was read from
 >   `ShimBt_handleBtRfCommStateChange` and `TASK_BT_MODE_CHECK`.
+> - **Masked sleep entry:** that the hook is entered with interrupts masked,
+>   and how each platform's hook sleeps and unmasks, postdate `ff242a6`. They
+>   were read at `log-and-stream-common` @ `e421b74`, from
+>   `TaskList/shimmer_taskList.c` and `Platform/platform_api.{h,c}`, with the
+>   hooks at `shimmer3-firmware` @ `a886ad7` and `shimmer3r-firmware` @
+>   `38be31b`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `8f800952`. §3's statement that Shimmer3 keeps radio
 >   start out of interrupt handlers postdates `2765ff4`. It depends on two
@@ -53,7 +59,7 @@ TASK_IRQ_ENABLE();
 
 > **The hook is entered with interrupts masked, and must sleep that way.** The
 > check and the sleep are one step so that a task queued by an interrupt in
-> between cannot be slept through (DEV-1222). MSP430's `LPM3_bits + GIE`
+> between cannot be slept through. MSP430's `LPM3_bits + GIE`
 > unmasks and sleeps in one instruction; Cortex-M's `WFI` wakes on an
 > interrupt that is pending while masked, and the hook unmasks after it. A hook
 > that unmasks *before* sleeping brings the race back. See
@@ -242,10 +248,10 @@ A caution from experience rather than from the source:
   Stop**. `Power_StopUntilInterrupt()` exists in `hal_Power.c` but has no
   callers, and its deeper options are commented out. Sleep-on-exit means the
   core returns to sleep after any ISR that does not queue a task
-  (`ShimTask_set` clears the bit). Since DEV-1222 both paths `WFI` with
+  (`ShimTask_set` clears the bit). Both paths `WFI` with
   interrupts still masked and unmask straight after it; the second does so
   before `HAL_ResumeTick`, so the tick stays suspended while sleep-on-exit
-  keeps the core asleep. Before DEV-1222 that path called
+  keeps the core asleep. That path used to call
   `Power_SleepUntilInterrupt()`, which is the same three calls, with
   interrupts unmasked.
 - **Current consumption figures.** No numbers appear in the firmware. Nothing
