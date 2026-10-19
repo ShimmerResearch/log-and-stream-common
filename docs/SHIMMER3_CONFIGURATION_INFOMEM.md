@@ -834,6 +834,11 @@ Two limits on relying on it:
   ceiling rather than reaching the invariant. A LIS2MDL tops out at 100 Hz, so a
   512 Hz trial simply runs the magnetometer at 100 Hz. The correction is applied
   once and not repeated, so this does not churn the stored image.
+- It judges the packet rate as `ShimConfig_getShimmerSamplingFreq()`, which is
+  the configured `32768 / samplingRateTicks`. On Shimmer3R with an odd
+  `samplingRateTicks` the real rate is slightly higher (above), so an ODR that
+  covers the configured rate but not the real one is left alone. Checking
+  against the real rate is the host's job.
 
 Hosts should still derive rather than depend on the correction, so that a device
 running firmware without it is not left in the bad state.
