@@ -305,10 +305,11 @@ sleep and the task would not run until something else woke the part.
 > several NVIC priorities set and clear tasks, and on Cortex-M GCC does `|=` and
 > `&= ~` as a load, a modify and a store. If an interrupt set a task between
 > the load and the store, the store would put back the stale copy and the task
-> would be lost. So `ShimTask_set` (with its idle check),
-> `ShimTask_clear` and the clear in `ShimTask_popNext` save PRIMASK, mask, and
-> restore it. The window is the update alone, and the `popNext` scan stays
-> unmasked (§4.2). Restoring, rather than unmasking, keeps an ISR or an
+> would be lost. So `ShimTask_set`, `ShimTask_clear` and the clear in
+> `ShimTask_popNext` save PRIMASK, mask, and restore it. The window is the
+> update itself, plus, in `ShimTask_set`, the idle check before it. That way the
+> value it reports was read from the same `taskList` the bit is ORed into. The
+> `popNext` scan stays unmasked (§4.2). Restoring, rather than unmasking, keeps an ISR or an
 > already-masked caller masked. **MSP430 masks nothing here:** cl430 updates
 > each 16-bit half with a single `OR.W` or `AND.W` on memory, at every level
 > from -O0 to -O4. Interrupts are taken only between instructions, so each half
