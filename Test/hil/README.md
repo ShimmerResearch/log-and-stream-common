@@ -125,7 +125,12 @@ unit:
   shipped Shimmer3 radio.
 
 Each unit is judged against figures for the same bench, recorded in
-`rig.toml`. A Shimmer3's figures are what the last release gave on that unit:
+`rig.toml`. Once a bench has baselines, keep its `rig.toml` somewhere
+versioned and point `HIL_RIG` at it, so every checkout and colleague reads
+the same figures. Ours is `hil/rig-<bench>.toml` in the private bench-tools
+repository, beside its known-issues file.
+
+A Shimmer3's figures are what the last release gave on that unit:
 
 ```toml
 [[unit]]
