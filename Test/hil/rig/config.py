@@ -129,7 +129,7 @@ def load(path: str | os.PathLike | None = None) -> Rig:
             raise RigError(f"{where}: hub_port must be a hub port number from 1, not {hub_port!r}")
         throughput = u.get("throughput", {})
         if not isinstance(throughput, dict):
-            raise RigError(f"{where}: throughput must be a table, e.g. throughput = {{ link_bytes_per_s = 28900 }}")
+            raise RigError(f"{where}: throughput must be a table, e.g. throughput = {{ link_bytes_per_s = 39315 }}")
         for k, v in throughput.items():
             if k not in THROUGHPUT_KEYS:
                 raise RigError(f"{where}: throughput.{k} is not one of {', '.join(THROUGHPUT_KEYS)}")

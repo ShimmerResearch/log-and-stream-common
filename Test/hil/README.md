@@ -131,7 +131,7 @@ the last release gave on the same unit and bench. Record that in `rig.toml`:
 [[unit]]
 name = "s3-rn42-615"
 # ...
-throughput = { link_bytes_per_s = 28900, stream_samples_per_s = 842 }
+throughput = { link_bytes_per_s = 39315, stream_samples_per_s = 989.1 }
 ```
 
 - **Below:** a figure more than 5% below its baseline fails.
