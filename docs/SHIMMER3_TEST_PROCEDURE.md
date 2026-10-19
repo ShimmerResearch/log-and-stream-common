@@ -739,12 +739,15 @@ A shorter interval raises the rate, but the modules fail there. A host asking
 for 15 ms (Windows' throughput preset) roughly tripled v1.23, to 16.0 KB/s and
 532 of 1024 samples/s, but:
 - **v1.23** then took no connection until it was reset.
-- **v1.00.5** went silent (link supervision timeout) in both floods run at
-  15 ms, holding RTS. The firmware then counted a data-rate-test blockage every
-  100 ms, an EEPROM write each, until reset.
+- **v1.00.5** went silent (link supervision timeout), holding RTS, in the
+  flood held at 15 ms, and in one of three that started before the link
+  settled; the other two came through. The firmware then counted a
+  data-rate-test blockage every 100 ms, an EEPROM write each, until reset.
 
-At 60 ms, v1.00.5 was clean in 7 of 7 runs and v1.23 in 17 of 19. The two
-that failed:
+After the link settled at 60 ms, v1.00.5 was clean in 5 of 5 runs. v1.23 was
+clean in 17 of 19, but all except one of those 19 started their flood about
+2.4 s after connecting, before the link settled, so each ran its first
+fraction of a second at 15 ms. The two that failed:
 - **One run lost a whole notification's worth:** 157 bytes, 33 test packets
   and 8 bytes of their neighbours. A byte lost on the MCU's UART would cost
   one byte, not a notification.

@@ -248,9 +248,10 @@ def test_ble_throughput(rig, unit, base6, hil_note):
     the connection for its first few seconds (60 ms, 15 ms, then 60 ms about
     2.6 s in), and a flood started inside that window ran at 15 ms. That
     triples an RN4678's rate, and it is also where the modules failed on the
-    bench: a v1.00.5 went silent until reset (supervision timeout) twice in
-    two tries, and a v1.23 stopped taking connections. Waiting gives every run
-    the same interval, the one a host settles on (TEST_PROCEDURE §5.5).
+    bench: a v1.00.5 went silent until reset (supervision timeout) in the
+    flood held at 15 ms and in one of three started inside the window, and a
+    v1.23 stopped taking connections. Waiting gives every run the same
+    interval, the one a host settles on (TEST_PROCEDURE §5.5).
     """
     profile = ble.profile_for(unit.radio)
     baseline = rig.ble_throughput_baseline(unit)
