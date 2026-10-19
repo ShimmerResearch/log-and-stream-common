@@ -280,8 +280,8 @@ Version pinning is deliberate. Check the README table before upgrading either.
 
 ### 3.1 Build the configuration that actually ships
 
-**They are not the same on the two platforms**, and getting this wrong means
-signing off a configuration nobody releases.
+**Both platforms ship from Release** (Shimmer3 shipped Debug up to v1.01.006),
+and signing off Debug means signing off a configuration nobody releases.
 
 | Platform | Build | Note |
 |---|---|---|

@@ -120,7 +120,7 @@ distinguish "built with warnings" from "built clean".
 
 ```bat
 eclipsec.exe -noSplash -data <ws> -application com.ti.ccstudio.apps.projectImport -ccs.location <path>\LogAndStream_Shimmer3
-eclipsec.exe -noSplash -data <ws> -application com.ti.ccstudio.apps.projectBuild -ccs.projects LogAndStream_Shimmer3 -ccs.configuration Debug -ccs.buildType full
+eclipsec.exe -noSplash -data <ws> -application com.ti.ccstudio.apps.projectBuild -ccs.projects LogAndStream_Shimmer3 -ccs.configuration Release -ccs.buildType full
 ```
 
 These are the CCS 12.8.1 application names, the version CI uses; 12.7.1 calls
