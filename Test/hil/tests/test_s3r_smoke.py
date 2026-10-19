@@ -248,10 +248,9 @@ def test_ble_throughput(rig, unit, cdc, hil_note):
     The load is stored configuration, so InfoMem is saved to disk and put back.
     """
     with dock.open_when_ready(cdc) as d:
-        try:
-            radio = d.radio_settings()
-        except dock.DockError as e:
-            pytest.skip(f"{unit.name}: no EEPROM radio settings ({e}), so the firmware runs classic only")
+        # A dock that cannot read the page fails the item: that is a broken
+        # dock or device, not a unit without BLE.
+        radio = d.radio_settings()
         if not dock.ble_enabled(radio):
             pytest.skip(f"{unit.name}: BLE is off in its EEPROM (radio settings byte 2 = {radio[2]:#04x}, "
                         "bleEnabled clear)")
