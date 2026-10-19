@@ -218,7 +218,7 @@ def test_bt_throughput(rig, unit, base6, hil_note):
         retries = restore_infomem(base6, original, error, backup)
         if retries:
             hil_note(f"configuration restore needed {len(retries)} retries: {'; '.join(retries)}")
-    problems = throughput.defects(rate, st)
+    problems = throughput.defects(rate, st, inq)
     assert not problems, "; ".join(problems)
     measured = throughput.figures(rate, st, inq)
     if not baseline:

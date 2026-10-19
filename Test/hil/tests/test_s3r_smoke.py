@@ -222,7 +222,7 @@ def test_bt_throughput(rig, unit, cdc, btlink, hil_note):
         raise
     finally:
         _restore_infomem(unit, original, backup, error)
-    problems = throughput.defects(rate, st)
+    problems = throughput.defects(rate, st, inq)
     assert not problems, "; ".join(problems)
     measured = throughput.figures(rate, st, inq)
     if not baseline:

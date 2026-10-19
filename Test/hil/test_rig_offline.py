@@ -908,6 +908,39 @@ class DataRateScan(unittest.TestCase):
         st = throughput.scan_data_rate(rate_packets(range(4)) + b"\xa5\x04\x00")
         self.assertEqual((st.packets, st.resyncs), (4, 0))
 
+    def test_the_uint32_counter_wraps_to_zero_as_one_step(self):
+        st = throughput.scan_data_rate(rate_packets([0xFFFFFFFF, 0, 1]),
+                                       throughput.DataRate(last=0xFFFFFFFE))
+        self.assertEqual((st.packets, st.gaps, st.resyncs, st.last), (3, 0, 0, 1))
+
+    def test_a_gap_across_the_wrap_is_counted(self):
+        st = throughput.scan_data_rate(rate_packets([1]), throughput.DataRate(last=0xFFFFFFFE))
+        self.assertEqual((st.packets, st.gaps, st.lost), (1, 1, 2))
+
+
+# A stream whose stamps span its 20 s: 640 slots of 1024 ticks.
+SPANNING = bt.StreamStats(packets=600, missing=40, seconds=20.0)
+INQ_32HZ = bt.Inquiry(1024, [], 0, b"")
+
+
+class StreamCoverage(unittest.TestCase):
+    """Lost samples between packets show as gaps; a stream that stopped
+    delivering shows none, so its stamps must span the stream."""
+
+    CLEAN = throughput.DataRate(bytes=5, seconds=1.0, packets=1, stopped=True, stop_ack=True)
+
+    def test_a_stream_whose_stamps_span_it_is_clean(self):
+        self.assertEqual(throughput.defects(self.CLEAN, SPANNING, INQ_32HZ), [])
+
+    def test_one_packet_is_not_a_full_delivery(self):
+        st = bt.StreamStats(packets=1, seconds=20.0)
+        self.assertEqual(throughput.samples_per_s(st, INQ_32HZ), 32.0)   # what it would claim
+        self.assertIn("cover", "; ".join(throughput.defects(self.CLEAN, st, INQ_32HZ)))
+
+    def test_a_missing_end_is_a_defect(self):
+        st = bt.StreamStats(packets=100, seconds=20.0)    # 3.1 s of stamps, no gaps
+        self.assertIn("end is missing", "; ".join(throughput.defects(self.CLEAN, st, INQ_32HZ)))
+
 
 class FakeClock:
     def __init__(self):
@@ -955,12 +988,12 @@ class DataRateTest(unittest.TestCase):
         self.assertEqual((st.gaps, st.resyncs), (0, 0))
         # Every byte counts towards the rate; only a partial packet at the cut is not a packet.
         self.assertTrue(0 <= st.bytes - st.packets * throughput.PACKET < throughput.PACKET)
-        self.assertEqual(throughput.defects(st, bt.StreamStats(packets=1)), [])
+        self.assertEqual(throughput.defects(st, SPANNING, INQ_32HZ), [])
 
     def test_a_flood_that_ignores_the_stop_is_a_defect(self):
         st = self.run_test(DataRateSpp(obeys=False))
         self.assertFalse(st.stopped)
-        self.assertIn("still busy", "; ".join(throughput.defects(st, bt.StreamStats(packets=1))))
+        self.assertIn("still busy", "; ".join(throughput.defects(st, SPANNING, INQ_32HZ)))
 
 
 class LoadStreamChecksTheLoad(unittest.TestCase):

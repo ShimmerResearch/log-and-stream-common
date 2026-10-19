@@ -84,6 +84,7 @@ class DataRate:
     resyncs: int = 0            # bytes that did not frame as test packets
     stopped: bool = False       # the flood ended after the stop was sent
     stop_ack: bool = False      # and the last byte before the silence was an ACK
+    last: int = -1              # the last counter framed; -1 before the first
 
     @property
     def bytes_per_s(self) -> float:
@@ -97,10 +98,11 @@ def scan_data_rate(data: bytes, st: DataRate | None = None) -> DataRate:
     ended. A byte that is not 0xA5 there is stray: it is counted and skipped,
     and framing resumes at the next 0xA5 whose counter moves forward by less
     than 2^16 (a 0xA5 inside a counter would rarely do so). The counter starts
-    at 0 when the test starts, so a first counter above 0 is packets lost.
+    at 0 when the test starts, so a first counter above 0 is packets lost. It
+    is a uint32, so after the first packet steps are taken modulo 2^32 and a
+    wrap is a step of one. st.last carries the position, so a scan can resume.
     """
     st = st or DataRate()
-    last = -1
     i, n = 0, len(data)
     while i + PACKET <= n:
         if data[i] != DATA_RATE_TEST_RESPONSE:
@@ -108,7 +110,7 @@ def scan_data_rate(data: bytes, st: DataRate | None = None) -> DataRate:
             i += 1
             continue
         c = int.from_bytes(data[i + 1:i + PACKET], "little")
-        step = c - last
+        step = c + 1 if st.last < 0 else (c - st.last) % (1 << 32)
         if not 1 <= step < 1 << 16:
             st.resyncs += 1
             i += 1
@@ -117,7 +119,7 @@ def scan_data_rate(data: bytes, st: DataRate | None = None) -> DataRate:
             st.gaps += 1
             st.lost += step - 1
         st.packets += 1
-        last = c
+        st.last = c
         i += PACKET
     return st
 
@@ -184,11 +186,19 @@ def figures(rate: DataRate, st: bt.StreamStats, inq: bt.Inquiry) -> dict[str, fl
     return {"link_bytes_per_s": round(rate.bytes_per_s), "stream_samples_per_s": round(samples_per_s(st, inq), 1)}
 
 
-def defects(rate: DataRate, st: bt.StreamStats) -> list[str]:
-    """What fails whatever the baseline: lost test packets, misframing, a stop not obeyed.
+STREAM_COVERAGE = 0.9
 
-    Samples lost from the stream are not here: the load outruns the link by
+
+def defects(rate: DataRate, st: bt.StreamStats, inq: bt.Inquiry) -> list[str]:
+    """What fails whatever the baseline: lost test packets, misframing, a stop
+    not obeyed, a stream whose stamps do not span it.
+
+    Samples lost between packets are not here: the load outruns the link by
     design, and how much arrives is the figure judged against the baseline.
+    But a stream that stopped delivering, or delivered one packet, shows no
+    gap at all, and samples_per_s would read it as everything delivered. So
+    its stamps must cover STREAM_COVERAGE of the stream time; the bench's
+    runs cover 99% or more (19.87 of 20.0 s on the RN42 v6.15 at its worst).
     """
     out = []
     if rate.packets == 0:
@@ -201,8 +211,12 @@ def defects(rate: DataRate, st: bt.StreamStats) -> list[str]:
         out.append("data-rate test: the link was still busy 5 s after the stop")
     elif not rate.stop_ack:
         out.append("data-rate test: the stop was not ACKed")
+    covered_s = (st.packets + st.missing) * inq.divider / bt.TICKS_PER_S
     if st.packets == 0:
         out.append("the stream delivered no packets")
+    elif st.packets < 2 or covered_s < STREAM_COVERAGE * st.seconds:
+        out.append(f"stream: {st.packets} packets whose stamps cover {covered_s:.2f} s of a {st.seconds:.1f} s "
+                   "stream - it started late, or its end is missing")
     if st.resyncs:
         out.append(f"stream: {st.resyncs} bytes did not frame as packets")
     if st.dupes:
