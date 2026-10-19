@@ -228,6 +228,9 @@ def test_bt_throughput(rig, unit, base6, hil_note):
     assert not short, "; ".join(short)
 
 
+BLE_SETTLE_S = 6.0
+
+
 @pytest.mark.hil("fleet.ble_throughput", needs=["shimmer3", "bt", "ble", "dock"])
 def test_ble_throughput(rig, unit, base6, hil_note):
     """fleet.bt_throughput's two measurements over BLE, on a Shimmer3 with an RN4678 (§5.5).
@@ -240,6 +243,14 @@ def test_ble_throughput(rig, unit, base6, hil_note):
     EEPROM has BLE off (bleEnabled) is not_covered too, and a dock that cannot
     read that page fails the item. The load is stored configuration, so the
     whole InfoMem is put back.
+
+    The measurement waits BLE_SETTLE_S after connecting. Windows renegotiates
+    the connection for its first few seconds (60 ms, 15 ms, then 60 ms about
+    2.6 s in), and a flood started inside that window ran at 15 ms. That
+    triples an RN4678's rate, and it is also where the modules failed on the
+    bench: a v1.00.5 went silent until reset (supervision timeout) twice in
+    two tries, and a v1.23 stopped taking connections. Waiting gives every run
+    the same interval, the one a host settles on (TEST_PROCEDURE §5.5).
     """
     profile = ble.profile_for(unit.radio)
     baseline = rig.ble_throughput_baseline(unit)
@@ -253,7 +264,13 @@ def test_ble_throughput(rig, unit, base6, hil_note):
     backup = throughput.save_infomem(unit.name, original)
     error = None
     try:
-        with bt.BtLink(ser=ble.BleSerial(unit.mac, profile=profile)) as link:
+        ser = ble.BleSerial(unit.mac, profile=profile)
+        try:
+            time.sleep(BLE_SETTLE_S)
+        except BaseException:
+            ser.close()
+            raise
+        with bt.BtLink(ser=ser) as link:
             hil_note(link.ser.describe())
             rate = throughput.data_rate_test(link, LINK_SECONDS)
             st, inq = throughput.load_stream(link, LOAD_SECONDS)

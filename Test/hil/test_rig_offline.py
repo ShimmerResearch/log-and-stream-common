@@ -1261,6 +1261,21 @@ def _ble_serial(timeout=0.2):
     return s
 
 
+class BleSerialDescribe(unittest.TestCase):
+    """The connection interval sets an RN4678's BLE rate, so the item's note carries it."""
+
+    def test_the_interval_windows_reports_is_named(self):
+        from types import SimpleNamespace
+        s = _ble_serial()
+        params = SimpleNamespace(connection_interval=48)          # 1.25 ms units
+        s._client = SimpleNamespace(_backend=SimpleNamespace(
+            _requester=SimpleNamespace(get_connection_parameters=lambda: params)))
+        self.assertIn("connection interval 60 ms", s.describe())
+
+    def test_no_interval_where_the_platform_gives_none(self):
+        self.assertNotIn("interval", _ble_serial().describe())
+
+
 class BleSerialReads(unittest.TestCase):
     def test_a_read_waits_for_the_bytes_asked_for(self):
         s = _ble_serial(timeout=2.0)
