@@ -963,6 +963,50 @@ class DataRateTest(unittest.TestCase):
         self.assertIn("still busy", "; ".join(throughput.defects(st, bt.StreamStats(packets=1))))
 
 
+class LoadStreamChecksTheLoad(unittest.TestCase):
+    """A figure from another packet size is not comparable with the baseline,
+    so the load's divider and channel set are both checked before streaming."""
+
+    class Link:
+        def __init__(self, divider, channels):
+            self.inq = bt.Inquiry(divider, list(channels), 0, b"")
+            self.streamed = False
+
+        def command(self, op, args=b""):
+            pass
+
+        def inquiry(self):
+            return self.inq
+
+        def stream(self, seconds, inq):
+            self.streamed = True
+            return bt.StreamStats(packets=1)
+
+        def wait_status(self, mask, want, timeout_s=10.0):
+            return 0
+
+    def test_the_load_streams(self):
+        link = self.Link(throughput.LOAD_DIVIDER, sorted(throughput.LOAD_CHANNELS))
+        st, inq = throughput.load_stream(link, 1.0)
+        self.assertTrue(link.streamed)
+        self.assertEqual(len(inq.channels), 13)
+
+    def test_a_missing_sensor_stops_it_before_streaming(self):
+        link = self.Link(throughput.LOAD_DIVIDER, sorted(throughput.LOAD_CHANNELS - {0x04, 0x05, 0x06}))
+        with self.assertRaisesRegex(bt.BtError, "channels"):
+            throughput.load_stream(link, 1.0)
+        self.assertFalse(link.streamed)
+
+    def test_an_extra_sensor_stops_it_too(self):
+        link = self.Link(throughput.LOAD_DIVIDER, [*sorted(throughput.LOAD_CHANNELS), 0x1C])
+        with self.assertRaisesRegex(bt.BtError, "channels"):
+            throughput.load_stream(link, 1.0)
+
+    def test_a_wrong_rate_stops_it(self):
+        with self.assertRaisesRegex(bt.BtError, "divider"):
+            throughput.load_stream(self.Link(64, sorted(throughput.LOAD_CHANNELS)), 1.0)
+
+
 class ThroughputJudgement(unittest.TestCase):
     BASE = {"link_bytes_per_s": 28900.0, "stream_samples_per_s": 842.0}
 

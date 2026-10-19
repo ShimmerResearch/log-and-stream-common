@@ -50,6 +50,14 @@ SET_SAMPLING_RATE, SET_SENSORS = 0x05, 0x08
 # same bits on both platforms (CONFIGURATION_INFOMEM §2).
 LOAD_SENSORS = bytes.fromhex("e03000")
 LOAD_DIVIDER = 32                            # 1024 Hz
+# The channels that load streams, the same ids on both platforms
+# (STREAMING_DATA_FORMAT §3): a figure from any other set is a different
+# packet size, and not comparable with the baseline.
+LOAD_CHANNELS = frozenset({0x00, 0x01, 0x02,     # LN accel
+                           0x03,                 # VBatt
+                           0x04, 0x05, 0x06,     # WR accel
+                           0x07, 0x08, 0x09,     # mag
+                           0x0A, 0x0B, 0x0C})    # gyro
 TOLERANCE = 0.05
 BACKUP_DIR = Path(__file__).resolve().parent.parent / "out" / "infomem"   # git-ignored
 
@@ -156,6 +164,9 @@ def load_stream(link: bt.BtLink, seconds: float) -> tuple[bt.StreamStats, bt.Inq
     inq = link.inquiry()
     if inq.divider != LOAD_DIVIDER:
         raise bt.BtError(f"inquiry reports divider {inq.divider} after setting {LOAD_DIVIDER}")
+    if set(inq.channels) != LOAD_CHANNELS or len(inq.channels) != len(LOAD_CHANNELS):
+        raise bt.BtError(f"inquiry reports channels {[f'{c:#04x}' for c in inq.channels]} after setting the "
+                         f"load's sensors; expected {sorted(f'{c:#04x}' for c in LOAD_CHANNELS)}")
     st = link.stream(seconds, inq)
     # A stop the firmware did not act on leaves the unit sensing; name that
     # here rather than as a dock timeout in the caller's restore.
