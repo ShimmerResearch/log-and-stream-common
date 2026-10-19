@@ -665,19 +665,26 @@ CYSPP serial service and takes data as notifications, as the web SDK does.
 Shimmer3 hosts stream over classic only, so 5.5.2 does not apply to a
 Shimmer3. 5.5.3 and 5.5.4 stay manual.
 
-**Shimmer3R BLE link rate.** No BLE baseline is recorded yet. The data-rate
-test over BLE (notifications, ATT MTU 517, Windows 11 on an Intel AX201) has
-given two figures that do not agree:
-- 110–126 KB/s on 2 Oct 2026, with a v1.4.18.18 module and firmware from
-  before the transparent path was enabled for v1.4.18.x;
-- 37.5–39.2 KB/s on 19 Oct 2026, from the same unit fitted with one of the
-  Infineon test builds, on current firmware, with notifications of about
-  400 bytes arriving roughly 100 times a second.
+**Shimmer3R BLE link rate.** The data-rate test over BLE, with
+notifications at ATT MTU 517 from Windows 11 on an Intel AX201:
 
-A 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt arrived whole
-over BLE on 19 Oct. Which change cost the link rate is not yet known, so the
-bench records no BLE baseline until a release and a candidate are compared on
-the same module.
+| When | Firmware | Module build | BLE data-rate test |
+|---|---|---|---|
+| 19 Oct 2026, each arm a fresh flash | v1.01.021 release, and main, interleaved | v1.4.18.18, one of the Infineon test builds | 74.2–75.7 KB/s, the two builds the same |
+| 2 Oct 2026 | earlier firmware | v1.4.18.18 | 110–126 KB/s |
+| 19 Oct 2026, before the unit was re-flashed | main | as above | 37.5–39.2 KB/s |
+
+The release and main agree to within 2%, and a web host in Chrome read the
+same as the bench script that day. So what moves the BLE figure is outside
+this firmware: the module build, the host's side of the link, or the unit's
+state. Packet sizes stayed about the same (400 to 450 bytes); what moved was
+how many went per second. What gave the high and the low readings is not
+known. A 1024 Hz stream with LN
+accel, gyro, mag, WR accel and VBatt arrives whole over BLE.
+
+So a bench's BLE row for a build is the low end of fresh-flash runs, with a
+10% margin (§10.4). Repeat a BLE shortfall, and A/B it against the release
+on the same unit, before believing it.
 
 **Shimmer3R classic link rate by IF820 module build.** These figures are the
 Shimmer3R classic baselines. The link rate follows the module's firmware build
@@ -1345,8 +1352,9 @@ The known-issues list and bench facts live with each bench (`[triage]` in
     more than the baseline's tolerance below them (§10.4).
   - **Shimmer3R:** classic figures now exist per IF820 module build (§5.5).
     They come from one unit, one host adapter and the transparent path.
-  - **Shimmer3R BLE:** no baseline yet. The two BLE readings in §5.5 differ
-    by a factor of three, and the change behind that is not identified.
+  - **Shimmer3R BLE:** one module build has a figure (§5.5), from one unit and
+    one host. The same link has read from half to one and a half times it,
+    with the firmware unchanged, and what moves it is not known.
   - **What is still open:** for Shimmer3 radios, the figures are still a
     bench's, not a module's. A figure that belongs to the radio, independent
     of the bench, is not known, so the manual steps still say "compare with
