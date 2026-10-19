@@ -22,6 +22,12 @@ logging, so a parser written from this document reads both.
 >   `Shimmer_Driver/BMPX80/bmpX80.h` for the pressure/temperature widths);
 >   `shimmer3r-firmware` @ `8f800952` — `LogAndStream_Shimmer3R/Core/Src/i2c.c`,
 >   `Core/Src/spi.c`, `Shimmer_Driver/hal_adc.c`.
+> - **Sample spacing (§2.1):** Shimmer3 at `shimmer3-firmware` @ `8c13b48`,
+>   newer than `2765ff4` — `LogAndStream_Shimmer3/main.c` (`TIMER0_B0_ISR`,
+>   `TIMER0_B1_ISR`, `SampleTimerNextCompare`, `SampleTimerStart`). Shimmer3R
+>   at `shimmer3r-firmware` @ `c8c69e71` — `Core/Src/rtc.c` (`RTC_wakeUpSet`,
+>   `HAL_RTCEx_WakeUpTimerEventCallback`), which `Sensing/shimmer_sensing.c`
+>   starts with `samplingRateTicks`.
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/Configuration.java` (`Shimmer3.Channel`,
 >   `SensorBitmap`, `SENSOR_ID`), `driver/ShimmerObject.java`
@@ -243,6 +249,31 @@ your port against that file.
 > Bluetooth buffering and retransmission mean packets can arrive late, in
 > bursts, and with jitter that the timestamp does not show. Always plot against
 > the timestamp, never against arrival time.
+
+> **Sample spacing.** The stamp is taken in the sample interrupt, so a late
+> interrupt can put one stamp a tick (about 30.5 µs) late. What that does to
+> the samples after it depends on the platform and the firmware:
+>
+> - **Shimmer3** re-arms its sample timer from the compare that just fired, so
+>   the samples sit on a fixed grid of `samplingRateTicks` and the rate is
+>   exactly `32768 / samplingRateTicks`. A stamp a tick late is followed by a
+>   step a tick short, so the error never accumulates. An interrupt so late
+>   that the next compare is already due skips the missed slots and keeps the
+>   grid. The magnetometer and pressure pre-sample compares keep their offsets
+>   from it for the whole session.
+> - **Shimmer3 v1.01.006 and earlier** re-armed from the counter as the
+>   interrupt ran, so each tick of latency was added to that period and moved
+>   the grid for good. The mean step is `samplingRateTicks` plus the mean
+>   latency, so a rate measured from the timestamps reads slightly low: under
+>   50 ppm in bench streams at 1024 Hz with the Bluetooth link overloaded, and
+>   none at 512 Hz.
+> - **Shimmer3R** samples on the RTC wake-up timer, which the hardware reloads
+>   itself, so latency has never changed its period. That timer counts at half
+>   the 32768 Hz rate (`RTC_wakeUpSet`), so an odd `samplingRateTicks` gives a
+>   period one tick shorter than configured.
+>
+> A step of about a whole number of periods is a skipped slot, not a timing
+> fault.
 
 ### 2.2 CRC
 
@@ -971,6 +1002,11 @@ to look.
 
 ## Still unverified / not found in code
 
+- **The Shimmer3 sample-timer re-arm is not yet on `main` or in a release**
+  (§2.1). It was read from `shimmer3-firmware` @ `8c13b48`. Pin the **Verified
+  against** block to the first release that carries it, and check this item
+  off. The Shimmer3R period for an odd `samplingRateTicks` was read from the
+  code and has not been measured on a device.
 - **The Shimmer3R magnetometer's busy-bus hold and dropped late reads**
   (§5.2). They come from a shimmer3r-firmware change newer than the pinned
   `8f800952`, so they are described here but not yet verified against a pinned
