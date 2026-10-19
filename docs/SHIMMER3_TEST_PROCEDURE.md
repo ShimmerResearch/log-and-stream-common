@@ -674,13 +674,16 @@ notifications at ATT MTU 517 from Windows 11 on an Intel AX201:
 | 19 Oct 2026, each arm a fresh flash | v1.01.021 release, and main, interleaved | v1.4.18.18, one of the Infineon test builds | 74.2–75.7 KB/s, the two builds the same |
 | 2 Oct 2026 | earlier firmware | v1.4.18.18 public release | 110–126 KB/s (indications: about 32 KB/s) |
 | 19 Oct 2026, before the unit was re-flashed | main | as above | 37.5–39.2 KB/s |
+| 19 Oct 2026, the module re-flashed by OTA | main, and v1.01.021 with v1.4.16.16 | each of v1.4.16.16, the v1.4.18.18 public release and the test build | 72.4–75.2 KB/s on every one |
 
-The release and main agree to within 2%, and a web host in Chrome read the
-same as the bench script that day. So what moves the BLE figure is outside
-this firmware: the host's side of the link, the unit's state, or the module
-build. The last is untested: the high readings came from the public release
-module and the 19 Oct ones from a test build, so one run of the release
-module on the same unit would settle it. Packet sizes stayed about the same (400 to 450 bytes); what moved was
+The release and main agree to within 2%. Every module build read the same,
+the public release module that gave 110–126 KB/s on 2 Oct included. Two
+other hosts (another Windows PC and an Android phone) read the same as this
+one. So what moves the BLE figure is neither this firmware, nor the module
+build, nor one host's Bluetooth stack. What is left is the bench's radio
+environment, or settings kept in this unit's module that the firmware does
+not rewrite at boot (the module's settings were reset to factory defaults on
+10 Oct, between the high readings and the others). Packet sizes stayed about the same (400 to 450 bytes); what moved was
 how many went per second. What gave the high and the low readings is not
 known. A 1024 Hz stream with LN
 accel, gyro, mag, WR accel and VBatt arrives whole over BLE.
