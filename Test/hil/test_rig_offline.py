@@ -7,8 +7,10 @@ is not installed (CI), a stand-in is put in its place, and nothing here opens a
 port.
 """
 
+import asyncio
 import sys
 import threading
+import time
 import types
 import unittest
 from contextlib import contextmanager
@@ -1244,6 +1246,27 @@ class BleSerialReads(unittest.TestCase):
             s.read(1)
         with self.assertRaises(ble.BleError):
             s.write(b"\x2e")
+
+    def test_close_wakes_a_reader_waiting_with_no_timeout(self):
+        s = _ble_serial(timeout=None)
+        s._loop = asyncio.new_event_loop()
+        s._thread = threading.Thread(target=lambda: None)
+        s._thread.start()
+        raised = []
+
+        def reader():
+            try:
+                s.read(1)
+            except ble.BleError as e:
+                raised.append(e)
+
+        t = threading.Thread(target=reader, daemon=True)
+        t.start()
+        time.sleep(0.1)
+        s.close()
+        t.join(2.0)
+        self.assertFalse(t.is_alive(), "read() still blocked after close()")
+        self.assertEqual(len(raised), 1)
 
     def test_reset_input_buffer_drops_what_is_queued(self):
         s = _ble_serial()

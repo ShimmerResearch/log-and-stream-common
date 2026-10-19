@@ -662,8 +662,9 @@ other check.
 `smoke.ble_throughput` is the same short form over the Shimmer3R's BLE link,
 which makes 5.5.2 automatic for the Shimmer3R. It connects to the IF820's
 CYSPP serial service and takes data as notifications, as the web SDK does.
-Shimmer3 hosts stream over classic only, so 5.5.2 does not apply to a
-Shimmer3. 5.5.3 and 5.5.4 stay manual.
+A Shimmer3 with an RN4678 supports BLE too (§2.2 of the protocol document),
+but no item measures it yet, so on a Shimmer3 5.5.2 stays manual. 5.5.3 and
+5.5.4 stay manual on both.
 
 **Shimmer3R BLE link rate.** The data-rate test over BLE, with
 notifications at ATT MTU 517 from Windows 11 on an Intel AX201:

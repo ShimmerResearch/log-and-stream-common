@@ -160,7 +160,11 @@ class BleSerial:
         except Exception:
             pass
         finally:
-            self._lost = True
+            # Under the condition, and with everyone told, as _on_disconnect does:
+            # a reader blocked in read() then sees the link is gone at once.
+            with self._cond:
+                self._lost = True
+                self._cond.notify_all()
             if self._loop.is_running():
                 self._loop.call_soon_threadsafe(self._loop.stop)
             self._thread.join(5.0)
