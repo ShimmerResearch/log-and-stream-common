@@ -684,9 +684,9 @@ Caveats:
 - **Figures move from day to day.** One test build read 168.8–170.3 KB/s on
   one day and 152–161 KB/s two days later. So a bench's rows for these
   builds carry a 10% margin, not 5% (§10.4).
-- **Socket vs COM port is unchecked.** The automated item reads through the
-  Bluetooth COM port, not a socket. Whether that path reads lower has not
-  been checked.
+- **Socket vs COM port.** The automated item reads through the Bluetooth COM
+  port, not a socket. That path doesn't read lower: on 19 Oct 2026 the same
+  unit, on one of the test builds, gave 174.3 KB/s through it.
 
 **The baud ladder is per module, and the constraints are real:**
 
