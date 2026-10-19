@@ -38,6 +38,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from . import bt
 from .config import THROUGHPUT_KEYS
@@ -50,6 +51,19 @@ SET_SAMPLING_RATE, SET_SENSORS = 0x05, 0x08
 LOAD_SENSORS = bytes.fromhex("e03000")
 LOAD_DIVIDER = 32                            # 1024 Hz
 TOLERANCE = 0.05
+BACKUP_DIR = Path(__file__).resolve().parent.parent / "out" / "infomem"   # git-ignored
+
+
+def save_infomem(unit_name: str, image: bytes) -> Path:
+    """Keep a unit's InfoMem on disk before the load changes it.
+
+    The load is stored configuration and the caller writes InfoMem back
+    afterwards; if that fails, this file is the copy to write back by hand.
+    """
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    p = BACKUP_DIR / f"{unit_name}_{time.strftime('%Y%m%d_%H%M%S')}.bin"
+    p.write_bytes(image)
+    return p
 
 
 @dataclass

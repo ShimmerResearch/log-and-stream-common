@@ -163,8 +163,38 @@ def test_bt_stream(btlink, hil_note):
              f"{len(inq.channels)} channels, no loss, {st.jitter} late stamps (max {st.max_jitter_ticks} ticks)")
 
 
+RESTORE_ATTEMPTS = 3
+
+
+def _restore_infomem(unit, original: bytes, backup: Path, load_error: BaseException | None) -> None:
+    """Write InfoMem back on a dock link opened now, retrying while the USB re-enumerates.
+
+    A link opened before the load can be dead by the end of it: on the bench
+    (19 Oct 2026) the first write after a docked throughput run failed with
+    "The device does not recognize the command" on a handle held across it.
+    Runs in a finally block, so a failure names the load's own error and the
+    backup to restore from by hand, and is chained from the load's error.
+    """
+    seen = []
+    for _ in range(RESTORE_ATTEMPTS):
+        try:
+            port = s3r_usb.wait_cdc(unit.usb_serial, 30)
+            with dock.open_when_ready(port) as d:
+                d.write_infomem(original)
+                if _masked(d.read_infomem()) != _masked(original):
+                    raise dock.DockError("read back differs")
+            return
+        except (dock.DockError, OSError) as e:   # serial.SerialException and TimeoutError are OSErrors
+            seen.append(str(e))
+            time.sleep(2.0)
+    msg = f"InfoMem not restored after the throughput load ({'; '.join(seen)}); the original is in {backup}"
+    if load_error is not None:
+        raise dock.DockError(f"{msg} - after the load itself failed with {load_error!r}") from load_error
+    raise dock.DockError(msg)
+
+
 @pytest.mark.hil("smoke.bt_throughput", needs=["shimmer3r", "bt", "usb"])
-def test_bt_throughput(rig, unit, docklink, btlink, hil_note):
+def test_bt_throughput(rig, unit, cdc, btlink, hil_note):
     """What the link carries, and how much of a 1024 Hz stream arrives (TEST_PROCEDURE §5.5).
 
     rig/throughput.py has the two measurements, judged against this bench's
@@ -173,19 +203,25 @@ def test_bt_throughput(rig, unit, docklink, btlink, hil_note):
     with the figures to record. The module is checked to be the version
     rig.toml names first, because that picks the baseline. If the IF820
     carries the whole load, the stream figure sits near 1024 and a fall is
-    samples lost. The load is stored configuration, so InfoMem is put back.
+    samples lost. The load is stored configuration, so InfoMem is saved to
+    disk and put back.
     """
-    mismatch = throughput.radio_mismatch(unit.radio, docklink.bt_version())
+    with dock.open_when_ready(cdc) as d:
+        reported = d.bt_version()
+        original = bytes(d.read_infomem())
+    mismatch = throughput.radio_mismatch(unit.radio, reported)
     assert not mismatch, mismatch
     baseline = rig.throughput_baseline(unit)
-    original = docklink.read_infomem()
+    backup = throughput.save_infomem(unit.name, original)
+    error = None
     try:
         rate = throughput.data_rate_test(btlink, LINK_SECONDS)
         st, inq = throughput.load_stream(btlink, LOAD_SECONDS)
+    except BaseException as e:
+        error = e
+        raise
     finally:
-        docklink.write_infomem(original)
-        restored = _masked(docklink.read_infomem()) == _masked(original)
-    assert restored, "configuration not restored after the throughput load"
+        _restore_infomem(unit, original, backup, error)
     problems = throughput.defects(rate, st)
     assert not problems, "; ".join(problems)
     measured = throughput.figures(rate, st, inq)

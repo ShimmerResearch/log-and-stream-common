@@ -120,7 +120,8 @@ STREAM_DIVIDER = 640    # 51.2 Hz: well inside every shipped radio's capacity
 RESTORE_ATTEMPTS = 3
 
 
-def restore_infomem(base6, original: bytes, stream_error: BaseException | None) -> list[str]:
+def restore_infomem(base6, original: bytes, stream_error: BaseException | None,
+                    backup=None) -> list[str]:
     """Write the unit's own InfoMem (from offset 0) back; return what each failed attempt saw.
 
     Runs in a finally block, so a failure here must not replace the stream's
@@ -139,6 +140,8 @@ def restore_infomem(base6, original: bytes, stream_error: BaseException | None) 
             seen.append(str(e))
             time.sleep(1.0)
     msg = f"could not restore the configuration over the dock: {seen}"
+    if backup is not None:
+        msg += f"; the original is in {backup}"
     if stream_error is not None:
         raise dock.DockError(f"{msg} - after the stream itself failed with {stream_error!r}") from stream_error
     raise dock.DockError(msg)
@@ -201,7 +204,8 @@ def test_bt_throughput(rig, unit, base6, hil_note):
     baseline = rig.throughput_baseline(unit)
     base6.select(unit.base6_slot)
     with dock.open_when_ready(base6.uart_port) as d:
-        original = d.read_infomem()
+        original = bytes(d.read_infomem())
+    backup = throughput.save_infomem(unit.name, original)
     error = None
     try:
         with open_bt(unit) as link:
@@ -211,7 +215,7 @@ def test_bt_throughput(rig, unit, base6, hil_note):
         error = e
         raise
     finally:
-        retries = restore_infomem(base6, original, error)
+        retries = restore_infomem(base6, original, error, backup)
         if retries:
             hil_note(f"configuration restore needed {len(retries)} retries: {'; '.join(retries)}")
     problems = throughput.defects(rate, st)
