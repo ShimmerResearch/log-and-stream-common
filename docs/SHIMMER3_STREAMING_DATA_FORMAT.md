@@ -1008,10 +1008,10 @@ to look.
 
 ## Still unverified / not found in code
 
-- **The Shimmer3 sample-timer re-arm is not yet on `main` or in a release**
-  (§2.1). It was read from `shimmer3-firmware` @ `8c13b48`. Pin the **Verified
-  against** block to the first release that carries it, and check this item
-  off.
+- **The Shimmer3 sample-timer re-arm is on `main` but not yet in a release**
+  (§2.1). It was read from `shimmer3-firmware` @ `8c13b48`, which `main` merged
+  as `ebc21c2`. Pin the **Verified against** block to the first release that
+  carries it, and check this item off.
 - ~~**The Shimmer3R period for an odd `samplingRateTicks`.**~~ — resolved:
   measured on a Shimmer3R running v1.01.021, whose `RTC_wakeUpSet` is the one
   at `c8c69e71`. In seven 15 s SD logs, every step was exactly
