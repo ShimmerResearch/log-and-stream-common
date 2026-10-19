@@ -1347,6 +1347,20 @@ stream, the device's transmit ring fills, and the firmware drops **data packets*
 that will not fit rather than blocking its sampling loop. A host sees each one as
 a gap in the timestamps.
 
+Packets are dropped whole, so what is sent arrives whole: a data packet that
+arrives a byte short is a defect, not flow control. Shimmer3 firmware up to and
+including v1.01.006 has that defect. While the radio is applying flow control
+(RTS), the task that queues a packet and the radio's RTS interrupt can both
+start the UART transmit chain at once. The second start then writes over a byte
+still waiting in the UART, and the host receives that packet one byte short. On
+the bench it was usually a packet's second byte, the low byte of its
+timestamp, and once a byte mid-packet. It was seen on an RN42 v6.15 at
+1024 Hz; the code is the same for every Shimmer3 radio. Fixed by making the test and the start one step
+(`ShimBt_sendNextCharIfNotInProgress()`), and by leaving the chain marked busy
+while RTS pauses it (`BT_rtsInterrupt()` in `shimmer3-firmware`). A host parser
+should confirm each packet boundary rather than trust the length: the next
+packet's `0x00`, or the link CRC (§3.3).
+
 **Command replies are not dropped.** ACKs, NACKs, responses and status pushes
 take priority over data packets:
 
