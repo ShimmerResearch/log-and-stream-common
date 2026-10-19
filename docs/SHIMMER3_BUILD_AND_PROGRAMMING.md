@@ -183,8 +183,8 @@ optimisation level is the only intended difference.
 
 **CI builds both.** `shimmer3-firmware`'s `build-check.yml` builds Debug and
 Release on every pull request and every push to `main`, one matrix leg each.
-A setting that breaks only Release now fails in review, rather than going
-unnoticed as it did before DEV-1217. A green Release leg shows only that
+A setting that breaks only Release now fails in review. Before, nothing built
+Release, so it went stale unnoticed. A green Release leg shows only that
 Release compiles and links. It is not a substitute for the bench.
 
 ### 4.3 Do not commit regenerated makefiles
