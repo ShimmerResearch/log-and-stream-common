@@ -642,6 +642,52 @@ separates *link* throughput from *sampling* throughput.
 | 5.5.3 | Repeat at each baud the fitted module supports | See the ladder below |
 | 5.5.4 | Climb the sampling-rate ladder with all channels on until packets drop | Note the rate it breaks at, and compare with the previous release |
 
+**Automated part.** `fleet.bt_throughput` (Shimmer3) and `smoke.bt_throughput`
+(Shimmer3R) run a short form of 5.5.1 at the unit's own baud, with 10 s
+instead of 10 min. They then add a fixed point on the ladder: 1024 Hz with LN
+accel, gyro, mag, WR accel and VBatt, which outruns every shipped Shimmer3
+radio. Each figure is compared with what the previous release gave on the same
+unit and bench (§10.4).
+
+The fixed load matters as much as the link rate. The data-rate test bypasses
+the sample path, but how much of a saturated stream arrives follows that
+path's timing:
+- **Reply path:** a change to it cost a fifth of the delivered samples on the
+  RN42 v6.15.
+- **Sample-timer ISR:** a change to it cost 9.8%.
+
+Both changes were functionally correct, and both were invisible to every
+other check. 5.5.2 to 5.5.4 stay manual.
+
+**Shimmer3R classic link rate by IF820 module build.** These figures are the
+Shimmer3R classic baselines. The link rate follows the module's firmware build
+far more than the sensor's, so they are kept per build:
+
+| IF820 module build | Classic data-rate test |
+|---|---|
+| v1.4.16.16 (current production) | 153–154 KB/s |
+| v1.4.18.18 public release | 76–77 KB/s |
+| v1.4.18.18, two Infineon test builds | 168.8–170.3 and 169.2–169.8 KB/s |
+
+How they were measured (10 Oct 2026):
+- **Unit and host:** one Shimmer3R, with its module configuration reset to
+  v1.4.18.18 defaults, against Windows 11 on an Intel AX201.
+- **Path:** the transparent UART-to-SPP data path (§2.1 of the protocol
+  document).
+- **Method:** the data-rate test over a classic RFCOMM socket, 3 × 5 s per
+  build, no packet missing. KB is 1024 bytes.
+
+Caveats:
+- **The data path matters.** On `SPP_SEND` framing, which Shimmer3R
+  firmware used for every v1.4.17+ module before the transparent path was
+  enabled for v1.4.18.x, every v1.4.18 build tops out near 75 KB/s.
+- **Figures move from day to day.** One test build read 168.8–170.3 KB/s on
+  one day and 152–161 KB/s two days later. So a bench's rows for these
+  builds carry a 10% margin, not 5% (§10.4).
+- **Socket vs COM port.** The automated item reads through the Bluetooth COM
+  port, not a socket. That path doesn't read lower: on 19 Oct 2026 the same
+  unit, on one of the test builds, gave 174.3 KB/s through it.
+
 **The baud ladder is per module, and the constraints are real:**
 
 | Baud | Supported on |
@@ -1126,6 +1172,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.bt_stream` | 10 s stream: packet framing, no lost or duplicate samples, the rate on the device clock |
 | `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
+| `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt |
 
 The **fleet** tier is §5.1 made automatic: Shimmer3, one unit per radio
 firmware that shipped (RN42 v4.77 and v6.15, RN4678 v1.00.5 and v1.23), all
@@ -1141,6 +1188,40 @@ flash.
 | `fleet.config_roundtrip` | The configuration reads back exactly as written |
 | `fleet.reboot` | Five resets through the RST line; every boot answers the dock with the same radio banner (§5.1.5) |
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
+| `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |
+
+**The throughput baselines.** The firmware gives no acceptance rate per radio
+or baud. These documents give only the Shimmer3R's per-module figures (§5.5).
+So the two throughput items judge each unit against figures for the same
+bench, from `rig.toml`, built up in two layers:
+
+- **Per radio build:** `[throughput_by_radio]` holds one row per radio build,
+  keyed by the exact `radio` string a unit names. A Shimmer3R's link rate
+  follows its IF820 module build, which re-flashing the module changes, so
+  its rows are the §5.5 figures for that build.
+- **Per unit:** the unit's own
+  `throughput = { link_bytes_per_s = ..., stream_samples_per_s = ... }`
+  entry, which overrides its radio row key by key. A Shimmer3's figures are
+  what the previous release gave on that unit.
+- **Module check:** the Shimmer3R item first checks that the module reports
+  the version its `radio` names. Test builds report their release's version,
+  so which build of a version is fitted is for `rig.toml` to say.
+
+How each figure is judged:
+
+- **Below:** a figure more than 5% under its baseline fails. The same build
+  repeats within 0.3% when run interleaved, so the margin is for bench drift.
+  A row may set its own `tolerance` instead. The Shimmer3R module rows use 10%
+  for the day-to-day spread §5.5 records.
+- **Above:** a figure more than its tolerance over it is noted.
+- **No baseline:** the unit is reported `not_covered`, with the measured
+  figures in the reason.
+- **Restore:** the load is stored configuration, so InfoMem is written back
+  afterwards.
+
+Treat a shortfall as a finding, and confirm it with an interleaved A/B of
+release and candidate on that unit before acting on it.
+`Test/hil/README.md` says how to record a baseline.
 
 The **release** tier (Shimmer3R so far) runs the configuration matrix in
 `Test/hil/matrix/s3r_release.toml`. There are about 22 rows, chosen so every
@@ -1232,12 +1313,17 @@ The known-issues list and bench facts live with each bench (`[triage]` in
   live in the hardware documentation, not in this repository. The step is listed
   without a number deliberately.
 - **Throughput acceptance figures (§5.5).** `SET_DATA_RATE_TEST` and the
-  `SpeedTest/` scripts measure a rate, but no expected rate is recorded anywhere
-  in the firmware or docs, per module or per baud. The steps therefore say
-  "record and compare with the previous release" rather than naming a threshold.
-  **Capturing one release's numbers would turn §5.5 from a trend check into a
-  pass/fail gate**, and is the single cheapest improvement available to this
-  section.
+  `SpeedTest/` scripts measure a rate, but the firmware defines no acceptance
+  threshold, per module or per baud.
+  - **What is now a gate:** each bench records the previous release's figures
+    per unit in its `rig.toml`. The throughput items fail a candidate that falls
+    more than the baseline's tolerance below them (§10.4).
+  - **Shimmer3R:** classic figures now exist per IF820 module build (§5.5).
+    They come from one unit, one host adapter and the transparent path.
+  - **What is still open:** for Shimmer3 radios, the figures are still a
+    bench's, not a module's. A figure that belongs to the radio, independent
+    of the bench, is not known, so the manual steps still say "compare with
+    the previous release".
 - **Which CYW20820 / EZ-Serial firmware versions are qualified (§5.1).** The
   Shimmer3 side names six RN4678 versions and three RN41/RN42 versions in code,
   so the matrix rows are exact. The Shimmer3R side has no equivalent version
