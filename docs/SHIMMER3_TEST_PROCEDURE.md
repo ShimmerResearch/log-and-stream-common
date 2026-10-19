@@ -669,9 +669,15 @@ other check.
 `smoke.ble_throughput` is the same short form over the Shimmer3R's BLE link,
 which makes 5.5.2 automatic for the Shimmer3R. It connects to the IF820's
 CYSPP serial service and takes data as notifications, as the web SDK does.
-A Shimmer3 with an RN4678 supports BLE too (§2.2 of the protocol document),
-but no item measures it yet, so on a Shimmer3 5.5.2 stays manual. 5.5.3 and
-5.5.4 stay manual on both.
+`fleet.ble_throughput` does the same on a Shimmer3 with an RN4678 (§2.2 of
+the protocol document), over the RN4678's transparent UART service. An RN41 or
+RN42 has no BLE side, so its units are not covered. 5.5.3 and 5.5.4 stay
+manual on both platforms.
+
+On 19 Oct 2026 the RN4678 units' BLE carried a small part of their classic
+rate, on the v1.01.006 release: 9.5 KB/s on an RN4678 v1.00.5 and 5.0 KB/s
+on an RN4678 v1.23, at ATT MTU 160. In one of two runs the v1.23 lost 33
+data-rate packets in one gap, which is a failure whatever the baseline.
 
 **Shimmer3R BLE link rate.** The data-rate test over BLE, with
 notifications at ATT MTU 517 from Windows 11 on an Intel AX201:
@@ -1247,6 +1253,7 @@ flash.
 | `fleet.reboot` | Five resets through the RST line; every boot answers the dock with the same radio banner (§5.1.5) |
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |
+| `fleet.ble_throughput` | As `fleet.bt_throughput`, over BLE (the RN4678's transparent UART service), on the units with an RN4678. `not_covered` on an RN41 or RN42, or when the EEPROM has BLE off |
 
 **The throughput baselines.** The firmware gives no acceptance rate per radio
 or baud. These documents give only the Shimmer3R's per-module figures (§5.5).

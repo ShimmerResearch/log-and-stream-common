@@ -1209,6 +1209,20 @@ class BleBaselineConfig(unittest.TestCase):
                 self.assertEqual("ble" in s3r.capabilities(), have)
                 self.assertNotIn("ble", s3.capabilities())
 
+    def test_an_rn4678_shimmer3_has_ble_and_an_rn42_does_not(self):
+        rn4678 = config.Unit(name="a", platform="shimmer3", mac="44B7D02FA615", radio="RN4678 V1.23")
+        rn42 = config.Unit(name="b", platform="shimmer3", mac="000666BAD1E8", radio="RN42 Ver 6.15")
+        with mock.patch.object(config, "ble_available", lambda: True):
+            self.assertIn("ble", rn4678.capabilities())
+            self.assertNotIn("ble", rn42.capabilities())
+
+    def test_each_module_family_has_its_own_ble_service(self):
+        self.assertIs(ble.profile_for("IF820 v1.4.18.18 test_254"), ble.CYSPP)
+        self.assertIs(ble.profile_for("RN4678 V1.00.5"), ble.MCHP_TRANSPARENT)
+        self.assertIsNone(ble.profile_for("RN42 Ver 4.77"))
+        self.assertIsNone(ble.profile_for(None))
+        self.assertNotEqual(ble.MCHP_TRANSPARENT.notify, ble.MCHP_TRANSPARENT.write)
+
     def test_the_figures_to_record_name_the_ble_table(self):
         line = throughput.as_toml({"link_bytes_per_s": 115000, "stream_samples_per_s": 1024.0}, "ble_throughput")
         self.assertEqual(line, "ble_throughput = { link_bytes_per_s = 115000, stream_samples_per_s = 1024 }")
@@ -1242,6 +1256,7 @@ def _ble_serial(timeout=0.2):
     s = ble.BleSerial.__new__(ble.BleSerial)
     s.timeout, s.address, s.mtu, s.flow_indications = timeout, "CF:9B:9E:36:15:BC", 247, 0
     s.write_size = s.mtu - ble.ATT_HEADER
+    s.profile = ble.CYSPP
     s._buf, s._cond, s._lost, s._client = bytearray(), threading.Condition(), False, object()
     return s
 
@@ -1349,6 +1364,20 @@ class BleSerialReads(unittest.TestCase):
         s._on_data(None, bytearray(b"\x01\x02"))
         s.reset_input_buffer()
         self.assertEqual(s.in_waiting, 0)
+
+    def test_a_write_goes_to_the_profiles_write_characteristic(self):
+        s = _ble_serial()
+        s.profile = ble.MCHP_TRANSPARENT
+        sent = []
+
+        class Client:
+            def write_gatt_char(self, char, data, response):
+                return (char, data, response)
+
+        s._client = Client()
+        s._call = lambda call, _timeout: sent.append(call)
+        s.write(b"\x2e")
+        self.assertEqual(sent, [(ble.MCHP_TRANSPARENT.write, b"\x2e", False)])
 
     def test_a_write_is_split_to_fit_the_att_mtu(self):
         s = _ble_serial()
