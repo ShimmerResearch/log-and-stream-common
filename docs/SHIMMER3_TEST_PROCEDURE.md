@@ -23,6 +23,9 @@ and — as importantly — what each layer of testing cannot tell you.
 >   `promote-release.yml`, on their release-gate pull-request branches.
 > - **What `build-check.yml` builds (§3):** `shimmer3-firmware` @ `f67cf0a`
 >   and `shimmer3r-firmware` @ `c8c69e71`.
+> - **Which configuration ships on Shimmer3 (§3, §3.1):** `shimmer3-firmware`
+>   @ `de459e7` — `build-release-firmware.yml` and `promote-release.yml`, on
+>   its pull-request branch.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are

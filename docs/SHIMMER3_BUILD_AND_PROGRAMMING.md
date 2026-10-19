@@ -35,6 +35,10 @@ wire, not over the air.
 > - What CI builds (§4.2, and "Whether CI builds both platforms" under "Still
 >   unverified") was read from `build-check.yml` in `shimmer3-firmware` @
 >   `f67cf0a` and `shimmer3r-firmware` @ `c8c69e71`.
+> - Which configuration ships (§4.2: the `build_mode` default, the release
+>   workflow's candidate check and `promote-release.yml`'s `SHIPPING_CONFIG`)
+>   was read from `build-release-firmware.yml` and `promote-release.yml` in
+>   `shimmer3-firmware` @ `de459e7`, on its pull-request branch.
 
 **Source references:**
 
