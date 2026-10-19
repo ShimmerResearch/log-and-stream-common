@@ -29,12 +29,12 @@ wire, not over the air.
 >   handlers.
 > - §4.2's optimisation settings, and §4.5's `-O2` stack figures, are newer
 >   still. The settings were read from `shimmer3-firmware` @ `a886ad7` with
->   Release raised to `-O2 --opt_for_speed=2`. The figures and the DEV-1236
->   bench used `shimmer3-firmware` @ `d82c9ef` with this repository @ `08c84d8`
->   as its submodule.
+>   Release raised to `-O2 --opt_for_speed=2`. The figures and §4.2's
+>   throughput bench used `shimmer3-firmware` @ `d82c9ef` with this repository
+>   @ `08c84d8` as its submodule.
 > - What CI builds (§4.2, and "Whether CI builds both platforms" under "Still
->   unverified") was read from `build-check.yml` in `shimmer3-firmware` @ `f67cf0a` and
->   `shimmer3r-firmware` @ `c8c69e71`.
+>   unverified") was read from `build-check.yml` in `shimmer3-firmware` @
+>   `f67cf0a` and `shimmer3r-firmware` @ `c8c69e71`.
 
 **Source references:**
 
@@ -138,13 +138,13 @@ optimisation level:
 | Configuration | Optimisation | Ships |
 |---|---|---|
 | `Debug` | `-O0 --opt_for_speed=0` | yes |
-| `Release` | `-O2 --opt_for_speed=2` | not yet: the DEV-1217 candidate |
+| `Release` | `-O2 --opt_for_speed=2` | not yet: the optimised candidate |
 
 In both, `main.c` overrides only the speed trade-off, to `--opt_for_speed=5`,
 so it takes its configuration's `-O` level. A headless Debug build at
 `LogAndStream_Shimmer3_v1.01.006` is byte-identical to that release's `.txt`.
-Before DEV-1217 the Release configuration was a stale template that did not
-build:
+Before it was brought in line with Debug, the Release configuration was a
+stale template that did not build:
 
 - no include paths
 - no `SHIMMER3` define
@@ -153,8 +153,8 @@ build:
 - a 160-byte stack and heap, which never boots
 - `libc.a` before `libmath.a`
 
-**Why `-O2` at speed 2.** DEV-1217 limited the choice to speed 2 or 3, and a
-bench on 19 Oct 2026 (DEV-1236) found no reason to pay for 3:
+**Why `-O2` at speed 2.** The choice was between speeds 2 and 3, and a bench
+on 19 Oct 2026 found no reason to pay for 3:
 
 - **Throughput.** At 1024 Hz with five sensors over an RN42 v6.15 link, which
   the data outruns, both delivered what v1.01.006 does: about 19,600 packets
@@ -167,9 +167,10 @@ bench on 19 Oct 2026 (DEV-1236) found no reason to pay for 3:
 
 **Before Release ships**, it still needs three things:
 
-1. DEV-1222's sample-timer re-arm and task-loop lost wake-up fixes
-   (`shimmer3-firmware` #119 and #120, this repository's #174).
-2. The full bench procedure on the Release image.
+1. The sample-timer re-arm and task-loop lost wake-up fixes, in the image
+   under test. Optimisation makes both races likelier, so the bench must run
+   with them in.
+2. The full bench procedure on that Release image.
 3. The release workflow's default, its Debug-only candidate check and
    `promote-release.yml` changed to Release.
 
@@ -403,7 +404,7 @@ and IC. See
     (manual: pick the version part to bump and the build mode). Shimmer3R
     builds via `xanderhendriks/action-build-stm32cubeide`, Shimmer3 via a
     cached CCS install under `/opt/ti/ccs`.
-- ~~The Shimmer3 Release configuration failure~~ — resolved in DEV-1217. Release
+- ~~The Shimmer3 Release configuration failure~~ — resolved. Release
   lacked the include paths, then the `SHIMMER3` define, and had several other
   stale settings. It now matches Debug apart from its optimisation level
   (§4.2).
