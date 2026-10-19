@@ -323,8 +323,11 @@ them, as the web SDK does:
 
 A host takes data as notifications on the unacknowledged characteristic,
 which carry far more than indications do, and subscribing to RX flow tells
-the module the host honours its flow control. The RN4678's BLE service on a
-Shimmer3 has different UUIDs, which no host here uses.
+the module the host honours its flow control. On the bench (19 Oct 2026,
+Windows 11 on an Intel AX201, module builds v1.4.16.16 and v1.4.18.18) the
+link came up at ATT MTU 517, with 514 bytes per write without response;
+another host may negotiate less. The RN4678's BLE service on a Shimmer3 has
+different UUIDs, which no host here uses.
 
 **MTU and fragmentation.** A BLE notification carries at most one ATT MTU worth
 of payload, so any response longer than that is split across notifications. The
@@ -3603,15 +3606,15 @@ them.
   v1.4.18.x all use the transparent bridge, which never sends `SPP_SEND`.
   **Needs re-measuring** before any other `SPP_SEND`-path module firmware is
   used, since a limit set even one byte too high stops all data.
-- **BLE GATT service and characteristic UUIDs, and the negotiated ATT MTU.**
-  Nothing in `log-and-stream-common` or either platform repository declares a
-  GATT service: the Bluetooth module terminates GATT itself and hands the
-  firmware a reassembled byte stream ([§2.2](#22-ble)). The one MTU figure in the
-  firmware is Shimmer3's `BLE_MTU_SIZE` 157
-  (`shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.h:242`), which is the RN4678's
-  working value and not necessarily what a given host negotiates. The Shimmer3R
-  equivalent is inside the CYW20820's EZ-Serial configuration. **Needs a
-  capture** from a host stack on each generation.
+- **The Shimmer3's BLE GATT UUIDs, and the ATT MTU it negotiates.** No
+  firmware source declares a GATT service: the Bluetooth module terminates GATT
+  itself and hands the firmware a reassembled byte stream ([§2.2](#22-ble)).
+  For the Shimmer3R this is settled on the bench: the CYSPP UUIDs in §2.2,
+  ATT MTU 517 against Windows 11. The one MTU figure in the Shimmer3 firmware
+  is `BLE_MTU_SIZE` 157 (`shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.h:242`),
+  the RN4678's working value and not necessarily what a given host negotiates.
+  **Needs a capture** on a Shimmer3 with an RN4678, and on the Shimmer3R from
+  a host other than Windows.
 - **Whether BLE ever coalesces two firmware messages into one notification.**
   [§2.2](#22-ble) tells hosts to assume it can, which is the safe assumption, but
   the firmware hands each response to the UART as a single write and the
