@@ -278,7 +278,7 @@ signing off a configuration nobody releases.
 
 | Platform | Build | Note |
 |---|---|---|
-| Shimmer3 | **Debug** | Release has the same settings and builds the same image until DEV-1217 raises its optimisation; sign off Debug, the configuration that ships. See [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
+| Shimmer3 | **Debug** | Release is the `-O2` candidate (DEV-1217) and does not ship yet; sign off Debug, the configuration that ships. Run Release too when the change touches interrupt handlers, the Bluetooth data path or the I2C wait. See [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
 | Shimmer3R | **Release**, and Debug as well | A Debug-only failure means something depends on optimisation, which is worth knowing before a customer finds it |
 
 For Shimmer3, `Debug` is the configuration that ships, so it is the one to

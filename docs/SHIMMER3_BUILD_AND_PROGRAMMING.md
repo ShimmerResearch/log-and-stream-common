@@ -27,6 +27,11 @@ wire, not over the air.
 >   revision's `msp430_clock_enable()` and `BtStop()`. A build that lacks either
 >   commit still lets interrupts nest, and needs room for `main` plus two
 >   handlers.
+> - §4.2's optimisation settings, and §4.5's `-O2` stack figures, are newer
+>   still. The settings were read from `shimmer3-firmware` @ `a886ad7` with
+>   Release raised to `-O2 --opt_for_speed=2`. The figures and the DEV-1236
+>   bench used `shimmer3-firmware` @ `d82c9ef` with this repository @ `08c84d8`
+>   as its submodule.
 
 **Source references:**
 
@@ -121,12 +126,22 @@ Windows PowerShell 5.1, run these through `cmd /c`: it splits arguments such as
 ### 4.2 Shimmer3 ships from the *Debug* configuration
 
 > **Releases are produced from the Debug CCS configuration**, at `-O0`. The
-> release workflow's `build_mode` input defaults to `Debug`; keep it there.
+> release workflow's `build_mode` input defaults to `Debug`; keep it there
+> until the optimised Release configuration has passed the bench procedure.
 
-`Release` has the same compiler and linker settings as `Debug`, so both build
-the same image. A headless build of either at `LogAndStream_Shimmer3_v1.01.006`
-is byte-identical to that release's `.txt`. Before DEV-1217 the Release
-configuration was a stale template that did not build:
+`Release` has the same compiler and linker settings as `Debug` apart from the
+optimisation level:
+
+| Configuration | Optimisation | Ships |
+|---|---|---|
+| `Debug` | `-O0 --opt_for_speed=0` | yes |
+| `Release` | `-O2 --opt_for_speed=2` | not yet: the DEV-1217 candidate |
+
+In both, `main.c` overrides only the speed trade-off, to `--opt_for_speed=5`,
+so it takes its configuration's `-O` level. A headless Debug build at
+`LogAndStream_Shimmer3_v1.01.006` is byte-identical to that release's `.txt`.
+Before DEV-1217 the Release configuration was a stale template that did not
+build:
 
 - no include paths
 - no `SHIMMER3` define
@@ -135,14 +150,33 @@ configuration was a stale template that did not build:
 - a 160-byte stack and heap, which never boots
 - `libc.a` before `libmath.a`
 
-Release is where an optimised build will be developed. DEV-1217 plans to raise
-its `--opt_level` once the pre-existing defects that optimisation can expose are
-fixed and it has passed the bench procedure. Until that lands, build `Debug` to
-produce a release or to judge whether a change is safe.
+**Why `-O2` at speed 2.** DEV-1217 limited the choice to speed 2 or 3, and a
+bench on 19 Oct 2026 (DEV-1236) found no reason to pay for 3:
+
+- **Throughput.** At 1024 Hz with five sensors over an RN42 v6.15 link, which
+  the data outruns, both delivered what v1.01.006 does: about 19,600 packets
+  per 20 s. The same source at `-O0` delivered 14% fewer. That loss is a timing
+  effect, not a cost: a few cycles in the I2C wait loop moved it.
+- **Code.** Speed 3 spends about 4 KB more flash, inlining command handling and
+  SD configuration code. The sampling and Bluetooth paths are essentially the
+  same at both.
+- **Stack.** The worst case is the same at both (§4.5).
+
+**Before Release ships**, it still needs three things:
+
+1. DEV-1222's sample-timer re-arm and task-loop lost wake-up fixes
+   (`shimmer3-firmware` #119 and #120, this repository's #174).
+2. The full bench procedure on the Release image.
+3. The release workflow's default, its Debug-only candidate check and
+   `promote-release.yml` changed to Release.
+
+Until then, build `Debug` to produce a release or to judge whether a change is
+safe. When a change touches interrupt handlers, the Bluetooth data path or the
+I2C wait, bench Release as well: optimisation moves exactly that timing.
 
 **Keep the two configurations in step.** Make project-setting changes under
 *[All configurations]* in CCS, so Release cannot drift from Debug again. The
-only intended difference is the optimisation level, once DEV-1217 sets it.
+optimisation level is the only intended difference.
 
 ### 4.3 Do not commit regenerated makefiles
 
@@ -197,6 +231,12 @@ the table above. A build without the two changes above still needs that
 1,982 B. The size stays at 2,200 B until the run-time high-water mark below has
 been read on units and the image has been re-measured at the optimisation level
 that ships.
+
+**At `-O2` the bound is about the same.** For Release, `-O2
+--opt_for_speed=2`, the same three paths measure 1,080, 452 and 448 B. `main`
+plus one interrupt is 1,532 B, which leaves 668 B of margin. Speed 3 gives the
+same figures. The functions that can turn GIE on are the same nine as at
+`-O0`, so the one-handler bound holds there too (step 6 below).
 
 A frame that holds a FatFs `FIL` costs over 500 bytes, because each `FIL`
 carries a sector buffer. The `sdlog.cfg` parser keeps its `FIL` and its
@@ -352,7 +392,8 @@ and IC. See
   runs those workflows or builds locally.
 - ~~The Shimmer3 Release configuration failure~~ — resolved in DEV-1217. Release
   lacked the include paths, then the `SHIMMER3` define, and had several other
-  stale settings. It now matches Debug (§4.2).
+  stale settings. It now matches Debug apart from its optimisation level
+  (§4.2).
 - ~~STM32 bootloader specifics~~ — resolved as far as the firmware goes. Two
   entry paths, both into ST's **system-memory bootloader at `0x0BF90000`**
   (`Shimmer_Driver/hal_bootloader.c`): (1) at boot, `JumpToBootloaderIfRequired`
