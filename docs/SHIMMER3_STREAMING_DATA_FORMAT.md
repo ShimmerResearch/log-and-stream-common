@@ -1013,8 +1013,8 @@ to look.
   as `ebc21c2`. Pin the **Verified against** block to the first release that
   carries it, and check this item off.
 - ~~**The Shimmer3R period for an odd `samplingRateTicks`.**~~ — resolved:
-  measured on a Shimmer3R running v1.01.021, whose `RTC_wakeUpSet` is the one
-  at `c8c69e71`. In seven 15 s SD logs, every step was exactly
+  measured on a Shimmer3R running a Release build of `c8c69e71` (it reports
+  v1.01.021). In seven 15 s SD logs, every step was exactly
   `2 × floor(samplingRateTicks / 2)` ticks: 32 → 32, 33 → 32, 65 → 64,
   131 → 130, 327 → 326, 654 → 654 and 655 → 654 (§2.1). The SD file's stamps
   are the same packet bytes the stream sends.
