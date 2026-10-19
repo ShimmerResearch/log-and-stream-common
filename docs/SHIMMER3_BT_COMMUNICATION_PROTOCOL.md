@@ -73,6 +73,17 @@ BLE, and over the dock's serial link.
 >   `shimmer3-firmware`'s `Shimmer_Driver/RN4X/RN4X.c`, which the
 >   platform-firmware pins above predate. Treat the Shimmer3 data gate as
 >   unverified here until those pins move to a revision that carries it.
+> - **Short packets and the transmit-chain race ([§6.3](#63-interleaving)):**
+>   the code is read at `log-and-stream-common` @ `c8605fb`, which postdates the
+>   pin above — `Comms/shimmer_bt_uart.c` (`ShimBt_sendNextCharIfNotInProgress`,
+>   `ShimBt_sendNextChar`) — and at `shimmer3-firmware` @ `4f90c7d` —
+>   `Shimmer_Driver/RN4X/RN4X.c` (`BT_rtsInterrupt`, `BtTransmit`). Both are the
+>   pull-request revisions that carry the fix. The defect is read at
+>   `shimmer3-firmware` @ `LogAndStream_Shimmer3_v1.01.006` and the
+>   `log-and-stream-common` revision it pins, `b43a264`. Which byte was lost,
+>   and how often, is a bench measurement (19 Oct 2026), not a reading of
+>   source. Until the platform half reaches a release, "fixed" describes those
+>   revisions, not a released firmware.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). The **Gen** column in the opcode tables says
@@ -1346,6 +1357,20 @@ There is **no host-side flow control**. If the link cannot keep up with the
 stream, the device's transmit ring fills, and the firmware drops **data packets**
 that will not fit rather than blocking its sampling loop. A host sees each one as
 a gap in the timestamps.
+
+Packets are dropped whole, so what is sent arrives whole: a data packet that
+arrives a byte short is a defect, not flow control. Shimmer3 firmware up to and
+including v1.01.006 has that defect. While the radio is applying flow control
+(RTS), the task that queues a packet and the radio's RTS interrupt can both
+start the UART transmit chain at once. The second start then writes over a byte
+still waiting in the UART, and the host receives that packet one byte short. On
+the bench it was usually a packet's second byte, the low byte of its
+timestamp, and once a byte mid-packet. It was seen on an RN42 v6.15 at
+1024 Hz; the code is the same for every Shimmer3 radio. Fixed by making the test and the start one step
+(`ShimBt_sendNextCharIfNotInProgress()`), and by leaving the chain marked busy
+while RTS pauses it (`BT_rtsInterrupt()` in `shimmer3-firmware`). A host parser
+should confirm each packet boundary rather than trust the length: the next
+packet's `0x00`, or the link CRC (§3.3).
 
 **Command replies are not dropped.** ACKs, NACKs, responses and status pushes
 take priority over data packets:

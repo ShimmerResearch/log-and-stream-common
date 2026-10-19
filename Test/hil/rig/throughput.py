@@ -222,7 +222,10 @@ def defects(rate: DataRate, st: bt.StreamStats, inq: bt.Inquiry) -> list[str]:
         out.append(f"stream: {st.packets} packets whose stamps cover {covered_s:.2f} s of a {st.seconds:.1f} s "
                    "stream - it started late, or its end is missing")
     if st.resyncs:
-        out.append(f"stream: {st.resyncs} bytes did not frame as packets")
+        # The bytes say what went wrong: a packet a byte short is a byte lost
+        # on the way out (TEST_PROCEDURE §5.5), anything else is not.
+        first = f" (first from {st.misframes[0]})" if st.misframes else ""
+        out.append(f"stream: {st.resyncs} bytes did not frame as packets{first}")
     if st.dupes:
         out.append(f"stream: {st.dupes} duplicate or backwards stamps")
     return out

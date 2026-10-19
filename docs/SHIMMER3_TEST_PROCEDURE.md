@@ -26,6 +26,14 @@ and — as importantly — what each layer of testing cannot tell you.
 > - **Which configuration ships on Shimmer3 (§3, §3.1):** `shimmer3-firmware`
 >   @ `de459e7` — `build-release-firmware.yml` and `promote-release.yml`, on
 >   its pull-request branch.
+> - **The Shimmer3 stream misframe and its fix (§5.5):** `log-and-stream-common`
+>   @ `c8605fb` (`Comms/shimmer_bt_uart.c`) and @ `af66ed2`
+>   (`Test/hil/rig/throughput.py`); `shimmer3-firmware` @ `4f90c7d`
+>   (`Shimmer_Driver/RN4X/RN4X.c`). These are the pull-request revisions that
+>   carry the fix. The figures are bench measurements of 19 Oct 2026, not
+>   readings of source. They cover the v1.01.006 release
+>   (`shimmer3-firmware` @ `LogAndStream_Shimmer3_v1.01.006`), main @ `c28fa8c`
+>   built in its Release configuration, and each of the two with the fix.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
@@ -678,6 +686,42 @@ On 19 Oct 2026 the RN4678 units' BLE carried a small part of their classic
 rate, on the v1.01.006 release: 9.5 KB/s on an RN4678 v1.00.5 and 5.0 KB/s
 on an RN4678 v1.23, at ATT MTU 160. In one of two runs the v1.23 lost 33
 data-rate packets in one gap, which is a failure whatever the baseline.
+
+**A stream that misframes by `plen - 1` bytes lost a byte on the way out.**
+On the same release the RN42 v6.15's 1024 Hz stream failed with
+"29 bytes did not frame as packets" (30-byte packets). The bytes showed one
+sample packet arriving a byte short. On the release the missing byte was the
+packet's second, the low byte of its timestamp, every time. The cause was in
+the firmware: two starts of the UART transmit chain racing while the radio
+applied flow control
+([protocol document](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) §6.3). It shows
+only with the other bench units' radios on, as they are in a fleet run:
+- **Fleet order, every radio on:** one byte lost in 3 of 4 runs (4 bytes in
+  all).
+- **The unit alone, the others' radios off:** 0 of 15 runs.
+
+So reproduce a Shimmer3 stream defect in fleet conditions before calling it
+fixed. The item's message now carries the first frame that failed, which tells
+a short packet from a reply or a status frame in the stream.
+
+The fix, interleaved on the same unit, 19 Oct 2026. Each arm is two fresh
+flashes of four runs, every bench radio on:
+
+| Build | Runs with a byte lost | Stream, samples/s (mean) | Link, B/s (mean) |
+|---|---|---|---|
+| v1.01.006 release | 1 of 8 (a packet's second byte) | 966.4–978.1 (972.0) | 35001 |
+| v1.01.006 with the fix | 0 of 8 | 965.1–975.9 (971.1) | 35018 |
+| main at `-O2`, the next release's code | 1 of 8 (mid-packet) | 957.6–984.2 (969.2) | 34512 |
+| main at `-O2` with the fix | 0 of 8 | 960.3–985.3 (972.5) | 34743 |
+
+In fleet order, with main at `-O2` and the fix, no byte was lost in 4 rounds,
+where the release lost one in 3 of 4.
+
+Two things follow:
+- **The fix costs nothing.** It doesn't move the RN42 v6.15 overload figure
+  that the data path's timing is known to move.
+- **The `-O2` build has the same defect.** Its one lost byte fell mid-packet,
+  which is the other way two starts can collide; the fix closes both.
 
 **Shimmer3R BLE link rate.** The data-rate test over BLE, with
 notifications at ATT MTU 517 from Windows 11 on an Intel AX201:
