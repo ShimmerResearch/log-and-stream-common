@@ -270,7 +270,9 @@ generations give a byte different meanings both are shown.
 ### 3.1 Sampling rate (bytes 0-1)
 
 `samplingRateTicks` is a **clock divider, not a frequency**. The stored `uint16`
-is the number of 32768 Hz ticks between samples:
+is the configured number of 32768 Hz ticks between samples. It is the actual
+interval on Shimmer3 and for an even value on Shimmer3R; an odd value on
+Shimmer3R samples a tick sooner (below):
 
 ```
 frequency_Hz = 32768.0 / samplingRateTicks
