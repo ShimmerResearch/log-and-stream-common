@@ -289,6 +289,19 @@ sleep and the task would not run until something else woke the part.
 > **There is no Shimmer3 equivalent** — the MSP430's sleep exit is handled
 > differently, through the return-from-interrupt status bits.
 
+> **On Cortex-M every update of `taskList` is masked.** Main and interrupts at
+> several NVIC priorities set and clear tasks, and on Cortex-M GCC does `|=` and
+> `&= ~` as a load, a modify and a store. If an interrupt set a task between
+> the load and the store, the store would put back the stale copy and the task
+> would be lost (DEV-1233). So `ShimTask_set` (with its idle check),
+> `ShimTask_clear` and the clear in `ShimTask_popNext` save PRIMASK, mask, and
+> restore it. The window is the update alone, and the `popNext` scan stays
+> unmasked (§4.2). Restoring, rather than unmasking, keeps an ISR or an
+> already-masked caller masked. **MSP430 masks nothing here:** cl430 updates
+> each 16-bit half with a single `OR.W` or `AND.W` on memory, at every level
+> from -O0 to -O4. Interrupts are taken only between instructions, so each half
+> is atomic, and neither half's update touches the other's bits.
+
 ### 4.4 Stuck-task watchdog
 
 | Constant | S3 | S3R |
