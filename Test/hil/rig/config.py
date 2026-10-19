@@ -89,8 +89,13 @@ class Rig:
     extra: dict = field(default_factory=dict)
 
     def throughput_baseline(self, unit: Unit) -> dict[str, float]:
-        """The unit's throughput baseline: its radio build's row, overridden key by key by its own."""
-        return {**self.throughput_by_radio.get(unit.radio or "", {}), **unit.throughput}
+        """The unit's throughput baseline: its radio build's row, overridden key by key by its own.
+
+        Empty unless it has a figure to judge: a tolerance alone would let the
+        item pass without comparing anything, where it should be not_covered.
+        """
+        merged = {**self.throughput_by_radio.get(unit.radio or "", {}), **unit.throughput}
+        return merged if any(k in merged for k in THROUGHPUT_KEYS) else {}
 
     def capabilities(self, unit: Unit | None = None) -> set[str]:
         caps: set[str] = set()
@@ -191,6 +196,16 @@ def load(path: str | os.PathLike | None = None) -> Rig:
     if not isinstance(by_radio, dict):
         raise RigError(f"{p}: [throughput_by_radio] must be a table of radio builds")
     by_radio = {radio: _baseline(row, f"{p}: throughput_by_radio.{radio!r}") for radio, row in by_radio.items()}
+    # A baseline with no figure judges nothing. A unit's own may carry only a
+    # tolerance, but then its radio's row must supply the figures.
+    for radio, row in by_radio.items():
+        if not any(k in row for k in THROUGHPUT_KEYS):
+            raise RigError(f"{p}: throughput_by_radio.{radio!r} has no figure ({', '.join(THROUGHPUT_KEYS)})")
+    for u in units:
+        if u.throughput and not any(k in {**by_radio.get(u.radio or "", {}), **u.throughput}
+                                    for k in THROUGHPUT_KEYS):
+            raise RigError(f"{p}: unit {u.name}: throughput has no figure, and no [throughput_by_radio] "
+                           f"row for its radio {u.radio!r} supplies one")
     return Rig(
         path=p, bench=bench, units=units,
         hub_serial=hub.get("serial") or None,

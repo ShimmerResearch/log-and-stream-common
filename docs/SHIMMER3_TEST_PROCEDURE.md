@@ -652,9 +652,9 @@ unit and bench (§10.4).
 The fixed load matters as much as the link rate. The data-rate test bypasses
 the sample path, but how much of a saturated stream arrives follows that
 path's timing:
-- **DEV-1150:** a change to the reply path cost a fifth of the delivered
-  samples on the RN42 v6.15.
-- **DEV-1222:** a change to the sample-timer ISR cost 9.8%.
+- **Reply path:** a change to it cost a fifth of the delivered samples on the
+  RN42 v6.15.
+- **Sample-timer ISR:** a change to it cost 9.8%.
 
 Both changes were functionally correct, and both were invisible to every
 other check. 5.5.2 to 5.5.4 stay manual.
@@ -669,7 +669,7 @@ far more than the sensor's, so they are kept per build:
 | v1.4.18.18 public release | 76–77 KB/s |
 | v1.4.18.18, two Infineon test builds | 168.8–170.3 and 169.2–169.8 KB/s |
 
-How they were measured (DEV-573, 10 Oct 2026):
+How they were measured (10 Oct 2026):
 - **Unit and host:** one Shimmer3R, with its module configuration reset to
   v1.4.18.18 defaults, against Windows 11 on an Intel AX201.
 - **Path:** the transparent UART-to-SPP data path (§2.1 of the protocol
@@ -1213,7 +1213,7 @@ How each figure is judged:
   repeats within 0.3% when run interleaved, so the margin is for bench drift.
   A row may set its own `tolerance` instead. The Shimmer3R module rows use 10%
   for the day-to-day spread §5.5 records.
-- **Above:** a figure more than 5% over it is noted.
+- **Above:** a figure more than its tolerance over it is noted.
 - **No baseline:** the unit is reported `not_covered`, with the measured
   figures in the reason.
 - **Restore:** the load is stored configuration, so InfoMem is written back
@@ -1313,11 +1313,11 @@ The known-issues list and bench facts live with each bench (`[triage]` in
   live in the hardware documentation, not in this repository. The step is listed
   without a number deliberately.
 - **Throughput acceptance figures (§5.5).** `SET_DATA_RATE_TEST` and the
-  `SpeedTest/` scripts measure a rate, but no expected rate is recorded anywhere
-  in the firmware or docs, per module or per baud.
+  `SpeedTest/` scripts measure a rate, but the firmware defines no acceptance
+  threshold, per module or per baud.
   - **What is now a gate:** each bench records the previous release's figures
     per unit in its `rig.toml`. The throughput items fail a candidate that falls
-    more than 5% below them (§10.4).
+    more than the baseline's tolerance below them (§10.4).
   - **Shimmer3R:** classic figures now exist per IF820 module build (§5.5).
     They come from one unit, one host adapter and the transparent path.
   - **What is still open:** for Shimmer3 radios, the figures are still a

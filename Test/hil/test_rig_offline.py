@@ -1021,10 +1021,15 @@ class ThroughputBaselineConfig(unittest.TestCase):
             load_rig(self.UNIT + "throughput = 842\n")
 
     def test_a_tolerance_is_a_fraction_below_one(self):
-        self.assertEqual(load_rig(self.UNIT + "throughput = { tolerance = 0.1 }\n").units[0].throughput,
-                         {"tolerance": 0.1})
+        self.assertEqual(load_rig(self.UNIT + "throughput = { link_bytes_per_s = 1, tolerance = 0.1 }\n")
+                         .units[0].throughput, {"link_bytes_per_s": 1.0, "tolerance": 0.1})
         with self.assertRaisesRegex(config.RigError, "fraction below 1"):
-            load_rig(self.UNIT + "throughput = { tolerance = 1.5 }\n")
+            load_rig(self.UNIT + "throughput = { link_bytes_per_s = 1, tolerance = 1.5 }\n")
+
+    def test_a_tolerance_with_no_figure_to_judge_is_refused(self):
+        # It would let the item pass without comparing anything.
+        with self.assertRaisesRegex(config.RigError, "has no figure"):
+            load_rig(self.UNIT + "throughput = { tolerance = 0.1 }\n")
 
 
 class ThroughputByRadio(unittest.TestCase):
@@ -1055,6 +1060,21 @@ class ThroughputByRadio(unittest.TestCase):
     def test_a_row_is_checked_like_a_units_baseline(self):
         with self.assertRaisesRegex(config.RigError, "positive number"):
             load_rig('[throughput_by_radio]\n"IF820 v1.4.16.16" = { link_bytes_per_s = -1 }\n')
+
+    def test_a_row_with_only_a_tolerance_is_refused(self):
+        with self.assertRaisesRegex(config.RigError, "has no figure"):
+            load_rig('[throughput_by_radio]\n"IF820 v1.4.16.16" = { tolerance = 0.1 }\n')
+
+    def test_a_units_own_tolerance_may_ride_on_its_radio_rows_figures(self):
+        rig = load_rig(self.RIG.replace('throughput = { stream_samples_per_s = 1020, tolerance = 0.05 }',
+                                        'throughput = { tolerance = 0.05 }'))
+        self.assertEqual(rig.throughput_baseline(rig.units[1]), {"link_bytes_per_s": 77824, "tolerance": 0.05})
+
+    def test_a_baseline_with_no_figure_is_no_baseline(self):
+        # However it came about, nothing to compare is not_covered, never a pass.
+        unit = config.Unit(name="u", platform="shimmer3", throughput={"tolerance": 0.1})
+        rig = config.Rig(path=Path("rig.toml"), bench="b", units=[unit])
+        self.assertEqual(rig.throughput_baseline(unit), {})
 
     def test_a_rows_own_tolerance_replaces_the_default(self):
         # DEV-573: one test build read 168.8-170.3 KB/s one day and 152-161 two days later.

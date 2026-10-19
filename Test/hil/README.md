@@ -166,8 +166,8 @@ How each figure is judged:
 - **Below:** a figure more than 5% below its baseline fails. A row with its
   own `tolerance` uses that instead; the Shimmer3R rows use 10%, for the
   day-to-day spread §5.5 records.
-- **Above:** one more than 5% above is noted, to be recorded once that build
-  is released.
+- **Above:** one more than the same tolerance above is noted, to be recorded
+  once that build is released.
 - **No baseline:** the unit is reported `not_covered`, and the reason carries
   the line to paste. Take it from a run of the released image, not a
   candidate.

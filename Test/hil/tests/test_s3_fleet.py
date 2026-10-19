@@ -136,7 +136,7 @@ def restore_infomem(base6, original: bytes, stream_error: BaseException | None,
                 if masked(d.read_infomem(0, len(original))) != masked(original):
                     raise dock.DockError("read back differs")
             return seen
-        except dock.DockError as e:
+        except (dock.DockError, OSError) as e:   # serial.SerialException is an OSError
             seen.append(str(e))
             time.sleep(1.0)
     msg = f"could not restore the configuration over the dock: {seen}"
