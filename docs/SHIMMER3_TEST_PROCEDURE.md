@@ -23,6 +23,9 @@ and — as importantly — what each layer of testing cannot tell you.
 >   `promote-release.yml`, on their release-gate pull-request branches.
 > - **What `build-check.yml` builds (§3):** `shimmer3-firmware` @ `f67cf0a`
 >   and `shimmer3r-firmware` @ `c8c69e71`.
+> - **Which configuration ships on Shimmer3 (§3, §3.1):** `shimmer3-firmware`
+>   @ `de459e7` — `build-release-firmware.yml` and `promote-release.yml`, on
+>   its pull-request branch.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
@@ -258,7 +261,7 @@ the diff (§3.3).
 
 **Required for every release, both platforms.** Each platform repository's
 `build-check.yml` builds the shipping configuration on every pull request and
-every push to `main`. On Shimmer3 it builds Release as well, as a second matrix
+every push to `main`. On Shimmer3 it builds Debug as well, as a second matrix
 leg (§3.1). The release workflow builds the shipping configuration again on the
 tagged commit. This is the only gate that sees the real word sizes. What CI does
 not do is read the warnings (§3.2) or compare the size (§3.4); those remain by
@@ -271,22 +274,22 @@ needs the other platform's pull request (§8.1).
 | IDE | Code Composer Studio **12.8.1.00005** | STM32CubeIDE **1.15.1** |
 | Compiler | TI MSP430 **v21.6.1.LTS** | arm-none-eabi (bundled) |
 | `int` width | **16 bits** | 32 bits |
-| Ships from | **Debug** (§3.1) | **Release** |
+| Ships from | **Release** (§3.1) | **Release** |
 
 Version pinning is deliberate. Check the README table before upgrading either.
 
 ### 3.1 Build the configuration that actually ships
 
-**They are not the same on the two platforms**, and getting this wrong means
-signing off a configuration nobody releases.
+**Both platforms ship from Release** (Shimmer3 shipped Debug up to v1.01.006),
+and signing off Debug means signing off a configuration nobody releases.
 
 | Platform | Build | Note |
 |---|---|---|
-| Shimmer3 | **Debug** | Release is the `-O2` candidate and does not ship yet; sign off Debug, the configuration that ships. CI compiles Release on every pull request, but a green build is not a bench run. Run Release too when the change touches interrupt handlers, the Bluetooth data path or the I2C wait. See [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
+| Shimmer3 | **Release** | Release (`-O2`) ships; releases up to v1.01.006 were Debug (`-O0`). CI compiles Debug as well on every pull request, but a green build is not a bench run. The first Release-built candidate needs the full procedure. See [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
 | Shimmer3R | **Release**, and Debug as well | A Debug-only failure means something depends on optimisation, which is worth knowing before a customer finds it |
 
-For Shimmer3, `Debug` is the configuration that ships, so it is the one to
-evaluate a change against. The release workflow takes a build-mode input for
+On both platforms `Release` is the configuration that ships, so it is the one
+to evaluate a change against. The release workflow takes a build-mode input for
 both platforms; pick the one that matches the table.
 
 > A headless Shimmer3 build can rewrite the generated `Release/*.mk` files even
@@ -994,7 +997,7 @@ is what has to be true before you trigger it.
 
 - [ ] Gate 1 green on the exact commit being released (§2)
 - [ ] `make -C Test/host` green locally as well as in CI
-- [ ] The shipping configuration builds clean — Shimmer3 **Debug**, Shimmer3R **Release** (§3.1)
+- [ ] The shipping configuration builds clean — **Release** on both platforms (§3.1)
 - [ ] Shimmer3 build warnings read, with §3.2 in mind
 - [ ] Flash and RAM recorded and compared with the previous release (§3.4)
 - [ ] Submodule pointer is at the intended `log-and-stream-common` commit
