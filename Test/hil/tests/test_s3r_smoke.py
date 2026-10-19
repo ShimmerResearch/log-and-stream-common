@@ -164,15 +164,20 @@ def test_bt_stream(btlink, hil_note):
 
 
 @pytest.mark.hil("smoke.bt_throughput", needs=["shimmer3r", "bt", "usb"])
-def test_bt_throughput(unit, docklink, btlink, hil_note):
+def test_bt_throughput(rig, unit, docklink, btlink, hil_note):
     """What the link carries, and how much of a 1024 Hz stream arrives (TEST_PROCEDURE §5.5).
 
-    rig/throughput.py has the two measurements, judged against the figures
-    the last release gave on this unit and bench (rig.toml); without them
-    the item is not_covered, with the figures to record. If the IF820 carries
-    the whole load, the stream figure sits near 1024 and a fall is samples
-    lost. The load is stored configuration, so InfoMem is put back.
+    rig/throughput.py has the two measurements, judged against this bench's
+    figures for the unit's IF820 module build ([throughput_by_radio] in
+    rig.toml) and any of the unit's own; without any the item is not_covered,
+    with the figures to record. The module is checked to be the version
+    rig.toml names first, because that picks the baseline. If the IF820
+    carries the whole load, the stream figure sits near 1024 and a fall is
+    samples lost. The load is stored configuration, so InfoMem is put back.
     """
+    mismatch = throughput.radio_mismatch(unit.radio, docklink.bt_version())
+    assert not mismatch, mismatch
+    baseline = rig.throughput_baseline(unit)
     original = docklink.read_infomem()
     try:
         rate = throughput.data_rate_test(btlink, LINK_SECONDS)
@@ -184,9 +189,10 @@ def test_bt_throughput(unit, docklink, btlink, hil_note):
     problems = throughput.defects(rate, st)
     assert not problems, "; ".join(problems)
     measured = throughput.figures(rate, st, inq)
-    if not unit.throughput:
-        pytest.skip(f"no throughput baseline for {unit.name} in rig.toml; measured {throughput.as_toml(measured)}")
-    short, note = throughput.judge(measured, unit.throughput, unit.name)
+    if not baseline:
+        pytest.skip(f"no throughput baseline for {unit.name} ({unit.radio}) in rig.toml; "
+                    f"measured {throughput.as_toml(measured)}")
+    short, note = throughput.judge(measured, baseline, unit.name)
     hil_note(note)
     assert not short, "; ".join(short)
 

@@ -124,8 +124,8 @@ unit:
   stream with LN accel, gyro, mag, WR accel and VBatt. That load outruns every
   shipped Shimmer3 radio.
 
-No acceptance figure exists per radio, so each unit is judged against what
-the last release gave on the same unit and bench. Record that in `rig.toml`:
+Each unit is judged against figures for the same bench, recorded in
+`rig.toml`. A Shimmer3's figures are what the last release gave on that unit:
 
 ```toml
 [[unit]]
@@ -134,7 +134,33 @@ name = "s3-rn42-615"
 throughput = { link_bytes_per_s = 39315, stream_samples_per_s = 989.1 }
 ```
 
-- **Below:** a figure more than 5% below its baseline fails.
+A Shimmer3R's link rate follows its IF820 module build, and re-flashing the
+module changes that build. So its figures go in a row per build, and each
+unit's `radio` names its build exactly. TEST_PROCEDURE §5.5 has the reference
+figures. Take a row's KB/s × 1024, and the low end of each range:
+
+```toml
+[throughput_by_radio]
+"IF820 v1.4.16.16" = { link_bytes_per_s = 156672, tolerance = 0.10 }   # 153-154 KB/s
+"IF820 v1.4.18.18" = { link_bytes_per_s = 77824, tolerance = 0.10 }    # 76-77 KB/s, public release
+
+[[unit]]
+name = "s3r-a"
+radio = "IF820 v1.4.16.16"
+```
+
+- **Module check:** the item checks that the module reports the version
+  `radio` names. A module's test builds report their release's version, so
+  give each its own key, e.g. `"IF820 v1.4.18.18 <build>"`, and keep that
+  `radio` up to date by hand when a unit is re-flashed.
+- **Overrides:** a unit's own `throughput` overrides its radio row key by
+  key.
+
+How each figure is judged:
+
+- **Below:** a figure more than 5% below its baseline fails. A row with its
+  own `tolerance` uses that instead; the Shimmer3R rows use 10%, for the
+  day-to-day spread §5.5 records.
 - **Above:** one more than 5% above is noted, to be recorded once that build
   is released.
 - **No baseline:** the unit is reported `not_covered`, and the reason carries

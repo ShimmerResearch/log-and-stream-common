@@ -23,15 +23,19 @@ The link test runs first because on Shimmer3R classic throughput stays low for
 about a minute after a stream stops, a bench effect seen with the data-rate
 test itself.
 
-No acceptance figure exists per radio or per baud, so each unit is judged
-against what the last release gave on the same bench: `throughput` in its
-rig.toml [[unit]]. The same build repeats within 0.3% when run interleaved, so
-TOLERANCE leaves room for bench drift and still catches changes of the size
-DEV-1150 and DEV-1222 found.
+Each unit is judged against figures for the same bench (rig.toml, see
+Rig.throughput_baseline): its radio build's row in [throughput_by_radio], then
+its own `throughput`, which wins key by key. A Shimmer3's figures are what the
+last release gave on that unit; a Shimmer3R's link rate follows its IF820
+module build, which a unit can be re-flashed to change. The same build repeats
+within 0.3% when run interleaved, so TOLERANCE leaves room for bench drift and
+still catches changes of the size DEV-1150 and DEV-1222 found. A row whose
+figures move more from day to day sets its own `tolerance`.
 """
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 
@@ -186,9 +190,10 @@ def as_toml(measured: dict[str, float]) -> str:
     return "throughput = { " + ", ".join(f"{k} = {measured[k]:g}" for k in THROUGHPUT_KEYS) + " }"
 
 
-def compare(measured: dict[str, float], baseline: dict[str, float],
-            tolerance: float = TOLERANCE) -> tuple[list[str], list[str]]:
-    """(shortfalls, gains) against the baseline: figures more than `tolerance` below it, or above it."""
+def compare(measured: dict[str, float], baseline: dict[str, float]) -> tuple[list[str], list[str]]:
+    """(shortfalls, gains) against the baseline: figures more than its tolerance
+    (TOLERANCE unless the baseline sets one) below it, or above it."""
+    tolerance = baseline.get("tolerance", TOLERANCE)
     short, gain = [], []
     for k in THROUGHPUT_KEYS:
         if k not in baseline:
@@ -199,6 +204,21 @@ def compare(measured: dict[str, float], baseline: dict[str, float],
         elif ratio > 1 + tolerance:
             gain.append(f"{k} {measured[k]:g} is {ratio - 1:.1%} above the baseline {baseline[k]:g}")
     return short, gain
+
+
+def radio_mismatch(named: str | None, reported: str) -> str | None:
+    """Why the radio build rig.toml names cannot be the one the unit reports, or None.
+
+    Only the version numbers can be compared: a module's test builds report
+    their release's version, so which build of a version is fitted is for
+    rig.toml to say, and a wrong one shows as a figure far off its baseline.
+    """
+    want = re.search(r"\d+(?:\.\d+){1,3}", named or "")
+    got = re.search(r"\d+(?:\.\d+){1,3}", reported)
+    if want and got and want.group() != got.group():
+        return (f"rig.toml names radio {named!r} but the unit reports {reported!r}: "
+                "update its radio, which picks its throughput baseline")
+    return None
 
 
 def judge(measured: dict[str, float], baseline: dict[str, float], unit_name: str) -> tuple[list[str], str]:

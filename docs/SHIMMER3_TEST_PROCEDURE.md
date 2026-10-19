@@ -659,6 +659,35 @@ path's timing:
 Both changes were functionally correct, and both were invisible to every
 other check. 5.5.2 to 5.5.4 stay manual.
 
+**Shimmer3R classic link rate by IF820 module build.** These figures are the
+Shimmer3R classic baselines. The link rate follows the module's firmware build
+far more than the sensor's, so they are kept per build:
+
+| IF820 module build | Classic data-rate test |
+|---|---|
+| v1.4.16.16 (current production) | 153–154 KB/s |
+| v1.4.18.18 public release | 76–77 KB/s |
+| v1.4.18.18, two Infineon test builds | 168.8–170.3 and 169.2–169.8 KB/s |
+
+How they were measured (DEV-573, 10 Oct 2026):
+- **Unit and host:** one Shimmer3R, with its module configuration reset to
+  v1.4.18.18 defaults, against Windows 11 on an Intel AX201.
+- **Path:** the transparent UART-to-SPP data path (§2.1 of the protocol
+  document).
+- **Method:** the data-rate test over a classic RFCOMM socket, 3 × 5 s per
+  build, no packet missing. KB is 1024 bytes.
+
+Caveats:
+- **The data path matters.** On `SPP_SEND` framing, which Shimmer3R
+  firmware used for every v1.4.17+ module before the transparent path was
+  enabled for v1.4.18.x, every v1.4.18 build tops out near 75 KB/s.
+- **Figures move from day to day.** One test build read 168.8–170.3 KB/s on
+  one day and 152–161 KB/s two days later. So a bench's rows for these
+  builds carry a 10% margin, not 5% (§10.4).
+- **Socket vs COM port is unchecked.** The automated item reads through the
+  Bluetooth COM port, not a socket. Whether that path reads lower has not
+  been checked.
+
 **The baud ladder is per module, and the constraints are real:**
 
 | Baud | Supported on |
@@ -1161,14 +1190,29 @@ flash.
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |
 
-**The throughput baselines.** Neither the firmware nor these documents give an
-acceptance rate per radio or baud, so the two throughput items judge each unit
-against the previous release. Its figures on the same unit and bench go in
-that unit's `rig.toml` entry:
-`throughput = { link_bytes_per_s = ..., stream_samples_per_s = ... }`.
+**The throughput baselines.** The firmware gives no acceptance rate per radio
+or baud. These documents give only the Shimmer3R's per-module figures (§5.5).
+So the two throughput items judge each unit against figures for the same
+bench, from `rig.toml`, built up in two layers:
+
+- **Per radio build:** `[throughput_by_radio]` holds one row per radio build,
+  keyed by the exact `radio` string a unit names. A Shimmer3R's link rate
+  follows its IF820 module build, which re-flashing the module changes, so
+  its rows are the §5.5 figures for that build.
+- **Per unit:** the unit's own
+  `throughput = { link_bytes_per_s = ..., stream_samples_per_s = ... }`
+  entry, which overrides its radio row key by key. A Shimmer3's figures are
+  what the previous release gave on that unit.
+- **Module check:** the Shimmer3R item first checks that the module reports
+  the version its `radio` names. Test builds report their release's version,
+  so which build of a version is fitted is for `rig.toml` to say.
+
+How each figure is judged:
 
 - **Below:** a figure more than 5% under its baseline fails. The same build
   repeats within 0.3% when run interleaved, so the margin is for bench drift.
+  A row may set its own `tolerance` instead. The Shimmer3R module rows use 10%
+  for the day-to-day spread §5.5 records.
 - **Above:** a figure more than 5% over it is noted.
 - **No baseline:** the unit is reported `not_covered`, with the measured
   figures in the reason.
@@ -1274,9 +1318,12 @@ The known-issues list and bench facts live with each bench (`[triage]` in
   - **What is now a gate:** each bench records the previous release's figures
     per unit in its `rig.toml`. The throughput items fail a candidate that falls
     more than 5% below them (§10.4).
-  - **What is still open:** those figures are a bench's, not a module's. A
-    figure that belongs to the radio, independent of the bench, is still not
-    known, so the manual steps still say "compare with the previous release".
+  - **Shimmer3R:** classic figures now exist per IF820 module build (§5.5).
+    They come from one unit, one host adapter and the transparent path.
+  - **What is still open:** for Shimmer3 radios, the figures are still a
+    bench's, not a module's. A figure that belongs to the radio, independent
+    of the bench, is not known, so the manual steps still say "compare with
+    the previous release".
 - **Which CYW20820 / EZ-Serial firmware versions are qualified (§5.1).** The
   Shimmer3 side names six RN4678 versions and three RN41/RN42 versions in code,
   so the matrix rows are exact. The Shimmer3R side has no equivalent version

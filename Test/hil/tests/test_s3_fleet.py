@@ -190,7 +190,7 @@ LOAD_SECONDS = 20.0
 
 
 @pytest.mark.hil("fleet.bt_throughput", needs=["shimmer3", "bt", "dock"])
-def test_bt_throughput(unit, base6, hil_note):
+def test_bt_throughput(rig, unit, base6, hil_note):
     """What the radio carries, and how much of a stream that outruns it arrives (§5.5).
 
     rig/throughput.py has the two measurements. Both are judged against the
@@ -198,6 +198,7 @@ def test_bt_throughput(unit, base6, hil_note):
     unit without them is reported not_covered with the figures to record.
     The load is stored configuration, so the whole InfoMem is put back.
     """
+    baseline = rig.throughput_baseline(unit)
     base6.select(unit.base6_slot)
     with dock.open_when_ready(base6.uart_port) as d:
         original = d.read_infomem()
@@ -216,9 +217,9 @@ def test_bt_throughput(unit, base6, hil_note):
     problems = throughput.defects(rate, st)
     assert not problems, "; ".join(problems)
     measured = throughput.figures(rate, st, inq)
-    if not unit.throughput:
+    if not baseline:
         pytest.skip(f"no throughput baseline for {unit.name} in rig.toml; measured {throughput.as_toml(measured)}")
-    short, note = throughput.judge(measured, unit.throughput, unit.name)
+    short, note = throughput.judge(measured, baseline, unit.name)
     hil_note(note)
     assert not short, "; ".join(short)
 

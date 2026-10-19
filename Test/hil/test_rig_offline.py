@@ -1020,6 +1020,56 @@ class ThroughputBaselineConfig(unittest.TestCase):
         with self.assertRaisesRegex(config.RigError, "must be a table"):
             load_rig(self.UNIT + "throughput = 842\n")
 
+    def test_a_tolerance_is_a_fraction_below_one(self):
+        self.assertEqual(load_rig(self.UNIT + "throughput = { tolerance = 0.1 }\n").units[0].throughput,
+                         {"tolerance": 0.1})
+        with self.assertRaisesRegex(config.RigError, "fraction below 1"):
+            load_rig(self.UNIT + "throughput = { tolerance = 1.5 }\n")
+
+
+class ThroughputByRadio(unittest.TestCase):
+    """A Shimmer3R's link rate follows its IF820 module build, so a bench keeps
+    baselines per build and each unit's `radio` picks its row."""
+
+    RIG = ('[throughput_by_radio]\n'
+           '"IF820 v1.4.16.16" = { link_bytes_per_s = 156672, tolerance = 0.10 }\n'
+           '"IF820 v1.4.18.18" = { link_bytes_per_s = 77824, tolerance = 0.10 }\n'
+           '[[unit]]\nname = "a"\nplatform = "shimmer3r"\nradio = "IF820 v1.4.16.16"\n'
+           '[[unit]]\nname = "b"\nplatform = "shimmer3r"\nradio = "IF820 v1.4.18.18"\n'
+           'throughput = { stream_samples_per_s = 1020, tolerance = 0.05 }\n'
+           '[[unit]]\nname = "c"\nplatform = "shimmer3r"\nradio = "IF820 v1.4.17.17"\n')
+
+    def test_a_unit_takes_its_radio_builds_row(self):
+        rig = load_rig(self.RIG)
+        self.assertEqual(rig.throughput_baseline(rig.units[0]), {"link_bytes_per_s": 156672, "tolerance": 0.10})
+
+    def test_the_units_own_figures_win_key_by_key(self):
+        rig = load_rig(self.RIG)
+        self.assertEqual(rig.throughput_baseline(rig.units[1]),
+                         {"link_bytes_per_s": 77824, "stream_samples_per_s": 1020, "tolerance": 0.05})
+
+    def test_a_build_with_no_row_has_no_baseline(self):
+        rig = load_rig(self.RIG)
+        self.assertEqual(rig.throughput_baseline(rig.units[2]), {})
+
+    def test_a_row_is_checked_like_a_units_baseline(self):
+        with self.assertRaisesRegex(config.RigError, "positive number"):
+            load_rig('[throughput_by_radio]\n"IF820 v1.4.16.16" = { link_bytes_per_s = -1 }\n')
+
+    def test_a_rows_own_tolerance_replaces_the_default(self):
+        # DEV-573: test_254 read 168.8-170.3 KB/s one day and 152-161 two days later.
+        base = {"link_bytes_per_s": 168.8 * 1024, "tolerance": 0.10}
+        self.assertEqual(throughput.compare({"link_bytes_per_s": 152 * 1024, "stream_samples_per_s": 1}, base),
+                         ([], []))
+        short, _ = throughput.compare({"link_bytes_per_s": 150 * 1024, "stream_samples_per_s": 1}, base)
+        self.assertEqual(len(short), 1)
+
+    def test_the_module_version_must_match_the_named_build(self):
+        self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.18.18 test_254", "1.4.18.18"))
+        self.assertIn("update its radio", throughput.radio_mismatch("IF820 v1.4.16.16", "v1.4.18.18"))
+        self.assertIsNone(throughput.radio_mismatch(None, "1.4.18.18"))
+        self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.16.16", "unreadable"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
