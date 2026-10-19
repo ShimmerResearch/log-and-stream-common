@@ -21,6 +21,8 @@ and — as importantly — what each layer of testing cannot tell you.
 >   `Test/hil/` in full; `shimmer3-firmware` @ `578c9e6` and
 >   `shimmer3r-firmware` @ `b12f711` — `build-release-firmware.yml` and
 >   `promote-release.yml`, on their release-gate pull-request branches.
+> - **What `build-check.yml` builds (§3):** `shimmer3-firmware` @ `f67cf0a`
+>   and `shimmer3r-firmware` @ `c8c69e71`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
@@ -256,9 +258,11 @@ the diff (§3.3).
 
 **Required for every release, both platforms.** Each platform repository's
 `build-check.yml` builds the shipping configuration on every pull request and
-every push to `main`, and the release workflow builds it again on the tagged
-commit. This is the only gate that sees the real word sizes. What CI does not do
-is read the warnings (§3.2) or compare the size (§3.4); those remain by hand.
+every push to `main`. On Shimmer3 it builds Release as well, as a second matrix
+leg (§3.1). The release workflow builds the shipping configuration again on the
+tagged commit. This is the only gate that sees the real word sizes. What CI does
+not do is read the warnings (§3.2) or compare the size (§3.4); those remain by
+hand.
 CI also builds only the repository it runs in, so a shared-library change still
 needs the other platform's pull request (§8.1).
 
@@ -278,7 +282,7 @@ signing off a configuration nobody releases.
 
 | Platform | Build | Note |
 |---|---|---|
-| Shimmer3 | **Debug** | Release is the `-O2` candidate (DEV-1217) and does not ship yet; sign off Debug, the configuration that ships. Run Release too when the change touches interrupt handlers, the Bluetooth data path or the I2C wait. See [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
+| Shimmer3 | **Debug** | Release is the `-O2` candidate (DEV-1217) and does not ship yet; sign off Debug, the configuration that ships. CI compiles Release on every pull request, but a green build is not a bench run. Run Release too when the change touches interrupt handlers, the Bluetooth data path or the I2C wait. See [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
 | Shimmer3R | **Release**, and Debug as well | A Debug-only failure means something depends on optimisation, which is worth knowing before a customer finds it |
 
 For Shimmer3, `Debug` is the configuration that ships, so it is the one to

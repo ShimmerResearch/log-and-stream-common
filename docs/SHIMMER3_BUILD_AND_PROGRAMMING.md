@@ -32,6 +32,9 @@ wire, not over the air.
 >   Release raised to `-O2 --opt_for_speed=2`. The figures and the DEV-1236
 >   bench used `shimmer3-firmware` @ `d82c9ef` with this repository @ `08c84d8`
 >   as its submodule.
+> - What CI builds (§4.2, and "Whether CI builds both platforms" under "Still
+>   unverified") was read from `build-check.yml` in `shimmer3-firmware` @ `f67cf0a` and
+>   `shimmer3r-firmware` @ `c8c69e71`.
 
 **Source references:**
 
@@ -177,6 +180,12 @@ I2C wait, bench Release as well: optimisation moves exactly that timing.
 **Keep the two configurations in step.** Make project-setting changes under
 *[All configurations]* in CCS, so Release cannot drift from Debug again. The
 optimisation level is the only intended difference.
+
+**CI builds both.** `shimmer3-firmware`'s `build-check.yml` builds Debug and
+Release on every pull request and every push to `main`, one matrix leg each.
+A setting that breaks only Release now fails in review, rather than going
+unnoticed as it did before DEV-1217. A green Release leg shows only that
+Release compiles and links. It is not a substitute for the bench.
 
 ### 4.3 Do not commit regenerated makefiles
 
@@ -383,13 +392,17 @@ and IC. See
   version and are not recorded in either repository. Capture your own before
   relying on the comparison.
 - ~~Whether CI builds both platforms on a `common` change~~ — resolved: **no**.
-  `log-and-stream-common/.github/workflows` holds only `clang-format-check.yml`.
-  Each platform repository has a `build-release-firmware.yml`, but both are
-  `workflow_dispatch` only (manual: pick the version part to bump and the
-  build mode) — Shimmer3R via `xanderhendriks/action-build-stm32cubeide`,
-  Shimmer3 via a cached CCS install under `/opt/ti/ccs`. Nothing builds on push
-  or pull request, so a `common` change is compile-checked only when someone
-  runs those workflows or builds locally.
+  This repository's workflows (`clang-format-check.yml`, `host-tests.yml`,
+  `docs-in-step.yml`) build neither platform.
+  - Each platform repository's `build-check.yml` builds only that platform, on
+    every pull request and push to `main`. Shimmer3R builds its Release
+    configuration, and Shimmer3 builds both Debug and Release.
+  - So a `common` change is compile-checked against a platform only by that
+    platform's pull request bumping the pin.
+  - Each platform's `build-release-firmware.yml` is `workflow_dispatch` only
+    (manual: pick the version part to bump and the build mode). Shimmer3R
+    builds via `xanderhendriks/action-build-stm32cubeide`, Shimmer3 via a
+    cached CCS install under `/opt/ti/ccs`.
 - ~~The Shimmer3 Release configuration failure~~ — resolved in DEV-1217. Release
   lacked the include paths, then the `SHIMMER3` define, and had several other
   stale settings. It now matches Debug apart from its optimisation level
