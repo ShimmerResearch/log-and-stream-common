@@ -61,10 +61,12 @@
 #elif defined(__arm__) || defined(__ARM_ARCH)
 #define TASK_IRQ_DISABLE() __disable_irq()
 #define TASK_IRQ_ENABLE()  __enable_irq()
-#else
+#elif defined(SHIMMER_HOST_TEST)
 /* Host builds have no interrupts to mask */
 #define TASK_IRQ_DISABLE()
 #define TASK_IRQ_ENABLE()
+#else
+#error "TASK_IRQ_DISABLE/ENABLE need an implementation for this MCU"
 #endif
 
 static volatile uint32_t taskList = 0;
