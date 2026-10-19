@@ -685,6 +685,7 @@ notifications at ATT MTU 517 from Windows 11 on an Intel AX201:
 | 15 Oct 2026, a second unit | v1.01.021 from main, and a fix build | v1.4.18.18 public release, settings carried over from v1.4.16.16 | 125.0–125.8 KB/s |
 | 19 Oct 2026, the second unit, settings unchanged | as above | as above | 71.8–75.2 KB/s |
 | 19 Oct 2026, after switching the PC's Bluetooth off and on | main | the first unit's test build | 119.4–120.9 KB/s |
+| 19 Oct 2026, the same state, from `smoke.ble_throughput` | main | as above | 106.8–115.9 KB/s (it starts just after the Classic item) |
 
 **The cause was the PC.** The bench PC's Bluetooth stack was in a state that
 held BLE at about 60%, and every 19 Oct reading of about 75 KB/s was taken in
@@ -698,6 +699,13 @@ that day; whether they were in a like state is not known.
 
 So the A/B above shows only that the firmware and module builds read the same
 under that cap. Whether they differ at the full rate is not yet measured.
+
+The same toggle moved Classic the other way. Afterwards every unit's classic
+link rate read about 11% lower, with no firmware change, and a second toggle
+did not move it back: the first unit's test build read 152.1–158.1 KB/s from
+`smoke.bt_throughput`, against 173–178 KB/s earlier that day. So a bench's
+Classic and BLE baselines both describe the PC's Bluetooth state on the day
+they were recorded, and a shortfall on either link needs repeating.
 Packet sizes stayed about the same throughout (400 to 450 bytes); what moved
 was how many went per second. A 1024 Hz stream with LN
 accel, gyro, mag, WR accel and VBatt arrives whole over BLE.
