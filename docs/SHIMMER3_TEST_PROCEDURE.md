@@ -684,23 +684,28 @@ notifications at ATT MTU 517 from Windows 11 on an Intel AX201:
 | 19 Oct 2026, the module re-flashed by OTA | main, and v1.01.021 with v1.4.16.16 | each of v1.4.16.16, the v1.4.18.18 public release and the test build | 72.4–75.2 KB/s on every one |
 | 15 Oct 2026, a second unit | v1.01.021 from main, and a fix build | v1.4.18.18 public release, settings carried over from v1.4.16.16 | 125.0–125.8 KB/s |
 | 19 Oct 2026, the second unit, settings unchanged | as above | as above | 71.8–75.2 KB/s |
+| 19 Oct 2026, after switching the PC's Bluetooth off and on | main | the first unit's test build | 119.4–120.9 KB/s |
 
-The release and main agree to within 2%. Every module build read the same,
-the public release module that gave 110–126 KB/s on 2 Oct included. The
-second unit, whose module settings had not changed, fell from 125 KB/s to
-75 KB/s between 15 and 19 Oct on the same PC and tool. Two other hosts
-(another Windows PC and an Android phone) read about 75 KB/s on 19 Oct too.
-So what moves the BLE figure is neither this firmware, nor the module build,
-nor the module's stored settings, nor one host alone. What is left is the
-radio environment the units and hosts share, and possibly a host-side change
-common to them. A run away from the bench would separate those. Packet sizes
-stayed about the same (400 to 450 bytes); what moved was how many went per
-second. A 1024 Hz stream with LN
+**The cause was the PC.** The bench PC's Bluetooth stack was in a state that
+held BLE at about 60%, and every 19 Oct reading of about 75 KB/s was taken in
+it: both firmware builds, every module build, and both units. Switching
+Bluetooth off and on in Windows cleared it. The first unit then read
+119.4–120.9 KB/s on the same firmware and module, with every other program on
+the PC as before. The second unit's fall from 125 to 75 KB/s, with nothing
+changed on it, fits the same cause. The 37.5–39.2 KB/s reading may be a
+deeper case of it. Another PC and an Android phone also read about 75 KB/s
+that day; whether they were in a like state is not known.
+
+So the A/B above shows only that the firmware and module builds read the same
+under that cap. Whether they differ at the full rate is not yet measured.
+Packet sizes stayed about the same throughout (400 to 450 bytes); what moved
+was how many went per second. A 1024 Hz stream with LN
 accel, gyro, mag, WR accel and VBatt arrives whole over BLE.
 
 So a bench's BLE row for a build is the low end of fresh-flash runs, with a
-10% margin (§10.4). Repeat a BLE shortfall, and A/B it against the release
-on the same unit, before believing it.
+10% margin (§10.4). Before believing a BLE shortfall, switch the PC's
+Bluetooth off and on and repeat it, then A/B it against the release on the
+same unit.
 
 **Shimmer3R classic link rate by IF820 module build.** These figures are the
 Shimmer3R classic baselines. The link rate follows the module's firmware build
@@ -1370,9 +1375,10 @@ The known-issues list and bench facts live with each bench (`[triage]` in
   - **Shimmer3R:** classic figures now exist per IF820 module build (§5.5).
     They come from one unit, one host adapter and the transparent path.
   - **Shimmer3R BLE:** one module build has a figure (§5.5), from one unit and
-    one host. Two units have read from half to one and a half times it with
-    their firmware, module build and module settings unchanged, so the cause
-    is outside the unit, most likely the radio environment; not yet shown.
+    one host. A PC's Bluetooth stack can stick in a state that holds BLE at
+    about 60% until Bluetooth is switched off and on (§5.5). What puts it
+    there, and whether other hosts do the same, is not known. So is whether
+    firmware or module builds differ over BLE at the full rate.
   - **What is still open:** for Shimmer3 radios, the figures are still a
     bench's, not a module's. A figure that belongs to the radio, independent
     of the bench, is not known, so the manual steps still say "compare with

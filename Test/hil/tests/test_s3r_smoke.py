@@ -279,7 +279,10 @@ def test_ble_throughput(rig, unit, cdc, hil_note):
                     f"measured {throughput.as_toml(measured, 'ble_throughput')}")
     short, note = throughput.judge(measured, baseline, unit.name)
     hil_note(note)
-    assert not short, "; ".join(short)
+    # A PC's Bluetooth stack can stick in a state that holds BLE at about 60%
+    # until Bluetooth is switched off and on (TEST_PROCEDURE §5.5).
+    assert not short, "; ".join(short) + (" - switch the PC's Bluetooth off and on and repeat before "
+                                         "believing a BLE shortfall")
 
 
 @pytest.mark.hil("smoke.usb_replug", needs=["shimmer3r", "usb", "hub_port"])
