@@ -8,6 +8,7 @@ port.
 """
 
 import sys
+import threading
 import types
 import unittest
 from contextlib import contextmanager
@@ -31,7 +32,7 @@ except ImportError:
     _serial.SerialException = type("SerialException", (OSError,), {})
     sys.modules.update({"serial": _serial, "serial.tools": _tools, "serial.tools.list_ports": _lp})
 
-from rig import bt, config, dock, flash, power, sdfile, throughput  # noqa: E402
+from rig import ble, bt, config, dock, flash, power, sdfile, throughput  # noqa: E402
 import run_rc  # noqa: E402
 
 
@@ -1170,6 +1171,118 @@ class ThroughputByRadio(unittest.TestCase):
         self.assertIn("update its radio", throughput.radio_mismatch("IF820 v1.4.16.16", "v1.4.18.18"))
         self.assertIsNone(throughput.radio_mismatch(None, "1.4.18.18"))
         self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.16.16", "unreadable"))
+
+
+class BleBaselineConfig(unittest.TestCase):
+    RIG = (
+        '[throughput_by_radio]\n"IF820 v1.4.18.18 test_254" = { link_bytes_per_s = 172851, tolerance = 0.10 }\n'
+        '[ble_throughput_by_radio]\n'
+        '"IF820 v1.4.18.18 test_254" = { link_bytes_per_s = 112640, stream_samples_per_s = 1024, tolerance = 0.10 }\n'
+        + S3R_UNIT.format(n="a") + 'mac = "CF9B9E3615BC"\nradio = "IF820 v1.4.18.18 test_254"\n'
+        + S3R_UNIT.format(n="b") + 'mac = "CF9B9E3615BD"\nradio = "IF820 v1.4.18.18 test_254"\n'
+        'ble_throughput = { stream_samples_per_s = 1000 }\n')
+
+    def test_classic_and_ble_baselines_are_kept_apart(self):
+        rig = load_rig(self.RIG)
+        a, b = rig.units
+        self.assertEqual(rig.throughput_baseline(a), {"link_bytes_per_s": 172851, "tolerance": 0.10})
+        self.assertEqual(rig.ble_throughput_baseline(a),
+                         {"link_bytes_per_s": 112640, "stream_samples_per_s": 1024, "tolerance": 0.10})
+        # A unit's own BLE figure overrides its radio row's, key by key, as for Classic.
+        self.assertEqual(rig.ble_throughput_baseline(b)["stream_samples_per_s"], 1000)
+        self.assertEqual(rig.ble_throughput_baseline(b)["link_bytes_per_s"], 112640)
+        self.assertNotIn("ble_throughput_by_radio", rig.extra)
+
+    def test_a_ble_row_is_checked_like_a_classic_one(self):
+        with self.assertRaisesRegex(config.RigError, "ble_throughput_by_radio.*has no figure"):
+            load_rig('[ble_throughput_by_radio]\n"IF820 v1.4.16.16" = { tolerance = 0.1 }\n')
+        with self.assertRaisesRegex(config.RigError, "ble_throughput has no figure"):
+            load_rig(S3R_UNIT.format(n="a") + 'radio = "IF820 v1.4.16.16"\nble_throughput = { tolerance = 0.1 }\n')
+
+    def test_ble_is_a_capability_only_with_bleak_and_only_on_a_shimmer3r(self):
+        s3r = config.Unit(name="r", platform="shimmer3r", mac="CF9B9E3615BC")
+        s3 = config.Unit(name="s", platform="shimmer3", mac="000666BAD1E8")
+        for have in (True, False):
+            with self.subTest(bleak=have), mock.patch.object(config, "ble_available", lambda: have):
+                self.assertEqual("ble" in s3r.capabilities(), have)
+                self.assertNotIn("ble", s3.capabilities())
+
+    def test_the_figures_to_record_name_the_ble_table(self):
+        line = throughput.as_toml({"link_bytes_per_s": 115000, "stream_samples_per_s": 1024.0}, "ble_throughput")
+        self.assertEqual(line, "ble_throughput = { link_bytes_per_s = 115000, stream_samples_per_s = 1024 }")
+
+
+def _ble_serial(timeout=0.2):
+    """A BleSerial with no radio behind it: notifications are fed by hand."""
+    s = ble.BleSerial.__new__(ble.BleSerial)
+    s.timeout, s.address, s.mtu, s.flow_indications = timeout, "CF:9B:9E:36:15:BC", 247, 0
+    s._buf, s._cond, s._lost, s._client = bytearray(), threading.Condition(), False, object()
+    return s
+
+
+class BleSerialReads(unittest.TestCase):
+    def test_a_read_waits_for_the_bytes_asked_for(self):
+        s = _ble_serial(timeout=2.0)
+        threading.Timer(0.05, s._on_data, (None, bytearray(b"\xff\x25"))).start()
+        threading.Timer(0.10, s._on_data, (None, bytearray(b"\x0a"))).start()
+        self.assertEqual(s.read(3), b"\xff\x25\x0a")
+
+    def test_a_read_returns_what_arrived_when_the_timeout_runs_out(self):
+        s = _ble_serial(timeout=0.1)
+        s._on_data(None, bytearray(b"\xa5\x00"))
+        self.assertEqual(s.in_waiting, 2)
+        self.assertEqual(s.read(5), b"\xa5\x00")
+        self.assertEqual(s.read(5), b"")
+
+    def test_what_arrived_before_a_drop_can_still_be_read(self):
+        s = _ble_serial()
+        s._on_data(None, bytearray(b"\xff"))
+        s._on_disconnect(None)
+        self.assertFalse(s.is_open)
+        self.assertEqual(s.read(4), b"\xff")
+        with self.assertRaises(ble.BleError):
+            s.read(1)
+        with self.assertRaises(ble.BleError):
+            s.write(b"\x2e")
+
+    def test_reset_input_buffer_drops_what_is_queued(self):
+        s = _ble_serial()
+        s._on_data(None, bytearray(b"\x01\x02"))
+        s.reset_input_buffer()
+        self.assertEqual(s.in_waiting, 0)
+
+    def test_a_write_is_split_to_fit_the_att_mtu(self):
+        s = _ble_serial()
+        s.mtu = 23
+        sent = []
+
+        class Client:
+            def write_gatt_char(self, char, data, response):
+                return (char, data, response)
+
+        s._client = Client()
+        s._call = lambda call, _timeout: sent.append(call)
+        self.assertEqual(s.write(bytes(range(45))), 45)
+        self.assertEqual([len(d) for _, d, _ in sent], [20, 20, 5])
+        self.assertTrue(all(c == ble.UNACKED_DATA and r is False for c, _, r in sent))
+
+    def test_btlink_runs_over_any_link_with_the_serial_interface(self):
+        # BtLink's first exchange (SET_CRC 0, then GET_DEVICE_VERSION) over the BLE adapter.
+        s = _ble_serial(timeout=1.0)
+        written = []
+
+        def write(data):
+            written.append(bytes(data))
+            if data == bytes([bt.GET_DEVICE_VERSION]):
+                s._on_data(None, bytearray([bt.ACK, bt.DEVICE_VERSION_RSP, bt.HW_SHIMMER3R]))
+            return len(data)
+
+        s.write = write
+        with mock.patch.object(bt.time, "sleep", lambda _s: None):
+            link = bt.BtLink(ser=s)
+        self.assertEqual(link.hw, bt.HW_SHIMMER3R)
+        self.assertEqual(written[0], bytes([bt.SET_CRC, 0]))
+        self.assertIs(link.ser, s)
 
 
 if __name__ == "__main__":

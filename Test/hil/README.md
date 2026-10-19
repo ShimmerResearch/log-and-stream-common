@@ -55,7 +55,8 @@ the firmware checkouts the model may read, and a spending cap
 
 ## Setting up a bench
 
-1. `pip install pytest pyserial tomli` (Python 3.10+; `tomli` only before 3.11).
+1. `pip install pytest pyserial tomli bleak` (Python 3.10+; `tomli` only before 3.11; `bleak` for
+   the Shimmer3R's BLE items, which are `not_covered` without it).
 2. Copy `rig.example.toml` to `rig.toml` (git-ignored), or keep it anywhere and
    set `HIL_RIG`. Describe each unit by MAC and USB serial, never by COM number.
 3. Pair each unit's Bluetooth once in Windows. Current LogAndStream asks for
@@ -160,6 +161,18 @@ radio = "IF820 v1.4.16.16"
   `radio` up to date by hand when a unit is re-flashed.
 - **Overrides:** a unit's own `throughput` overrides its radio row key by
   key.
+
+`smoke.ble_throughput` makes the same two measurements over the Shimmer3R's
+BLE link: the IF820's CYSPP serial service, with data as notifications, as
+the web SDK receives it (`rig/ble.py`). Its figures go in tables of their own,
+`[ble_throughput_by_radio]` and a unit's `ble_throughput`, keyed and judged
+the same way. They are kept apart because a BLE figure depends on the
+connection the host negotiates as well as on the module build:
+
+```toml
+[ble_throughput_by_radio]
+"IF820 v1.4.16.16" = { link_bytes_per_s = ..., stream_samples_per_s = ..., tolerance = 0.10 }
+```
 
 How each figure is judged:
 
