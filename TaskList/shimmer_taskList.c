@@ -45,9 +45,46 @@
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
 
-#if defined(SHIMMER3R)
+#if defined(SHIMMER3)
+#include "msp430.h"
+#elif defined(SHIMMER3R)
 #include "gpio.h"
 #include "ux_device_cdc_acm.h"
+#endif
+
+/* Masks interrupts around the empty check in ShimTask_NORM_manage(), so the
+ * check and the sleep that follows it are one step (DEV-1222). Unmasking after
+ * the sleep is unconditional because the main loop runs with interrupts on.
+ *
+ * TASK_IRQ_SAVE() and TASK_IRQ_RESTORE() bracket each read-modify-write of
+ * taskList (DEV-1233). Main and interrupts at several priorities set and clear
+ * tasks, and on Cortex-M the update is a load, a modify and a store: a task
+ * that an interrupt set in between would be overwritten by the stale copy. The
+ * previous mask state is put back rather than unmasked, as callers may be ISRs
+ * or already masked. They are one pair per scope, as SAVE declares the saved
+ * state. MSP430 needs neither: cl430 updates each 16-bit half of taskList with
+ * one OR.W or AND.W on memory, from -O0 to -O4, and interrupts are taken
+ * between instructions. */
+#if defined(__MSP430__)
+#define TASK_IRQ_DISABLE() __disable_interrupt()
+#define TASK_IRQ_ENABLE()  __enable_interrupt()
+#define TASK_IRQ_SAVE()
+#define TASK_IRQ_RESTORE()
+#elif defined(__arm__) || defined(__ARM_ARCH)
+#define TASK_IRQ_DISABLE() __disable_irq()
+#define TASK_IRQ_ENABLE()  __enable_irq()
+#define TASK_IRQ_SAVE()                            \
+  uint32_t const taskIrqPrimask = __get_PRIMASK(); \
+  __disable_irq()
+#define TASK_IRQ_RESTORE() __set_PRIMASK(taskIrqPrimask)
+#elif defined(SHIMMER_HOST_TEST)
+/* Host builds have no interrupts to mask */
+#define TASK_IRQ_DISABLE()
+#define TASK_IRQ_ENABLE()
+#define TASK_IRQ_SAVE()
+#define TASK_IRQ_RESTORE()
+#else
+#error "TASK_IRQ_DISABLE/ENABLE/SAVE/RESTORE need an implementation for this MCU"
 #endif
 
 static volatile uint32_t taskList = 0;
@@ -69,12 +106,24 @@ void ShimTask_NORM_init(void)
 
 void ShimTask_NORM_manage(void)
 {
-  executingTask = ShimTask_popNext();
-  if (executingTask == TASK_NONE)
+  /* The empty check and the sleep must not be split by an interrupt. One that
+   * queued a task in between would find the CPU still awake, so its wake-up
+   * would do nothing and the part would sleep with the task pending until some
+   * unrelated interrupt. So the check is made with interrupts masked, and the
+   * platform enters sleep with them still masked: on MSP430 LPM3 | GIE unmasks
+   * and sleeps in one instruction; on Cortex-M WFI wakes on an interrupt that
+   * is pending while masked. The scan below stays unmasked, as before, so as
+   * not to add interrupt latency; a scan that finds nothing because an
+   * interrupt cleared the task just comes round to the check again. */
+  TASK_IRQ_DISABLE();
+  if (taskList == 0U)
   {
     platform_sleepWhenNoTask();
   }
-  else
+  TASK_IRQ_ENABLE();
+
+  executingTask = ShimTask_popNext();
+  if (executingTask != TASK_NONE)
   {
 #if TEST_TASK_MONITOR
     /* mark start of task execution for watchdog */
@@ -241,17 +290,21 @@ TaskId_t ShimTask_NORM_popNext(void)
 
 void ShimTask_NORM_clear(TaskId_t task_id)
 {
+  TASK_IRQ_SAVE();
   taskList &= ~task_id;
+  TASK_IRQ_RESTORE();
 }
 
 uint8_t ShimTask_NORM_set(TaskId_t task_id)
 {
   uint8_t is_sleeping = 0;
+  TASK_IRQ_SAVE();
   if (!taskList && !executingTask)
   {
     is_sleeping = 1;
   }
   taskList |= task_id;
+  TASK_IRQ_RESTORE();
 #if defined(SHIMMER3R)
   /* if called from an ISR, force main context to run:
      - Pend PendSV to wake the scheduler / main loop
