@@ -30,17 +30,28 @@ stm32_programmer = "C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgr
 # stlink_serial; this bench-wide one is only for a bench with one.
 # stlink_serial = "<ST-Link serial from STM32_Programmer_CLI -l st-link>"
 
+[throughput_by_radio]
+# Throughput baselines per radio build, for each unit whose `radio` is exactly
+# the key; a unit's own `throughput` overrides them. A Shimmer3R's classic
+# link rate follows its IF820 module build: TEST_PROCEDURE §5.5 has the
+# figures (KB/s x 1024, the low end of each range). `tolerance` widens the
+# default 5% margin for figures that move from day to day.
+"IF820 v1.4.16.16" = { link_bytes_per_s = 156672, tolerance = 0.10 }
+"IF820 v1.4.18.18" = { link_bytes_per_s = 77824, tolerance = 0.10 }
+
 [[unit]]
 name = "s3r-a"
 platform = "shimmer3r"
 mac = "AABBCCDD0001"           # Bluetooth MAC
 usb_serial = "0123456789AB"    # USB iSerial: `python -m serial.tools.list_ports -v`, VID:PID 0483:5710
 hub_port = 1                   # hub port powering its USB-C (power-off = undock)
-radio = "IF820 v1.4.16.16"
+radio = "IF820 v1.4.16.16"     # the module build, exactly as keyed above; a test build of a version
+#                              # reports the release's, so name it here when one is fitted
 board = ""
 notes = ""
 # stlink_serial = "..."        # the ST-Link on this unit's SWD header: flash and reset by SWD, not
 #                              # through ST's bootloader, which on occasion never comes back as DFU
+# throughput = { stream_samples_per_s = ... }   # its own figures, over its radio's row
 
 # One Shimmer3 per radio firmware that shipped: RN42 v4.77, RN42 v6.15,
 # RN4678 v1.00.5, RN4678 v1.23. Pair each one's classic side in Windows.
@@ -50,6 +61,10 @@ platform = "shimmer3"
 mac = "000666AABBCC"
 base6_slot = 3
 radio = "RN42 Ver 6.15"
+# What the last release gave on this unit and bench, for fleet.bt_throughput.
+# Without it the item is not_covered, and its reason prints this line with the
+# figures it measured. Record them from a run of the release, not a candidate.
+# throughput = { link_bytes_per_s = 39315, stream_samples_per_s = 989.1 }
 
 [triage]
 # For triage.py. Keep issue keys out of this public repo: the known-issues file

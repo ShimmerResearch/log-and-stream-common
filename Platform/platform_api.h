@@ -55,9 +55,11 @@ extern "C"
   /* Called by ShimTask_NORM_manage() with interrupts masked, once it has found
    * the task list empty. Sleep in a way that an interrupt already pending, or
    * raised while masked, still wakes the part (MSP430: LPM3 | GIE in one
-   * instruction; Cortex-M: WFI), and unmask before returning. Unmasking before
-   * the sleep instead reopens the window this closes: a task queued in it is
-   * slept through. */
+   * instruction; Cortex-M: WFI). Never unmask before the sleep: that reopens
+   * the window this closes, and a task queued in it is slept through. The hook
+   * may return masked, since ShimTask_NORM_manage() unmasks after it, or unmask
+   * itself once awake where the order matters, as Shimmer3R does before
+   * resuming its tick. */
   void platform_sleepWhenNoTask(void);
   /* LED phase lock (LEDs/shimmer_leds.c). The first returns the time since the
    * LED blink timer last fired, in 32768 Hz ticks; the second moves its next

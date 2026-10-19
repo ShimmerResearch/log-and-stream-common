@@ -27,11 +27,23 @@ read before adding a subsystem.
 >   `ShimSdSync_init`. It was read at `shimmer3-firmware` @ `ac30299`, where
 >   the callback is `ShimTask_setInitialiseBluetooth`. Shimmer3R already passes
 >   that callback at `a8f105e5`.
+> - **Task loop:** the masked empty check and the masked entry to
+>   `platform_sleepWhenNoTask` (§4.2) postdate `f3cf73e`. They were read at
+>   `log-and-stream-common` @ `e421b74`, from `TaskList/shimmer_taskList.c` and
+>   `Platform/platform_api.{h,c}`, with each platform's hook at
+>   `shimmer3-firmware` @ `a886ad7` and `shimmer3r-firmware` @ `38be31b`.
 > - **Weak hooks:** the hook count and the rule that the weak attribute
 >   sits on the default definitions only were read at `log-and-stream-common`
 >   @ `f573f60`, from `Platform/platform_api.{h,c}`, `Boards/shimmer_boards.{h,c}`,
 >   `Comms/shimmer_bt_uart.{h,c}`, `Sensing/shimmer_sensing.{h,c}` and
 >   `Test/shimmer_test.{h,c}`.
+> - **Task-list masking** (§4.3) postdates `f3cf73e`.
+>   - **Source:** read at `log-and-stream-common` @ `9435d2b`, from
+>     `TaskList/shimmer_taskList.c`.
+>   - **Cortex-M sequences:** disassembled from a Release build of
+>     `shimmer3r-firmware` @ `38be31b` with that commit (STM32CubeIDE 1.15.1).
+>   - **MSP430 sequences:** cl430 21.6.1 output for the same file at -O0, -O2,
+>     -O3 and -O4.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A, Code
 > Composer Studio); **S3R** = Shimmer3R (STM32U5, STM32CubeIDE). LogAndStream
@@ -257,15 +269,15 @@ considered. **There is no preemption between tasks.**
 > **The empty check and the sleep are one step.** If an interrupt queued a task
 > between them, its wake-up request would find the CPU still awake and do
 > nothing, and the part would then sleep with the task pending until some
-> unrelated interrupt (DEV-1222). So the check runs with interrupts masked and
+> unrelated interrupt. So the check runs with interrupts masked and
 > `platform_sleepWhenNoTask` is entered with them still masked. It has to sleep
 > in a way that a pending interrupt still ends: `LPM3_bits + GIE` on MSP430,
 > which unmasks and sleeps in one instruction, or `WFI` on Cortex-M, which
 > wakes on an interrupt that is pending while masked. **Unmasking before the
 > sleep reopens the window.** Only the check is masked, not the
 > `ShimTask_popNext` scan, which would otherwise hold interrupts off for tens of
-> microseconds on Shimmer3. Before DEV-1222 the check was `popNext` itself, made
-> with interrupts on.
+> microseconds on Shimmer3. The check used to be `popNext` itself, made with
+> interrupts on.
 
 > **A long task delays everything, including sampling.** The sample path runs
 > as `TASK_GATHER_DATA`, so a slow SD write or a long Bluetooth response pushes
@@ -288,6 +300,20 @@ sleep and the task would not run until something else woke the part.
 
 > **There is no Shimmer3 equivalent** — the MSP430's sleep exit is handled
 > differently, through the return-from-interrupt status bits.
+
+> **On Cortex-M every update of `taskList` is masked.** Main and interrupts at
+> several NVIC priorities set and clear tasks, and on Cortex-M GCC does `|=` and
+> `&= ~` as a load, a modify and a store. If an interrupt set a task between
+> the load and the store, the store would put back the stale copy and the task
+> would be lost. So `ShimTask_set`, `ShimTask_clear` and the clear in
+> `ShimTask_popNext` save PRIMASK, mask, and restore it. The window is the
+> update itself, plus, in `ShimTask_set`, the idle check before it. That way the
+> value it reports was read from the same `taskList` the bit is ORed into. The
+> `popNext` scan stays unmasked (§4.2). Restoring, rather than unmasking, keeps an ISR or an
+> already-masked caller masked. **MSP430 masks nothing here:** cl430 updates
+> each 16-bit half with a single `OR.W` or `AND.W` on memory, at every level
+> from -O0 to -O4. Interrupts are taken only between instructions, so each half
+> is atomic, and neither half's update touches the other's bits.
 
 ### 4.4 Stuck-task watchdog
 
