@@ -61,6 +61,7 @@ class BleSerial:
         self.timeout = timeout
         self.address = _address(mac)
         self.mtu = 0
+        self.write_size = 20            # the minimum ATT payload, until the link says more
         self.flow_indications = 0
         self._buf = bytearray()
         self._cond = threading.Condition()
@@ -102,14 +103,21 @@ class BleSerial:
             raise BleError(f"{self.address} is not advertising: is it on, in range, and not connected "
                            "to another host?")
         client = BleakClient(device, disconnected_callback=self._on_disconnect)
-        await client.connect()
+        # Kept before connecting: if the connect times out and is cancelled,
+        # close() still has the client to disconnect.
         self._client = client
+        await client.connect()
         await client.start_notify(UNACKED_DATA, self._on_data)
         try:
             await client.start_notify(RX_FLOW, self._on_flow)
         except Exception:   # best effort, as in the web SDK
             pass
         self.mtu = client.mtu_size
+        # What one write without response may carry: the characteristic's own
+        # figure where the platform gives it, else the ATT payload of the MTU.
+        char = client.services.get_characteristic(UNACKED_DATA)
+        size = getattr(char, "max_write_without_response_size", 0) if char else 0
+        self.write_size = max(20, size or self.mtu - ATT_HEADER)
 
     def _on_data(self, _char, data: bytearray) -> None:
         with self._cond:
@@ -128,7 +136,7 @@ class BleSerial:
 
     @property
     def is_open(self) -> bool:
-        return self._client is not None and not self._lost
+        return self._client is not None and not self._lost and self.mtu > 0
 
     @property
     def in_waiting(self) -> int:
@@ -152,7 +160,7 @@ class BleSerial:
     def write(self, data: bytes) -> int:
         if not self.is_open:
             raise BleError(f"{self.address}: BLE link dropped")
-        step = max(20, self.mtu - ATT_HEADER)
+        step = self.write_size
         for i in range(0, len(data), step):
             self._call(self._client.write_gatt_char(UNACKED_DATA, bytes(data[i:i + step]), response=False),
                        WRITE_S)

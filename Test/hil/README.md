@@ -60,13 +60,16 @@ the firmware checkouts the model may read, and a spending cap
 2. Copy `rig.example.toml` to `rig.toml` (git-ignored), or keep it anywhere and
    set `HIL_RIG`. Describe each unit by MAC and USB serial, never by COM number.
 3. Pair each unit's Bluetooth once in Windows. Current LogAndStream asks for
-   no PIN; only a unit with SD sync enabled uses the legacy "1234". The tests
-   need the **classic** side, which creates a "Standard Serial over Bluetooth
-   link" COM port. An RN4678 is dual-mode and Windows lists it twice under the
-   same name; the BLE entry is the one shown with a **PC** icon. Pairing that
-   one creates GATT services and no COM port, and the Bluetooth tests then
-   report not_covered. `python -m serial.tools.list_ports -v` should show a
-   BTHENUM port whose hardware ID contains the unit's MAC.
+   no PIN; only a unit with SD sync enabled uses the legacy "1234". The
+   classic items need the **classic** side, which creates a "Standard Serial
+   over Bluetooth link" COM port. A dual-mode unit (a Shimmer3 with an RN4678,
+   or a Shimmer3R) is listed twice under the same name; the BLE entry is the
+   one shown with a **PC** icon. Pairing only that one creates GATT services
+   and no COM port, and the classic items then report not_covered.
+   `python -m serial.tools.list_ports -v` should show a BTHENUM port whose
+   hardware ID contains the unit's MAC. `smoke.ble_throughput` needs no
+   pairing at all: it connects over BLE by the unit's MAC, through bleak, and
+   needs the unit not connected to any other host.
 4. Units configured for SD sync, or with Bluetooth disabled, keep their radio
    off. The run handles that itself (`rig/btmode.py`): before the first test,
    each unit whose tests need Bluetooth has those two bits of InfoMem byte 217

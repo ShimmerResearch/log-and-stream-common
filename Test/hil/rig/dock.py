@@ -151,13 +151,14 @@ class DockLink:
     def radio_settings(self) -> bytes:
         """The EEPROM's 16-byte radio settings page: radioHwVer, baud, the radio-enable bits.
 
-        A shorter reply is an error, not a page: its bits would be read as settings.
+        A reply of any other length is an error, not a page: its bits would be
+        read as settings.
         """
         page = self.get(COMP_DAUGHTER_CARD, PROP_CARD_MEM,
                         struct.pack("<BH", RADIO_PAGE_SIZE, EEPROM_RADIO_PAGE - CARD_MEM_BASE))
-        if len(page) < RADIO_PAGE_SIZE:
+        if len(page) != RADIO_PAGE_SIZE:
             raise DockError(f"radio settings read gave {len(page)} bytes, expected {RADIO_PAGE_SIZE}")
-        return page[:RADIO_PAGE_SIZE]
+        return page
 
     def read_infomem(self, offset: int = 0, length: int = INFOMEM_SIZE) -> bytes:
         out = b""

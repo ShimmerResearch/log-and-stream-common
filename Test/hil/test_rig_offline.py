@@ -1223,11 +1223,13 @@ class BleEnableBit(unittest.TestCase):
         # CARD_MEM reads EEPROM from offset + 16, so the page at 2032 is offset 2016, 16 bytes.
         self.assertEqual(sent, [(dock.CMD_GET, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM, bytes([16, 0xE0, 0x07]))])
 
-    def test_a_short_radio_page_is_an_error(self):
+    def test_a_radio_page_of_the_wrong_length_is_an_error(self):
         d = dock.DockLink.__new__(dock.DockLink)
-        d._transact = lambda cmd, comp, prop, data=b"": bytes([3, 12, 0xFF])
-        with self.assertRaisesRegex(dock.DockError, "gave 3 bytes"):
-            d.radio_settings()
+        for n in (3, 15, 17):
+            with self.subTest(n=n):
+                d._transact = lambda cmd, comp, prop, data=b"", n=n: bytes([3, 12, 0xFF]) + bytes(n - 3)
+                with self.assertRaisesRegex(dock.DockError, f"gave {n} bytes"):
+                    d.radio_settings()
 
     def test_ble_enabled_reads_byte_2_bit_0(self):
         self.assertTrue(dock.ble_enabled(bytes([3, 12, 0xFF]) + bytes(13)))   # 15BC: unprogrammed, both on
@@ -1239,6 +1241,7 @@ def _ble_serial(timeout=0.2):
     """A BleSerial with no radio behind it: notifications are fed by hand."""
     s = ble.BleSerial.__new__(ble.BleSerial)
     s.timeout, s.address, s.mtu, s.flow_indications = timeout, "CF:9B:9E:36:15:BC", 247, 0
+    s.write_size = s.mtu - ble.ATT_HEADER
     s._buf, s._cond, s._lost, s._client = bytearray(), threading.Condition(), False, object()
     return s
 
@@ -1338,7 +1341,7 @@ class BleSerialReads(unittest.TestCase):
 
     def test_a_write_is_split_to_fit_the_att_mtu(self):
         s = _ble_serial()
-        s.mtu = 23
+        s.write_size = 20
         sent = []
 
         class Client:
