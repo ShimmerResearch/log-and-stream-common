@@ -765,6 +765,43 @@ So a bench's BLE row for a build is the low end of fresh-flash runs, with a
 Bluetooth off and on and repeat it, then A/B it against the release on the
 same unit.
 
+**Shimmer3 BLE, on an RN4678.** The low rate is the module's own. Measured
+from Windows 11's HCI trace, 19 Oct 2026, v1.01.006:
+- **What the module sends.** A fixed number of 157-byte notifications per
+  connection event, in 27-byte link-layer packets (no data length extension
+  from the module): two on v1.23, about four on v1.00.5.
+- **The interval.** Windows renegotiates a new link for its first seconds: 60,
+  then 15, then 60 ms from about 2.6 s, its balanced preset.
+- **So the rate.** At 60 ms that is about 5.2 KB/s on v1.23 and 9.5 KB/s on
+  v1.00.5, in line with Microchip's LE figure of up to 7 KB/s for the module.
+- **The module never asks for anything else.** The firmware configures it
+  with `ST,0001,001C,0000,0200`, a minimum interval of 1.25 ms, below the
+  7.5 ms the specification allows, and no connection-parameter request
+  appears in the trace.
+
+A shorter interval raises the rate, but the modules fail there. A host asking
+for 15 ms (Windows' throughput preset) roughly tripled v1.23, to 16.0 KB/s and
+532 of 1024 samples/s, but:
+- **v1.23** then took no connection until it was reset.
+- **v1.00.5** went silent (link supervision timeout) in both floods run at
+  15 ms, holding RTS. The firmware then counted a data-rate-test blockage every
+  100 ms, an EEPROM write each, until reset.
+
+At 60 ms, v1.00.5 was clean in 7 of 7 runs and v1.23 in 17 of 19. The two
+that failed:
+- **One run lost a whole notification's worth:** 157 bytes, 33 test packets
+  and 8 bytes of their neighbours. A byte lost on the MCU's UART would cost
+  one byte, not a notification.
+- **One run stalled with the other unit's radio on:** RTS held high, its
+  EEPROM RTS-lockup count rising, a batch getting out every 2 s, the stop not
+  obeyed until the next connection.
+
+Both are on the module's side of its UART. So `fleet.ble_throughput` waits
+6 s after connecting before it measures, so that every run takes its figures
+at the interval a host settles on, and its note gives that interval. A flood
+started inside the renegotiation runs at 15 ms, and its figures and failures
+are a different test.
+
 **Shimmer3R classic link rate by IF820 module build.** These figures are the
 Shimmer3R classic baselines. The link rate follows the module's firmware build
 far more than the sensor's, so they are kept per build:

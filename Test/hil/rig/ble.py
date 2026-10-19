@@ -240,5 +240,19 @@ class BleSerial:
             if not self._thread.is_alive() and not self._loop.is_closed():
                 self._loop.close()
 
+    def connection_interval_ms(self) -> float | None:
+        """The connection interval as the platform reports it now, or None where it
+        does not say (only bleak's Windows backend does). Windows moves it in the
+        first seconds of a link (TEST_PROCEDURE §5.5), so read it when the figure is
+        taken. The modules send a fixed number of notifications per connection
+        event, so this interval sets their BLE rate."""
+        try:
+            p = self._client._backend._requester.get_connection_parameters()
+            return p.connection_interval * 1.25
+        except Exception:   # no client, another backend, or an older Windows
+            return None
+
     def describe(self) -> str:
-        return f"BLE {self.address} ({self.profile.name}), ATT MTU {self.mtu}, notifications"
+        iv = self.connection_interval_ms()
+        interval = f", connection interval {iv:g} ms" if iv else ""
+        return f"BLE {self.address} ({self.profile.name}), ATT MTU {self.mtu}{interval}, notifications"
