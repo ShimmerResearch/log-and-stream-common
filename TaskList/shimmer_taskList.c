@@ -77,12 +77,14 @@
   uint32_t const taskIrqPrimask = __get_PRIMASK(); \
   __disable_irq()
 #define TASK_IRQ_RESTORE() __set_PRIMASK(taskIrqPrimask)
-#else
+#elif defined(SHIMMER_HOST_TEST)
 /* Host builds have no interrupts to mask */
 #define TASK_IRQ_DISABLE()
 #define TASK_IRQ_ENABLE()
 #define TASK_IRQ_SAVE()
 #define TASK_IRQ_RESTORE()
+#else
+#error "TASK_IRQ_DISABLE/ENABLE/SAVE/RESTORE need an implementation for this MCU"
 #endif
 
 static volatile uint32_t taskList = 0;
