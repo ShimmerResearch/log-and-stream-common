@@ -727,7 +727,9 @@ protocol couples the two. The invariant they must satisfy is:
 
 > **A sensor's output rate must be at or above the packet rate.**
 
-The packet rate is `32768 / samplingRateTicks` (§3.1). The Java driver states
+The packet rate is `32768 / samplingRateTicks` (§3.1), except on Shimmer3R
+with an odd `samplingRateTicks`, where it is `32768 / (2 × floor(samplingRateTicks / 2))`
+and so slightly higher; check the invariant against that rate. The Java driver states
 this in comment after comment — *"as close to the Shimmer sampling rate as
 possible, sensor sampling rate >= shimmer sampling rate"* — and the firmware's
 own defaults follow it, e.g. `ShimConfig_setDefaultConfig` selecting the LSM6DSV

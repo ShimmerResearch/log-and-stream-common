@@ -703,7 +703,8 @@ Caveats:
 > regression and is not one.
 
 Sampling rate is stored as a tick divider — the packet rate is
-`32768 / samplingRateTicks` — so the ladder is not linear in the configured
+`32768 / samplingRateTicks`, or `32768 / (2 × floor(samplingRateTicks / 2))` on
+Shimmer3R when it is odd (5.4.4c) — so the ladder is not linear in the configured
 value. [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md)
 §3.1 has the encoding.
 
