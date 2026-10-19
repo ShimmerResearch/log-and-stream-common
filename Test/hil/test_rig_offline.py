@@ -1237,6 +1237,21 @@ class BleEnableBit(unittest.TestCase):
         self.assertFalse(dock.ble_enabled(bytes([3, 12, 0x02]) + bytes(13)))  # classic only
         self.assertFalse(dock.ble_enabled(b""))
 
+class BleInterference(unittest.TestCase):
+    LISTING = ('"System Idle Process","0","Services","0","8 K"\n'
+               '"PhoneExperienceHost.exe","9144","Console","1","64,512 K"\n')
+
+    def test_phone_link_is_found_whatever_the_case(self):
+        self.assertEqual(ble.running(ble.BLE_INTERFERING, self.LISTING),
+                         ["Phone Link (holds a Bluetooth link to a phone)"])
+
+    def test_nothing_is_found_when_it_is_closed(self):
+        self.assertEqual(ble.running(ble.BLE_INTERFERING, '"explorer.exe","1","Console","1","1 K"\n'), [])
+
+    def test_a_name_is_matched_whole(self):
+        # "xphoneexperiencehost.exe" is another program.
+        self.assertEqual(ble.running(ble.BLE_INTERFERING, '"xPhoneExperienceHost.exe","1","Console","1","1 K"\n'), [])
+
 def _ble_serial(timeout=0.2):
     """A BleSerial with no radio behind it: notifications are fed by hand."""
     s = ble.BleSerial.__new__(ble.BleSerial)

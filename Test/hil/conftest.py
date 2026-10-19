@@ -35,6 +35,7 @@ sys.path.insert(0, str(HERE))
 import hil_gate  # noqa: E402
 import hil_report  # noqa: E402
 from rig import config as rig_config  # noqa: E402
+from rig.ble import BLE_INTERFERING, running as ble_running  # noqa: E402
 from rig.power import HubPower, ManualPower  # noqa: E402
 
 
@@ -78,18 +79,15 @@ def pytest_configure(config):
 
 # Processes known to distort a run on this kind of bench. STM32CubeIDE scans
 # every COM port on USB arrival, paging absent Bluetooth devices and cutting
-# classic throughput for most of a minute; Consensys holds dock ports open.
+# classic throughput for most of a minute; Consensys holds dock ports open;
+# Phone Link holds a Bluetooth link of its own (rig/ble.py BLE_INTERFERING).
 INTERFERING = {"stm32cubeide.exe": "STM32CubeIDE (pages Bluetooth ports on USB arrival)",
-               "consensys.exe": "Consensys (holds dock ports)"}
+               "consensys.exe": "Consensys (holds dock ports)",
+               **BLE_INTERFERING}
 
 
 def _running(names):
-    if sys.platform != "win32":
-        return []
-    import subprocess
-    out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True,
-                         text=True, encoding="utf-8", errors="replace").stdout.lower()
-    return [desc for exe, desc in names.items() if f'"{exe}"' in out]
+    return ble_running(names)
 
 
 def pytest_sessionstart(session):

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import sys
 import threading
 import time
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -35,6 +36,14 @@ WRITE_S = 10.0
 CANCEL_S = 5.0
 
 
+# Host programs that hold a Bluetooth link of their own and so cut what the PC
+# can carry to a unit over BLE. Phone Link keeps a link to the paired phone
+# open: with it running, a Shimmer3R's BLE data-rate test read about 75 KB/s
+# where the same unit, firmware and module read about 120 with it closed and
+# Bluetooth switched off and on (19 Oct 2026, TEST_PROCEDURE §5.5).
+BLE_INTERFERING = {"phoneexperiencehost.exe": "Phone Link (holds a Bluetooth link to a phone)"}
+
+
 class BleError(Exception):
     """The BLE link could not be made, or dropped."""
 
@@ -42,6 +51,19 @@ class BleError(Exception):
 def available() -> bool:
     """bleak is installed, so this host can make the link."""
     return importlib.util.find_spec("bleak") is not None
+
+
+def running(names: dict[str, str], listing: str | None = None) -> list[str]:
+    """The descriptions of the programs in `names` (executable -> description) that
+    are running. Windows only; `listing` is tasklist's CSV output, for tests."""
+    if listing is None:
+        if sys.platform != "win32":
+            return []
+        import subprocess
+        listing = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True,
+                                 text=True, encoding="utf-8", errors="replace").stdout
+    listing = listing.lower()
+    return [desc for exe, desc in names.items() if f'"{exe}"' in listing]
 
 
 def _address(mac: str) -> str:
