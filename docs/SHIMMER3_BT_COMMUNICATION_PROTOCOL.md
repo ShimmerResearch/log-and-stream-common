@@ -73,6 +73,17 @@ BLE, and over the dock's serial link.
 >   `shimmer3-firmware`'s `Shimmer_Driver/RN4X/RN4X.c`, which the
 >   platform-firmware pins above predate. Treat the Shimmer3 data gate as
 >   unverified here until those pins move to a revision that carries it.
+> - **Short packets and the transmit-chain race ([§6.3](#63-interleaving)):**
+>   the code is read at `log-and-stream-common` @ `c8605fb`, which postdates the
+>   pin above — `Comms/shimmer_bt_uart.c` (`ShimBt_sendNextCharIfNotInProgress`,
+>   `ShimBt_sendNextChar`) — and at `shimmer3-firmware` @ `4f90c7d` —
+>   `Shimmer_Driver/RN4X/RN4X.c` (`BT_rtsInterrupt`, `BtTransmit`). Both are the
+>   pull-request revisions that carry the fix. The defect is read at
+>   `shimmer3-firmware` @ `LogAndStream_Shimmer3_v1.01.006` and the
+>   `log-and-stream-common` revision it pins, `b43a264`. Which byte was lost,
+>   and how often, is a bench measurement (19 Oct 2026), not a reading of
+>   source. Until the platform half reaches a release, "fixed" describes those
+>   revisions, not a released firmware.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). The **Gen** column in the opcode tables says

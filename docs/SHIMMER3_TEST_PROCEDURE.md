@@ -26,6 +26,14 @@ and — as importantly — what each layer of testing cannot tell you.
 > - **Which configuration ships on Shimmer3 (§3, §3.1):** `shimmer3-firmware`
 >   @ `de459e7` — `build-release-firmware.yml` and `promote-release.yml`, on
 >   its pull-request branch.
+> - **The Shimmer3 stream misframe and its fix (§5.5):** `log-and-stream-common`
+>   @ `c8605fb` (`Comms/shimmer_bt_uart.c`) and @ `af66ed2`
+>   (`Test/hil/rig/throughput.py`); `shimmer3-firmware` @ `4f90c7d`
+>   (`Shimmer_Driver/RN4X/RN4X.c`). These are the pull-request revisions that
+>   carry the fix. The figures are bench measurements of 19 Oct 2026, not
+>   readings of source. They cover the v1.01.006 release
+>   (`shimmer3-firmware` @ `LogAndStream_Shimmer3_v1.01.006`), main @ `c28fa8c`
+>   built in its Release configuration, and each of the two with the fix.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
