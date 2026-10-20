@@ -59,13 +59,15 @@ Notes:
   complete the load, unlike the Verisense nRF52840 whose identical BOM ran
   +40…+65 ppm fast), while 22 pF over-loads it (−54 / −113 ppm measured).
   A board's boot LSE drive level (factory-test report line "LSE drive applied
-  at boot") is the runtime cross-check. Production boards run MEDIUMHIGH,
-  the floor since DEV-1257; HIGH means the crystal would not start at
-  MEDIUMHIGH (an over-loaded or marginal fit, or a cold boot). The floor
-  is there because MEDIUMLOW, which the earlier lowest-that-starts + 1
-  ladder chose for 12 pF boards, fails AN2867's gain-margin rule for the
-  CM315D and lost RTC cycles on the bench (−379 ppm idle, 15–18 ms at each
-  SD-logging start).
+  at boot") is the runtime cross-check. Since DEV-1257 every board starts
+  the LSE at MEDIUMHIGH and nothing else. A crystal that will not start
+  there (wrong caps, a bad rework, contamination) falls through to the LSI
+  fallback, reads "NONE …" on that line and fails S3R_TEST_0028, so the
+  factory test catches it. MEDIUMLOW, which the earlier lowest-that-starts
+  + 1 ladder chose for 12 pF boards, fails AN2867's gain-margin rule for
+  the CM315D. Stock boards still kept every cycle at MEDIUMLOW, but an
+  over-loaded rework lost them (−379 ppm idle, 15–18 ms at each SD-logging
+  start).
 - Hand-reworked bench units may carry corrected caps and/or a BMP581 under a
   pre-fix revision; revision gates cannot see rework.
 
