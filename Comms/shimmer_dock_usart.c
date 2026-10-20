@@ -367,9 +367,7 @@ void ShimDock_processCmd(void)
                 RTC_setTimeFromTicksPtr((uint8_t *) (dockRxBuf + UART_RXBUF_DATA));
                 ShimRtc_rwcErrorCheck();
 
-                ShimConfig_getStoredConfig()->rtcSetByBt = 0;
-                InfoMem_write(NV_SD_TRIAL_CONFIG0,
-                    &ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
+                ShimRtc_setRtcSetByBt(0);
                 ShimSdHead_sdHeadTextSetByte(SDH_TRIAL_CONFIG0,
                     ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0]);
 

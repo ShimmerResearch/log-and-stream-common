@@ -1592,9 +1592,8 @@ void ShimBt_processCmd(void)
       }
       case SET_RWC_COMMAND:
       {
-        storedConfigPtr->rtcSetByBt = 1;
-        InfoMem_write(NV_SD_TRIAL_CONFIG0,
-            &storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
+        /* Flushes InfoMem only if the flag changes; see the helper. */
+        ShimRtc_setRtcSetByBt(1);
         ShimSdHead_sdHeadTextSetByte(
             SDH_TRIAL_CONFIG0, storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0]);
 

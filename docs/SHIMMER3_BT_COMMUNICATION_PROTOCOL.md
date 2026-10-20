@@ -2308,6 +2308,13 @@ Milliseconds = ticks / 32.768.
 Setting the clock has three side effects beyond the clock itself: it sets the
 `rtcSetByBt` bit in InfoMem 217 and flushes that byte, re-runs the real-world
 clock error check, and on Shimmer3R re-arms the periodic battery-read RTC alarm.
+The flush happens only when the bit changes (`ShimRtc_setRtcSetByBt`), because
+any InfoMem write erases flash with interrupts disabled - a 128-byte segment on
+Shimmer3, an 8 KB page on Shimmer3R
+([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §1.3) -
+and a repeat set while streaming would otherwise cost samples each time. This
+change is later than the pinned revision; see
+[Still unverified](#still-unverified--not-found-in-code).
 Once set, status bit 2 reports "clock has been set" on firmware new enough to
 carry it (`isSupportedRtcStateInStatus`,
 [Appendix A](#appendix-a-firmware-version-gates)).
@@ -3735,6 +3742,13 @@ them.
 
 **Firmware provenance**
 
+- **`SET_RWC_COMMAND` flushes `rtcSetByBt` only when it changes.** The
+  conditional flush in [§7.7](#77-sd-logging-and-trial-configuration) (`ShimRtc_setRtcSetByBt`,
+  `RTC/shimmer_rtc.c`) is in a `log-and-stream-common` change later than the
+  `f3cf73e` pin. At the pin every `SET_RWC_COMMAND` flushed the byte. Its effect
+  was bench-measured on one Shimmer3R over BLE at 256 Hz: about 4 samples lost
+  per mid-stream set before, about 1 after. Shimmer3 was not measured. **Move
+  under Verified against** once the change is on `main` and the pin is bumped.
 - **Shimmer3R's recovery from a Bluetooth module restart.** The handling
   described under `SET_FEATURE` / reboot-on-disconnect ([§7.12](#712-control-and-test))
   — the delayed MCU reboot after a module boot event, text boot banner or UART

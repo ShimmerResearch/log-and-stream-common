@@ -295,7 +295,7 @@ table used to give was wrong. `0x07` in the `SHIMMER` component's own space is
 
 | Component | Property | Value bytes | Effect |
 |---|---|---|---|
-| `SHIMMER` | `RWC_CFG_TIME` `0x04` | 8 bytes, 64-bit ticks (`LEN` must be 10) | `RTC_setTimeFromTicksPtr`, clears `rtcSetByBt`, updates InfoMem byte `NV_SD_TRIAL_CONFIG0` and the SD header |
+| `SHIMMER` | `RWC_CFG_TIME` `0x04` | 8 bytes, 64-bit ticks (`LEN` must be 10) | `RTC_setTimeFromTicksPtr`, clears `rtcSetByBt` through `ShimRtc_setRtcSetByBt(0)` (which writes InfoMem byte `NV_SD_TRIAL_CONFIG0` only if the bit was set; later than the pin, see [Still unverified](#still-unverified--not-found-in-code)), and updates the SD header |
 | `SHIMMER` | `INFOMEM` `0x06` | `length` u8, `offset` u16, then `length` bytes — bounded by `STOREDCONFIG_SIZE` | `ShimConfig_storedConfigSet`, `ShimConfig_checkAndCorrectConfig`, flags the SD config file for rewrite, `LogAndStream_infomemUpdate` |
 | `SHIMMER` | `CALIB_DUMP`* | `length` u8, `offset` u16, then `length` bytes | `ShimmerCalib_ramWrite` (return value ignored; always ACKs) |
 | `SHIMMER` | `ENTER_BOOTLOADER` `0x09` (Shimmer3R only) | 1 byte: seconds until reboot; `0` cancels | arms `RTC_setAlarmRebootToBootloader`, sets `bslRebootPending` |
@@ -313,6 +313,13 @@ On Shimmer3R the response goes to USB-CDC when USB is plugged in and initialised
 otherwise to the dock UART; on Shimmer3 always to the dock UART.
 
 ## Still unverified / not found in code
+
+- **`RWC_CFG_TIME` writes InfoMem only when `rtcSetByBt` changes.** The
+  conditional write (`ShimRtc_setRtcSetByBt`, `RTC/shimmer_rtc.c`) is in a
+  change later than the pin in **Verified against**. At the pin, every
+  `RWC_CFG_TIME` set wrote the byte. Covered by the host test
+  `test_rtc_set_by_bt_flush`; not bench-tested over the dock. **Move under
+  Verified against** once the change is on `main` and the pin is bumped.
 
 - ~~The UART baud rate~~ — resolved: **115200** on both platforms. Shimmer3
   `hal_UartA0.c` clocks `UCA0` from a 24 MHz SMCLK with `UCBR` 13 and `UCOS16`
