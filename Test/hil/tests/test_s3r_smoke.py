@@ -397,6 +397,7 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
                 link.command(midstream.SET_RWC, midstream.rwc_payload()[1:])
                 inq = link.inquiry()
                 assert inq.divider == MIDSTREAM_DIVIDER, f"inquiry reports divider {inq.divider} after setting it"
+                link.status_len()            # asked with CRC off, so its reply has no CRC bytes
                 link.set_crc(MIDSTREAM_CRC)
                 st = link.stream(plan.seconds, inq, keep=True, actions=plan.actions)
                 link.wait_status(bt.STATUS_SENSING, False, 15)

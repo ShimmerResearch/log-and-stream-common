@@ -349,6 +349,7 @@ def test_sd_start_midstream(unit, base6, hil_note):
             link.command(midstream.SET_RWC, midstream.rwc_payload()[1:])
             inq = link.inquiry()
             assert inq.divider == STREAM_DIVIDER, f"inquiry reports divider {inq.divider} after setting it"
+            link.status_len()            # asked with CRC off, so its reply has no CRC bytes
             link.set_crc(MIDSTREAM_CRC)
             st = link.stream(plan.seconds, inq, keep=True, actions=plan.actions)
             # A sensing Shimmer3 turns its dock UART off: name a stop not acted
