@@ -29,6 +29,20 @@
 > - **Hardware measurement:** the 32 kHz LSE cap finding is from overnight
 >   RTC-versus-host drift runs on three boards, 2026-08-11, not from the
 >   workbook.
+> - **Shimmer3R LSE start (platform firmware):** `shimmer3r-firmware` @
+>   `17cdbcf2` — `Core/Src/main.c`
+>   `Lse_startAtMediumHigh()` (the single MEDIUMHIGH start) and
+>   `Lse_bringUp()` (backup-domain reset, then the LSI fallback, which sets
+>   `Boot_getLseDriveName()` to "NONE …"); `Shimmer_Driver/hal_FactoryTest.c`
+>   `print_mcu_details()` for the "LSE drive applied at boot" line and the
+>   S3R_TEST_0028 "not measurable (LSE not ready)" failure.
+> - **LSE gain margin:** ST AN2867 Rev 24 §3.4 (Gm_critmax > gm_crit);
+>   STM32U5Axxx datasheet DS13543 Rev 3 §5.3.8 Table 73 (Gm_critmax per
+>   LSEDRV); Citizen CM315D datasheet Rev.2 (ESR 70 kΩ max, C0 0.95 pF,
+>   C_L 12.5 pF).
+> - **LSE drive measurement:** RTC versus host clock, 2026-10-20 — 10-minute
+>   idle fits plus six SD-logging starts, at MEDIUMLOW and MEDIUMHIGH, on two
+>   stock 12 pF Shimmer3R boards and one 22 pF rework.
 
 A board identity is `SR<board id>-<major rev>-<minor rev>`, stored in the
 expansion-board EEPROM and read at runtime via `ShimBrd_getDaughtCardId()`
@@ -59,8 +73,15 @@ Notes:
   complete the load, unlike the Verisense nRF52840 whose identical BOM ran
   +40…+65 ppm fast), while 22 pF over-loads it (−54 / −113 ppm measured).
   A board's boot LSE drive level (factory-test report line "LSE drive applied
-  at boot") is the runtime cross-check — production boards lock LOW / run
-  MEDIUMLOW.
+  at boot") is the runtime cross-check. Every Shimmer3R board now starts the LSE at
+  MEDIUMHIGH and nothing else. A crystal that will not start there (wrong
+  caps, a bad rework, contamination) falls through to the LSI
+  fallback, reads "NONE …" on that line and fails S3R_TEST_0028, so the
+  factory test catches it. MEDIUMLOW, which the earlier lowest-that-starts
+  + 1 ladder chose for 12 pF boards, fails AN2867's gain-margin rule for
+  the CM315D. Stock boards still kept every cycle at MEDIUMLOW, but an
+  over-loaded rework lost them (−379 ppm idle, 15–18 ms at each SD-logging
+  start).
 - Hand-reworked bench units may carry corrected caps and/or a BMP581 under a
   pre-fix revision; revision gates cannot see rework.
 
