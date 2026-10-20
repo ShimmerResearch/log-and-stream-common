@@ -414,15 +414,22 @@ class BtLink:
                     elif buf[0] == ACK and len(buf) >= 2 and buf[1] == INSTREAM:
                         if len(buf) < push_len:
                             break
-                        st.status_pushes += 1
-                        st.pushed.append(buf[3])
+                        # The CRC covers the whole frame, ACK included (§3.3).
+                        if crc_n and not _crc_ok(buf[:push_len - crc_n], buf[push_len - crc_n:push_len]):
+                            st.crc_errors += 1
+                        else:
+                            st.status_pushes += 1
+                            st.pushed.append(buf[3])
                         del buf[:push_len]
                     elif buf[0] == ACK and stop_t is None and len(buf) >= 2:
                         # A bare ACK at a frame boundary while streaming: the
                         # reply to a command sent with actions=.
                         if len(buf) < 1 + crc_n:
                             break
-                        st.acks += 1
+                        if crc_n and not _crc_ok(buf[:1], buf[1:1 + crc_n]):
+                            st.crc_errors += 1
+                        else:
+                            st.acks += 1
                         del buf[:1 + crc_n]
                     elif buf[0] == ACK and stop_t is not None and (len(buf) >= 2 or final):
                         # A bare ACK at a frame boundary after the stop: the stop's.

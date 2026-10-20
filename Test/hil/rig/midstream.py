@@ -121,7 +121,8 @@ def analyse(ts: list[int], period: int, max_jitter: int | None = None) -> Grid:
     grid, then lost samples, duplicates and jitter against the moved grid.
 
     A grid move is a new offset that the next SETTLE stamps keep; one stamp off
-    the grid and then back is jitter. Lost samples and duplicates are counted by
+    the grid and then back is jitter. Within SETTLE stamps of the end there is
+    too little to tell, so an offset there is judged as jitter. Lost samples and duplicates are counted by
     classify_step on the moved grid, so a single move is not also reported as
     jitter on every stamp after it. Jitter is an issue only past max_jitter
     ticks (default a quarter period, the smoke rule).
@@ -143,7 +144,7 @@ def analyse(ts: list[int], period: int, max_jitter: int | None = None) -> Grid:
         o = _offset(cum[i] - a, period)
         if abs(o) > GRID_TOL:
             nxt = cum[i + 1:i + 1 + SETTLE]
-            if nxt and all(abs(_offset(c - a - o, period)) <= GRID_TOL for c in nxt):
+            if len(nxt) == SETTLE and all(abs(_offset(c - a - o, period)) <= GRID_TOL for c in nxt):
                 g.shifts.append((i, o))
                 a += o
         anchor[i] = a

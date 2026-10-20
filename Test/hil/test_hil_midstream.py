@@ -109,6 +109,12 @@ class Analyse(unittest.TestCase):
         # Off the grid on the last stamp: nothing after it, so not a move.
         g = midstream.analyse(stamps([P] * 10 + [P + 10]), P)
         self.assertEqual(g.shifts, [])
+        # One or two stamps after it agreeing is still too few to call it a move.
+        for tail in (1, 2):
+            g = midstream.analyse(stamps([P] * 10 + [P + 10] + [P] * tail), P)
+            self.assertEqual(g.shifts, [], tail)
+        g = midstream.analyse(stamps([P] * 10 + [P + 10] + [P] * 3), P)
+        self.assertEqual(g.shifts, [(11, 10)])
 
     def test_lost_sample(self):
         g = midstream.analyse(stamps([P] * 10 + [2 * P] + [P] * 10), P)
@@ -192,13 +198,18 @@ def packet(ts: int) -> bytes:
     return body + bytes([c & 0xFF, c >> 8])
 
 
-ACK_CRC = bytes([bt.ACK, 0xF4, 0x65])       # an ACK with its mode-2 CRC
+def with_crc(frame: bytes) -> bytes:
+    c = crc16(frame)
+    return frame + bytes([c & 0xFF, c >> 8])
+
+
+ACK_CRC = with_crc(bytes([bt.ACK]))         # an ACK with its mode-2 CRC
 
 
 class StreamActions(unittest.TestCase):
     def test_mid_stream_replies_are_counted_not_framed(self):
         ts = stamps([P] * 9)
-        logging_push = bytes([bt.ACK, bt.INSTREAM, bt.STATUS_RSP, bt.STATUS_LOGGING | bt.STATUS_SENSING, 0, 1, 2])
+        logging_push = with_crc(bytes([bt.ACK, bt.INSTREAM, bt.STATUS_RSP, bt.STATUS_LOGGING | bt.STATUS_SENSING, 0]))
         script = (ACK_CRC + b"".join(packet(t) for t in ts[:4]) + ACK_CRC
                   + b"".join(packet(t) for t in ts[4:7]) + logging_push
                   + b"".join(packet(t) for t in ts[7:]))
@@ -219,6 +230,21 @@ class StreamActions(unittest.TestCase):
         self.assertEqual([e[0] for e in st.events], ["start 1", "status 1"])
         self.assertIn(bytes([bt.START_LOGGING]), ser.writes)
         self.assertIn(bytes([bt.GET_STATUS]), ser.writes)
+
+    def test_replies_with_a_bad_crc_are_not_believed(self):
+        # A status frame whose CRC fails could carry a flipped logging bit, so
+        # it is counted as a CRC error, not as a status; so is a bad ACK.
+        ts = stamps([P] * 5)
+        bad_push = bytes([bt.ACK, bt.INSTREAM, bt.STATUS_RSP, bt.STATUS_LOGGING, 0, 0, 0])
+        bad_ack = bytes([bt.ACK, 0, 0])
+        script = (ACK_CRC + b"".join(packet(t) for t in ts[:2]) + bad_ack
+                  + b"".join(packet(t) for t in ts[2:4]) + bad_push + packet(ts[4]))
+        link = bt.BtLink.__new__(bt.BtLink)
+        link.ser, link.hw, link.crc_mode, link._nstatus = FakeSerial(script, ACK_CRC), bt.HW_SHIMMER3R, 2, 2
+        st = link.stream(0.05, bt.Inquiry(P, [0x00], 1, b""))
+        self.assertEqual(st.packets, 5)
+        self.assertEqual((st.crc_errors, st.acks, st.pushed), (2, 0, []))
+        self.assertTrue(st.stop_ack)
 
     def test_judge_names_the_cycle(self):
         st = bt.StreamStats()
