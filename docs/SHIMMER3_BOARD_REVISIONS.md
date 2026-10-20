@@ -30,7 +30,7 @@
 >   RTC-versus-host drift runs on three boards, 2026-08-11, not from the
 >   workbook.
 > - **Shimmer3R LSE start (platform firmware):** `shimmer3r-firmware` @
->   `17cdbcf2` (ShimmerResearch/shimmer3r-firmware#301) — `Core/Src/main.c`
+>   `17cdbcf2` — `Core/Src/main.c`
 >   `Lse_startAtMediumHigh()` (the single MEDIUMHIGH start) and
 >   `Lse_bringUp()` (backup-domain reset, then the LSI fallback, which sets
 >   `Boot_getLseDriveName()` to "NONE …"); `Shimmer_Driver/hal_FactoryTest.c`
