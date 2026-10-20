@@ -405,8 +405,10 @@ preferring an RWC anchor to this one.
 > of the few writes permitted while sensing, and on Shimmer3R it steps the very
 > counter the packets carry. Re-anchor after any write; do not carry an
 > anchor across one. The step is the difference between the value written and
-> the clock it replaces, which over Bluetooth is the host's latency
-> uncertainty, tens of milliseconds (15-19 ms measured on Shimmer3R over BLE).
+> the clock it replaces. A value sent over Bluetooth carries tens of
+> milliseconds of error (the command's transit time varies and the host cannot
+> know it), so a mid-stream write steps the counter by about that much; a
+> Shimmer3R bench run over BLE saw 17-24 ms on repeat writes.
 > Packets after the write sit off the old sample grid, and a
 > backward step larger than the unwrap's reorder window reads as a counter wrap
 > ([SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1).
