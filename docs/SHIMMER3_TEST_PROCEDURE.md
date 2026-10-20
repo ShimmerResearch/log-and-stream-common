@@ -34,6 +34,9 @@ and — as importantly — what each layer of testing cannot tell you.
 >   readings of source. They cover the v1.01.006 release
 >   (`shimmer3-firmware` @ `LogAndStream_Shimmer3_v1.01.006`), main @ `c28fa8c`
 >   built in its Release configuration, and each of the two with the fix.
+> - **The USB throughput item (§10.4):** `log-and-stream-common` @ `a19d348`
+>   (`Test/hil/rig/usb_throughput.py`, `Test/hil/tests/test_s3r_smoke.py`,
+>   `Test/hil/rig/config.py`), on its pull-request branch.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
