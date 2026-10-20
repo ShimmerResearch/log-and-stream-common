@@ -405,10 +405,11 @@ preferring an RWC anchor to this one.
 > of the few writes permitted while sensing, and on Shimmer3R it steps the very
 > counter the packets carry. Re-anchor after any write; do not carry an
 > anchor across one. The step is the difference between the value written and
-> the clock it replaces. A value sent over Bluetooth carries tens of
-> milliseconds of error (the command's transit time varies and the host cannot
-> know it), so a mid-stream write can step the counter by about that much
-> (bench figures under
+> the clock it replaces, and has two parts: the error in the written value
+> (over Bluetooth, tens of milliseconds, because the command's transit time
+> varies and the host cannot know it), and however far the device's own clock
+> has drifted since it was last set. Either can be tens of milliseconds; on the
+> one bench unit measured, the second dominated (figures under
 > [Still unverified](#still-unverified--not-found-in-code)).
 > Packets after the write sit off the old sample grid, and a
 > backward step larger than the unwrap's reorder window reads as a counter wrap
