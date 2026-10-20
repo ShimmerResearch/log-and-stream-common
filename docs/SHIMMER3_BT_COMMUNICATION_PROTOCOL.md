@@ -84,6 +84,24 @@ BLE, and over the dock's serial link.
 >   and how often, is a bench measurement (19 Oct 2026), not a reading of
 >   source. Until the platform half reaches a release, "fixed" describes those
 >   revisions, not a released firmware.
+> - **Status strings during a configuration write, and the receive reset
+>   ([§2.1](#21-classic-bluetooth-spp), [§2.3](#23-framing-guarantees-per-transport)
+>   point 4, [§8.1](#81-what-a-connect-and-a-disconnect-reset),
+>   [§8.4](#84-timeouts-and-error-recovery)):** the code is read at
+>   `log-and-stream-common` @ `2ca5844`, which postdates the pin above —
+>   `Comms/shimmer_bt_uart.c` (`ShimBt_resetBtRxVariablesOnConnect` and its two
+>   calls in `ShimBt_handleBtRfCommStateChange`) — and at `shimmer3-firmware` @
+>   `2fb1d30` — `Shimmer_Driver/5xx_HAL/hal_InfoMem.c` (`InfoMem_write`,
+>   `InfoMem_erase`) and `Shimmer_Driver/RN4X/RN4X.c` (`BT_rxPause`,
+>   `BT_rxResume`). Both are the pull-request revisions that carry the fix. That
+>   no receive timeout exists was checked at those revisions and at
+>   `shimmer3r-firmware` @ `e928d4f4`: `BT_RX_COMMS_TIMEOUT_TICKS` has no user.
+>   The behaviour up to v1.01.006 is read at
+>   `shimmer3-firmware` @ `LogAndStream_Shimmer3_v1.01.006`. The 125-156 ms
+>   write time, the failure rates and the `%CONN_PARAM%` timing are bench
+>   measurements (20 Oct 2026), not readings of source. Until the platform half
+>   reaches a release, "now" in those sections describes these revisions, not a
+>   released firmware.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). The **Gen** column in the opcode tables says
