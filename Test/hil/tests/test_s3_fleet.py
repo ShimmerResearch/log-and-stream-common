@@ -18,7 +18,7 @@ import time
 
 import pytest
 
-from rig import ble, bt, dock, throughput
+from rig import ble, bt, dock, midstream, throughput
 from rig.base6 import Base6
 
 pytestmark = pytest.mark.fleet
@@ -319,3 +319,53 @@ def test_reboot(unit, base6, hil_note):
             pytest.fail(f"boot {i + 1} of {REBOOTS}: no answer on the dock ({e})")
     assert len(banners) == 1, f"radio banner changed between boots: {banners}"
     hil_note(f"{REBOOTS} resets, each answered; last boot answered in {time.monotonic() - t0:.1f} s")
+
+
+MIDSTREAM_CYCLES = 6
+MIDSTREAM_CRC = 2
+
+
+@pytest.mark.hil("fleet.sd_start_midstream", needs=["shimmer3", "bt", "dock"])
+def test_sd_start_midstream(unit, base6, hil_note):
+    """smoke.sd_start_midstream's commands, sent to a docked Shimmer3.
+
+    A Shimmer3 starts logging only undocked (ShimSens_checkStartLoggingConditions),
+    and a Base6 cannot undock one slot. Docked, the log starts are ACKed and
+    refused, but the clock sets still apply mid-stream, so the stream is still
+    judged as smoke.sd_start_midstream judges it:
+    - a disturbed stream fails the item;
+    - a clean one is not_covered, because no log started;
+    - if a status shows logging after all, the item is judged in full.
+    The stream runs at 51.2 Hz, as fleet.bt_stream does, and the rate is put back.
+    """
+    base6.select(unit.base6_slot)
+    with dock.open_when_ready(base6.uart_port) as d:
+        original = d.read_infomem(0, 2)
+        d.write_infomem(STREAM_DIVIDER.to_bytes(2, "little"), offset=0)
+    plan = midstream.schedule(MIDSTREAM_CYCLES)
+    error = None
+    try:
+        with open_bt(unit) as link:
+            link.command(midstream.SET_RWC, midstream.rwc_payload()[1:])
+            inq = link.inquiry()
+            assert inq.divider == STREAM_DIVIDER, f"inquiry reports divider {inq.divider} after setting it"
+            link.status_len()            # asked with CRC off, so its reply has no CRC bytes
+            link.set_crc(MIDSTREAM_CRC)
+            st = link.stream(plan.seconds, inq, keep=True, actions=plan.actions)
+            # A sensing Shimmer3 turns its dock UART off: name a stop not acted
+            # on here, not as a dock timeout in the restore.
+            link.wait_status(bt.STATUS_SENSING, False, timeout_s=5)
+            link.set_crc(0)
+    except BaseException as e:
+        error = e
+        raise
+    finally:
+        retries = restore_infomem(base6, original, error)
+        if retries:
+            hil_note(f"divider restore needed {len(retries)} retries: {'; '.join(retries)}")
+    problems, summary = midstream.judge(st, plan, inq.divider)
+    assert not problems, f"{summary}: " + "; ".join(problems)
+    if not midstream.logging_seen(st):
+        pytest.skip(f"docked in a Base6, which cannot undock one slot, so no log started: the unit "
+                    f"refuses a log start while docked. Clean across the commands: {summary}")
+    hil_note(summary)

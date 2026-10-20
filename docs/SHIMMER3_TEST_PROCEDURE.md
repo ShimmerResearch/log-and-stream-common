@@ -1316,6 +1316,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.bt_stream` | 10 s stream: packet framing, no lost or duplicate samples, the rate on the device clock |
 | `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
+| `smoke.sd_start_midstream` | Undocked, six 2 s SD logs started and stopped inside one 256 Hz stream, link CRC on. Odd cycles send `START_LOGGING` alone; even ones send `SET_RWC` first, as the reference host does before every log start. The stream's stamps must never step back or sideways: no stamp at or behind the one before, no move of the sampling grid, no lost or duplicate samples, jitter within a quarter period. Each problem is reported with the cycle it followed, and with how many clock-set and plain starts disturbed the stream. A status query must show logging, and the card must hold one new session per cycle |
 | `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt |
 | `smoke.ble_throughput` | As `smoke.bt_throughput`, over BLE (the IF820's CYSPP service, data as notifications), against this unit's BLE baseline. `not_covered` when the unit's EEPROM has BLE off (`bleEnabled`, EEPROM memory map §4.2) |
 
@@ -1335,6 +1336,7 @@ flash.
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |
 | `fleet.ble_throughput` | As `fleet.bt_throughput`, over BLE (the RN4678's transparent UART service), on the units with an RN4678. `not_covered` on an RN41 or RN42, or when the EEPROM has BLE off |
+| `fleet.sd_start_midstream` | `smoke.sd_start_midstream`'s commands at 51.2 Hz. A Shimmer3 starts logging only undocked, and a Base6 cannot undock one slot, so the log starts are refused. The clock sets still apply mid-stream, so the stream is judged the same way. A disturbed stream fails; a clean one is `not_covered`, because no log started |
 
 **The throughput baselines.** The firmware gives no acceptance rate per radio
 or baud. These documents give only the Shimmer3R's per-module figures (§5.5).
@@ -1372,6 +1374,18 @@ How each figure is judged:
 Treat a shortfall as a finding, and confirm it with an interleaved A/B of
 release and candidate on that unit before acting on it.
 `Test/hil/README.md` says how to record a baseline.
+
+**Logging started mid-stream.** The release rows that stream and log start
+both together (`START_SDBT`), so the `sd_start_midstream` items are the ones
+that start a log while a stream is already running. That is what a host does
+when it adds logging to a live stream. A stamp behind its predecessor by more
+than the unwrap's reorder window (`SHIMMER3_STREAMING_DATA_FORMAT.md` §2.1) is
+read as a counter wrap, so every later sample lands 512 s late. A forward step
+is not proof of lost samples: setting the clock can step the counter, and the
+stamps cannot tell the two apart. Either way it is reported as a step off the
+grid. The stream runs with link CRC on, because without it a frame is
+confirmed by a plausible timestamp step, and an off-grid stamp would be
+dropped as a misframe instead of judged.
 
 The **release** tier (Shimmer3R so far) runs the configuration matrix in
 `Test/hil/matrix/s3r_release.toml`. There are about 22 rows, chosen so every

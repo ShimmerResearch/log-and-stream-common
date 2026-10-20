@@ -95,6 +95,9 @@ class StreamStats:
     max_jitter_ticks: int = 0
     resyncs: int = 0            # bytes skipped to find a packet boundary
     status_pushes: int = 0
+    pushed: list = field(default_factory=list)  # status byte 0 of each in-stream status frame, in order
+    acks: int = 0               # bare ACKs mid-stream: commands sent with actions=
+    events: list = field(default_factory=list)  # (label, packets so far, seconds) per action sent
     first_ts: int | None = None
     deltas: dict = field(default_factory=dict)
     crc_errors: int = 0
@@ -318,12 +321,19 @@ class BtLink:
         self.crc_mode = mode
 
     def stream(self, seconds: float, inq: Inquiry | None = None, *, keep: bool = False,
-               start_op: int = START_STREAMING, stop_op: int = STOP_STREAMING) -> StreamStats:
+               start_op: int = START_STREAMING, stop_op: int = STOP_STREAMING,
+               actions: list | None = None) -> StreamStats:
         """Stream for `seconds`, checking framing, CRCs and timestamp continuity.
 
         With keep=True the timestamps and channel bytes of every packet are kept
         (st.ts, st.rows) for decoding. start_op/stop_op select plain streaming
         or START_SDBT/STOP_SDBT (stream and log together).
+
+        actions are commands to send while streaming, each with .t (seconds
+        after the start), .label and .bytes() (rig/midstream.py's Action). Each
+        is recorded in st.events with the packet count when it went out. Their
+        replies are counted, not matched: a bare ACK at a frame boundary in
+        st.acks, an in-stream status frame's status byte in st.pushed.
         """
         inq = inq or self.inquiry()
         crc_n = getattr(self, "crc_mode", 0)
@@ -338,6 +348,7 @@ class BtLink:
         last_ts = None
         t0 = time.monotonic()
         stop_t = None               # set once the stop command has gone out
+        pending = sorted(actions or [], key=lambda a: a.t)
         old_timeout = self.ser.timeout
         try:
             while True:
@@ -347,6 +358,10 @@ class BtLink:
                     self.ser.write(bytes([stop_op]))
                     stop_t = now
                     self.ser.timeout = 0.3
+                while stop_t is None and pending and now - t0 >= pending[0].t:
+                    a = pending.pop(0)
+                    self.ser.write(a.bytes())
+                    st.events.append((a.label, st.packets, now - t0))
                 if stop_t is None:
                     buf += self.ser.read(max(1, self.ser.in_waiting))
                 else:
@@ -399,8 +414,23 @@ class BtLink:
                     elif buf[0] == ACK and len(buf) >= 2 and buf[1] == INSTREAM:
                         if len(buf) < push_len:
                             break
-                        st.status_pushes += 1
+                        # The CRC covers the whole frame, ACK included (§3.3).
+                        if crc_n and not _crc_ok(buf[:push_len - crc_n], buf[push_len - crc_n:push_len]):
+                            st.crc_errors += 1
+                        else:
+                            st.status_pushes += 1
+                            st.pushed.append(buf[3])
                         del buf[:push_len]
+                    elif buf[0] == ACK and stop_t is None and len(buf) >= 2:
+                        # A bare ACK at a frame boundary while streaming: the
+                        # reply to a command sent with actions=.
+                        if len(buf) < 1 + crc_n:
+                            break
+                        if crc_n and not _crc_ok(buf[:1], buf[1:1 + crc_n]):
+                            st.crc_errors += 1
+                        else:
+                            st.acks += 1
+                        del buf[:1 + crc_n]
                     elif buf[0] == ACK and stop_t is not None and (len(buf) >= 2 or final):
                         # A bare ACK at a frame boundary after the stop: the stop's.
                         st.stop_ack = True

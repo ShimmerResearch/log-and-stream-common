@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from rig import ble, bt, dock, s3r_usb, sdfile, throughput
+from rig import ble, bt, dock, midstream, s3r_usb, sdfile, throughput
 
 pytestmark = pytest.mark.smoke
 
@@ -349,3 +349,73 @@ def test_sd_log(unit, power, hil_note):
         f"the records cover {covered_s:.2f} s of a {LOG_SECONDS:.0f} s log: the end is missing"
     hil_note(f"{new[0].parent.name}/{new[0].name}: {fc.records} records over {covered_s:.2f} s, no loss, "
              f"{fc.jitter} late stamps (max {fc.max_jitter_ticks} ticks)")
+
+
+MIDSTREAM_CYCLES = 6
+MIDSTREAM_DIVIDER = 128         # 256 Hz
+MIDSTREAM_CRC = 2
+
+
+@pytest.mark.hil("smoke.sd_start_midstream", needs=["shimmer3r", "usb", "bt", "hub_port"])
+def test_sd_start_midstream(unit, cdc, power, hil_note):
+    """Start and stop SD logging while streaming: the stream's stamps must not notice.
+
+    Six 2 s logs inside one 256 Hz stream (rig/midstream.py). Odd cycles send
+    START_LOGGING alone. Even ones set the clock first, as the reference host
+    does before every log start. The clock is set once before the stream too,
+    so every mid-stream set is a repeat, not the first set after power-up.
+
+    The stream runs with link CRC on, so every frame is confirmed by its CRC.
+    Without one a frame is confirmed by a plausible timestamp step, and an
+    off-grid stamp would be dropped as a misframe instead of judged.
+
+    Fails on a stamp at or behind the one before, a moved sampling grid, lost
+    or duplicate samples, or jitter past a quarter period, naming the cycle each
+    followed. Each start must also have begun a log: a status query shows
+    logging, and once re-docked the card holds one new session per cycle.
+
+    Logging cannot start docked, so the hub port is the dock, as in
+    smoke.sd_log. The rate is stored configuration, so InfoMem is saved to disk
+    and put back.
+    """
+    port = bt.spp_port(unit.mac)
+    if not port:
+        pytest.skip(f"no paired SPP port for {unit.mac}")
+    with dock.open_when_ready(cdc) as d:
+        original = bytes(d.read_infomem())
+        d.write_infomem(MIDSTREAM_DIVIDER.to_bytes(2, "little"), offset=0)
+    backup = throughput.save_infomem(unit.name, original)
+    plan = midstream.schedule(MIDSTREAM_CYCLES)
+    error = None
+    try:
+        root = s3r_usb.wait_drive(unit.usb_serial, 45)
+        before = sdfile.session_dirs(root)
+        power.off(unit.hub_port, unit.name)
+        try:
+            s3r_usb.wait_cdc_gone(unit.usb_serial, 15)
+            with bt.BtLink(port) as link:
+                link.command(midstream.SET_RWC, midstream.rwc_payload()[1:])
+                inq = link.inquiry()
+                assert inq.divider == MIDSTREAM_DIVIDER, f"inquiry reports divider {inq.divider} after setting it"
+                link.status_len()            # asked with CRC off, so its reply has no CRC bytes
+                link.set_crc(MIDSTREAM_CRC)
+                st = link.stream(plan.seconds, inq, keep=True, actions=plan.actions)
+                link.wait_status(bt.STATUS_SENSING, False, 15)
+                link.set_crc(0)
+        finally:
+            power.on(unit.hub_port, unit.name)
+    except BaseException as e:
+        error = e
+        raise
+    finally:
+        _restore_infomem(unit, original, backup, error)
+
+    root = s3r_usb.wait_drive(unit.usb_serial, 90)
+    new = sdfile.session_dirs(root) - before
+    problems, summary = midstream.judge(st, plan, inq.divider)
+    if not midstream.logging_seen(st):
+        problems.append("no status during the stream showed logging")
+    if len(new) != MIDSTREAM_CYCLES:
+        problems.append(f"{len(new)} new SD sessions for {MIDSTREAM_CYCLES} log starts")
+    assert not problems, f"{summary}: " + "; ".join(problems)
+    hil_note(f"{summary}; {len(new)} sessions logged")
