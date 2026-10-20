@@ -84,6 +84,24 @@ BLE, and over the dock's serial link.
 >   and how often, is a bench measurement (19 Oct 2026), not a reading of
 >   source. Until the platform half reaches a release, "fixed" describes those
 >   revisions, not a released firmware.
+> - **Status strings during a configuration write, and the receive reset
+>   ([§2.1](#21-classic-bluetooth-spp), [§2.3](#23-framing-guarantees-per-transport)
+>   point 4, [§8.1](#81-what-a-connect-and-a-disconnect-reset),
+>   [§8.4](#84-timeouts-and-error-recovery)):** the code is read at
+>   `log-and-stream-common` @ `2ca5844`, which postdates the pin above —
+>   `Comms/shimmer_bt_uart.c` (`ShimBt_resetBtRxVariablesOnConnect` and its two
+>   calls in `ShimBt_handleBtRfCommStateChange`) — and at `shimmer3-firmware` @
+>   `2fb1d30` — `Shimmer_Driver/5xx_HAL/hal_InfoMem.c` (`InfoMem_write`,
+>   `InfoMem_erase`) and `Shimmer_Driver/RN4X/RN4X.c` (`BT_rxPause`,
+>   `BT_rxResume`). Both are the pull-request revisions that carry the fix. That
+>   no receive timeout exists was checked at those revisions and at
+>   `shimmer3r-firmware` @ `e928d4f4`: `BT_RX_COMMS_TIMEOUT_TICKS` has no user.
+>   The behaviour up to v1.01.006 is read at
+>   `shimmer3-firmware` @ `LogAndStream_Shimmer3_v1.01.006`. The 125-156 ms
+>   write time, the failure rates and the `%CONN_PARAM%` timing are bench
+>   measurements (20 Oct 2026), not readings of source. Until the platform half
+>   reaches a release, "now" in those sections describes these revisions, not a
+>   released firmware.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). The **Gen** column in the opcode tables says
@@ -296,8 +314,39 @@ following bytes to `RN4678_parseStatusString` rather than to the command parser.
 no legitimate host command collides with it. It does, however, mean that on a
 Shimmer3 with status strings enabled, a host that transmits arbitrary bytes while
 trying to resynchronise can put the parser into status-string mode and stall it
-until the expected number of bytes arrives. Recover by waiting out the receive
-timeout rather than by sending more filler.
+until the expected number of bytes arrives. There is no receive timeout to wait
+out (see [§2.3](#23-framing-guarantees-per-transport), point 4): the parser
+leaves status-string mode only when it has the bytes the matched prefix asks
+for, or drops the string when it would grow past the longest one the module
+sends (`BT_STAT_STR_LEN_LARGEST`). Reconnecting resets it
+([§8.1](#81-what-a-connect-and-a-disconnect-reset)).
+
+**Status strings during a configuration write (Shimmer3).** The module sends a
+status string whenever its link changes, not only in reply to the host. The
+RN4678 sends `%CONN_PARAM,xxxx,xxxx,xxxx%` (27 bytes) each time the central
+changes the BLE connection parameters, which Windows and Android do several
+times in the first seconds of a link. Each `SET_INFOMEM_COMMAND` erases and
+rewrites flash on the MSP430, which holds the CPU for about 125-156 ms with
+interrupts off. The firmware now deasserts the radio's CTS for that time, so the
+module holds such a string until the write is done and it arrives whole.
+
+Firmware up to and including v1.01.006 did not. A status string that arrived in
+the write lost its middle bytes to UART overruns, and only its two `%`
+delimiters reached the parser. The parser then took the header and first byte of
+the *next* host command as the rest of the string, and ran that command's
+remaining payload as commands. The host sees an ACK, because the payload ACKs
+itself, but the write did not happen and the device answers nothing until
+enough bytes have arrived to finish whatever the payload left half-received. On
+the bench, three `SET_INFOMEM_COMMAND`s sent back to back straight after a BLE
+connect failed this way about 70% of the time with an RN4678. **A host talking
+to such firmware over BLE should let the connection parameters settle, about
+8 s after connecting, before its first configuration write, and read the
+configuration back afterwards.** Classic links do not send
+`%CONN_PARAM%`, but any status string that lands in a write has the same effect.
+
+> `shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_InfoMem.c`
+> (`InfoMem_write`, `InfoMem_erase`) and `Shimmer_Driver/RN4X/RN4X.c`
+> (`BT_rxPause`, `BT_rxResume`), after the pinned revision.
 
 ### 2.2 BLE
 
@@ -464,13 +513,22 @@ implementation's error handling.
    permanent loss of synchronisation (see the
    `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` warning in
    [§5](#5-status-acknack-and-in-stream-responses)).
-4. **Resynchronisation is by silence, not by a marker.** There is no byte the
-   host can send to force a reset. A parser stuck mid-command clears when the
-   receive timeout expires: `BT_RX_COMMS_TIMEOUT_TICKS` is 328 ticks of a
-   32768 Hz clock, i.e. **10 ms** (`Comms/shimmer_bt_uart.h:255-256`). A host
-   that suspects desynchronisation should stop transmitting for well over that,
-   discard everything it receives, and then re-establish state with
-   `TEST_CONNECTION_COMMAND` or `GET_FW_VERSION_COMMAND`.
+4. **There is no receive timeout, and no resynchronisation marker.** No byte
+   the host can send forces a reset, and silence does not either: a parser left
+   mid-command waits for the rest of that command's bytes however long they
+   take. `BT_RX_COMMS_TIMEOUT_TICKS` (328 ticks of a 32768 Hz clock, 10 ms,
+   `Comms/shimmer_bt_uart.h:255-256`) is defined but nothing uses it, in this
+   library or in either platform firmware. A host that suspects
+   desynchronisation should disconnect and reconnect, which resets the parser
+   ([§8.1](#81-what-a-connect-and-a-disconnect-reset)), then re-establish state
+   with `TEST_CONNECTION_COMMAND` or `GET_FW_VERSION_COMMAND`. On Shimmer3
+   firmware up to v1.01.006 a reconnect resets the parser's state but not the
+   count of bytes it is still waiting for, so the first bytes of the new
+   connection are still taken as the old command's arguments. There the only
+   way back is to send `GET_DEVICE_VERSION_COMMAND` (0x3F) one byte at a time
+   until a response arrives - up to 131 bytes, the longest command's arguments
+   (`SET_INFOMEM_COMMAND` with a 128-byte payload) - knowing that the stuck
+   command then runs with those bytes as its arguments.
 5. **`DUMMY_COMMAND` (0xB5) is the only completely inert byte.** It is consumed
    with no response and no side effect ([§7.12](#712-control-and-test)), which
    makes it the safe choice for padding. It is not a resynchronisation marker —
@@ -3201,7 +3259,7 @@ re-establish them every time the link comes up.
 
 | Reset on connect | Reset on disconnect | Detail |
 |---|---|---|
-| Receive parser | — | `gAction` set to an unsupported value, `waitingForArgs` cleared (`ShimBt_resetBtRxVariablesOnConnect`, `Comms/shimmer_bt_uart.c:203-209`) |
+| Receive parser | Receive parser (Shimmer3) | `gAction` set to an unsupported value, `waitingForArgs` cleared (`ShimBt_resetBtRxVariablesOnConnect`, `Comms/shimmer_bt_uart.c:203-209`). On Shimmer3 the receive DMA is also re-armed for one byte, if it was armed, so a command the old link left half-received does not take the new link's first bytes as its arguments; firmware up to v1.01.006 left it counting. Shimmer3 also does this on a disconnect, because on a classic link with status strings the connect is announced only by a status string, which a DMA still counting would swallow. A status string the module is part-way through is left to finish, since the module sends it without a break |
 | — | CRC mode | Forced to `CRC_OFF` (`:2618`) |
 | — | ACK prefix for pushes | Back to on (`ShimBt_resetBtResponseVars`, `:2620`) |
 | — | Streaming | Stopped unconditionally (`:2609`) |
@@ -3332,12 +3390,18 @@ reach its SD card while docked. Shimmer3R can, so the read proceeds there.
 - **Always use a response timeout**, even on a reliable transport. Two
   situations produce no reply at all: an unknown command byte, and an
   out-of-bounds `SET_INFOMEM_COMMAND` ([§5.2](#52-the-three-nack-preconditions)).
-- **On a suspected desynchronisation**, stop transmitting for well over the
-  firmware's 10 ms receive timeout
-  (`BT_RX_COMMS_TIMEOUT_TICKS`, [§2.3](#23-framing-guarantees-per-transport)),
-  discard everything received, then probe with `TEST_CONNECTION_COMMAND` (0x96).
-  Do not send filler bytes: on a Shimmer3 with module status strings enabled a
-  stray `0x25` puts the parser into status-string mode.
+- **On a suspected desynchronisation**, disconnect and reconnect, discard
+  everything received, then probe with `TEST_CONNECTION_COMMAND` (0x96). Waiting
+  does not help: the firmware has no receive timeout
+  ([§2.3](#23-framing-guarantees-per-transport), point 4, which also covers
+  Shimmer3 firmware up to v1.01.006, where a reconnect is not enough). Do not
+  send arbitrary filler bytes: on a Shimmer3 with module status strings enabled
+  a stray `0x25` puts the parser into status-string mode.
+- **Over BLE to a Shimmer3 up to v1.01.006, wait about 8 s after connecting
+  before the first `SET_INFOMEM_COMMAND`, and read the configuration back
+  after writing it.** A connection-parameter status string from the radio that
+  arrives during the flash write desynchronises the parser
+  ([§2.1](#21-classic-bluetooth-spp)).
 - **Correlate replies by response opcode, not by counting ACKs.** Unsolicited
   status pushes carry a leading `0xFF` by default
   ([§5.4](#54-in-stream-responses)), and 0x5D on unsupported hardware emits a

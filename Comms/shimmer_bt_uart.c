@@ -213,9 +213,23 @@ void ShimBt_resetBtResponseVars(void)
 
 void ShimBt_resetBtRxVariablesOnConnect(void)
 {
-  /* Reset to unsupported command */
-  gAction = ACK_COMMAND_PROCESSED - 1U;
-  waitingForArgs = 0;
+#if defined(SHIMMER3)
+  /* A status string still being read is the module's own output, sent back to
+   * back, and the parser re-arms for the next byte when it ends. Leave it to
+   * finish: dropping it here would hand its remaining bytes to the command
+   * parser, and its closing '%' would open a status string that swallows the
+   * host's first command. This is also the state when the connect is itself
+   * announced by a status string ("%RFCOMM_OPEN%", "%LCONNECT,...%"), which
+   * calls here from inside the parser. */
+  uint8_t isStatusStrInProgress = (gAction == RN4678_STATUS_STRING_SEPARATOR) && waitingForArgs;
+
+  if (!isStatusStrInProgress)
+#endif
+  {
+    /* Reset to unsupported command */
+    gAction = ACK_COMMAND_PROCESSED - 1U;
+    waitingForArgs = 0;
+  }
   waitingForArgsLength = 0;
   /* A link can drop while an oversized payload is still being dropped, after
    * argsPayloadTruncated was raised but before its command was processed.
@@ -223,6 +237,25 @@ void ShimBt_resetBtRxVariablesOnConnect(void)
   argsPayloadTruncated = 0;
   argsPayloadDropLen = 0;
   argsPayloadDropping = 0;
+
+#if defined(SHIMMER3)
+  /* Resetting the parser is not enough on its own: the DMA may still be armed
+   * for the rest of a command the old link never finished, and it would keep
+   * taking the new link's bytes as that command's arguments until the count
+   * ran out. Re-arm it for one byte at the buffer start. Only a
+   * DMA that is armed is touched; one that is off stays off, for the caller
+   * to arm as before. If a transfer has just completed, the channel is off
+   * and its ISR is pending, and that re-arms from the reset state itself. */
+  if (!isStatusStrInProgress && (DMA2CTL & DMAEN))
+  {
+    DMA2AndCtsDisable();
+    if (!(DMA2CTL & DMAIFG))
+    {
+      DMA2_repeatTransfer((uint16_t *) &UCA1RXBUF, (uint16_t *) btRxBuff, 1U);
+      setDmaWaitingForResponse(1U);
+    }
+  }
+#endif
 }
 
 void ShimBt_resetBtRxBuffs(void)
@@ -2713,6 +2746,14 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
 
 #if defined(SHIMMER3)
     setRn4678ConnectionState(RN4678_DISCONNECTED);
+
+    /* Reset the parser here as well as on the next connect. A DMA still
+     * counting out a half-received command takes every byte that arrives,
+     * the module's status strings included, so on a classic link with status
+     * strings, whose connect is announced only by "%RFCOMM_OPEN%" (RN4678) or
+     * "%CONNECT,...," (RN42), the next connect is never seen to reset it.
+     * The connection pin's interrupt reports the disconnect regardless. */
+    ShimBt_resetBtRxVariablesOnConnect();
 #endif
 
     /* Check BT module configuration after disconnection in case
