@@ -52,6 +52,12 @@ uint8_t hostStub_getRtcErrorFlash(void);
  * is supposed to raise it exactly once, on the sample that crosses the count. */
 uint32_t hostStub_getStopSensingCount(void);
 
+/* Number of InfoMem_write() calls, and the address of the latest. On the device
+ * every one erases flash with interrupts disabled, so a test can check that a
+ * path which should not touch flash really does not. */
+uint32_t hostStub_getInfoMemWriteCount(void);
+uint16_t hostStub_getInfoMemLastAddr(void);
+
 /* Number of times platform_reset() was called. Nothing under host test should
  * ever reboot the device; a non-zero count is a failure in itself. */
 uint32_t hostStub_getResetCount(void);

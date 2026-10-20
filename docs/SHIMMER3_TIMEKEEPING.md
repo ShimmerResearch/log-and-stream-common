@@ -407,8 +407,9 @@ preferring an RWC anchor to this one.
 > anchor across one. The step is the difference between the value written and
 > the clock it replaces. A value sent over Bluetooth carries tens of
 > milliseconds of error (the command's transit time varies and the host cannot
-> know it), so a mid-stream write steps the counter by about that much; a
-> Shimmer3R bench run over BLE saw 17-24 ms on repeat writes.
+> know it), so a mid-stream write can step the counter by about that much
+> (bench figures under
+> [Still unverified](#still-unverified--not-found-in-code)).
 > Packets after the write sit off the old sample grid, and a
 > backward step larger than the unwrap's reorder window reads as a counter wrap
 > ([SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1).
@@ -486,6 +487,16 @@ that has one, and is forced off elsewhere
 7. **Do not assume file boundaries mean anything in wall-clock terms.**
 
 ## Still unverified / not found in code
+
+- **Mid-stream clock writes: bench figures from one Shimmer3R.** The §7.1
+  note on setting the clock mid-stream is backed by bench runs, not source, on
+  a single Shimmer3R over BLE at 256 Hz, at a firmware revision later than the
+  pins above. There, repeat mid-stream `SET_RWC_COMMAND` writes stepped the
+  counter forward by 17-24 ms each time. Most of that was not transit time: on
+  that unit the RTC itself lost about 16 ms at each SD-logging start, running
+  slow while the card was busy, and each write put the lost time back. Whether
+  other units do the same was not checked. Re-check before relying on the
+  figures, and pin them when they are.
 
 - **The newer Shimmer3R time-set behaviour is not yet pinned to a release.**
   The sub-second `RTC_SHIFTR` shift (advance-only, `SS[14:0]` reads), the

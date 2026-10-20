@@ -57,5 +57,6 @@ uint8_t ShimRtc_isDateValid(SHIM_RTC_t *data);
 
 uint8_t ShimRtc_isTimeSet(void);
 void ShimRtc_rwcErrorCheck(void);
+uint8_t ShimRtc_setRtcSetByBt(uint8_t setByBt);
 
 #endif /* RTC_SHIMMER_RTC_H_ */

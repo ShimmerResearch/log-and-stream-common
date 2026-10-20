@@ -31,6 +31,8 @@ static uint8_t stubRtcErrorFlash;
 static uint32_t stubStopSensingCount;
 static uint32_t stubResetCount;
 static uint32_t stubDelayMsTotal;
+static uint32_t stubInfoMemWriteCount;
+static uint16_t stubInfoMemLastAddr;
 /* The real gConfigBytes union - see ShimConfig_getStoredConfig() below. */
 static gConfigBytes stubStoredConfig;
 /* The SD file header, at the real header's SD_HEAD_SIZE. */
@@ -51,6 +53,8 @@ void hostStub_reset(void)
   stubStopSensingCount = 0;
   stubResetCount = 0;
   stubDelayMsTotal = 0;
+  stubInfoMemWriteCount = 0;
+  stubInfoMemLastAddr = 0;
 }
 
 void hostStub_setDockedOrUsbIn(uint8_t state)
@@ -81,6 +85,16 @@ uint8_t hostStub_getRtcErrorFlash(void)
 uint32_t hostStub_getStopSensingCount(void)
 {
   return stubStopSensingCount;
+}
+
+uint32_t hostStub_getInfoMemWriteCount(void)
+{
+  return stubInfoMemWriteCount;
+}
+
+uint16_t hostStub_getInfoMemLastAddr(void)
+{
+  return stubInfoMemLastAddr;
 }
 
 uint32_t hostStub_getResetCount(void)
@@ -174,9 +188,10 @@ uint64_t RTC_getRwcTime(void)
 
 uint8_t InfoMem_write(uint16_t addr, uint8_t *buf, uint16_t size)
 {
-  (void) addr;
   (void) buf;
   (void) size;
+  stubInfoMemWriteCount++;
+  stubInfoMemLastAddr = addr;
   return 0;
 }
 

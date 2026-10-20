@@ -262,3 +262,24 @@ void ShimRtc_rwcErrorCheck(void)
 #endif //TEST_RTC_ERR_FLASH_OFF
   ShimLeds_setRtcErrorFlash(state);
 }
+
+/* Record who last set the clock (InfoMem NV_SD_TRIAL_CONFIG0, rtcSetByBt):
+ * 1 for Bluetooth, 0 for the dock. The flag is flushed to InfoMem only when
+ * it changes. Any InfoMem write erases flash with interrupts disabled - a
+ * 128-byte segment on Shimmer3, an 8 KB page on Shimmer3R - which stalls
+ * sampling, and hosts that set the clock at every logging start (the Java
+ * driver does) would otherwise pay that mid-stream every time. Returns 1 if
+ * it wrote InfoMem. */
+uint8_t ShimRtc_setRtcSetByBt(uint8_t setByBt)
+{
+  gConfigBytes *cfg = ShimConfig_getStoredConfig();
+  uint8_t want = setByBt ? 1U : 0U;
+
+  if (cfg->rtcSetByBt == want)
+  {
+    return 0;
+  }
+  cfg->rtcSetByBt = want;
+  InfoMem_write(NV_SD_TRIAL_CONFIG0, &cfg->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
+  return 1;
+}

@@ -397,6 +397,41 @@ static void test_rwc_config_time(void)
       ShimRtc_isRwcConfigTimeSet());
 }
 
+/* Who set the clock is persisted in InfoMem, but only when it changes: every
+ * InfoMem write erases flash with interrupts disabled, and hosts send SET_RWC
+ * before each logging start, often mid-stream. */
+static void test_rtc_set_by_bt_flush(void)
+{
+  testCase("test_rtc_set_by_bt_flush");
+
+  hostStub_reset();
+  expectU("a Bluetooth set on a clear flag writes", ShimRtc_setRtcSetByBt(1), 1);
+  expectU("the flag is set", ShimConfig_getStoredConfig()->rtcSetByBt, 1);
+  expectU("one InfoMem write", hostStub_getInfoMemWriteCount(), 1);
+  expectU("to the trial-config byte", hostStub_getInfoMemLastAddr(), NV_SD_TRIAL_CONFIG0);
+
+  expectU("a repeat Bluetooth set does not write", ShimRtc_setRtcSetByBt(1), 0);
+  expectU("the flag stays set", ShimConfig_getStoredConfig()->rtcSetByBt, 1);
+  expectU("still one InfoMem write", hostStub_getInfoMemWriteCount(), 1);
+
+  expectU("a dock set clears the flag and writes", ShimRtc_setRtcSetByBt(0), 1);
+  expectU("the flag is clear", ShimConfig_getStoredConfig()->rtcSetByBt, 0);
+  expectU("two InfoMem writes", hostStub_getInfoMemWriteCount(), 2);
+
+  expectU("a repeat dock set does not write", ShimRtc_setRtcSetByBt(0), 0);
+  expectU("still two InfoMem writes", hostStub_getInfoMemWriteCount(), 2);
+
+  /* The rest of the byte is other trial settings and must survive. */
+  hostStub_reset();
+  ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0] = 0xFF;
+  ShimConfig_getStoredConfig()->rtcSetByBt = 0;
+  expectTrue("the flag lives in the trial-config byte",
+      ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0] != 0xFF);
+  ShimRtc_setRtcSetByBt(1);
+  expectU("only the flag changes in the byte",
+      ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0], 0xFF);
+}
+
 /* Every hour of a handful of representative days, as "unix,date,weekday", for
  * crosscheck_rtc.py to put against Python's datetime. */
 static void dumpCorpus(void)
@@ -450,6 +485,7 @@ int main(int argc, char **argv)
   test_date_validation();
   test_rwc_error_flash();
   test_rwc_config_time();
+  test_rtc_set_by_bt_flush();
 
   return hostTestReport("shimmer_rtc");
 }
