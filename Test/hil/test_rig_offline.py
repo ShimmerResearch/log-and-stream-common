@@ -945,6 +945,55 @@ class StreamCoverage(unittest.TestCase):
         self.assertIn("end is missing", "; ".join(throughput.defects(self.CLEAN, st, INQ_32HZ)))
 
 
+class StreamShortPacket(unittest.TestCase):
+    """A packet that arrives a byte short - the second byte lost, as on the
+    RN42 when two starts of the TX chain race (TEST_PROCEDURE §5.5) - is
+    plen - 1 bytes that do not frame, and the defect names them."""
+
+    CHANNELS = list(range(0x0D))          # the load's 13 two-byte channels: 30-byte packets
+
+    class Spp(FakeSpp):
+        def __init__(self, stream):
+            super().__init__(1)
+            self.stream = stream
+
+        def write(self, data):
+            if data == bytes([bt.START_STREAMING]):
+                self.buf += bytes([bt.ACK]) + self.stream
+            elif data == bytes([bt.STOP_STREAMING]):
+                self.buf += bytes([bt.ACK])
+
+    @staticmethod
+    def packet(ts):
+        return bytes([0]) + ts.to_bytes(3, "little") + bytes(range(0x10, 0x10 + 26))
+
+    def stream(self, drop=None):
+        pkts = [self.packet(1000 + 32 * i) for i in range(10)]
+        if drop is not None:
+            p = pkts[5]
+            pkts[5] = p[:drop] + p[drop + 1:]
+        link = bt.BtLink.__new__(bt.BtLink)
+        link.hw, link._nstatus, link.crc_mode = bt.HW_SHIMMER3, 1, 0
+        link.ser = self.Spp(b"".join(pkts))
+        link.ser.timeout = 0.0
+        return link.stream(0.0, bt.Inquiry(32, self.CHANNELS, 0, b""))
+
+    def test_a_whole_stream_frames(self):
+        st = self.stream()
+        self.assertEqual((st.packets, st.resyncs, st.stop_ack), (10, 0, True))
+
+    def test_a_packet_a_byte_short_is_29_stray_bytes(self):
+        st = self.stream(drop=1)
+        self.assertEqual((st.packets, st.resyncs), (9, 29))
+        short = self.packet(1000 + 32 * 5)
+        self.assertTrue(st.misframes[0].startswith((short[:1] + short[2:]).hex()))
+
+    def test_the_defect_carries_the_bytes(self):
+        st = self.stream(drop=1)
+        msg = "; ".join(throughput.defects(StreamCoverage.CLEAN, st, bt.Inquiry(32, self.CHANNELS, 0, b"")))
+        self.assertIn("29 bytes did not frame as packets (first from 00", msg)
+
+
 class FakeClock:
     def __init__(self):
         self.t = 0.0
@@ -1209,6 +1258,20 @@ class BleBaselineConfig(unittest.TestCase):
                 self.assertEqual("ble" in s3r.capabilities(), have)
                 self.assertNotIn("ble", s3.capabilities())
 
+    def test_an_rn4678_shimmer3_has_ble_and_an_rn42_does_not(self):
+        rn4678 = config.Unit(name="a", platform="shimmer3", mac="44B7D02FA615", radio="RN4678 V1.23")
+        rn42 = config.Unit(name="b", platform="shimmer3", mac="000666BAD1E8", radio="RN42 Ver 6.15")
+        with mock.patch.object(config, "ble_available", lambda: True):
+            self.assertIn("ble", rn4678.capabilities())
+            self.assertNotIn("ble", rn42.capabilities())
+
+    def test_each_module_family_has_its_own_ble_service(self):
+        self.assertIs(ble.profile_for("IF820 v1.4.18.18 test_254"), ble.CYSPP)
+        self.assertIs(ble.profile_for("RN4678 V1.00.5"), ble.MCHP_TRANSPARENT)
+        self.assertIsNone(ble.profile_for("RN42 Ver 4.77"))
+        self.assertIsNone(ble.profile_for(None))
+        self.assertNotEqual(ble.MCHP_TRANSPARENT.notify, ble.MCHP_TRANSPARENT.write)
+
     def test_the_figures_to_record_name_the_ble_table(self):
         line = throughput.as_toml({"link_bytes_per_s": 115000, "stream_samples_per_s": 1024.0}, "ble_throughput")
         self.assertEqual(line, "ble_throughput = { link_bytes_per_s = 115000, stream_samples_per_s = 1024 }")
@@ -1242,8 +1305,24 @@ def _ble_serial(timeout=0.2):
     s = ble.BleSerial.__new__(ble.BleSerial)
     s.timeout, s.address, s.mtu, s.flow_indications = timeout, "CF:9B:9E:36:15:BC", 247, 0
     s.write_size = s.mtu - ble.ATT_HEADER
+    s.profile = ble.CYSPP
     s._buf, s._cond, s._lost, s._client = bytearray(), threading.Condition(), False, object()
     return s
+
+
+class BleSerialDescribe(unittest.TestCase):
+    """The connection interval sets an RN4678's BLE rate, so the item's note carries it."""
+
+    def test_the_interval_windows_reports_is_named(self):
+        from types import SimpleNamespace
+        s = _ble_serial()
+        params = SimpleNamespace(connection_interval=48)          # 1.25 ms units
+        s._client = SimpleNamespace(_backend=SimpleNamespace(
+            _requester=SimpleNamespace(get_connection_parameters=lambda: params)))
+        self.assertIn("connection interval 60 ms", s.describe())
+
+    def test_no_interval_where_the_platform_gives_none(self):
+        self.assertNotIn("interval", _ble_serial().describe())
 
 
 class BleSerialReads(unittest.TestCase):
@@ -1349,6 +1428,20 @@ class BleSerialReads(unittest.TestCase):
         s._on_data(None, bytearray(b"\x01\x02"))
         s.reset_input_buffer()
         self.assertEqual(s.in_waiting, 0)
+
+    def test_a_write_goes_to_the_profiles_write_characteristic(self):
+        s = _ble_serial()
+        s.profile = ble.MCHP_TRANSPARENT
+        sent = []
+
+        class Client:
+            def write_gatt_char(self, char, data, response):
+                return (char, data, response)
+
+        s._client = Client()
+        s._call = lambda call, _timeout: sent.append(call)
+        s.write(b"\x2e")
+        self.assertEqual(sent, [(ble.MCHP_TRANSPARENT.write, b"\x2e", False)])
 
     def test_a_write_is_split_to_fit_the_att_mtu(self):
         s = _ble_serial()

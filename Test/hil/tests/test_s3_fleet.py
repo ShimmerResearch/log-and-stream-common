@@ -18,7 +18,7 @@ import time
 
 import pytest
 
-from rig import bt, dock, throughput
+from rig import ble, bt, dock, throughput
 from rig.base6 import Base6
 
 pytestmark = pytest.mark.fleet
@@ -226,6 +226,73 @@ def test_bt_throughput(rig, unit, base6, hil_note):
     short, note = throughput.judge(measured, baseline, unit.name)
     hil_note(note)
     assert not short, "; ".join(short)
+
+
+BLE_SETTLE_S = 6.0
+
+
+@pytest.mark.hil("fleet.ble_throughput", needs=["shimmer3", "bt", "ble", "dock"])
+def test_ble_throughput(rig, unit, base6, hil_note):
+    """fleet.bt_throughput's two measurements over BLE, on a Shimmer3 with an RN4678 (§5.5).
+
+    The link is the RN4678's transparent UART service, data as notifications
+    (rig/ble.py). An RN41 or RN42 has no BLE side, so its units do not have the
+    "ble" capability and are reported not_covered. The figures are judged
+    against [ble_throughput_by_radio] and the unit's ble_throughput; without
+    any the item is not_covered, with the figures to record. A unit whose
+    EEPROM has BLE off (bleEnabled) is not_covered too, and a dock that cannot
+    read that page fails the item. The load is stored configuration, so the
+    whole InfoMem is put back.
+
+    The measurement waits BLE_SETTLE_S after connecting. Windows renegotiates
+    the connection for its first few seconds (60 ms, 15 ms, then 60 ms about
+    2.6 s in), and a flood started inside that window ran at 15 ms. That
+    triples an RN4678's rate, and it is also where the modules failed on the
+    bench: a v1.00.5 went silent until reset (supervision timeout) twice in
+    two tries, and a v1.23 stopped taking connections. Waiting gives every run
+    the same interval, the one a host settles on (TEST_PROCEDURE §5.5).
+    """
+    profile = ble.profile_for(unit.radio)
+    baseline = rig.ble_throughput_baseline(unit)
+    base6.select(unit.base6_slot)
+    with dock.open_when_ready(base6.uart_port) as d:
+        radio = d.radio_settings()
+        if not dock.ble_enabled(radio):
+            pytest.skip(f"{unit.name}: BLE is off in its EEPROM (radio settings byte 2 = {radio[2]:#04x}, "
+                        "bleEnabled clear)")
+        original = bytes(d.read_infomem())
+    backup = throughput.save_infomem(unit.name, original)
+    error = None
+    try:
+        ser = ble.BleSerial(unit.mac, profile=profile)
+        try:
+            time.sleep(BLE_SETTLE_S)
+        except BaseException:
+            ser.close()
+            raise
+        with bt.BtLink(ser=ser) as link:
+            hil_note(link.ser.describe())
+            rate = throughput.data_rate_test(link, LINK_SECONDS)
+            st, inq = throughput.load_stream(link, LOAD_SECONDS)
+    except BaseException as e:
+        error = e
+        raise
+    finally:
+        retries = restore_infomem(base6, original, error, backup)
+        if retries:
+            hil_note(f"configuration restore needed {len(retries)} retries: {'; '.join(retries)}")
+    problems = throughput.defects(rate, st, inq)
+    assert not problems, "; ".join(problems)
+    measured = throughput.figures(rate, st, inq)
+    if not baseline:
+        pytest.skip(f"no BLE throughput baseline for {unit.name} in rig.toml; "
+                    f"measured {throughput.as_toml(measured, 'ble_throughput')}")
+    short, note = throughput.judge(measured, baseline, unit.name)
+    hil_note(note)
+    # A PC's Bluetooth stack can stick in a state that holds BLE at about 60%
+    # until Bluetooth is switched off and on (TEST_PROCEDURE §5.5).
+    assert not short, "; ".join(short) + (" - switch the PC's Bluetooth off and on and repeat before "
+                                         "believing a BLE shortfall")
 
 
 REBOOTS = 5

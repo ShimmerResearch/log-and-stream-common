@@ -23,6 +23,17 @@ and — as importantly — what each layer of testing cannot tell you.
 >   `promote-release.yml`, on their release-gate pull-request branches.
 > - **What `build-check.yml` builds (§3):** `shimmer3-firmware` @ `f67cf0a`
 >   and `shimmer3r-firmware` @ `c8c69e71`.
+> - **Which configuration ships on Shimmer3 (§3, §3.1):** `shimmer3-firmware`
+>   @ `de459e7` — `build-release-firmware.yml` and `promote-release.yml`, on
+>   its pull-request branch.
+> - **The Shimmer3 stream misframe and its fix (§5.5):** `log-and-stream-common`
+>   @ `c8605fb` (`Comms/shimmer_bt_uart.c`) and @ `af66ed2`
+>   (`Test/hil/rig/throughput.py`); `shimmer3-firmware` @ `4f90c7d`
+>   (`Shimmer_Driver/RN4X/RN4X.c`). These are the pull-request revisions that
+>   carry the fix. The figures are bench measurements of 19 Oct 2026, not
+>   readings of source. They cover the v1.01.006 release
+>   (`shimmer3-firmware` @ `LogAndStream_Shimmer3_v1.01.006`), main @ `c28fa8c`
+>   built in its Release configuration, and each of the two with the fix.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430F5437A); **S3R** =
 > Shimmer3R (STM32U5A5VJTXQ). LogAndStream only — BtStream and SDLog are
@@ -258,7 +269,7 @@ the diff (§3.3).
 
 **Required for every release, both platforms.** Each platform repository's
 `build-check.yml` builds the shipping configuration on every pull request and
-every push to `main`. On Shimmer3 it builds Release as well, as a second matrix
+every push to `main`. On Shimmer3 it builds Debug as well, as a second matrix
 leg (§3.1). The release workflow builds the shipping configuration again on the
 tagged commit. This is the only gate that sees the real word sizes. What CI does
 not do is read the warnings (§3.2) or compare the size (§3.4); those remain by
@@ -271,22 +282,22 @@ needs the other platform's pull request (§8.1).
 | IDE | Code Composer Studio **12.8.1.00005** | STM32CubeIDE **1.15.1** |
 | Compiler | TI MSP430 **v21.6.1.LTS** | arm-none-eabi (bundled) |
 | `int` width | **16 bits** | 32 bits |
-| Ships from | **Debug** (§3.1) | **Release** |
+| Ships from | **Release** (§3.1) | **Release** |
 
 Version pinning is deliberate. Check the README table before upgrading either.
 
 ### 3.1 Build the configuration that actually ships
 
-**They are not the same on the two platforms**, and getting this wrong means
-signing off a configuration nobody releases.
+**Both platforms ship from Release** (Shimmer3 shipped Debug up to v1.01.006),
+and signing off Debug means signing off a configuration nobody releases.
 
 | Platform | Build | Note |
 |---|---|---|
-| Shimmer3 | **Debug** | Release is the `-O2` candidate and does not ship yet; sign off Debug, the configuration that ships. CI compiles Release on every pull request, but a green build is not a bench run. Run Release too when the change touches interrupt handlers, the Bluetooth data path or the I2C wait. See [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
+| Shimmer3 | **Release** | Release (`-O2`) ships; releases up to v1.01.006 were Debug (`-O0`). CI compiles Debug as well on every pull request, but a green build is not a bench run. The first Release-built candidate needs the full procedure. See [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md) §4.2 |
 | Shimmer3R | **Release**, and Debug as well | A Debug-only failure means something depends on optimisation, which is worth knowing before a customer finds it |
 
-For Shimmer3, `Debug` is the configuration that ships, so it is the one to
-evaluate a change against. The release workflow takes a build-mode input for
+On both platforms `Release` is the configuration that ships, so it is the one
+to evaluate a change against. The release workflow takes a build-mode input for
 both platforms; pick the one that matches the table.
 
 > A headless Shimmer3 build can rewrite the generated `Release/*.mk` files even
@@ -666,9 +677,51 @@ other check.
 `smoke.ble_throughput` is the same short form over the Shimmer3R's BLE link,
 which makes 5.5.2 automatic for the Shimmer3R. It connects to the IF820's
 CYSPP serial service and takes data as notifications, as the web SDK does.
-A Shimmer3 with an RN4678 supports BLE too (§2.2 of the protocol document),
-but no item measures it yet, so on a Shimmer3 5.5.2 stays manual. 5.5.3 and
-5.5.4 stay manual on both.
+`fleet.ble_throughput` does the same on a Shimmer3 with an RN4678 (§2.2 of
+the protocol document), over the RN4678's transparent UART service. An RN41 or
+RN42 has no BLE side, so its units are not covered. 5.5.3 and 5.5.4 stay
+manual on both platforms.
+
+On 19 Oct 2026 the RN4678 units' BLE carried a small part of their classic
+rate, on the v1.01.006 release: 9.5 KB/s on an RN4678 v1.00.5 and 5.0 KB/s
+on an RN4678 v1.23, at ATT MTU 160. In one of two runs the v1.23 lost 33
+data-rate packets in one gap, which is a failure whatever the baseline.
+
+**A stream that misframes by `plen - 1` bytes lost a byte on the way out.**
+On the same release the RN42 v6.15's 1024 Hz stream failed with
+"29 bytes did not frame as packets" (30-byte packets). The bytes showed one
+sample packet arriving a byte short. On the release the missing byte was the
+packet's second, the low byte of its timestamp, every time. The cause was in
+the firmware: two starts of the UART transmit chain racing while the radio
+applied flow control
+([protocol document](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) §6.3). It shows
+only with the other bench units' radios on, as they are in a fleet run:
+- **Fleet order, every radio on:** one byte lost in 3 of 4 runs (4 bytes in
+  all).
+- **The unit alone, the others' radios off:** 0 of 15 runs.
+
+So reproduce a Shimmer3 stream defect in fleet conditions before calling it
+fixed. The item's message now carries the first frame that failed, which tells
+a short packet from a reply or a status frame in the stream.
+
+The fix, interleaved on the same unit, 19 Oct 2026. Each arm is two fresh
+flashes of four runs, every bench radio on:
+
+| Build | Runs with a byte lost | Stream, samples/s (mean) | Link, B/s (mean) |
+|---|---|---|---|
+| v1.01.006 release | 1 of 8 (a packet's second byte) | 966.4–978.1 (972.0) | 35001 |
+| v1.01.006 with the fix | 0 of 8 | 965.1–975.9 (971.1) | 35018 |
+| main at `-O2`, the next release's code | 1 of 8 (mid-packet) | 957.6–984.2 (969.2) | 34512 |
+| main at `-O2` with the fix | 0 of 8 | 960.3–985.3 (972.5) | 34743 |
+
+In fleet order, with main at `-O2` and the fix, no byte was lost in 4 rounds,
+where the release lost one in 3 of 4.
+
+Two things follow:
+- **The fix costs nothing.** It doesn't move the RN42 v6.15 overload figure
+  that the data path's timing is known to move.
+- **The `-O2` build has the same defect.** Its one lost byte fell mid-packet,
+  which is the other way two starts can collide; the fix closes both.
 
 **Shimmer3R BLE link rate.** The data-rate test over BLE, with
 notifications at ATT MTU 517 from Windows 11 on an Intel AX201:
@@ -679,22 +732,75 @@ notifications at ATT MTU 517 from Windows 11 on an Intel AX201:
 | 2 Oct 2026 | earlier firmware | v1.4.18.18 public release | 110–126 KB/s (indications: about 32 KB/s) |
 | 19 Oct 2026, before the unit was re-flashed | main | as above | 37.5–39.2 KB/s |
 | 19 Oct 2026, the module re-flashed by OTA | main, and v1.01.021 with v1.4.16.16 | each of v1.4.16.16, the v1.4.18.18 public release and the test build | 72.4–75.2 KB/s on every one |
+| 15 Oct 2026, a second unit | v1.01.021 from main, and a fix build | v1.4.18.18 public release, settings carried over from v1.4.16.16 | 125.0–125.8 KB/s |
+| 19 Oct 2026, the second unit, settings unchanged | as above | as above | 71.8–75.2 KB/s |
+| 19 Oct 2026, after switching the PC's Bluetooth off and on | main | the first unit's test build | 119.4–120.9 KB/s |
+| 19 Oct 2026, the same state, from `smoke.ble_throughput` | main | as above | 106.8–115.9 KB/s (it starts just after the Classic item) |
 
-The release and main agree to within 2%. Every module build read the same,
-the public release module that gave 110–126 KB/s on 2 Oct included. Two
-other hosts (another Windows PC and an Android phone) read the same as this
-one. So what moves the BLE figure is neither this firmware, nor the module
-build, nor one host's Bluetooth stack. What is left is the bench's radio
-environment, or settings kept in this unit's module that the firmware does
-not rewrite at boot (the module's settings were reset to factory defaults on
-10 Oct, between the high readings and the others). Packet sizes stayed about the same (400 to 450 bytes); what moved was
-how many went per second. What gave the high and the low readings is not
-known. A 1024 Hz stream with LN
+**The cause was the PC.** The bench PC's Bluetooth stack was in a state that
+held BLE at about 60%, and every 19 Oct reading of about 75 KB/s was taken in
+it: both firmware builds, every module build, and both units. Switching
+Bluetooth off and on in Windows cleared it. The first unit then read
+119.4–120.9 KB/s on the same firmware and module, with every other program on
+the PC as before. The second unit's fall from 125 to 75 KB/s, with nothing
+changed on it, fits the same cause. The 37.5–39.2 KB/s reading may be a
+deeper case of it. Another PC and an Android phone also read about 75 KB/s
+that day; whether they were in a like state is not known.
+
+So the A/B above shows only that the firmware and module builds read the same
+under that cap. Whether they differ at the full rate is not yet measured.
+
+The same toggle moved Classic the other way. Afterwards every unit's classic
+link rate read about 11% lower, with no firmware change, and a second toggle
+did not move it back: the first unit's test build read 152.1–158.1 KB/s from
+`smoke.bt_throughput`, against 173–178 KB/s earlier that day. So a bench's
+Classic and BLE baselines both describe the PC's Bluetooth state on the day
+they were recorded, and a shortfall on either link needs repeating.
+Packet sizes stayed about the same throughout (400 to 450 bytes); what moved
+was how many went per second. A 1024 Hz stream with LN
 accel, gyro, mag, WR accel and VBatt arrives whole over BLE.
 
 So a bench's BLE row for a build is the low end of fresh-flash runs, with a
-10% margin (§10.4). Repeat a BLE shortfall, and A/B it against the release
-on the same unit, before believing it.
+10% margin (§10.4). Before believing a BLE shortfall, switch the PC's
+Bluetooth off and on and repeat it, then A/B it against the release on the
+same unit.
+
+**Shimmer3 BLE, on an RN4678.** The low rate is the module's own. Measured
+from Windows 11's HCI trace, 19 Oct 2026, v1.01.006:
+- **What the module sends.** A fixed number of 157-byte notifications per
+  connection event, in 27-byte link-layer packets (no data length extension
+  from the module): two on v1.23, about four on v1.00.5.
+- **The interval.** Windows renegotiates a new link for its first seconds: 60,
+  then 15, then 60 ms from about 2.6 s, its balanced preset.
+- **So the rate.** At 60 ms that is about 5.2 KB/s on v1.23 and 9.5 KB/s on
+  v1.00.5, in line with Microchip's LE figure of up to 7 KB/s for the module.
+- **The module never asks for anything else.** The firmware configures it
+  with `ST,0001,001C,0000,0200`, a minimum interval of 1.25 ms, below the
+  7.5 ms the specification allows, and no connection-parameter request
+  appears in the trace.
+
+A shorter interval raises the rate, but the modules fail there. A host asking
+for 15 ms (Windows' throughput preset) roughly tripled v1.23, to 16.0 KB/s and
+532 of 1024 samples/s, but:
+- **v1.23** then took no connection until it was reset.
+- **v1.00.5** went silent (link supervision timeout) in both floods run at
+  15 ms, holding RTS. The firmware then counted a data-rate-test blockage every
+  100 ms, an EEPROM write each, until reset.
+
+At 60 ms, v1.00.5 was clean in 7 of 7 runs and v1.23 in 17 of 19. The two
+that failed:
+- **One run lost a whole notification's worth:** 157 bytes, 33 test packets
+  and 8 bytes of their neighbours. A byte lost on the MCU's UART would cost
+  one byte, not a notification.
+- **One run stalled with the other unit's radio on:** RTS held high, its
+  EEPROM RTS-lockup count rising, a batch getting out every 2 s, the stop not
+  obeyed until the next connection.
+
+Both are on the module's side of its UART. So `fleet.ble_throughput` waits
+6 s after connecting before it measures, so that every run takes its figures
+at the interval a host settles on, and its note gives that interval. A flood
+started inside the renegotiation runs at 15 ms, and its figures and failures
+are a different test.
 
 **Shimmer3R classic link rate by IF820 module build.** These figures are the
 Shimmer3R classic baselines. The link rate follows the module's firmware build
@@ -994,7 +1100,7 @@ is what has to be true before you trigger it.
 
 - [ ] Gate 1 green on the exact commit being released (§2)
 - [ ] `make -C Test/host` green locally as well as in CI
-- [ ] The shipping configuration builds clean — Shimmer3 **Debug**, Shimmer3R **Release** (§3.1)
+- [ ] The shipping configuration builds clean — **Release** on both platforms (§3.1)
 - [ ] Shimmer3 build warnings read, with §3.2 in mind
 - [ ] Flash and RAM recorded and compared with the previous release (§3.4)
 - [ ] Submodule pointer is at the intended `log-and-stream-common` commit
@@ -1228,6 +1334,7 @@ flash.
 | `fleet.reboot` | Five resets through the RST line; every boot answers the dock with the same radio banner (§5.1.5) |
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |
+| `fleet.ble_throughput` | As `fleet.bt_throughput`, over BLE (the RN4678's transparent UART service), on the units with an RN4678. `not_covered` on an RN41 or RN42, or when the EEPROM has BLE off |
 
 **The throughput baselines.** The firmware gives no acceptance rate per radio
 or baud. These documents give only the Shimmer3R's per-module figures (§5.5).
@@ -1364,8 +1471,10 @@ The known-issues list and bench facts live with each bench (`[triage]` in
   - **Shimmer3R:** classic figures now exist per IF820 module build (§5.5).
     They come from one unit, one host adapter and the transparent path.
   - **Shimmer3R BLE:** one module build has a figure (§5.5), from one unit and
-    one host. The same link has read from half to one and a half times it,
-    with the firmware unchanged, and what moves it is not known.
+    one host. A PC's Bluetooth stack can stick in a state that holds BLE at
+    about 60% until Bluetooth is switched off and on (§5.5). What puts it
+    there, and whether other hosts do the same, is not known. So is whether
+    firmware or module builds differ over BLE at the full rate.
   - **What is still open:** for Shimmer3 radios, the figures are still a
     bench's, not a module's. A figure that belongs to the radio, independent
     of the bench, is not known, so the manual steps still say "compare with

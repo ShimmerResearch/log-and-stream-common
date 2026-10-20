@@ -2957,13 +2957,24 @@ void ShimBt_triggerNextTransfer(void)
 void ShimBt_sendNextCharIfNotInProgress(void)
 {
 #if defined(SHIMMER3)
+  /* The test and the start are one step. Interrupts start the TX chain too:
+   * the radio's RTS interrupt when it lowers RTS, then the TX interrupt that
+   * follows. One that lands between this test and this start leaves the
+   * chain started twice, and the second write to UCA1TXBUF goes over the
+   * byte the chain has just put there, which is lost from the stream. */
+  uint16_t gie = __get_interrupt_state();
+  __disable_interrupt();
   if (!ShimBt_btTxInProgressGet())
-#else
-  if (!ShimBt_btTxInProgressGet() && !isPendingResponseFromBtModule())
-#endif
   {
     ShimBt_sendNextChar();
   }
+  __set_interrupt_state(gie);
+#else
+  if (!ShimBt_btTxInProgressGet() && !isPendingResponseFromBtModule())
+  {
+    ShimBt_sendNextChar();
+  }
+#endif
 }
 
 void ShimBt_sendNextChar(void)

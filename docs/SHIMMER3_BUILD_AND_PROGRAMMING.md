@@ -35,6 +35,10 @@ wire, not over the air.
 > - What CI builds (§4.2, and "Whether CI builds both platforms" under "Still
 >   unverified") was read from `build-check.yml` in `shimmer3-firmware` @
 >   `f67cf0a` and `shimmer3r-firmware` @ `c8c69e71`.
+> - Which configuration ships (§4.2: the `build_mode` default, the release
+>   workflow's candidate check and `promote-release.yml`'s `SHIPPING_CONFIG`)
+>   was read from `build-release-firmware.yml` and `promote-release.yml` in
+>   `shimmer3-firmware` @ `de459e7`, on its pull-request branch.
 
 **Source references:**
 
@@ -116,7 +120,7 @@ distinguish "built with warnings" from "built clean".
 
 ```bat
 eclipsec.exe -noSplash -data <ws> -application com.ti.ccstudio.apps.projectImport -ccs.location <path>\LogAndStream_Shimmer3
-eclipsec.exe -noSplash -data <ws> -application com.ti.ccstudio.apps.projectBuild -ccs.projects LogAndStream_Shimmer3 -ccs.configuration Debug -ccs.buildType full
+eclipsec.exe -noSplash -data <ws> -application com.ti.ccstudio.apps.projectBuild -ccs.projects LogAndStream_Shimmer3 -ccs.configuration Release -ccs.buildType full
 ```
 
 These are the CCS 12.8.1 application names, the version CI uses; 12.7.1 calls
@@ -126,19 +130,21 @@ project, so `Debug/` and `Release/` are not written into a checkout. From
 Windows PowerShell 5.1, run these through `cmd /c`: it splits arguments such as
 `-ccs.location` at the dot, and `eclipsec` then prints only its usage text.
 
-### 4.2 Shimmer3 ships from the *Debug* configuration
+### 4.2 Shimmer3 ships from the *Release* configuration
 
-> **Releases are produced from the Debug CCS configuration**, at `-O0`. The
-> release workflow's `build_mode` input defaults to `Debug`; keep it there
-> until the optimised Release configuration has passed the bench procedure.
+> **Releases are produced from the Release CCS configuration**, at `-O2
+> --opt_for_speed=2`. The release workflow's `build_mode` input defaults to
+> `Release`, the workflow refuses a candidate built from anything else, and
+> `promote-release.yml` promotes nothing else. Releases up to and including
+> `LogAndStream_Shimmer3_v1.01.006` were built from Debug, at `-O0`.
 
 `Release` has the same compiler and linker settings as `Debug` apart from the
 optimisation level:
 
 | Configuration | Optimisation | Ships |
 |---|---|---|
-| `Debug` | `-O0 --opt_for_speed=0` | yes |
-| `Release` | `-O2 --opt_for_speed=2` | not yet: the optimised candidate |
+| `Debug` | `-O0 --opt_for_speed=0` | no: up to v1.01.006 only |
+| `Release` | `-O2 --opt_for_speed=2` | yes |
 
 In both, `main.c` overrides only the speed trade-off, to `--opt_for_speed=5`,
 so it takes its configuration's `-O` level. A headless Debug build at
@@ -165,18 +171,16 @@ on 19 Oct 2026 found no reason to pay for 3:
   same at both.
 - **Stack.** The worst case is the same at both (§4.5).
 
-**Before Release ships**, it still needs three things:
+**The first Release-built candidate needs the full bench procedure** before it
+is promoted. No Release image has been through it yet, and optimisation makes
+the sample-timer re-arm and task-loop lost wake-up races likelier, so that
+bench is the first that shows the two fixes holding under `-O2`.
 
-1. The sample-timer re-arm and task-loop lost wake-up fixes, in the image
-   under test. Optimisation makes both races likelier, so the bench must run
-   with them in.
-2. The full bench procedure on that Release image.
-3. The release workflow's default, its Debug-only candidate check and
-   `promote-release.yml` changed to Release.
-
-Until then, build `Debug` to produce a release or to judge whether a change is
-safe. When a change touches interrupt handlers, the Bluetooth data path or the
-I2C wait, bench Release as well: optimisation moves exactly that timing.
+Build `Release` to produce a release or to judge whether a change is safe.
+Debug stays useful for stepping through code in the debugger, and a failure
+that appears only in Release means something depends on optimisation. When a
+change touches interrupt handlers, the Bluetooth data path or the I2C wait,
+bench Release specifically: optimisation moves exactly that timing.
 
 **Keep the two configurations in step.** Make project-setting changes under
 *[All configurations]* in CCS, so Release cannot drift from Debug again. The
@@ -420,7 +424,7 @@ and IC. See
   `PA2`/`PA3` `BSL_TX`/`BSL_RX`); there is **no anti-rollback** — the system
   bootloader has none and the application adds none.
 - ~~Which build-time symbols shipping builds define~~ — resolved from the two
-  `.cproject` files: Shimmer3 (`Debug`, the configuration that ships)
-  `__MSP430F5437A__ SHIMMER3`; Shimmer3R `SHIMMER3R USE_HAL_DRIVER
+  `.cproject` files: Shimmer3 (`Release`, the configuration that ships, and
+  `Debug` alike) `__MSP430F5437A__ SHIMMER3`; Shimmer3R `SHIMMER3R USE_HAL_DRIVER
   UX_INCLUDE_USER_DEFINE_FILE DEBUG` plus the CubeMX device symbol. Everything
   else in §7 is at its header default in both.
