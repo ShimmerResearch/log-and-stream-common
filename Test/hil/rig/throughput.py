@@ -237,12 +237,15 @@ def as_toml(measured: dict[str, float], key: str = "throughput") -> str:
     return f"{key} = {{ " + ", ".join(f"{k} = {measured[k]:g}" for k in THROUGHPUT_KEYS) + " }"
 
 
-def compare(measured: dict[str, float], baseline: dict[str, float]) -> tuple[list[str], list[str]]:
+def compare(measured: dict[str, float], baseline: dict[str, float],
+            keys: tuple[str, ...] = THROUGHPUT_KEYS) -> tuple[list[str], list[str]]:
     """(shortfalls, gains) against the baseline: figures more than its tolerance
-    (TOLERANCE unless the baseline sets one) below it, or above it."""
+    (TOLERANCE unless the baseline sets one) below it, or above it. `keys` are
+    the figures to judge: the Bluetooth ones unless a caller has others
+    (rig/usb_throughput.py)."""
     tolerance = baseline.get("tolerance", TOLERANCE)
     short, gain = [], []
-    for k in THROUGHPUT_KEYS:
+    for k in keys:
         if k not in baseline:
             continue
         ratio = measured[k] / baseline[k]
@@ -272,11 +275,12 @@ def radio_mismatch(named: str | None, reported: str) -> str | None:
     return None
 
 
-def judge(measured: dict[str, float], baseline: dict[str, float], unit_name: str) -> tuple[list[str], str]:
+def judge(measured: dict[str, float], baseline: dict[str, float], unit_name: str,
+          keys: tuple[str, ...] = THROUGHPUT_KEYS) -> tuple[list[str], str]:
     """(failures, note) for a unit: no baseline is not a pass, it is not_covered (the caller skips)."""
-    short, gain = compare(measured, baseline)
+    short, gain = compare(measured, baseline, keys)
     note = ", ".join(f"{k} {measured[k]:g}" + (f" (baseline {baseline[k]:g})" if k in baseline else "")
-                     for k in THROUGHPUT_KEYS)
+                     for k in keys)
     if gain:
         note += "; " + "; ".join(gain) + f" - if this build is released, record the new figures for {unit_name}"
     if short:

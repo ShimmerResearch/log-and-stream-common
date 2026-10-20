@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from rig import ble, bt, dock, midstream, s3r_usb, sdfile, throughput
+from rig import ble, bt, dock, midstream, s3r_usb, sdfile, throughput, usb_throughput
 
 pytestmark = pytest.mark.smoke
 
@@ -299,6 +299,31 @@ def test_usb_replug(unit, power):
     with dock.open_when_ready(port) as d:
         d.version()
     s3r_usb.wait_drive(unit.usb_serial, 45)
+
+
+@pytest.mark.hil("smoke.usb_throughput", needs=["shimmer3r", "usb"])
+def test_usb_throughput(unit, hil_note):
+    """How fast the SD card reads and writes over USB mass storage, as a customer offloads a recording.
+
+    rig/usb_throughput.py writes a 32 MiB file to the unit's drive around the
+    PC's cache, reads it back and compares it, then removes it. Both rates are
+    judged against the unit's own `usb_throughput` in rig.toml; without one the
+    item is not_covered, with the figures to record. The card sets the figure,
+    so it is per unit. A read within USB Full Speed is reported as such: it
+    points at the link, not the card.
+    """
+    if not usb_throughput.supported():
+        pytest.skip("the unbuffered transfers this item times are only implemented on Windows")
+    root = s3r_usb.wait_drive(unit.usb_serial, 45)
+    result = usb_throughput.measure(root)
+    measured = result.figures()
+    slow_link = usb_throughput.speed_note(measured)
+    if not unit.usb_throughput:
+        pytest.skip(f"no USB throughput baseline for {unit.name} in rig.toml; measured "
+                    f"{usb_throughput.as_toml(measured)}" + (f"; {slow_link}" if slow_link else ""))
+    short, note = throughput.judge(measured, unit.usb_throughput, unit.name, usb_throughput.USB_THROUGHPUT_KEYS)
+    hil_note(note + (f"; {slow_link}" if slow_link else ""))
+    assert not short, "; ".join(short + ([slow_link] if slow_link else []))
 
 
 @pytest.mark.hil("smoke.sd_log", needs=["shimmer3r", "usb", "bt", "hub_port"])

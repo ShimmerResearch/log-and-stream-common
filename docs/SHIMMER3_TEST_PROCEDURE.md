@@ -1315,6 +1315,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.bt_identity` | Over Bluetooth: hardware 10, the LogAndStream identifier and the candidate's version; an SD card present and usable |
 | `smoke.bt_stream` | 10 s stream: packet framing, no lost or duplicate samples, the rate on the device clock |
 | `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
+| `smoke.usb_throughput` | Docked: a 32 MiB file written to the SD drive over USB mass storage and read back, both around the PC's file cache, compared, then removed. Write and read bytes per second against this unit's USB baseline (below); a read within USB Full Speed is reported as pointing at the link. `not_covered` without a baseline, with the figures to record, and on a host other than Windows |
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
 | `smoke.sd_start_midstream` | Undocked, six 2 s SD logs started and stopped inside one 256 Hz stream, link CRC on. Odd cycles send `START_LOGGING` alone; even ones send `SET_RWC` first, as the reference host does before every log start. The stream's stamps must never step back or sideways: no stamp at or behind the one before, no move of the sampling grid, no lost or duplicate samples, jitter within a quarter period. Each problem is reported with the cycle it followed, and with how many clock-set and plain starts disturbed the stream. A status query must show logging, and the card must hold one new session per cycle |
 | `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt |
@@ -1355,6 +1356,11 @@ bench, from `rig.toml`, built up in two layers:
   `[ble_throughput_by_radio]` and the unit's `ble_throughput`, built the same
   way. A BLE figure depends on the connection the host negotiates as well as
   on the module build, so it is never judged against a classic one.
+- **USB:** `smoke.usb_throughput` has only the unit's own
+  `usb_throughput = { usb_write_bytes_per_s = ..., usb_read_bytes_per_s = ... }`.
+  The SD card sets the figure more than any build does, so there is no table
+  by build, and a unit fitted with another card needs its figures recorded
+  again. A Shimmer3 has no USB-C, so a Shimmer3 unit cannot have one.
 - **Module check:** the Shimmer3R items first check that the module reports
   the version its `radio` names. Test builds report their release's version,
   so which build of a version is fitted is for `rig.toml` to say.

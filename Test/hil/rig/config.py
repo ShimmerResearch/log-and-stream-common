@@ -22,6 +22,7 @@ except ModuleNotFoundError:  # pragma: no cover - 3.10 benches
     import tomli as tomllib
 
 from .ble import available as ble_available, profile_for as ble_profile_for
+from .usb_throughput import USB_THROUGHPUT_KEYS
 
 PLATFORMS = ("shimmer3", "shimmer3r")
 # A unit's throughput baseline (rig/throughput.py): what the last release gave
@@ -31,18 +32,21 @@ PLATFORMS = ("shimmer3", "shimmer3r")
 # [throughput_by_radio] and a unit's `throughput`, [ble_throughput_by_radio]
 # and a unit's `ble_throughput`.
 THROUGHPUT_KEYS = ("link_bytes_per_s", "stream_samples_per_s")
+# A Shimmer3R's SD card over USB mass storage (rig/usb_throughput.py) has a
+# unit's own `usb_throughput` only: the card sets the figure, so there is no
+# table of them by build.
 
 
 class RigError(Exception):
     """rig.toml is missing, malformed, or names hardware that is not there."""
 
 
-def _baseline(table, where: str) -> dict[str, float]:
+def _baseline(table, where: str, keys: tuple[str, ...] = THROUGHPUT_KEYS) -> dict[str, float]:
     if not isinstance(table, dict):
-        raise RigError(f"{where} must be a table, e.g. {{ link_bytes_per_s = 39315 }}")
+        raise RigError(f"{where} must be a table, e.g. {{ {keys[0]} = 39315 }}")
     for k, v in table.items():
-        if k not in (*THROUGHPUT_KEYS, "tolerance"):
-            raise RigError(f"{where}.{k} is not one of {', '.join(THROUGHPUT_KEYS)}, tolerance")
+        if k not in (*keys, "tolerance"):
+            raise RigError(f"{where}.{k} is not one of {', '.join(keys)}, tolerance")
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not v > 0:
             raise RigError(f"{where}.{k} must be a positive number, not {v!r}")
         if k == "tolerance" and not v < 1:
@@ -64,6 +68,7 @@ class Unit:
     stlink_serial: str | None = None  # the ST-Link on this unit's SWD header, for flash method "swd"
     throughput: dict[str, float] = field(default_factory=dict)  # baseline figures, THROUGHPUT_KEYS
     ble_throughput: dict[str, float] = field(default_factory=dict)  # the same, over BLE
+    usb_throughput: dict[str, float] = field(default_factory=dict)  # Shimmer3R SD over USB, USB_THROUGHPUT_KEYS
 
     def capabilities(self) -> set[str]:
         caps = {self.platform}
@@ -189,6 +194,9 @@ def load(path: str | os.PathLike | None = None) -> Rig:
             raise RigError(f"{where}: hub_port must be a hub port number from 1, not {hub_port!r}")
         throughput = _baseline(u.get("throughput", {}), f"{where}: throughput")
         ble_throughput = _baseline(u.get("ble_throughput", {}), f"{where}: ble_throughput")
+        usb_throughput = _baseline(u.get("usb_throughput", {}), f"{where}: usb_throughput", USB_THROUGHPUT_KEYS)
+        if usb_throughput and u.get("platform") != "shimmer3r":
+            raise RigError(f"{where}: usb_throughput is for a Shimmer3R; a Shimmer3 has no USB-C")
         units.append(Unit(
             name=u["name"], platform=u["platform"],
             mac=_normalise_mac(u["mac"]) if u.get("mac") else None,
@@ -198,7 +206,7 @@ def load(path: str | os.PathLike | None = None) -> Rig:
             base6_slot=int(u["base6_slot"]) if u.get("base6_slot") else None,
             radio=u.get("radio"), board=u.get("board"), notes=u.get("notes", ""),
             stlink_serial=u.get("stlink_serial") or None,
-            throughput=throughput, ble_throughput=ble_throughput,
+            throughput=throughput, ble_throughput=ble_throughput, usb_throughput=usb_throughput,
         ))
     names = [u.name for u in units]
     if len(set(names)) != len(names):
