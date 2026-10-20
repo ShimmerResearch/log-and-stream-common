@@ -2269,8 +2269,11 @@ Milliseconds = ticks / 32.768.
 > bytes and dividing by 32.768 (`:1721-1731`).
 
 Setting the clock has three side effects beyond the clock itself: it sets the
-`rtcSetByBt` bit in InfoMem 217 and flushes that byte, re-runs the real-world
-clock error check, and on Shimmer3R re-arms the periodic battery-read RTC alarm.
+`rtcSetByBt` bit in InfoMem 217 and flushes that byte (only when the bit was
+clear: the flush rewrites the whole InfoMem page with interrupts disabled, which
+costs a few samples if the stream is running, so a repeat set while sensing does
+not do it), re-runs the real-world clock error check, and on Shimmer3R re-arms
+the periodic battery-read RTC alarm.
 Once set, status bit 2 reports "clock has been set" on firmware new enough to
 carry it (`isSupportedRtcStateInStatus`,
 [Appendix A](#appendix-a-firmware-version-gates)).

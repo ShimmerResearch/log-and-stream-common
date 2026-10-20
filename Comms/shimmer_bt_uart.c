@@ -1592,9 +1592,18 @@ void ShimBt_processCmd(void)
       }
       case SET_RWC_COMMAND:
       {
+        /* Flush the flag only when it changes. InfoMem_write rewrites the whole
+         * InfoMem page with interrupts disabled (a page erase plus programming),
+         * which costs sampling a few samples: a host that sets the clock at
+         * every logging start, as the Java driver does, would lose samples
+         * mid-stream each time. */
+        uint8_t rtcSetByBtChanged = !storedConfigPtr->rtcSetByBt;
         storedConfigPtr->rtcSetByBt = 1;
-        InfoMem_write(NV_SD_TRIAL_CONFIG0,
-            &storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
+        if (rtcSetByBtChanged)
+        {
+          InfoMem_write(NV_SD_TRIAL_CONFIG0,
+              &storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
+        }
         ShimSdHead_sdHeadTextSetByte(
             SDH_TRIAL_CONFIG0, storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0]);
 
