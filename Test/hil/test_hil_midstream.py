@@ -226,12 +226,21 @@ class StreamActions(unittest.TestCase):
         st.events = [("set_rwc 2", 25, 0.0), ("start 2", 26, 0.0)]
         st.acks = 2
         plan = midstream.Plan([midstream.Action(0, "set_rwc", 2, b""), midstream.Action(0, "start", 2, b"")],
-                              10.0, [2])
+                              60 * P / bt.TICKS_PER_S, [2])
         problems, summary = midstream.judge(st, plan, P)
         self.assertEqual(len(problems), 1)
         self.assertTrue(problems[0].startswith("cycle 2 start: "))
         self.assertIn("1 of 1 starts after a clock set", summary)
 
+
+    def test_too_few_packets_is_a_problem(self):
+        for ts in ([], stamps([]), stamps([P] * 5)):
+            st = bt.StreamStats()
+            st.ts = ts
+            plan = midstream.Plan([], 10.0, [])
+            problems, _ = midstream.judge(st, plan, P)
+            self.assertEqual(len(problems), 1, problems)
+            self.assertIn(f"{len(ts)} packets in a 10 s stream", problems[0])
 
 if __name__ == "__main__":
     unittest.main()

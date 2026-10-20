@@ -35,6 +35,9 @@ GRID_TOL = 1
 # Stamps that must agree on a new offset before it counts as a moved grid
 # rather than one stamp off it.
 SETTLE = 3
+# Packets that must arrive, as a fraction of the stream's length at its rate,
+# before its stamps are judged at all (the release rows use the same floor).
+MIN_PACKET_FRACTION = 0.8
 
 
 def rwc_payload(now_s: float | None = None) -> bytes:
@@ -204,6 +207,10 @@ def judge(st, plan: Plan, period: int) -> tuple[list[str], str]:
     g = analyse(st.ts, period)
     groups = by_cycle(g, st.events)
     problems = []
+    expected = plan.seconds * TICKS_PER_S / period
+    if g.packets < MIN_PACKET_FRACTION * expected:
+        # Too few stamps to judge: an empty or dead stream must not pass as clean.
+        problems.append(f"{g.packets} packets in a {plan.seconds:.0f} s stream, expected ~{expected:.0f}")
     if st.resyncs:
         problems.append(f"{st.resyncs} bytes did not frame as packets (first: {st.misframes[:1]})")
     if st.crc_errors:
