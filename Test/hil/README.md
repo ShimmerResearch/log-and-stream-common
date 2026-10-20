@@ -100,7 +100,8 @@ plug and unplug.
 | `rig/config.py` | `rig.toml` |
 | `rig/power.py` | Hub port power (through bench-tools `hub/hubctl.py`), or the operator |
 | `rig/dock.py` | The dock protocol over the Shimmer3R USB CDC port |
-| `rig/bt.py` | Bluetooth SPP: commands, status, streaming with timestamp checks |
+| `rig/bt.py` | Bluetooth SPP: commands, status, streaming with timestamp checks, and commands sent mid-stream |
+| `rig/midstream.py` | SD logs started and stopped inside a stream: the command schedule, and the stamps judged across each start (steps back, grid moves) |
 | `rig/throughput.py` | Bluetooth throughput: the firmware's data-rate test, and a stream that outruns the link, against each unit's baseline |
 | `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial |
 | `rig/sdfile.py` | Reads a Shimmer3R SD data file and checks its records |
@@ -214,6 +215,17 @@ So a sample stamped late - a long step then a short one - is one late stamp,
 not a lost sample and a duplicate. That includes one exactly half a period
 late, which a bench run showed. Smoke tests fail on any loss or duplicate, and
 on jitter beyond a quarter period.
+
+The `sd_start_midstream` items (`rig/midstream.py`) look for two more things,
+because a log start mid-stream can re-phase the stream:
+
+- **steps back:** a stamp at or behind the one before it. A host that unwraps
+  the counter can take one for a wrap;
+- **grid moves:** a new offset from the grid that the next three stamps keep.
+  One stamp off and back is jitter.
+
+The grid is moved at each move found, before the steps are sorted as above, so
+one move is reported once, not as jitter on every stamp after it.
 
 `run_rc.py` expects every unit it flashes to be docked (on USB) when it starts,
 as the tests do, and stops before flashing anything if one is not.
