@@ -15,6 +15,11 @@ re-encoding: a host that speaks one does not speak the other.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5` — the UART and USB CDC transports that
 >   feed `ShimDock_rxCallback`.
+> - **On the bench:** every request in Appendix A, each error reply and the
+>   framing rules of §2.1, by the HIL items `smoke.dock_protocol` (Shimmer3R
+>   v1.01.022, USB CDC) and `fleet.dock_protocol` (Shimmer3 v1.01.007 with each
+>   shipped radio, through a Base6), 21 Oct 2026
+>   ([SHIMMER3_TEST_PROCEDURE.md](SHIMMER3_TEST_PROCEDURE.md) §10.4).
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =
 > Shimmer3R (STM32U5). LogAndStream only. The protocol is referred to in the
@@ -95,7 +100,8 @@ InfoMem length + two offset bytes + 128 data bytes + two CRC bytes.
 | 0 | `UART_STEP_WAIT4_NONE` | A `'$'` to start a frame |
 
 In state 0 every byte other than `'$'` is discarded, which is what
-resynchronises the parser after a corrupt frame.
+resynchronises the parser after a corrupt frame. Junk before a frame is skipped
+the same way.
 
 **A 100 ms inter-byte timeout resets the parser.** If more than 100 ms passes
 between two bytes of a frame, `uartSteps` is zeroed and the partial frame is
@@ -115,6 +121,16 @@ the payload (`'$'`, command, length and the two CRC bytes), so a whole frame
 always fits the receive buffer. Earlier firmware accepted any length and went on
 storing bytes past the end of that buffer.
 
+**One request at a time.** There is one receive buffer, and a complete frame is
+processed later, from the main loop. A host must wait for each reply before it
+sends the next request. Two requests sent in one write were answered differently
+by each platform on the bench:
+
+| Platform | Two GETs in one write |
+|---|---|
+| Shimmer3R, USB CDC | Only the first is answered. The CDC receive buffer is reset once a frame is complete (§5), and the rest of that USB transfer goes with it |
+| Shimmer3, dock UART | It varies from run to run: both answered; only the second; or the first answered and the second given `UART_BAD_CMD_RESPONSE`. The second frame overwrites the first while it waits to be processed |
+
 ## 3. Commands and responses
 
 | Constant | Value | Direction |
@@ -122,8 +138,8 @@ storing bytes past the end of that buffer.
 | `UART_SET` | `0x01` | Host to device |
 | `UART_RESPONSE` | `0x02` | Device to host |
 | `UART_GET` | `0x03` | Host to device |
-| `UART_BAD_CMD_RESPONSE` | `0xFC` | Unrecognised command |
-| `UART_BAD_ARG_RESPONSE` | `0xFD` | Unrecognised component or property |
+| `UART_BAD_CMD_RESPONSE` | `0xFC` | Unrecognised command byte, component or property |
+| `UART_BAD_ARG_RESPONSE` | `0xFD` | A frame length of 0 or over 133, or a recognised property with the wrong length or an argument out of range |
 | `UART_BAD_CRC_RESPONSE` | `0xFE` | CRC check failed |
 | `UART_ACK_RESPONSE` | `0xFF` | Set accepted |
 
@@ -197,6 +213,9 @@ A request addresses a **component** and a **property** of it.
 | `UART_PROP_FREQ_DIVIDER` | `0x06` |
 | `UART_PROP_CALIBRATION` | `0x07` |
 
+None of these is handled: `ShimDock_processCmd` has no branch for
+`UART_COMP_D_ACCEL`, so a request to it is answered `UART_BAD_CMD_RESPONSE`.
+
 `UART_COMP_GSR` has no properties of its own — the header lists
 `UART_PROP_ENABLE`, `UART_PROP_SAMPLE_RATE`, `UART_PROP_RANGE` and
 `UART_PROP_DIVIDER` **all commented out**.
@@ -218,7 +237,9 @@ A request addresses a **component** and a **property** of it.
 1. Verify the CRC over `length + 3` bytes. On failure, reply
    `UART_BAD_CRC_RESPONSE`.
 2. Dispatch on `UART_GET` or `UART_SET`, then on component, then on property.
-3. Unknown component or property replies `UART_BAD_ARG_RESPONSE`.
+3. Unknown component or property replies `UART_BAD_CMD_RESPONSE`. A known one
+   with the wrong length or an argument out of range replies
+   `UART_BAD_ARG_RESPONSE` (Appendix A).
 
 A `UART_GET` returns a `UART_RESPONSE` frame; a `UART_SET` returns
 `UART_ACK_RESPONSE`.
@@ -306,8 +327,16 @@ table used to give was wrong. `0x07` in the `SHIMMER` component's own space is
 Any component/property pair not in these tables → `UART_BAD_CMD_RESPONSE`
 (`0xFC`); a recognised pair with a bad `LEN` or an out-of-range argument →
 `UART_BAD_ARG_RESPONSE` (`0xFD`); a CRC mismatch → `UART_BAD_CRC_RESPONSE`
-(`0xFE`). Error responses are three bytes: `'$'`, code, CRC-16 (the CRC is over
+(`0xFE`). Error responses are four bytes: `'$'`, code, CRC-16 (the CRC is over
 the two leading bytes).
+
+> **Only the fixed-size properties have their `LEN` checked**: MAC, VER, the
+> two clock GETs, the clock SET, BAT and the BT version. INFOMEM, CARD_ID and
+> CARD_MEM, and the ENTER_BOOTLOADER and TEST SETs, take their arguments from
+> fixed offsets whatever `LEN` says. A frame shorter than its arguments is
+> therefore not refused: its own CRC bytes are read as them, and the bench saw a
+> GET INFOMEM with no arguments answered with InfoMem from an offset its CRC
+> chose. A host must send every argument byte.
 
 On Shimmer3R the response goes to USB-CDC when USB is plugged in and initialised,
 otherwise to the dock UART; on Shimmer3 always to the dock UART.
@@ -318,8 +347,11 @@ otherwise to the dock UART; on Shimmer3 always to the dock UART.
   conditional write (`ShimRtc_setRtcSetByBt`, `RTC/shimmer_rtc.c`) is in a
   change later than the pin in **Verified against**. At the pin, every
   `RWC_CFG_TIME` set wrote the byte. Covered by the host test
-  `test_rtc_set_by_bt_flush`; not bench-tested over the dock. **Move under
-  Verified against** once the change is on `main` and the pin is bumped.
+  `test_rtc_set_by_bt_flush`. On the bench, a clock set over the dock clears the
+  bit and changes nothing else in InfoMem (`smoke.dock_protocol`,
+  `fleet.dock_protocol`). Whether the flash write is skipped when the bit is
+  already clear cannot be seen over the dock. **Move under Verified against**
+  once the change is on `main` and the pin is bumped.
 
 - ~~The UART baud rate~~ — resolved: **115200** on both platforms. Shimmer3
   `hal_UartA0.c` clocks `UCA0` from a 24 MHz SMCLK with `UCBR` 13 and `UCOS16`

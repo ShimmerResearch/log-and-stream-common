@@ -70,6 +70,15 @@ class Unit:
     ble_throughput: dict[str, float] = field(default_factory=dict)  # the same, over BLE
     usb_throughput: dict[str, float] = field(default_factory=dict)  # Shimmer3R SD over USB, USB_THROUGHPUT_KEYS
 
+    def describe(self) -> dict:
+        """What the report records about this unit: who it is and what is fitted."""
+        out = {"name": self.name, "platform": self.platform}
+        for k in ("mac", "usb_serial", "radio", "board", "base6_slot", "hub_port"):
+            v = getattr(self, k)
+            if v not in (None, ""):
+                out[k] = v
+        return out
+
     def capabilities(self) -> set[str]:
         caps = {self.platform}
         if self.mac:
@@ -131,6 +140,18 @@ class Rig:
             if not self.base6_serial:
                 caps.discard("dock")
         return caps
+
+    def kit(self) -> dict:
+        """The bench's fixed hardware, for the report: the hub, the Base6 and the ST-Links."""
+        out = {}
+        if self.hub_serial:
+            out["hub_serial"] = self.hub_serial
+        if self.base6_serial:
+            out["base6_serial"] = self.base6_serial
+        stlinks = sorted({s for s in [self.stlink_serial, *(u.stlink_serial for u in self.units)] if s})
+        if stlinks:
+            out["stlink_serials"] = stlinks
+        return out
 
     def units_for(self, platform: str) -> list[Unit]:
         return [u for u in self.units if u.platform == platform]

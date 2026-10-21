@@ -35,6 +35,7 @@ sys.path.insert(0, str(HERE))
 import hil_gate  # noqa: E402
 import hil_report  # noqa: E402
 from rig import config as rig_config  # noqa: E402
+from rig import host as rig_host  # noqa: E402
 from rig.power import HubPower, ManualPower  # noqa: E402
 
 
@@ -381,7 +382,11 @@ def pytest_sessionfinish(session, exitstatus):
                if rig else [],
                "unit_filter": cfg.getoption("--unit") or "",
                "interference": getattr(cfg, "_hil_interference", []),
-               "image_sha256": cand.get("image_sha256"), "host": os.environ.get("COMPUTERNAME", "")},
+               "image_sha256": cand.get("image_sha256"), "host": os.environ.get("COMPUTERNAME", ""),
+               "hardware": hil_report.hardware(
+                   rig_host.describe(), rig.kit() if rig else {},
+                   hil_report.tested_units(session.items, cand["platform"], cfg.getoption("--unit") or "")
+                   if rig else [])},
         waivers=cfg._hil_waivers,
     )
     path = hil_report.write(rep, Path(out))
