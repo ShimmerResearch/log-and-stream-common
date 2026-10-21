@@ -4,6 +4,7 @@ Run: python Test/hil/test_hil_report.py  (no hardware)
 """
 
 import sys
+import types
 import unittest
 from pathlib import Path
 
@@ -97,3 +98,44 @@ class Waivers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class Hardware(unittest.TestCase):
+    """run.hardware: the host, the kit and the units a session tested."""
+
+    def _unit(self, **kw):
+        from rig import config
+        return config.Unit(**{"name": "u", "platform": "shimmer3r", **kw})
+
+    def test_only_the_tested_units_of_the_platform_once_each(self):
+        a = self._unit(name="a", mac="CF9B9E3615BC", radio="IF820 v1.4.18.18 test_254", hub_port=1)
+        b = self._unit(name="b", platform="shimmer3", base6_slot=3, radio="RN42 Ver 6.15")
+        items = [types.SimpleNamespace(callspec=types.SimpleNamespace(params={"unit": u})) for u in (a, b, a)]
+        items.append(types.SimpleNamespace())           # an item with no unit
+        self.assertEqual([u.name for u in hil_report.tested_units(items, "shimmer3r")], ["a"])
+        self.assertEqual(hil_report.tested_units(items, "shimmer3r", only="x"), [])
+        hw = hil_report.hardware({"name": "PC"}, {"hub_serial": "H"}, hil_report.tested_units(items, "shimmer3"))
+        self.assertEqual(hw["units"], [{"name": "b", "platform": "shimmer3", "radio": "RN42 Ver 6.15", "base6_slot": 3}])
+        self.assertEqual(hw["host"], {"name": "PC"})
+
+    def test_the_kit_names_each_st_link_once(self):
+        from rig import config
+        rig = config.Rig(path=Path("rig.toml"), bench="b", hub_serial="H", base6_serial="B6", stlink_serial="S1",
+                         units=[self._unit(name="a", stlink_serial="S1"), self._unit(name="b", stlink_serial="S2")])
+        self.assertEqual(rig.kit(), {"hub_serial": "H", "base6_serial": "B6", "stlink_serials": ["S1", "S2"]})
+
+    def test_adapters_parse_from_one_object_a_list_or_nothing(self):
+        from rig import host
+        one = '{"name":"Intel(R) Wireless Bluetooth(R)","driver":"24.40.0.3"}'
+        self.assertEqual(host.parse_adapters(one), [{"name": "Intel(R) Wireless Bluetooth(R)", "driver": "24.40.0.3"}])
+        self.assertEqual(len(host.parse_adapters("[" + one + "," + one + "]")), 2)
+        self.assertEqual(host.parse_adapters(""), [])
+        self.assertEqual(host.parse_adapters("not json"), [])
+
+    def test_a_report_with_hardware_still_passes_the_gate_check(self):
+        col = hil_report.Collector()
+        col.record("smoke.boot_identity", "pass")
+        rep = col.report(platform="shimmer3r", commit="a" * 40, firmware_version="1.01.022", bench="b",
+                         operator="o", extra={"hardware": hil_report.hardware({"name": "PC"}, {}, [])})
+        self.assertEqual(rep["run"]["hardware"]["units"], [])
+

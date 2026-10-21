@@ -96,6 +96,25 @@ class Collector:
         return rep
 
 
+def tested_units(items, platform: str, only: str = "") -> list:
+    """The units a session's collected items ran against on this platform, in order:
+    the ones the report is about, not every unit rig.toml describes."""
+    seen, out = set(), []
+    for item in items:
+        unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
+        if unit is None or unit.platform != platform or (only and unit.name != only) or unit.name in seen:
+            continue
+        seen.add(unit.name)
+        out.append(unit)
+    return out
+
+
+def hardware(host: dict, kit: dict, units) -> dict:
+    """run.hardware: the PC, the bench's fixed kit and the units tested, so that a
+    figure can be traced to what gave it and benches told apart."""
+    return {"host": host, "kit": kit, "units": [u.describe() for u in units]}
+
+
 def write(rep: dict, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(rep, indent=2) + "\n", encoding="utf-8")
