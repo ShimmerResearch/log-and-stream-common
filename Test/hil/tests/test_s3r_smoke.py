@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from rig import ble, bt, dock, midstream, s3r_usb, sdfile, throughput
+from rig import ble, bt, dock, dock_protocol, flash, midstream, s3r_usb, sdfile, throughput
 
 pytestmark = pytest.mark.smoke
 
@@ -127,6 +127,27 @@ def test_config_roundtrip(docklink, hil_note):
         docklink.write_infomem(original)
     assert _masked(docklink.read_infomem()) == _masked(original), "config not restored"
     hil_note(f"divider {div} -> {new_div} -> {div}")
+
+
+@pytest.mark.hil("smoke.dock_protocol", needs=["shimmer3r", "usb"])
+def test_dock_protocol(unit, rig, docklink, candidate, hil_note):
+    """Every dock command over USB CDC, each error reply and the framing rules
+    (rig/dock_protocol.py). What it writes it puts back; the clock is set to the PC's."""
+
+    def recover() -> str:
+        # The reboot into ST's bootloader went ahead: start the application again.
+        if not s3r_usb.dfu_present():
+            return "no DFU device appeared either"
+        if not rig.stm32_programmer:
+            return "the unit is in DFU, and rig.toml names no stm32_programmer to start it"
+        flash.start_from_dfu(rig.stm32_programmer)
+        s3r_usb.wait_cdc(unit.usb_serial, 30)
+        return "the application was started again from DFU"
+
+    note, failures = dock_protocol.walk(docklink, dock_protocol.S3R, "USB CDC", mac=unit.mac,
+                                        version=_expected_version(candidate), recover=recover)
+    hil_note(note)
+    assert not failures, "; ".join(failures)
 
 
 @pytest.mark.hil("smoke.bt_identity", needs=["shimmer3r", "bt"])

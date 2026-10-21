@@ -1325,6 +1325,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 |---|---|
 | `smoke.boot_identity` | Hardware 10, LogAndStream identifier, the candidate's version, the MAC that `rig.toml` names |
 | `smoke.config_roundtrip` | The configuration reads back exactly as written, and a rate change round-trips; byte 230 bit 0 is self-set by design |
+| `smoke.dock_protocol` | The dock protocol over USB CDC, command by command ([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md)). Every GET in its Appendix A, checked for length and against `rig.toml` and the candidate; two clock reads half a second apart must advance by the time that passed. The writes, each read back: the clock, set to the PC's time, which must clear `rtcSetByBt` (byte 217 bit 7) and change nothing else in InfoMem; the board ID page and a page of EEPROM, each rewritten with its own bytes (an unprogrammed ID page is not written); `ENTER_BOOTLOADER` armed for 5 s, cancelled with 0, and outwaited on the same port. Every error reply: an unknown command byte, a LEN of 0 or over 133, a bad CRC, unhandled components and properties, a byte too many on a fixed-size property, and lengths and offsets out of range, each followed by a request that must be answered. The framing rules of the dock protocol's §2.1: junk before the `$`, a frame in two writes 20 ms apart, and a 250 ms gap, which must abandon the frame. Two requests in one write are recorded, not judged: the protocol is one request at a time. What it writes it puts back, and a write that ought to be refused carries the unit's own bytes |
 | `smoke.bt_identity` | Over Bluetooth: hardware 10, the LogAndStream identifier and the candidate's version; an SD card present and usable |
 | `smoke.bt_stream` | 10 s stream: packet framing, no lost or duplicate samples, the rate on the device clock |
 | `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
@@ -1345,11 +1346,17 @@ flash.
 |---|---|
 | `fleet.boot_identity` | Hardware 3, LogAndStream identifier, the candidate's version, and a radio banner on the shipped list |
 | `fleet.config_roundtrip` | The configuration reads back exactly as written |
+| `fleet.dock_protocol` | `smoke.dock_protocol` over the Base6's UART, on each unit. `ENTER_BOOTLOADER` is Shimmer3R only, so a Shimmer3 must answer it `BAD_CMD` |
 | `fleet.reboot` | Five resets through the RST line; every boot answers the dock with the same radio banner (§5.1.5) |
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |
 | `fleet.ble_throughput` | As `fleet.bt_throughput`, over BLE (the RN4678's transparent UART service), on the units with an RN4678. `not_covered` on an RN41 or RN42, or when the EEPROM has BLE off |
 | `fleet.sd_start_midstream` | `smoke.sd_start_midstream`'s commands at 51.2 Hz. A Shimmer3 starts logging only undocked, and a Base6 cannot undock one slot, so the log starts are refused. The clock sets still apply mid-stream, so the stream is judged the same way. A disturbed stream fails; a clean one is `not_covered`, because no log started |
+
+Neither dock item reaches a Base15 or a single-unit dock. Both carry the
+Shimmer3's dock UART through different hardware, and neither is on the bench. Nor
+does either reach a Shimmer3R's own dock UART, which answers only while USB is not
+up. Those routes stay with the manual §6.4.6.
 
 **The throughput baselines.** The firmware gives no acceptance rate per radio
 or baud. These documents give only the Shimmer3R's per-module figures (§5.5).
