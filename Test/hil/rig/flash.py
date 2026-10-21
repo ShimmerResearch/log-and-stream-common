@@ -60,6 +60,11 @@ def reset_dfu(cli: Path, usb_serial: str, timeout_s: float = 30) -> str:
     """Reboot the unit through ST's bootloader: ENTER_BOOTLOADER over the dock,
     then start the application again without writing anything."""
     _enter_dfu(usb_serial, timeout_s)
+    return start_from_dfu(cli)
+
+
+def start_from_dfu(cli: Path) -> str:
+    """Start the application of the unit sitting in ST's bootloader, writing nothing."""
     # With nothing written there is no image to take a start address from, so
     # name it: the application's vector table (FLASH ORIGIN in
     # STM32U5A5VJTXQ_FLASH.ld).

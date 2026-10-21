@@ -18,7 +18,7 @@ import time
 
 import pytest
 
-from rig import ble, bt, dock, midstream, throughput
+from rig import ble, bt, dock, dock_protocol, midstream, throughput
 from rig.base6 import Base6
 
 pytestmark = pytest.mark.fleet
@@ -114,6 +114,16 @@ def test_config_roundtrip(docklink):
     back = docklink.read_infomem()
     diff = [i for i, (a, b) in enumerate(zip(masked(original), masked(back))) if a != b]
     assert not diff, f"unchanged config read back different at offsets {diff}"
+
+
+@pytest.mark.hil("fleet.dock_protocol", needs=["shimmer3", "dock"])
+def test_dock_protocol(unit, docklink, candidate, hil_note):
+    """Every dock command over the Base6's UART, each error reply and the framing
+    rules (rig/dock_protocol.py). What it writes it puts back; the clock is set to the PC's."""
+    version = candidate["firmware_version"].lstrip("vV") if candidate else None
+    note, failures = dock_protocol.walk(docklink, dock_protocol.S3, "Base6 UART", mac=unit.mac, version=version)
+    hil_note(note)
+    assert not failures, "; ".join(failures)
 
 
 STREAM_DIVIDER = 640    # 51.2 Hz: well inside every shipped radio's capacity
