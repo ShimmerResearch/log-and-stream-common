@@ -1265,6 +1265,19 @@ hardware-in-the-loop rig writes the same format.
 A `waiver` is the issue key under which someone accepted a failure or a gap, and
 the issue is where the reason is kept.
 
+An automated report also has `run`: the markers, the programs found running that
+distort Bluetooth figures, the image's hash, and `run.hardware`. That last names
+the hardware the session used, so a figure can be traced to what gave it and
+reports from different benches told apart:
+
+- `host`: the PC's name, its OS, and each Bluetooth adapter with its driver
+  version;
+- `kit`: the bench's fixed hardware (the USB hub, the Base6, the ST-Links);
+- `units`: each unit the session tested, with its MAC, USB serial, radio or
+  module build, board, and Base6 slot or hub port, as `rig.toml` describes it.
+
+The gate does not read `run`.
+
 - **An unwaived `fail` blocks** wherever it appears (rule 3).
 - **An unwaived `not_covered` is a gap, not a failure.** It covers nothing, so a
   required item still blocks unless another report passes it (rule 4). A gap in
