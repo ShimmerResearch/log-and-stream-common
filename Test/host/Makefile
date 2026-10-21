@@ -360,6 +360,7 @@ hil-gate:
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_timing.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_midstream.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_signals.py
+	@$(PYTHON) $(REPO)/Test/hil/test_hil_usb_throughput.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_dock.py
 	@$(PYTHON) $(REPO)/Test/hil/test_rig_offline.py
 
