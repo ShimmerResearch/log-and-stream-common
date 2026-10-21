@@ -241,6 +241,8 @@ test: build
 	  failed="$$failed test_hil_midstream.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_signals.py; then \
 	  failed="$$failed test_hil_signals.py"; fi; \
+	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_usb_throughput.py; then \
+	  failed="$$failed test_hil_usb_throughput.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_dock.py; then \
 	  failed="$$failed test_hil_dock.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_rig_offline.py; then \

@@ -59,6 +59,9 @@ notes = ""
 #                              # through ST's bootloader, which on occasion never comes back as DFU
 # throughput = { stream_samples_per_s = ... }   # its own figures, over its radio's row
 # ble_throughput = { ... }                       # the same over BLE, over its radio's BLE row
+# usb_throughput = { usb_write_bytes_per_s = ..., usb_read_bytes_per_s = ... }
+#                              # its SD card over USB mass storage, for smoke.usb_throughput:
+#                              # its own only, because the card sets it
 
 # One Shimmer3 per radio firmware that shipped: RN42 v4.77, RN42 v6.15,
 # RN4678 v1.00.5, RN4678 v1.23. Pair each one's classic side in Windows.

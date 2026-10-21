@@ -104,6 +104,7 @@ plug and unplug.
 | `rig/midstream.py` | SD logs started and stopped inside a stream: the command schedule, and the stamps judged across each start (steps back, grid moves) |
 | `rig/throughput.py` | Bluetooth throughput: the firmware's data-rate test, and a stream that outruns the link, against each unit's baseline |
 | `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial |
+| `rig/usb_throughput.py` | The SD card's write and read rates over USB mass storage, timed around the PC's file cache |
 | `rig/sdfile.py` | Reads a Shimmer3R SD data file and checks its records |
 | `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version. USB DFU flashes only a DFU device that appeared after this unit was sent to its bootloader, and only if it is the only one |
 | `rig/base6.py` | Base6 slot mux: which slots are occupied, select one, mask its BSL lines |
@@ -176,6 +177,19 @@ connection the host negotiates as well as on the module build:
 ```toml
 [ble_throughput_by_radio]
 "IF820 v1.4.16.16" = { link_bytes_per_s = ..., stream_samples_per_s = ..., tolerance = 0.10 }
+```
+
+`smoke.usb_throughput` measures the Shimmer3R's SD card over USB mass
+storage, as a customer offloads a recording: a 32 MiB file written and read
+back around the PC's file cache, compared, then removed. Its two figures,
+`usb_write_bytes_per_s` and `usb_read_bytes_per_s`, are the unit's own only.
+The card sets them more than any build, so there is no table by build, and a
+new card means recording them again:
+
+```toml
+[[unit]]
+name = "s3r-a"
+usb_throughput = { usb_write_bytes_per_s = ..., usb_read_bytes_per_s = ..., tolerance = 0.10 }
 ```
 
 How each figure is judged:
