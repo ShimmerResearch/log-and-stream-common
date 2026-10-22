@@ -203,7 +203,7 @@ What the suites cover today:
 | `test_swcrc` | `CRC/shimmer_swCrc.c` | ×1 | The CRC polynomial, against wire-format vectors |
 | `test_crc` | `CRC/shimmer_crc.c` | ×1 | Mode dispatch, CRC placement, corruption detection, and the firmware's own `testCrcDriver()` |
 | `test_packet_ring` | `Sensing/shimmer_packet_ring.c` | ×1 | The sample ring's interleavings, including the DEV-1023 field fault |
-| `test_util` | `Util/shimmer_util.c` | ×1 | SD directory naming, config-file 64-bit values, BT response lengths, MAC byte order |
+| `test_util` | `Util/shimmer_util.c` | ×1 | SD directory naming, config-file 64-bit values, config-file sample rate round trip (every divider), BT response lengths, MAC byte order |
 | `test_rtc` | `RTC/shimmer_rtc.c` | ×2 | Every day from 2000 to 2099 round-trips; leap years; date validation |
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
 | `test_boards` | `Boards/shimmer_boards.c` | ×2 | Every revision gate, across 25 board revisions |

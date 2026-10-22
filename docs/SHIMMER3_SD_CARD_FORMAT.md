@@ -24,6 +24,13 @@ channel encodings are identical, only the framing around them differs.
 >   `Sensing/shimmer_sensing.c` (what is handed to the SD writer per sample).
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`.
+> - **Pressure coefficient byte order (§3.4) and `sample_rate` (§5.1):**
+>   `log-and-stream-common` @ `6f6dc5f` plus the change that added
+>   `ShimUtil_FtoaDecimal` — `SDCard/shimmer_sd_header.c`
+>   (`ShimSdHead_saveBmpCalibrationToSdHeader`), `SDCard/shimmer_sd_cfg_file.c`,
+>   `Util/shimmer_util.c`; `shimmer3-firmware` @ `0a6a650` —
+>   `LogAndStream_Shimmer3/Shimmer_Driver/BMPX80/bmpX80.{h,c}` (`BMPX80_getCalibCoeff`);
+>   `shimmer3r-firmware` @ `ce1f4fc1` — `Shimmer_Driver/BMP3/hal_bmp3.c`.
 > - **SD header pressure sensor ID (offset 224):** `log-and-stream-common` @
 >   `f0af855` — `SDCard/shimmer_sd_pressure_id.{h,c}`,
 >   `ShimSdHead_savePressureSensorIdToSdHeader`, the `PRESSURE_SENSOR_*` registry;
@@ -364,12 +371,21 @@ each with an 8-byte calibration timestamp except the pressure block.
 Pressure coefficients are written by
 `ShimSdHead_saveBmpCalibrationToSdHeader`:
 
-| Part | Bytes | Where |
-|---|---:|---|
-| BMP180 | 22 | 160-181 |
-| BMP280 | 24 | 160-181 plus 222-223 — it does not fit the 22-byte field |
-| BMP390 | 21 | 160-180 |
-| BMP581 | 0 | **Nothing written — the field stays `0xFF`** |
+| Part | Bytes | Where | Contents |
+|---|---:|---|---|
+| BMP180 | 22 | 160-181 | `AC1` … `MD`, eleven 16-bit values, each **MSB first** |
+| BMP280 | 24 | 160-181 plus 222-223 — it does not fit the 22-byte field | 160-181: `dig_T1` … `dig_P8`; 222-223: `dig_P9`. Twelve 16-bit values, each **LSB first** |
+| BMP390 | 21 | 160-180 | `NVM_PAR_T1` … `NVM_PAR_P11`, multi-byte values LSB first |
+| BMP581 | 0 | **Nothing written — the field stays `0xFF`** | — |
+
+The bytes are the part's calibration registers in chip register order, copied
+without swapping: the firmware burst-reads the block from its first register
+(`0xAA`, `AC1` MSB, on the BMP180; `0x88`, `dig_T1` LSB, on the BMP280; `0x31`
+on the BMP390) and writes the result here unchanged. So each coefficient keeps
+its part's byte order, which is big-endian on the BMP180 and little-endian on
+the BMP280 and BMP390. A BMP280 parser joins 160-181 and 222-223 into one
+24-byte block before splitting it into coefficients. The table of widths and
+signs is in [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §5.
 
 A BMP581 device therefore has an all-`0xFF` pressure calibration block, which
 is correct: that part outputs pre-compensated data. A parser must not treat
@@ -591,8 +607,39 @@ no escaping.
 
 Parsing matches a key only when the line **begins** with the key and the very
 next character is `=` (`cfg_key_is`), and values are read with `atoi` for
-integers. An unparseable value therefore becomes 0 rather than an error, and a
+integers. The exceptions are `configtime` (`atol`), `derived_channels`
+(`atoll`), the names and sync addresses (copied as text), and `sample_rate`,
+which is not an integer at all: see below. An unparseable value therefore
+becomes 0 rather than an error, and a
 line with no `=` is skipped.
+
+#### `sample_rate`
+
+The sampling rate is a **decimal frequency in hertz**, not the divider the
+configuration bytes hold. It is read with `atof` and converted back to a
+divider as `round(32768 / sample_rate)` (`ShimConfig_freqDiv`), so a hand-edited
+file may give any rate, whole or fractional: `sample_rate=51.2`,
+`sample_rate=100`, `sample_rate=1024`. The rate actually used is 32768 divided
+by that whole divider, so it is generally not exactly the one written (and on
+a Shimmer3R an odd divider runs one tick short; see
+[SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1). Nothing
+guards a value of 0 or one `atof` cannot read: the divider is then computed from
+32768 / 0.
+
+The firmware writes the rate it is running at, `32768 / divider`, as an
+integer part, a point and up to six fraction digits, zero-padded, using the
+fewest digits that read back as the same value (`ShimUtil_FtoaDecimal`):
+`51.2`, `50.02748`, `1024`. Every divider from 1 to 65535 survives the write and
+the read back unchanged.
+
+> **Earlier firmware wrote the fraction in hundredths without padding it**,
+> so a rate whose hundredths began with a zero lost it: divider 655
+> (50.0275 Hz) was written `50.3` and read back as divider 651 (50.34 Hz).
+> Two decimals were also too few below about 18 Hz (dividers above 1824),
+> where the rounding alone moved the divider. A card written that way sets the
+> wrong rate the next time the file is parsed. Correct the value by hand, or
+> set the rate again from a host once the device runs fixed firmware, which
+> rewrites the file.
 
 ### 5.2 Direction of travel
 
@@ -634,7 +681,7 @@ ADC channels — note these differ by generation:
 
 Rates and ranges:
 
-`sample_rate`, `mg_internal_rate`, `mg_range`, `mag_alt_range`,
+`sample_rate` (hertz, not the divider: §5.1), `mg_internal_rate`, `mg_range`, `mag_alt_range`,
 `mag_alt_rate`, `acc_internal_rate`, `acc_range`, `acc_lpm`, `acc_hrm`,
 `accel_alt_range`, `accel_alt_rate`, `accel_ln_range`, `gyro_range`,
 `gyro_samplingrate`, `gsr_range`, `exp_power`

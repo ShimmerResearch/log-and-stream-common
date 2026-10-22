@@ -39,6 +39,16 @@ logging, so a parser written from this document reads both.
 >   maths), `driverUtilities/UtilParseData.java` (the signed/unsigned integer
 >   decoders); `shimmer-web-sdk` @ `8f78313` —
 >   `devices/shimmer3r/channelFormats.ts`, `devices/shimmer3r/streamFraming.ts`.
+> - **Sensor byte order (§3 Encoding column, §5.2, §5.5, §7.4):** read from the
+>   register each driver starts its burst read at and how the packer copies the
+>   bytes. Shimmer3 at `shimmer3-firmware` @ `0a6a650` —
+>   `LogAndStream_Shimmer3/i2c.c` (`I2C_pollSensors`) and the drivers under
+>   `Shimmer_Driver/` (`MPU9150`, `ICM20948`, `LSM303DLHC`, `LSM303AHTR`,
+>   `BMPX80`). Shimmer3R at `shimmer3r-firmware` @ `ce1f4fc1` —
+>   `Core/Src/spi.c` and `Core/Src/i2c.c` (the DMA completion copies) and the
+>   `hal_*.c` drivers for the LSM6DSV, LIS2DW12, LIS2MDL, LIS3MDL, ADXL371,
+>   BMP390 and BMP581. Cross-checked against the Java type strings at
+>   `Shimmer-Java-Android-API` @ `dffb582c` (`ShimmerObject.java`).
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). Channel IDs are **shared numbers with
@@ -316,16 +326,26 @@ _The table in this section is generated mechanically from the firmware channel-I
 `#define`s, the per-platform packers' byte-width accumulation, the Java channel
 enum and type strings, and the TypeScript channel formats. Do not hand-edit it._
 
-_One cell has been corrected by hand since: the alternate-accelerometer rows
-carried a Java type string of `i12*>`, where the trailing character is an
-artefact of the extractor rather than anything in the driver. Fix it in the
-generator before the next run, or it will come back._
+_Two columns have been corrected by hand since. Fix both in the generator
+before the next run, or they will come back:_
+
+- _**Encoding**, on the magnetometer, gyroscope, alternate accelerometer,
+  alternate magnetometer, temperature and pressure rows. The generator took it
+  from the web SDK's Shimmer3R table, which says nothing about Shimmer3, and
+  Shimmer3 sends several of these big-endian. The corrected cells are read from
+  the drivers (§5.2, §5.5)._
+- _**Java type string** on the alternate-accelerometer rows is `i12*>`, as the
+  driver spells it. An earlier hand edit dropped the `>` as an extractor
+  artefact. It is not: `i12*>` is the driver's big-endian, left-justified
+  12-bit decoder (§5.2)._
 
 Channel IDs are shared numbers whose *meaning* can differ between the two
 generations (the ADC block `0x0D`–`0x13` in particular). Byte widths are derived
 from the `sensing.dataLen +=` accumulation that follows each run of channel-ID
 writes in the platform packers, so they are the widths the firmware actually
-emits. `Encoding` and `SDK name` come from the web SDK's channel-format table.
+emits. `SDK name` comes from the web SDK's channel-format table, and so did
+`Encoding` before the corrections above. Where a row has two Java type strings,
+the `r` form (`i16r`, `u16r`, `u24r`) is the driver's big-endian decoder.
 
 > **Two generated columns describe no firmware path.** `u14` on the ADC rows is
 > a Java type string with no counterpart in either platform's code: every
@@ -347,12 +367,12 @@ emits. `Encoding` and `SDK name` come from the web SDK's channel-format table.
 | `0x04` | `X_WR_ACCEL` | `X_WR_ACCEL` | `X_WR_ACCEL` | 2 | i16 le | i16, u12 | `XDAccel` | `WR_ACCEL_X` |  |
 | `0x05` | `Y_WR_ACCEL` | `Y_WR_ACCEL` | `Y_WR_ACCEL` | 2 | i16 le | i16, u12 | `YDAccel` | `WR_ACCEL_Y` |  |
 | `0x06` | `Z_WR_ACCEL` | `Z_WR_ACCEL` | `Z_WR_ACCEL` | 2 | i16 le | i16 | `ZDAccel` | `WR_ACCEL_Z` |  |
-| `0x07` | `X_MAG` | `X_MAG` | `X_MAG` | 2 | i16 le | i16, i16r | `XMag` | `MAG_X` |  |
-| `0x08` | `Y_MAG` | `Y_MAG` | `Y_MAG` | 2 | i16 le | i16, i16r | `YMag` | `MAG_Y` |  |
-| `0x09` | `Z_MAG` | `Z_MAG` | `Z_MAG` | 2 | i16 le | i16, i16r, u12 | `ZMag` | `MAG_Z` |  |
-| `0x0A` | `X_GYRO` | `X_GYRO` | `X_GYRO` | 2 | i16 le | i16, i16r, u12 | `XGyro` | `GYRO_X` |  |
-| `0x0B` | `Y_GYRO` | `Y_GYRO` | `Y_GYRO` | 2 | i16 le | i16, i16r, u16 | `YGyro` | `GYRO_Y` |  |
-| `0x0C` | `Z_GYRO` | `Z_GYRO` | `Z_GYRO` | 2 | i16 le | i16, i16r, u16 | `ZGyro` | `GYRO_Z` |  |
+| `0x07` | `X_MAG` | `X_MAG` | `X_MAG` | 2 | S3: i16 be (LSM303DLHC), i16 le (LSM303AHTR, ICM-20948)<br>S3R: i16 le | i16, i16r | `XMag` | `MAG_X` |  |
+| `0x08` | `Y_MAG` | `Y_MAG` | `Y_MAG` | 2 | S3: i16 be (LSM303DLHC), i16 le (LSM303AHTR, ICM-20948)<br>S3R: i16 le | i16, i16r | `YMag` | `MAG_Y` |  |
+| `0x09` | `Z_MAG` | `Z_MAG` | `Z_MAG` | 2 | S3: i16 be (LSM303DLHC), i16 le (LSM303AHTR, ICM-20948)<br>S3R: i16 le | i16, i16r, u12 | `ZMag` | `MAG_Z` |  |
+| `0x0A` | `X_GYRO` | `X_GYRO` | `X_GYRO` | 2 | S3: i16 be<br>S3R: i16 le | i16, i16r, u12 | `XGyro` | `GYRO_X` |  |
+| `0x0B` | `Y_GYRO` | `Y_GYRO` | `Y_GYRO` | 2 | S3: i16 be<br>S3R: i16 le | i16, i16r, u16 | `YGyro` | `GYRO_Y` |  |
+| `0x0C` | `Z_GYRO` | `Z_GYRO` | `Z_GYRO` | 2 | S3: i16 be<br>S3R: i16 le | i16, i16r, u16 | `ZGyro` | `GYRO_Z` |  |
 | `0x0D` | `EXTERNAL_ADC_7 / EXTERNAL_ADC_0` | `EXTERNAL_ADC_7` | `EXTERNAL_ADC_0` | 2 |  | u14, u12 | `ExtAdc7`, `ExtAdc9` |  | SDK_MISSING, MEANING_DIFFERS |
 | `0x0E` | `EXTERNAL_ADC_6 / EXTERNAL_ADC_1` | `EXTERNAL_ADC_6` | `EXTERNAL_ADC_1` | 2 |  | u14, u12 | `ExtAdc6`, `ExtAdc11` |  | SDK_MISSING, MEANING_DIFFERS |
 | `0x0F` | `EXTERNAL_ADC_15 / EXTERNAL_ADC_2` | `EXTERNAL_ADC_15` | `EXTERNAL_ADC_2` | 2 |  | u14, u12 | `ExtAdc15`, `ExtAdc12` |  | SDK_MISSING, MEANING_DIFFERS |
@@ -360,14 +380,14 @@ emits. `Encoding` and `SDK name` come from the web SDK's channel-format table.
 | `0x11` | `INTERNAL_ADC_12 / INTERNAL_ADC_0` | `INTERNAL_ADC_12` | `INTERNAL_ADC_0` | 2 |  | u14, u12 | `IntAdc12`, `IntAdc10` |  | SDK_MISSING, MEANING_DIFFERS |
 | `0x12` | `INTERNAL_ADC_13 / INTERNAL_ADC_1` | `INTERNAL_ADC_13` | `INTERNAL_ADC_1` | 2 | i16 le | u14, u12, u8, u16 | `IntAdc13`, `IntAdc15` | `PPG` | MEANING_DIFFERS |
 | `0x13` | `INTERNAL_ADC_14 / INTERNAL_ADC_2` | `INTERNAL_ADC_14` | `INTERNAL_ADC_2` | 2 |  | u14, u12 | `IntAdc14`, `IntAdc16` |  | SDK_MISSING, MEANING_DIFFERS |
-| `0x14` | `X_ALT_ACCEL` | `X_ALT_ACCEL` | `X_ALT_ACCEL` | 2 | i12* le | i12* | `XAlterAccel` | `HG_ACCEL_X` |  |
-| `0x15` | `Y_ALT_ACCEL` | `Y_ALT_ACCEL` | `Y_ALT_ACCEL` | 2 | i12* le | i12* | `YAlterAccel` | `HG_ACCEL_Y` |  |
-| `0x16` | `Z_ALT_ACCEL` | `Z_ALT_ACCEL` | `Z_ALT_ACCEL` | 2 | i12* le | i12* | `ZAlterAccel` | `HG_ACCEL_Z` |  |
-| `0x17` | `X_ALT_MAG` | `X_ALT_MAG` | `X_ALT_MAG` | 2 |  | i16 | `XAlterMag` |  | SDK_MISSING |
-| `0x18` | `Y_ALT_MAG` | `Y_ALT_MAG` | `Y_ALT_MAG` | 2 |  | i16 | `YAlterMag` |  | SDK_MISSING |
-| `0x19` | `Z_ALT_MAG` | `Z_ALT_MAG` | `Z_ALT_MAG` | 2 |  | i16 | `ZAlterMag` |  | SDK_MISSING |
-| `0x1A` | `BMP_TEMPERATURE` | `BMP_TEMPERATURE` | `BMP_TEMPERATURE` | S3: 2<br>S3R: 3 |  | u16r, u24 | `Temperature` |  | SDK_MISSING |
-| `0x1B` | `BMP_PRESSURE` | `BMP_PRESSURE` | `BMP_PRESSURE` | 3 |  | u24r, u24 | `Pressure` |  | SDK_MISSING |
+| `0x14` | `X_ALT_ACCEL` | `X_ALT_ACCEL` | `X_ALT_ACCEL` | 2 | S3: i16 be<br>S3R: i12 be, left-justified | i12*> | `XAlterAccel` | `HG_ACCEL_X` |  |
+| `0x15` | `Y_ALT_ACCEL` | `Y_ALT_ACCEL` | `Y_ALT_ACCEL` | 2 | S3: i16 be<br>S3R: i12 be, left-justified | i12*> | `YAlterAccel` | `HG_ACCEL_Y` |  |
+| `0x16` | `Z_ALT_ACCEL` | `Z_ALT_ACCEL` | `Z_ALT_ACCEL` | 2 | S3: i16 be<br>S3R: i12 be, left-justified | i12*> | `ZAlterAccel` | `HG_ACCEL_Z` |  |
+| `0x17` | `X_ALT_MAG` | `X_ALT_MAG` | `X_ALT_MAG` | 2 | i16 le | i16 | `XAlterMag` |  | SDK_MISSING |
+| `0x18` | `Y_ALT_MAG` | `Y_ALT_MAG` | `Y_ALT_MAG` | 2 | i16 le | i16 | `YAlterMag` |  | SDK_MISSING |
+| `0x19` | `Z_ALT_MAG` | `Z_ALT_MAG` | `Z_ALT_MAG` | 2 | i16 le | i16 | `ZAlterMag` |  | SDK_MISSING |
+| `0x1A` | `BMP_TEMPERATURE` | `BMP_TEMPERATURE` | `BMP_TEMPERATURE` | S3: 2<br>S3R: 3 | S3: u16 be<br>S3R: u24 le (i24 le on BMP581) | u16r, u24 | `Temperature` |  | SDK_MISSING |
+| `0x1B` | `BMP_PRESSURE` | `BMP_PRESSURE` | `BMP_PRESSURE` | 3 | S3: u24 be<br>S3R: u24 le | u24r, u24 | `Pressure` |  | SDK_MISSING |
 | `0x1C` | `GSR_RAW` | `GSR_RAW` | `GSR_RAW` | 2 | u16 le | u16 | `GsrRaw` | `GSR` |  |
 | `0x1D` | `EXG_ADS1292R_1_STATUS` | `EXG_ADS1292R_1_STATUS` | `EXG_ADS1292R_1_STATUS` | 1 | u8 le | u8 | `EXG_ADS1292R_1_STATUS` | `Exg1_Status` |  |
 | `0x1E` | `EXG_ADS1292R_1_CH1_24BIT` | `EXG_ADS1292R_1_CH1_24BIT` | `EXG_ADS1292R_1_CH1_24BIT` | 3 | i24 be | i24r | `EXG_ADS1292R_1_CH1_24BIT` | `Exg1_CH1_24Bit` |  |
@@ -508,6 +528,8 @@ ADS7028 channel is enabled (`shimmer3r-firmware` `Core/Src/spi.c:935`).
 | First channel block | Low-noise accel (ADC) | Magnetometer (I2C) |
 | `VBATT` position | Second | Last — but **first** on an SR48-6.0 (§4.2) |
 | Magnetometer axis order | X, Z, Y on LSM303DLHC | X, Y, Z |
+| Gyroscope byte order | **Big-endian** | Little-endian |
+| Pressure and temperature byte order | **Big-endian** | Little-endian |
 
 > **The pressure/temperature reversal is the single most damaging difference.**
 > The two channels are enabled and disabled together by one configuration bit,
@@ -540,8 +562,53 @@ ADC at `ADC_RESOLUTION_12B` (`Shimmer_Driver/hal_adc.c:131,729,749,785`). Bits
 
 ### 5.2 IMU channels — 2 bytes, signed
 
-Accelerometer, gyroscope and magnetometer axes: `int16`, little-endian on both
-platforms.
+Each accelerometer, gyroscope and magnetometer axis is a signed 16-bit value
+(12-bit on the Shimmer3R's ADXL371). **The byte order is the sensor's own.**
+The packers copy each part's output registers into the packet unswapped,
+starting from the register the driver's burst read begins at. A part whose
+registers run high byte first therefore streams big-endian. On Shimmer3 that is
+the gyroscope on every board and the magnetometer on first-generation boards:
+
+| Channels | Shimmer3 part (generation, [board revisions](SHIMMER3_BOARD_REVISIONS.md)) | Byte order | Shimmer3R part | Byte order |
+|---|---|---|---|---|
+| Gyro `0x0A`-`0x0C` | MPU-9150 (first), MPU-9250 (second): read from `GYRO_XOUT_H` | **Big-endian** | LSM6DSV, from `OUTX_L_G` | Little-endian |
+| | ICM-20948 (third): from `GYRO_XOUT_H` | **Big-endian** | | |
+| Wide-range accel `0x04`-`0x06` | LSM303DLHC (first), from `OUT_X_L_A` | Little-endian | LIS2DW12, from `OUT_X_L` | Little-endian |
+| | LSM303AHTR (second, third), from `OUT_X_L_A` | Little-endian | | |
+| | ICM-20948 standing in for the LSM303 (third, no LSM fitted): X and Z byte-swapped to little-endian by the packer | Little-endian, **Y axis garbled** (below) | | |
+| Magnetometer `0x07`-`0x09` | LSM303DLHC (first), from `OUT_X_H_M` | **Big-endian**, and axis order X, Z, Y (§4.1) | LIS2MDL, from `OUTX_L_REG` | Little-endian |
+| | LSM303AHTR (second, third), from `OUTX_L_REG_M` | Little-endian | | |
+| | ICM-20948's AK09916 (third, no LSM fitted), from `HXL` | Little-endian | | |
+| Alternate accel `0x14`-`0x16` | MPU-9150/9250 (first, second), ICM-20948 (third): from `ACCEL_XOUT_H` | **Big-endian** | ADXL371, from `XDATA_H` | **Big-endian**, 12-bit, left-justified |
+| Alternate mag `0x17`-`0x19` | MPU-9150/9250's AK8975/AK8963, from `HXL`; ICM-20948's AK09916, from `HXL` | Little-endian | LIS3MDL, from `OUT_X_L` | Little-endian |
+
+Which Shimmer3 part is fitted is decided at boot by
+`ShimBrd_isGyroInUseMpu9x50()`, `ShimBrd_isGyroInUseIcm20948()`,
+`ShimBrd_isWrAccelInUseLsm303dlhc()`, `ShimBrd_isWrAccelInUseLsm303ahtr()` and
+`ShimBrd_isWrAccelInUseIcm20948()` (`Boards/shimmer_boards.c`). The packet
+does not say which, so a host needs the expansion board's SR number, as the
+Java driver does: its type strings are `i16r` (big-endian) for the Shimmer3
+gyroscope, and for the Shimmer3 magnetometer on boards without the
+second-generation IMU parts, and `i16` (little-endian) otherwise.
+
+The Shimmer3R high-g accelerometer (`0x14`-`0x16`) carries a 12-bit value in
+the top 12 bits of a big-endian word: `value = (byte0 << 4) | (byte1 >> 4)`,
+then sign-extend from bit 11. That is the Java driver's `i12*>`. It is not
+present on Shimmer3, where these IDs are the 9-axis chip's own accelerometer,
+a plain big-endian `int16`.
+
+> **On Shimmer3 boards where the ICM-20948 stands in for the LSM303, the
+> wide-range accelerometer's Y axis is garbled.** The packer inverts Y's sign
+> to match the LSM303's placement, but it assembles the value from the chip's
+> big-endian bytes as if they were little-endian, negates that, and writes the
+> result high byte first (`shimmer3-firmware` `LogAndStream_Shimmer3/i2c.c`,
+> `I2C_pollSensors`, at the revision pinned above). X and Z are correct. If
+> `v` is the Y word read little-endian and `swap()` exchanges its two bytes,
+> the intended value is `-swap(-swap(v))`, with the negations in 16-bit
+> two's complement. The boards affected are those
+> `ShimBrd_isWrAccelInUseIcm20948()` selects, the "Third (no LSM)" rows of
+> [SHIMMER3_BOARD_REVISIONS.md](SHIMMER3_BOARD_REVISIONS.md). This is a
+> firmware defect, recorded here so a host is not misled while it stands.
 
 > **On Shimmer3R the magnetometer repeats its last reading when it has no new
 > one.** The LIS2MDL converts at up to 100 Hz, and a packet that finds no fresh
@@ -559,9 +626,6 @@ platforms.
 > `i2cStaleCompletions`, which is readable over SWD. These two are not yet
 > verified against a pinned revision (see *Still unverified* below).
 
-The alternate accelerometer (`0x14`-`0x16`) is 12-bit data in a 16-bit field on
-Shimmer3 (`i12`), and needs sign extension from bit 11 rather than bit 15.
-
 ### 5.3 ExG — status byte plus 24-bit or 16-bit big-endian samples
 
 | Channel | Width | Encoding |
@@ -570,8 +634,10 @@ Shimmer3 (`i12`), and needs sign extension from bit 11 rather than bit 15.
 | `EXG_ADS1292R_n_CHm_24BIT` | 3 | `int24`, **big-endian** |
 | `EXG_ADS1292R_n_CHm_16BIT` | 2 | `int16`, **big-endian** |
 
-ExG is the only sensor whose samples are big-endian, because the bytes come
-straight off the ADS1292R in its own order. Sign-extend from bit 23 or bit 15.
+ExG samples are big-endian on both platforms, because the bytes come straight
+off the ADS1292R in its own order. Sign-extend from bit 23 or bit 15. They are
+not the only big-endian channels: several IMU and pressure channels are too
+(§5.2, §5.5).
 
 A chip contributes 7 bytes in 24-bit mode (1 + 3 + 3) or 5 bytes in 16-bit mode
 (1 + 2 + 2). The two chips are independent — one may be 24-bit while the other
@@ -593,10 +659,18 @@ resistor mid-stream, so the range is not a constant for the trial.
 
 ### 5.5 Pressure and temperature
 
-| Platform | Temperature | Pressure |
-|---|---:|---:|
-| Shimmer3 | 2 bytes | 3 bytes |
-| Shimmer3R | 3 bytes | 3 bytes |
+| Platform | Temperature | Pressure | Byte order |
+|---|---:|---:|---|
+| Shimmer3 (BMP180, BMP280) | 2 bytes | 3 bytes | **Big-endian**, MSB first |
+| Shimmer3R (BMP390, BMP581) | 3 bytes | 3 bytes | Little-endian, XLSB first |
+
+As with the IMU (§5.2), the bytes are the part's own output registers, in
+register order. On Shimmer3 `BMPX80_getTemp()` reads two bytes from the
+temperature MSB register and `BMPX80_getPress()` three from the pressure MSB
+register (`0xF6` on the BMP180; `0xFA` and `0xF7` on the BMP280), which is
+why the Java driver decodes them as `u16r` and `u24r`. On the BMP280 the
+temperature's XLSB register is not read at all. The Shimmer3R parts start their
+data registers at the XLSB, so their fields arrive least significant byte first.
 
 Both are raw — the compensation formula and the part's coefficient block turn
 them into physical units (§7.4). Both are unsigned, with one exception: a
@@ -785,7 +859,8 @@ of them.
 
 Two shifts are needed before the datasheet's algorithm sees the values, because
 its `adc_T` and `adc_P` are **20-bit** and the packet does not carry the chip's
-XLSB register:
+XLSB register. `raw` is the field assembled in its §5.5 byte order: big-endian
+for the BMP180 and BMP280, little-endian for the BMP390.
 
 | Part | Temperature in | Pressure in |
 |---|---|---|
@@ -1052,9 +1127,11 @@ to look.
   firmware's. Whether the ADC channels are reachable on every shipping board
   was not established.
 - ~~The `i12*` encoding marker~~ — resolved from the Java reference decoder
-  (`UtilParseData.java`, type `i12>`): read the 16-bit little-endian word,
-  take its two's complement as a 16-bit value, then **shift right by 4**. The
-  12 significant bits are therefore left-justified in the word and the low
-  nibble is discarded.
+  (`UtilParseData.java`, type `i12*>`, which the driver assigns to the
+  Shimmer3R high-g channels): `(byte0 << 4) | (byte1 >> 4)`, then a 12-bit
+  two's complement. The 12 significant bits are left-justified in a
+  **big-endian** word, as the ADXL371 lays them out from `XDATA_H` (§5.2).
+  An earlier version of this note cited the driver's `i12>` decoder, which
+  reads the word little-endian; nothing assigns `i12>` to these channels.
 - **Bridge-amplifier offset and gain constants.** Held in the Java driver's
   per-board configuration; not present in the firmware and not restated here.
