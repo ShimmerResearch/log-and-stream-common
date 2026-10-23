@@ -330,6 +330,41 @@ While the bootloader check is pending, the lower LED flashes purple —
 the highest-priority indication there is
 ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §6).
 
+#### Sometimes the new image doesn't start after a USB DFU write (DEV-1316)
+
+After a USB DFU write and verify, the new image is started by asking ST's
+system bootloader to leave DFU and jump to it. That is `STM32_Programmer_CLI -s`
+(HIL `Test/hil/rig/flash.py`) or `-g 0x08000000` (Consensys `FlashApp.java`).
+On the STM32U5A5 bootloader (BL version 0x92) the jump is sometimes lost:
+**4 of 30** `-s` starts on one bench unit,
+across two images, on 23 Oct 2026, against 0 of 9 started by an SWD reset. The write itself is fine.
+
+- **What happens.** The bootloader stops its USB first: a soft disconnect,
+  which includes a 3 ms delay. Only then does it set its "jump" state. Its SOF
+  callback writes the same state word with "bus alive". If an SOF arrives during
+  the delay, it is serviced in the same interrupt, after the leave, and
+  overwrites "jump".
+- **Why it never recovers.** USB is already stopped, so nothing changes the
+  state again. The bootloader's main loop refreshes the IWDG forever, and the
+  application never runs.
+- **What it looks like.** The unit leaves USB. Windows may keep an "Unknown USB
+  Device (Device Descriptor Request Failed)" entry. A hub power cycle does
+  nothing on a unit with a battery.
+- **How to tell it from a firmware fault.** In this state SWD shows PC in system
+  memory (`0x0BF924CC`) and `VTOR = 0x0BF90000`.
+
+The application never runs, so no firmware change can prevent this. **Any
+real reset recovers the unit, and it then runs the new image.** The CLI has no
+reset over DFU: `-rst` is not a DFU command, and an option-byte write with
+unchanged values is skipped without a reload.
+
+- **HIL rig:** `flash.flash()` resets the unit through its ST-Link when
+  `rig.toml` names one. Without one, it fails with a message asking for a reset
+  by hand.
+- **Customers updating through Consensys:** if Consensys reports that the
+  Shimmer failed to reboot after a Shimmer3R update, resetting the Shimmer
+  starts the new firmware. Writing the image again is not needed.
+
 ### 5.3 The version record
 
 Confirm `fw_version_struct` survives `--gc-sections`; the `.version` section

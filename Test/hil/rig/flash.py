@@ -104,6 +104,29 @@ def flash_dfu(cli: Path, image: Path, usb_serial: str, timeout_s: float = 30) ->
     return _run(cli, ["-c", "port=USB1", "-w", str(image), "-v", "-s"])
 
 
+def _recover_from_dfu_leave(cli: Path, usb_serial: str, stlink_serial: str | None,
+                            boot_timeout_s: float) -> str:
+    """A unit that never comes back after -s is stuck in ST's bootloader (DEV-1316).
+
+    The system bootloader (STM32U5A5, BL 0x92) answers -s by stopping USB (soft
+    disconnect, with a 3 ms delay), then storing "jump" in a state word that its main loop
+    polls. Its SOF callback writes the same word with "bus alive". If an SOF lands
+    during that delay, it is serviced after the leave in the same interrupt and overwrites
+    "jump". USB is already stopped, so nothing changes the word again. The main loop
+    refreshes the IWDG forever and the application never starts. That was 4 of 30
+    starts on the bench. The unit drops off USB, though Windows may keep a "Device Descriptor
+    Request Failed" entry. A hub power cycle does nothing on a battery unit; any real
+    reset starts the new image.
+    """
+    if not stlink_serial:
+        raise FlashError(
+            "flashed and verified, but the unit did not start: ST's bootloader missed the jump "
+            "after -s (DEV-1316). Reset the unit by hand (or give it an ST-Link in rig.toml) "
+            "and it runs the new image.")
+    reset_swd(cli, stlink_serial)
+    return s3r_usb.wait_cdc(usb_serial, boot_timeout_s)
+
+
 def flash(cli: Path, image: Path, usb_serial: str, method: str = "dfu",
           stlink_serial: str | None = None, expect_version: str | None = None,
           boot_timeout_s: float = 60) -> dock.Version:
@@ -118,7 +141,12 @@ def flash(cli: Path, image: Path, usb_serial: str, method: str = "dfu",
     else:
         raise FlashError(f"unknown flash method {method!r}")
 
-    port = s3r_usb.wait_cdc(usb_serial, boot_timeout_s)
+    try:
+        port = s3r_usb.wait_cdc(usb_serial, boot_timeout_s)
+    except TimeoutError:
+        if method != "dfu":
+            raise
+        port = _recover_from_dfu_leave(cli, usb_serial, stlink_serial, boot_timeout_s)
     with dock.open_when_ready(port, attempts=20) as d:
         v = d.version()
     if expect_version and v.text != expect_version.lstrip("vV"):

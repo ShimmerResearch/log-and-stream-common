@@ -334,6 +334,39 @@ class DfuTargetsOnlyThisUnit(unittest.TestCase):
         self.assertIn("port=USB1", runs[0])
 
 
+
+class DfuLeaveMissed(unittest.TestCase):
+    """DEV-1316: ST's bootloader sometimes drops the -s jump and the unit never comes back."""
+
+    def _flash(self, stlink):
+        cdc = iter([TimeoutError("no CDC"), "COM9"])
+
+        def wait_cdc(serial, timeout_s=0):
+            r = next(cdc)
+            if isinstance(r, Exception):
+                raise r
+            return r
+
+        resets = []
+
+        @contextmanager
+        def open_when_ready(port, **kw):
+            yield types.SimpleNamespace(version=lambda: types.SimpleNamespace(text="1.01.022"))
+
+        with mock.patch.object(flash, "flash_dfu", lambda *a, **k: "ok"),                 mock.patch.object(flash, "reset_swd", lambda cli, sn=None: resets.append(sn)),                 mock.patch.object(flash.s3r_usb, "wait_cdc", wait_cdc),                 mock.patch.object(flash.dock, "open_when_ready", open_when_ready),                 mock.patch.object(flash.Path, "exists", lambda self: True):
+            v = flash.flash(Path("cli"), Path("img.hex"), "SER1", "dfu", stlink_serial=stlink)
+        return v, resets
+
+    def test_resets_through_the_stlink_and_carries_on(self):
+        v, resets = self._flash("STLINK1")
+        self.assertEqual(resets, ["STLINK1"])
+        self.assertEqual(v.text, "1.01.022")
+
+    def test_without_an_stlink_says_a_hand_reset_starts_it(self):
+        with self.assertRaisesRegex(flash.FlashError, "Reset the unit by hand"):
+            self._flash(None)
+
+
 class FakeSpp:
     """The serial side of a BtLink: answers GET_STATUS with one status frame
     carrying `nstatus` status bytes, the first of them 0x20."""
