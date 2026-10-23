@@ -6,6 +6,7 @@
  */
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -68,6 +69,69 @@ uint64_t ShimUtil_Atol64(uint8_t *buf)
   ret_val += temp_int_4;
 
   return ret_val;
+}
+
+/* Writes a non-negative value as a decimal string for atof() to read back,
+ * e.g. the sdlog.cfg sample rate: "51.2", "50.027481", "1024".
+ *
+ * The fraction is zero-padded to its width, which is what keeps 50.0275 from
+ * being written as "50.3". The width is the fewest digits, up to six, that
+ * atof() reads back as the same float, so 51.2 is "51.2" rather than the
+ * float's exact 51.200001. Six is what lets every sampling divider round-trip:
+ * two are enough only for dividers up to 1824 (rates down to about 18 Hz).
+ *
+ * No %f, because Shimmer3 builds with --printf_support=nofloat, and the
+ * integer part is printed as unsigned long because the MSP430's int is 16
+ * bits, so %d would print 32768 Hz as -32768. */
+void ShimUtil_FtoaDecimal(float value, char *buf, uint8_t max_len)
+{
+  uint32_t intPart, fracPart, scale;
+  uint8_t digits, i;
+  size_t len = 0;
+
+  for (digits = 0, scale = 1; digits <= 6; digits++, scale *= 10)
+  {
+    intPart = (uint32_t) value;
+    fracPart = (uint32_t) ((value - (float) intPart) * (float) scale + 0.5f);
+    if (fracPart >= scale)
+    {
+      fracPart -= scale;
+      intPart++;
+    }
+
+    snprintf(buf, max_len, "%lu", (unsigned long) intPart);
+    len = strlen(buf);
+    if (digits > 0 && len + 1 + digits < max_len)
+    {
+      buf[len] = '.';
+      for (i = digits; i > 0; i--)
+      {
+        buf[len + i] = '0' + fracPart % 10;
+        fracPart /= 10;
+      }
+      len += 1 + digits;
+      buf[len] = '\0';
+    }
+
+    if ((float) atof(buf) == value)
+    {
+      return;
+    }
+  }
+
+  /* Six digits that still differ from the float - a value carried up to the
+   * next whole number, say. Drop the trailing zeros and any bare point. */
+  if (strchr(buf, '.') != NULL)
+  {
+    while (len > 0 && buf[len - 1] == '0')
+    {
+      buf[--len] = '\0';
+    }
+    if (len > 0 && buf[len - 1] == '.')
+    {
+      buf[--len] = '\0';
+    }
+  }
 }
 
 volatile void *ShimUtil_memset_v(volatile void *dest, uint8_t value, size_t n)

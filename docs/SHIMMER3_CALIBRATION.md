@@ -27,6 +27,11 @@ firmware and the host SDKs.
 >   the `GET`/`SET_CALIB_DUMP` handlers).
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`,
 >   `shimmer3r-firmware` @ `8f800952`.
+> - **Pressure coefficient byte order (§5):** `shimmer3-firmware` @ `0a6a650`
+>   — `LogAndStream_Shimmer3/Shimmer_Driver/BMPX80/bmpX80.{h,c}` (`BMPX80_getCalibCoeff`);
+>   `shimmer3r-firmware` @ `ce1f4fc1` — `Shimmer_Driver/BMP3/hal_bmp3.c`;
+>   `log-and-stream-common` @ `6f6dc5f` — `Comms/shimmer_bt_uart.c`,
+>   `SDCard/shimmer_sd_header.c` (both copy `get_bmp_calib_data_bytes()`).
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — the `sensors/` calibration classes
 >   (`adxl371/SensorADXL371.java`, `bmpX80/SensorBMP390.java`,
@@ -443,6 +448,25 @@ where `len` is `1 + coefficientByteCount` — it counts the sensor-ID byte.
 | 1 | `PRESSURE_SENSOR_BMP280` | 24 |
 | 2 | `PRESSURE_SENSOR_BMP390` | 21 |
 | 3 | `PRESSURE_SENSOR_BMP581` | **0** |
+
+"Verbatim" here means **one burst read of the part's calibration registers, in
+register order, with no byte swapping and no unpacking into named values.** So
+a coefficient wider than a byte arrives in the part's own byte order. The same
+bytes go into the SD file header (offsets 160-181, and 222-223 for the BMP280;
+[SD card format](SHIMMER3_SD_CARD_FORMAT.md) §3.4) and into the legacy part-specific
+replies below. All come from `get_bmp_calib_data_bytes()`.
+
+| Part | Read from | Order of the block | Multi-byte coefficients |
+|---|---|---|---|
+| BMP180 | `0xAA` (`AC1` MSB), 22 bytes | `AC1`, `AC2`, `AC3`, `AC4`, `AC5`, `AC6`, `B1`, `B2`, `MB`, `MC`, `MD` | 16-bit, **MSB first** (big-endian). `AC4`-`AC6` are unsigned, the rest signed |
+| BMP280 | `0x88` (`dig_T1` LSB), 24 bytes | `dig_T1`, `dig_T2`, `dig_T3`, `dig_P1` … `dig_P9` | 16-bit, **LSB first** (little-endian). `dig_T1` and `dig_P1` are unsigned, the rest signed |
+| BMP390 | `0x31` (`NVM_PAR_T1` LSB), 21 bytes | `NVM_PAR_T1` … `NVM_PAR_P11`, as the datasheet's register map lists them | Mixed widths (8 and 16 bits) and signedness, per the datasheet. Multi-byte ones **LSB first** |
+
+The Shimmer3 driver reads these in `BMPX80_getCalibCoeff()`
+(`shimmer3-firmware` `LogAndStream_Shimmer3/Shimmer_Driver/BMPX80/bmpX80.c`), the Shimmer3R driver in
+`Shimmer_Driver/BMP3/hal_bmp3.c` from `BMP3_REG_CALIB_DATA`. Widths, signs and
+the scaling from register values to the compensation formula's parameters are
+Bosch's, in each part's datasheet.
 
 > **The BMP581 deliberately returns zero coefficients.** It outputs
 > pre-compensated data, so there is nothing for the host to apply. The firmware

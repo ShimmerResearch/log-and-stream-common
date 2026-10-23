@@ -1,23 +1,24 @@
 /*
  * Host-side test for Util/shimmer_util.c.
  *
- * shimmer_util.c includes nothing but <stdint.h>, <stdlib.h> and <string.h>, so
- * this needs no MCU toolchain, no HAL and no target hardware, and no stubs
- * either. Run by .github/workflows/host-tests.yml.
+ * shimmer_util.c includes nothing but the C library, so this needs no MCU
+ * toolchain, no HAL and no target hardware, and no stubs either. Run by
+ * .github/workflows/host-tests.yml.
  *
- * WHAT THIS IS FOR. These eight functions look too small to be worth testing,
+ * WHAT THIS IS FOR. These nine functions look too small to be worth testing,
  * which is exactly why they are not. They sit under things that are expensive
  * to get wrong and slow to notice:
  *
  *   ShimUtil_ItoaWith0   names every directory on the SD card
  *   ShimUtil_ItoaNo0     writes the 64-bit fields of the config file
  *   ShimUtil_Atol64      reads them back
+ *   ShimUtil_FtoaDecimal writes the config file's sample rate
  *   ShimUtil_strlen_v    measures every Bluetooth response
  *   ShimUtil_reverseArray puts the MAC address the right way round
  *
  * A fault in any of them shows up as a corrupt recording or a config file that
  * will not round-trip, days later and a long way from the cause. The cases
- * below are written against those five real callers, not against the functions
+ * below are written against those six real callers, not against the functions
  * in the abstract, and several of them pin behaviour at a limit rather than
  * assert that it is right - where that is so, the comment says which.
  *
@@ -32,6 +33,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "Util/shimmer_util.h"
@@ -154,6 +156,76 @@ static void test_atol64(void)
   memcpy(buf, "00000000000000000001", 20);
   buf[20] = '9';
   expectU("reads exactly 20 bytes", ShimUtil_Atol64(buf), 1U);
+}
+
+/*
+ * ShimUtil_FtoaDecimal() writes sample_rate into sdlog.cfg, which
+ * ShimSdCfgFile_parse() reads back with atof() and turns into a divider with
+ * round(32768 / rate). Both firmwares' sampling clock is 32768 Hz.
+ *
+ * The contract is that every divider survives the round trip. It did not: the
+ * fraction was written in hundredths without zero-padding, so divider 655
+ * (50.0275 Hz) went out as "50.3" and came back as 651. Padding alone is not
+ * enough either - two decimals lose every divider above 1824. The arithmetic
+ * here is float throughout, as it is on both MCUs.
+ */
+static uint16_t cfgSampleRateRoundTrip(uint16_t divider, char *buf, uint8_t len)
+{
+  float rate = 32768.0f / (float) divider; /* ShimConfig_freqDiv() */
+  float readBack;
+
+  ShimUtil_FtoaDecimal(rate, buf, len);
+  readBack = (float) atof(buf);
+  return (uint16_t) (32768.0f / readBack + 0.5f);
+}
+
+static void test_ftoa_decimal(void)
+{
+  char buf[21]; /* val_char in ShimSdCfgFile_generate() */
+  uint32_t divider;
+  uint32_t lost = 0;
+  uint32_t firstLost = 0;
+
+  testCase("test_ftoa_decimal");
+
+  /* The case that was reported: 50.03 Hz. */
+  expectU("divider 655 round-trips", cfgSampleRateRoundTrip(655, buf, sizeof(buf)), 655);
+  expectStr("50.0275 Hz keeps its leading zero", buf, "50.02748");
+
+  /* Whole and short rates are written without trailing zeros. */
+  ShimUtil_FtoaDecimal(51.2f, buf, sizeof(buf));
+  expectStr("51.2 Hz", buf, "51.2");
+  ShimUtil_FtoaDecimal(1024.0f, buf, sizeof(buf));
+  expectStr("1024 Hz has no decimal point", buf, "1024");
+  ShimUtil_FtoaDecimal(0.0f, buf, sizeof(buf));
+  expectStr("zero", buf, "0");
+
+  /* Divider 1. A 16-bit %d prints this as -32768 on the MSP430. */
+  ShimUtil_FtoaDecimal(32768.0f, buf, sizeof(buf));
+  expectStr("32768 Hz is not negative", buf, "32768");
+
+  /* A fraction that rounds up to the next whole number carries into it, and
+   * leaves no trailing zeros or bare point behind. */
+  ShimUtil_FtoaDecimal(0.9999999f, buf, sizeof(buf));
+  expectStr("rounding carries into the integer part", buf, "1");
+
+  /* Too small a buffer truncates the string rather than overrunning it. */
+  ShimUtil_FtoaDecimal(50.027481f, buf, 6);
+  expectStr("a 6-byte buffer keeps the integer part", buf, "50");
+
+  for (divider = 1; divider <= UINT16_MAX; divider++)
+  {
+    if (cfgSampleRateRoundTrip((uint16_t) divider, buf, sizeof(buf)) != divider)
+    {
+      if (!lost)
+      {
+        firstLost = divider;
+      }
+      lost++;
+    }
+  }
+  expectU("dividers that do not round-trip", lost, 0);
+  expectU("first divider that does not", firstLost, 0);
 }
 
 /*
@@ -316,6 +388,7 @@ int main(void)
   test_itoa_with_zeros();
   test_itoa_no_zeros();
   test_atol64();
+  test_ftoa_decimal();
   test_volatile_memory_helpers();
   test_strlen_v();
   test_reverse_array();

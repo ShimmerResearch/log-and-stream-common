@@ -178,7 +178,6 @@ void ShimSdCfgFile_generate(void)
 
     char buffer[66], val_char[21];
     float val_num;
-    uint16_t val_int, val_f;
     uint64_t temp64;
 
     uint8_t i;
@@ -233,22 +232,9 @@ void ShimSdCfgFile_generate(void)
       CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG2_16BIT, storedConfig->chEnExg2_16Bit);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_PRES, storedConfig->chEnPressureAndTemperature);
       //sample_rate
+      //Hz, read back with atof(); precise enough for every divider to round-trip
       val_num = ShimConfig_freqDiv(storedConfig->samplingRateTicks);
-      val_int = (uint16_t) floor(val_num); //the compiler can't handle sprintf %f here
-      val_f = (uint16_t) round((val_num - floor(val_num)) * 100);
-      if (val_f == 100)
-      {
-        val_f = 0;
-        val_int++;
-      }
-      if (val_f)
-      {
-        sprintf(val_char, "%d.%d", val_int, val_f);
-      }
-      else
-      {
-        sprintf(val_char, "%d", val_int);
-      }
+      ShimUtil_FtoaDecimal(val_num, val_char, sizeof(val_char));
       CFG_WRITE_STR(&cfgFile, CFG_KEY_SAMPLE_RATE, val_char);
       //setup config
       CFG_WRITE_INT(&cfgFile, CFG_KEY_MG_INTERNAL_RATE, ShimConfig_configByteMagRateGet());
