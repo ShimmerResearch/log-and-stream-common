@@ -353,7 +353,11 @@ class DfuLeaveMissed(unittest.TestCase):
         def open_when_ready(port, **kw):
             yield types.SimpleNamespace(version=lambda: types.SimpleNamespace(text="1.01.022"))
 
-        with mock.patch.object(flash, "flash_dfu", lambda *a, **k: "ok"),                 mock.patch.object(flash, "reset_swd", lambda cli, sn=None: resets.append(sn)),                 mock.patch.object(flash.s3r_usb, "wait_cdc", wait_cdc),                 mock.patch.object(flash.dock, "open_when_ready", open_when_ready),                 mock.patch.object(flash.Path, "exists", lambda self: True):
+        with mock.patch.object(flash, "flash_dfu", lambda *a, **k: "ok"), \
+                mock.patch.object(flash, "reset_swd", lambda cli, sn=None: resets.append(sn)), \
+                mock.patch.object(flash.s3r_usb, "wait_cdc", wait_cdc), \
+                mock.patch.object(flash.dock, "open_when_ready", open_when_ready), \
+                mock.patch.object(flash.Path, "exists", lambda self: True):
             v = flash.flash(Path("cli"), Path("img.hex"), "SER1", "dfu", stlink_serial=stlink)
         return v, resets
 
@@ -365,6 +369,37 @@ class DfuLeaveMissed(unittest.TestCase):
     def test_without_an_stlink_says_a_hand_reset_starts_it(self):
         with self.assertRaisesRegex(flash.FlashError, "Reset the unit by hand"):
             self._flash(None)
+
+    def _restart(self, stlink, cdc_back):
+        """flash.restart() with the programmer and USB faked; cdc_back = whether the CDC
+        port comes back after the first start."""
+        calls = []
+
+        def wait_cdc(serial, timeout_s=0):
+            calls.append("wait_cdc")
+            if not cdc_back:
+                raise TimeoutError("no CDC")
+            return "COM9"
+
+        with mock.patch.object(flash, "_enter_dfu", lambda s, t: calls.append("enter_dfu")), \
+                mock.patch.object(flash, "start_from_dfu", lambda cli: calls.append("-s")), \
+                mock.patch.object(flash, "reset_swd", lambda cli, sn=None: calls.append(f"swd {sn}")), \
+                mock.patch.object(flash.s3r_usb, "wait_cdc", wait_cdc):
+            return flash.restart(Path("cli"), "SER1", stlink), calls
+
+    def test_restart_with_an_stlink_never_goes_near_the_bootloader(self):
+        port, calls = self._restart("STLINK1", True)
+        self.assertEqual((port, calls), ("COM9", ["swd STLINK1", "wait_cdc"]))
+
+    def test_restart_through_the_bootloader(self):
+        port, calls = self._restart(None, True)
+        self.assertEqual((port, calls), ("COM9", ["enter_dfu", "-s", "wait_cdc"]))
+
+    def test_restart_whose_jump_is_missed_says_so(self):
+        # The 7A62 smoke run (v1.01.023): a bare TimeoutError there surfaced later as an
+        # InfoMem PermissionError and ended the run with no word of the cause.
+        with self.assertRaisesRegex(flash.FlashError, r"SER1: restarted .*\(DEV-1316\)"):
+            self._restart(None, False)
 
 
 class FakeSpp:

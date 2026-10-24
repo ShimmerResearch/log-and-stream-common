@@ -140,8 +140,11 @@ def test_dock_protocol(unit, rig, docklink, candidate, hil_note):
             return "no DFU device appeared either"
         if not rig.stm32_programmer:
             return "the unit is in DFU, and rig.toml names no stm32_programmer to start it"
-        flash.start_from_dfu(rig.stm32_programmer)
-        s3r_usb.wait_cdc(unit.usb_serial, 30)
+        try:
+            flash.start_from_dfu_and_wait(rig.stm32_programmer, unit.usb_serial,
+                                          rig.stlink_for(unit), 30)
+        except flash.FlashError as e:
+            return str(e)                       # DEV-1316: the bootloader missed the jump
         return "the application was started again from DFU"
 
     note, failures = dock_protocol.walk(docklink, dock_protocol.S3R, "USB CDC", mac=unit.mac,

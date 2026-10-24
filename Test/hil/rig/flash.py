@@ -105,7 +105,7 @@ def flash_dfu(cli: Path, image: Path, usb_serial: str, timeout_s: float = 30) ->
 
 
 def _recover_from_dfu_leave(cli: Path, usb_serial: str, stlink_serial: str | None,
-                            boot_timeout_s: float) -> str:
+                            boot_timeout_s: float, what: str = "flashed and verified, but") -> str:
     """A unit that never comes back after -s is stuck in ST's bootloader (DEV-1316).
 
     The system bootloader (STM32U5A5, BL 0x92) answers -s by stopping USB (soft
@@ -117,14 +117,44 @@ def _recover_from_dfu_leave(cli: Path, usb_serial: str, stlink_serial: str | Non
     starts on the bench. The unit drops off USB, though Windows may keep a "Device Descriptor
     Request Failed" entry. A hub power cycle does nothing on a battery unit; any real
     reset starts the new image.
+
+    The same happens to a restart through the bootloader with nothing written
+    (restart(), start_from_dfu_and_wait()): seen on 7A62 in a v1.01.023 smoke run.
     """
     if not stlink_serial:
         raise FlashError(
-            "flashed and verified, but the unit did not start: ST's bootloader missed the jump "
+            f"{usb_serial}: {what} the unit did not start: ST's bootloader missed the jump "
             "after -s (DEV-1316). Reset the unit by hand (or give it an ST-Link in rig.toml) "
-            "and it runs the new image.")
+            "and it runs the image in its flash.")
     reset_swd(cli, stlink_serial)
     return s3r_usb.wait_cdc(usb_serial, boot_timeout_s)
+
+
+def start_from_dfu_and_wait(cli: Path, usb_serial: str, stlink_serial: str | None = None,
+                            boot_timeout_s: float = 60) -> str:
+    """Start the application of the unit sitting in ST's bootloader and wait for its CDC
+    port. A missed jump (DEV-1316) is reset through the ST-Link if there is one, else it
+    is a FlashError that says so, rather than a bare timeout."""
+    start_from_dfu(cli)
+    try:
+        return s3r_usb.wait_cdc(usb_serial, boot_timeout_s)
+    except TimeoutError:
+        return _recover_from_dfu_leave(cli, usb_serial, stlink_serial, boot_timeout_s,
+                                       what="restarted through ST's bootloader, but")
+
+
+def restart(cli: Path, usb_serial: str, stlink_serial: str | None = None,
+            boot_timeout_s: float = 60) -> str:
+    """Restart a Shimmer3R into its application, writing nothing, and return its CDC port.
+
+    With an ST-Link this is a hardware reset. Without one the unit goes through ST's
+    bootloader (ENTER_BOOTLOADER, then -s), which misses the jump about 1 time in 7
+    (DEV-1316); that is a FlashError, since only a reset by hand recovers it."""
+    if stlink_serial:
+        reset_swd(cli, stlink_serial)
+        return s3r_usb.wait_cdc(usb_serial, boot_timeout_s)
+    _enter_dfu(usb_serial, 30)
+    return start_from_dfu_and_wait(cli, usb_serial, None, boot_timeout_s)
 
 
 def flash(cli: Path, image: Path, usb_serial: str, method: str = "dfu",

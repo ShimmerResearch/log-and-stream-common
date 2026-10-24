@@ -358,9 +358,17 @@ real reset recovers the unit, and it then runs the new image.** The CLI has no
 reset over DFU: `-rst` is not a DFU command, and an option-byte write with
 unchanged values is skipped without a reload.
 
-- **HIL rig:** `flash.flash()` resets the unit through its ST-Link when
-  `rig.toml` names one. Without one, it fails with a message asking for a reset
-  by hand.
+- **The bootloader is used even when nothing is written.** The HIL restarts a
+  Shimmer3R to apply InfoMem changes (`rig/btmode`), and `smoke.dock_protocol`
+  restarts one after a bootloader reboot it could not cancel. Without an
+  ST-Link, both go through ENTER_BOOTLOADER and `-s`, so both can miss the jump
+  the same way. That happened to 7A62 in a v1.01.023 smoke run on 24 Oct 2026,
+  and it ended the rest of that run.
+- **HIL rig:** `flash.flash()`, `flash.restart()` and
+  `flash.start_from_dfu_and_wait()` handle it the same way. If `rig.toml`
+  names an ST-Link for the unit, they reset it through that; `restart()`
+  doesn't use the bootloader at all then. Without one, they fail with an error
+  that names the unit and asks for a reset by hand, not a bare timeout.
 - **Customers updating through Consensys:** if Consensys reports that the
   Shimmer failed to reboot after a Shimmer3R update, resetting the Shimmer
   starts the new firmware. Writing the image again is not needed.
