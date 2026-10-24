@@ -17,7 +17,8 @@ firmware decides whether the radio is on when it boots
 
   Shimmer3   the Base6 slot's RST line (s3_flash.reset_slot)
   Shimmer3R  SWD reset when an ST-Link reaches the unit, else ENTER_BOOTLOADER
-             over the dock and a start from the ST bootloader (flash.reset_dfu)
+             over the dock and a start from the ST bootloader (flash.restart),
+             which can miss the jump and leave the unit for a hand reset (DEV-1316)
 """
 
 from __future__ import annotations
@@ -141,21 +142,19 @@ def bench_routes(rig):
         else:
             if not rig.stm32_programmer:
                 raise BtModeError("resetting a Shimmer3R needs [tools] stm32_programmer")
-            stlink = rig.stlink_for(unit)
-            if stlink:
-                flash.reset_swd(rig.stm32_programmer, stlink)
-            else:
-                try:
-                    flash.reset_dfu(rig.stm32_programmer, unit.usb_serial)
-                except flash.FlashError as e:
-                    # Seen on the bench (18 Oct 2026): the unit entered ST's
-                    # ROM bootloader (PC in system memory, 0x0BF9xxxx) but
-                    # never enumerated as DFU, so nothing over USB can start it
-                    # again. Say so, rather than leave a unit that looks dead.
-                    raise BtModeError(f"{unit.name}: left in ST's bootloader ({e}). Reset it over SWD "
-                                      "or power-cycle it, and name its ST-Link (stlink_serial) in "
-                                      "rig.toml so the run resets it that way.") from e
-            s3r_usb.wait_cdc(unit.usb_serial, 60)
+            try:
+                # A hardware reset through the unit's ST-Link if it has one, else a
+                # round trip through ST's bootloader.
+                flash.restart(rig.stm32_programmer, unit.usb_serial, rig.stlink_for(unit), 60)
+            except flash.FlashError as e:
+                # Both ways this ends with the unit in ST's ROM bootloader (PC in
+                # system memory, 0x0BF9xxxx) and nothing over USB can start it:
+                # it never enumerated as DFU (seen 18 Oct 2026), or the bootloader
+                # missed the jump to the application (DEV-1316). Say so, rather
+                # than leave a unit that looks dead.
+                raise BtModeError(f"{unit.name}: left in ST's bootloader ({e}). Reset it over SWD "
+                                  "or power-cycle it, and name its ST-Link (stlink_serial) in "
+                                  "rig.toml so the run resets it that way.") from e
             time.sleep(3)
 
     return access, reset
