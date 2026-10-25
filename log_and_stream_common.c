@@ -21,16 +21,18 @@ BattStatus batteryStatus;
 
 volatile boot_stage_t bootStage;
 
+#if defined(SHIMMER3R)
 /* Boot report latches (LogAndStream_buildBootReport): the tick the current
  * stage started at, and the milliseconds spent in each stage so far. Ticks
  * from platform_getTick(), so they are not limited the way the LEDs' u16
- * bootTimePerStageMs is. */
+ * bootTimePerStageMs is. Shimmer3 has no boot report. */
 static uint32_t bootStageStartTick;
 static uint8_t bootStageTimed;
 static uint32_t bootStageMs[BOOT_STAGE_COUNT];
 /* The failure stage is entered when every baud rate has been tried and left
  * straight away, often within the same millisecond, so it is latched */
 static uint8_t bootBtFailed;
+#endif
 
 uint8_t sdInfoSyncDelayed = 0;
 
@@ -62,10 +64,12 @@ void LogAndStream_init(void)
 
   memset((uint8_t *) &shimmerStatus, 0, sizeof(STATTypeDef));
 
+#if defined(SHIMMER3R)
   bootStageTimed = 0;
   bootStageStartTick = 0;
   memset(&bootStageMs[0], 0, sizeof(bootStageMs));
   bootBtFailed = 0;
+#endif
 
   /* variables used for delayed undock-start */
   undockEvent = 0;
@@ -76,6 +80,7 @@ void LogAndStream_init(void)
 
 void LogAndStream_setBootStage(boot_stage_t bootStageNew)
 {
+#if defined(SHIMMER3R)
   uint32_t now = platform_getTick();
 
   /* Close the stage being left, for the boot report */
@@ -90,6 +95,7 @@ void LogAndStream_setBootStage(boot_stage_t bootStageNew)
   {
     bootBtFailed = 1;
   }
+#endif
 
   bootStage = bootStageNew;
 
