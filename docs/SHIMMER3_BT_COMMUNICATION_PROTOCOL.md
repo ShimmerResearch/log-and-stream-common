@@ -1068,6 +1068,10 @@ The **Notes** column carries comparison flags, all of which are statements about
 
 | Opcode | FW name | Kind | Args | Response opcode | Response payload length | Gen | Blocked while sensing | Java name (if different) | SDK name (if different) | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| `0xB8` | `BOOT_REPORT_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY, SDK_MISSING |
+| `0xB9` | `GET_BOOT_REPORT_COMMAND` | GET | 0 | `BOOT_REPORT_RESPONSE` | 22 | S3R |  |  |  | FW_ONLY, SDK_MISSING |
+| `0xBA` | `BUTTON_STATE_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY, SDK_MISSING |
+| `0xBB` | `GET_BUTTON_STATE_COMMAND` | GET | 0 | `BUTTON_STATE_RESPONSE` | 5 | S3R |  |  |  | FW_ONLY, SDK_MISSING |
 | `0xC1` | `SD_LIST_DIR_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
 | `0xC2` | `SD_FILE_STAT_COMMAND` | CTRL | 1 + path |  | ShimSdFileTransfer_buildStatRsp() | S3R |  |  |  | FW_ONLY |
 | `0xC3` | `SD_FILE_STAT_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
@@ -1158,6 +1162,7 @@ the only per-command refusals in the protocol:
 | `GET_CALIB_DUMP_COMMAND` 0x9A | `len` is above 128 ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
 | `SET_CALIB_DUMP_COMMAND` 0x98 | The chunk is out of range; a start is at offset 1, is shorter than the 2-byte length header, or declares a dump larger than the calibration RAM or shorter than its 8-byte version header; or a chunk at offset ≥ 2 arrives with no transfer in progress ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
 | `RESET_BT_ERROR_COUNTS` 0xB6 | Shimmer3R always; Shimmer3 without an EEPROM |
+| `SET_FACTORY_TEST` 0xA8 | `testId` is `4`, the power-profile arm, which is dock-only ([§7.12](#712-control-and-test)) |
 | `SET_FEATURE` 0xB7 | Unrecognised feature id |
 | `SET_SD_SYNC_COMMAND` 0xE0 | Not actually in a running sync session |
 | `ACK_COMMAND_PROCESSED` 0xFF | Received outside a running sync session |
@@ -1187,7 +1192,7 @@ is the single most important thing for a host implementer to internalise:
 | Any setter given an out-of-range value | normal `ACK`, value silently clamped ([§7.8](#78-sensor-settings)) |
 | `SET_BT_COMMS_BAUD_RATE` 0x6A | `NACK` — earlier firmware ACKed a no-op ([§2.4](#24-baud-rates)) |
 | `SET_CHARGE_STATUS_LED_COMMAND` 0x30 | `NACK` — earlier firmware fell to `default:` and ACKed ([§7.4](#74-battery)) |
-| `SET_FACTORY_TEST` 0xA8 with an out-of-range id | normal `ACK`, no test run |
+| `SET_FACTORY_TEST` 0xA8 with an id of `5` or more | normal `ACK`, no test run |
 | `GET_MPU9150_MAG_SENS_ADJ_VALS_COMMAND` 0x5D without an MPU-9x50 | `NACK` — earlier firmware sent `ACK` **then a second ACK**, desynchronising unframed hosts ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
 | `SET_SAMPLING_RATE_COMMAND` with a zero divider | `NACK` — a zero would divide by zero later |
 | `SET_DAUGHTER_CARD_MEM_COMMAND` when the EEPROM write fails | `NACK` |
@@ -2817,12 +2822,47 @@ Send `[0xA4][0x00]` to stop. A disconnect also stops it
 > `Comms/shimmer_bt_uart.c:1328-1336`; the enum is `factory_test_t` in
 > `Test/shimmer_test.h:20-27`, and `FACTORY_TEST_COUNT` (4) is the bound.
 
+| `4` | `FACTORY_TEST_POWER_PROFILE` — **refused with a NACK** |
+
+`4` arms the power-profile record over the dock only
+([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) §4.4), so no radio link
+can arm a unit; over Bluetooth it is NACKed on both platforms. The values are
+spelled out in `factory_test_t`, and `FACTORY_TEST_COUNT` is now 5. Firmware
+before the NACK, and all Shimmer3 firmware before it, ACKed `4` as out of range
+and ran nothing.
+
 > **Caution.** The test's output is printed to the Bluetooth UART as plain text
 > (`PRINT_TO_BT_UART`), **not** as protocol frames. Everything a host's command
 > parser sees after the ACK is unframed diagnostic text of unpredictable length,
 > which will desynchronise a state machine keyed on opcodes. Treat the link as
 > text-mode until the device is reconnected. An out-of-range `testId` is
 > silently ACKed with no test run and no output. Blocked while sensing.
+
+#### `GET_BOOT_REPORT_COMMAND` (0xB9)
+
+- **Request:** `[0xB9]`
+- **Response:** `[ACK][0xB8][22 bytes]`
+- **Shimmer3R only, v1.01.024 and later.** Shimmer3 and older firmware ignore
+  it (no reply).
+
+How the last boot went, latched as it ran. The layout is the dock's boot
+report ([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) Appendix A):
+layout version, the 12-byte MCU unique ID, a flags byte (I2C stage over 1 s,
+Bluetooth initialisation gave up, configuration stage over 2 s, RTC on the
+LSI), the I2C, Bluetooth and configuration stage times in ms (u16 each,
+saturating), the Bluetooth baud-rate fallbacks and the LSE drive level.
+Built by `Test/shimmer_factory_record.c`, which both transports share.
+
+#### `GET_BUTTON_STATE_COMMAND` (0xBB)
+
+- **Request:** `[0xBB]`
+- **Response:** `[ACK][0xBA][level][presses u16][last press ms u16]`
+- **Shimmer3R only, v1.01.024 and later.**
+
+`level` is 1 while the user button is held. `presses` counts presses since
+boot and wraps; `last press ms` is the length of the last completed press,
+saturating at 65535. A host can prompt a press and see the count move without
+the press having to start or stop logging.
 
 #### `SET_FEATURE` (0xB7)
 
@@ -3605,6 +3645,7 @@ exist nowhere else, which are exactly the ones added after the extraction.
 | InfoMem | configuration setup bytes 4-6 at InfoMem 130-132 | — | `NV_CONFIG_SETUP_BYTE4` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 00425d6, 2015-03-30)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | InfoMem | the Bluetooth PIN byte at InfoMem 231 | — | `NV_BT_SET_PIN` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, `LogAndStream_v0.9.0` (introducing commit 87ff27c, 2017-08-18)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | Commands | RESET_BT_ERROR_COUNTS | — | `RESET_BT_ERROR_COUNTS` | shared module: `LogAndStream_Shimmer3R_v1.00.049`, `LogAndStream_Shimmer3_v1.00.015` (introducing commit 039dbbd, 2025-11-27) |
+| Commands | GET_BOOT_REPORT_COMMAND 0xB9, GET_BUTTON_STATE_COMMAND 0xBB; SET_FACTORY_TEST 0xA8 NACKs `testId` 4 | Shimmer3R v1.01.024 | `GET_BOOT_REPORT_COMMAND` | _not yet released_ |
 | Commands | SET_DATA_RATE_TEST / DATA_RATE_TEST_RESPONSE | — | `SET_DATA_RATE_TEST` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.002`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit 7e8558f, 2023-12-15)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit da26df24, 2023-12-15) |
 
 Repository history starts: common 2025-01-28; s3 2013-10-16; s3r 2023-10-17.

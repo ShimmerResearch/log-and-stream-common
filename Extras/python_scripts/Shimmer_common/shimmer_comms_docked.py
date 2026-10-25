@@ -49,7 +49,10 @@ class UartProperty:
         LED0_STATE = 0x07  # Used by ShimmerGQ
         # DEVICE_BOOT = 0x08  # Not in use
         # CALIBRATION = 0x07
-        ENTER_BOOTLOADER = 0x09
+        ENTER_BOOTLOADER = 0x09  # Shimmer3R only
+        BOOT_REPORT = 0x0A  # Shimmer3R only
+        BUTTON = 0x0B  # Shimmer3R only
+        LED_SET = 0x0C  # Shimmer3R only
 
     class Bat:
         # ENABLE = 0x00  # Not in use
@@ -74,6 +77,8 @@ class FACTORY_TEST(Enum):
     MAIN = 0
     LEDS = 1
     ICS = 2
+    LED_STATES = 3
+    POWER_PROFILE = 4  # Shimmer3R, dock only: arms/reads the power-profile record
 
 
 def assemble_tx_packet(uart_cmd=None, uart_component=None, uart_property=None, uart_args=None):

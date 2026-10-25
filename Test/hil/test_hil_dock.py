@@ -84,6 +84,13 @@ class FirmwareModel:
         self.gone = False
         self.silent_after = None                        # stop answering after this many frames
         self.frames = []                                # (cmd, comp, prop) of each one processed
+        self.pp_state = 0                               # power-profile record: DISARMED
+        self.leds = None                                # LED_SET masks while held
+
+    @property
+    def prodtest(self):
+        """The production-test commands: Shimmer3R from dock.PRODUCTION_TEST_CMDS_SINCE."""
+        return self.platform == "shimmer3r" and tuple(self.version[2:]) >= dock.PRODUCTION_TEST_CMDS_SINCE
 
     # --- the serial side -----------------------------------------------------
 
@@ -237,6 +244,50 @@ class FirmwareModel:
             self.reboot_at = None
         self._reply(ACK)
 
+    # --- production-test commands (newer Shimmer3R) ---------------------------
+
+    def _get_01_0a(self, c, p, n, d):
+        if not self.prodtest:
+            return self._reply(BAD_CMD)
+        self._fixed(n, 2, c, p, bytes([1]) + bytes(range(12)) + bytes(9))
+
+    def _get_01_0b(self, c, p, n, d):
+        if not self.prodtest:
+            return self._reply(BAD_CMD)
+        self._fixed(n, 2, c, p, struct.pack("<BHH", 0, 3, 250))
+
+    def _set_01_0c(self, c, p, n, d):
+        if not self.prodtest:
+            return self._reply(BAD_CMD)
+        if n != 4:
+            return self._reply(BAD_ARG)
+        if d[0] == 0xFF and d[1] == 0xFF:
+            self.leds = None
+        elif d[0] > 7 or d[1] > 7:
+            return self._reply(BAD_ARG)
+        else:
+            self.leds = (d[0], d[1])
+        self._reply(ACK)
+
+    def _get_0b_04(self, c, p, n, d):
+        if not self.prodtest:
+            return self._reply(BAD_CMD)
+        steps = [(1, 2100), (2, 5000)]
+        body = struct.pack("<BBBHIHHHBB", 1, self.pp_state, 0, 0, 0, 0, 0x0B, 1000, 1, len(steps))
+        body += b"".join(struct.pack("<BH", i, ms) for i, ms in steps)
+        self._fixed(n, 2, c, p, body)
+
+    def _set_0b_04(self, c, p, n, d):
+        if not self.prodtest:
+            return self._reply(BAD_CMD)
+        if n == 5 and d[0] == 1:
+            self.pp_state = dock.PP_STATE_ARMED
+        elif n == 3 and d[0] == 0:
+            self.pp_state = 0
+        else:
+            return self._reply(BAD_ARG)
+        self._reply(ACK)
+
     def _set_03_02(self, c, p, n, d):
         length, offset = d[0], d[1]
         if length <= 16 and offset <= 15 and length + offset <= 16:
@@ -278,7 +329,7 @@ class Walks(unittest.TestCase):
         infomem, eeprom = bytes(m.infomem), bytes(m.eeprom)
         note, failures = self.run_walk(m)
         self.assertEqual(failures, [])
-        self.assertIn("USB CDC: 9 GETs, 4 SETs, 46 errors, 4 framing", note)
+        self.assertIn("USB CDC: 9 GETs, 4 SETs, 50 errors, 4 framing", note)
         self.assertIn("card SR48-6-0", note)
         self.assertIn("clock -3.2 s", note)
         self.assertIn("pipelined: VER+MAC", note)
@@ -293,7 +344,7 @@ class Walks(unittest.TestCase):
         m.version = (3, 3, 1, 1, 22)
         note, failures = self.run_walk(m)
         self.assertEqual(failures, [])
-        self.assertIn("9 GETs, 3 SETs, 47 errors", note)
+        self.assertIn("9 GETs, 3 SETs, 51 errors", note)
         sets = [f for f in m.frames if f and f[0] == dock.CMD_SET and f[2] == dock.PROP_ENTER_BOOTLOADER]
         self.assertEqual(len(sets), 1, "a Shimmer3 should be sent ENTER_BOOTLOADER once, to be refused")
 
@@ -316,6 +367,47 @@ class Walks(unittest.TestCase):
                                     recover=lambda: recovered.append(1) or "restarted from DFU")
         self.assertEqual(recovered, [1])
         self.assertTrue(any("not cancelled" in f and "restarted from DFU" in f for f in failures), failures)
+
+    def prodtest_model(self, **flags):
+        m = self.model(**flags)
+        m.version = (10, 3) + dock.PRODUCTION_TEST_CMDS_SINCE
+        return m
+
+    def run_prodtest_walk(self, m):
+        with mock.patch.object(dock_protocol, "time", m.clock):
+            return dock_protocol.walk(link_to(m), m.platform, "USB CDC", mac="CF9B9E3615BC", version="1.01.024")
+
+    def test_a_newer_shimmer3r_answers_the_production_test_commands(self):
+        m = self.prodtest_model()
+        note, failures = self.run_prodtest_walk(m)
+        self.assertEqual(failures, [])
+        self.assertIn("USB CDC: 12 GETs, 5 SETs, 51 errors, 4 framing", note)
+        self.assertIsNone(m.leds, "LED_SET was not released")
+
+    def test_the_generic_walk_never_arms_the_power_profile(self):
+        m = self.prodtest_model()
+        self.run_prodtest_walk(m)
+        armed = [f for f in m.frames if f == (dock.CMD_SET, dock.COMP_TEST, dock.FACTORY_TEST_POWER_PROFILE)]
+        self.assertEqual(armed, [], "the walk sent SET TEST 4 to a unit that would run it at its next boot")
+        past = [f for f in m.frames if f and f[0] == dock.CMD_SET and f[1] == dock.COMP_TEST]
+        self.assertEqual({f[2] for f in past}, {dock.FACTORY_TEST_COUNT, 0x7F})
+
+    def test_an_armed_power_profile_is_caught(self):
+        m = self.prodtest_model()
+        m.pp_state = dock.PP_STATE_ARMED
+        _, failures = self.run_prodtest_walk(m)
+        self.assertTrue(any("power-profile record is armed" in f for f in failures), failures)
+
+    def test_older_firmware_is_not_asked_for_the_production_test_commands(self):
+        m = self.model()
+        self.run_walk(m)
+        # Each is sent once, bare, to be refused; none is read as a value.
+        for frame in [(dock.CMD_GET, dock.COMP_SHIMMER, dock.PROP_BOOT_REPORT),
+                      (dock.CMD_GET, dock.COMP_SHIMMER, dock.PROP_BUTTON),
+                      (dock.CMD_SET, dock.COMP_SHIMMER, dock.PROP_LED_SET),
+                      (dock.CMD_GET, dock.COMP_TEST, dock.FACTORY_TEST_POWER_PROFILE),
+                      (dock.CMD_SET, dock.COMP_TEST, dock.FACTORY_TEST_POWER_PROFILE)]:
+            self.assertEqual(m.frames.count(frame), 1, frame)
 
     def test_an_unprogrammed_card_id_is_not_written(self):
         m = FirmwareModel(FakeTime(), card=(0xFF, 0xFF, 0xFF))

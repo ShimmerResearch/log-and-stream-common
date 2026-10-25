@@ -39,6 +39,8 @@ COMP_D_ACCEL, COMP_GSR, COMP_TEST = 0x04, 0x05, 0x0B     # declared; only TEST i
 PROP_MAC, PROP_VER, PROP_RWC_CFG_TIME, PROP_CURR_TIME, PROP_INFOMEM = 0x02, 0x03, 0x04, 0x05, 0x06
 PROP_LED0_STATE = 0x07          # ShimmerGQ only
 PROP_ENTER_BOOTLOADER = 0x09    # Shimmer3R only
+# Shimmer3R only, from PRODUCTION_TEST_CMDS_SINCE (docs/SHIMMER3_DOCK_PROTOCOL.md section 4)
+PROP_BOOT_REPORT, PROP_BUTTON, PROP_LED_SET = 0x0A, 0x0B, 0x0C
 PROP_BAT_VALUE = 0x02
 PROP_BT_VER = 0x03
 PROP_CARD_ID = 0x02             # COMP_DAUGHTER_CARD: the 16-byte expansion-board ID page
@@ -47,7 +49,20 @@ CARD_ID_SIZE = 16
 CARD_MEM_BASE = 16
 CARD_MEM_SIZE = 2032            # CARD_MEM reaches EEPROM 16-2047
 CARD_MEM_CHUNK = 128
-FACTORY_TEST_COUNT = 4          # Test/shimmer_test.h: suites 0-3; a higher property is BAD_CMD
+FACTORY_TEST_COUNT = 5          # Test/shimmer_test.h: properties 0-4; a higher one is BAD_CMD
+# Property 4 is not a report suite: on Shimmer3R from PRODUCTION_TEST_CMDS_SINCE it arms
+# (SET) and reads back (GET) the power-profile record. Shimmer3 and older
+# Shimmer3R firmware answer it BAD_CMD, as a suite past their last, 3.
+FACTORY_TEST_POWER_PROFILE = 4
+FACTORY_TEST_COUNT_BEFORE_POWER_PROFILE = 4
+# The first Shimmer3R firmware with the production-test commands: boot report,
+# button state, LED_SET and the power-profile record.
+PRODUCTION_TEST_CMDS_SINCE = (1, 1, 24)
+BOOT_REPORT_LEN = 22            # Test/shimmer_factory_record.h
+BUTTON_STATE_LEN = 5
+PP_READBACK_HEADER_LEN = 17
+PP_READBACK_MAX_LEN = 128
+PP_STATE_ARMED, PP_STATE_RUNNING, PP_STATE_NONE = 1, 2, 0xFF
 # The EEPROM's radio settings page (SHIMMER3_EEPROM_MEMORY_MAP.md §4): byte 2
 # bit 0 is bleEnabled, which the firmware brings BLE up by (§4.2).
 EEPROM_RADIO_PAGE = 2032
@@ -234,6 +249,24 @@ class DockLink:
             chunk, data = data[:CARD_MEM_CHUNK], data[CARD_MEM_CHUNK:]
             self.set(COMP_DAUGHTER_CARD, PROP_CARD_MEM, struct.pack("<BH", len(chunk), offset) + chunk)
             offset += len(chunk)
+
+    def boot_report(self) -> bytes:
+        """Shimmer3R from PRODUCTION_TEST_CMDS_SINCE: how the last boot went (22 bytes)."""
+        return self.get(COMP_SHIMMER, PROP_BOOT_REPORT)
+
+    def button_state(self) -> tuple[int, int, int]:
+        """Shimmer3R from PRODUCTION_TEST_CMDS_SINCE: (level, presses since boot, last press ms)."""
+        level, count, last_ms = struct.unpack("<BHH", self.get(COMP_SHIMMER, PROP_BUTTON)[:5])
+        return level, count, last_ms
+
+    def led_set(self, lower: int, upper: int) -> None:
+        """Shimmer3R from PRODUCTION_TEST_CMDS_SINCE: hold the LEDs (bit 0 red, 1 green,
+        2 blue per LED); led_set(0xFF, 0xFF) hands them back."""
+        self.set(COMP_SHIMMER, PROP_LED_SET, bytes([lower, upper]))
+
+    def power_profile(self) -> bytes:
+        """Shimmer3R from PRODUCTION_TEST_CMDS_SINCE: the power-profile readback."""
+        return self.get(COMP_TEST, FACTORY_TEST_POWER_PROFILE)
 
     def radio_settings(self) -> bytes:
         """The EEPROM's 16-byte radio settings page: radioHwVer, baud, the radio-enable bits.

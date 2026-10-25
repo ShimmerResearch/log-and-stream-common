@@ -110,6 +110,7 @@ def gets(w: Walk, mac: str | None, version: str | None) -> dict:
 
     w.got.add("VER")
     raw = d.get(COMP_SHIMMER, PROP_VER)
+    prodtest = False
     if w.check(len(raw) == 7, f"VER gave {len(raw)} bytes, expected 7"):
         hw, fw_id, major, minor, patch = struct.unpack("<BHHBB", raw)
         text = f"{major}.{minor:02d}.{patch:03d}"
@@ -117,6 +118,8 @@ def gets(w: Walk, mac: str | None, version: str | None) -> dict:
         w.check(fw_id == FW_ID_LOGANDSTREAM, f"VER firmware identifier {fw_id}, expected {FW_ID_LOGANDSTREAM}")
         if version:
             w.check(text == version, f"VER says v{text}, candidate is v{version}")
+        prodtest = has_production_test_cmds(w.platform, (major, minor, patch))
+    seen["prodtest"] = prodtest
 
     w.got.add("MAC")
     raw = d.get(COMP_SHIMMER, PROP_MAC)
@@ -181,7 +184,45 @@ def gets(w: Walk, mac: str | None, version: str | None) -> dict:
         w.check(d.get(COMP_SHIMMER, PROP_INFOMEM, struct.pack("<BH", 0, 0)) == b"",
                 "INFOMEM of length 0 returned data")
     seen["infomem"] = im
+
+    if prodtest:
+        production_test_gets(w)
     return seen
+
+
+def has_production_test_cmds(platform: str, version: tuple) -> bool:
+    """Whether the firmware has the production-test commands: boot report, button
+    state, LED_SET and the power-profile record (dock.PRODUCTION_TEST_CMDS_SINCE)."""
+    return platform == S3R and tuple(version) >= dock.PRODUCTION_TEST_CMDS_SINCE
+
+
+def production_test_gets(w: Walk) -> None:
+    """The production-test GETs. The power-profile record is only read: a generic
+    walk never arms it (an armed unit runs the sequence at its next boot), and it
+    must find it not armed."""
+    d = w.link
+
+    w.got.add("BOOT_REPORT")
+    raw = d.boot_report()
+    if w.check(len(raw) == dock.BOOT_REPORT_LEN, f"BOOT_REPORT gave {len(raw)} bytes, expected {dock.BOOT_REPORT_LEN}"):
+        w.check(raw[0] == 1, f"BOOT_REPORT layout version {raw[0]}, expected 1")
+
+    w.got.add("BUTTON")
+    raw = d.get(COMP_SHIMMER, dock.PROP_BUTTON)
+    if w.check(len(raw) == dock.BUTTON_STATE_LEN, f"BUTTON gave {len(raw)} bytes, expected {dock.BUTTON_STATE_LEN}"):
+        w.check(raw[0] in (0, 1), f"BUTTON level {raw[0]}, expected 0 or 1")
+
+    w.got.add("POWER_PROFILE")
+    raw = d.power_profile()
+    if w.check(dock.PP_READBACK_HEADER_LEN <= len(raw) <= dock.PP_READBACK_MAX_LEN,
+               f"POWER_PROFILE gave {len(raw)} bytes, expected 17-128"):
+        n = raw[16]
+        w.check(raw[0] == 1, f"POWER_PROFILE layout version {raw[0]}, expected 1")
+        w.check(len(raw) == dock.PP_READBACK_HEADER_LEN + 3 * n,
+                f"POWER_PROFILE gave {len(raw)} bytes for {n} steps")
+        w.check(raw[1] not in (dock.PP_STATE_ARMED, dock.PP_STATE_RUNNING),
+                f"the power-profile record is {'armed' if raw[1] == dock.PP_STATE_ARMED else 'running'}"
+                " - it would run at the next boot")
 
 
 def errors(w: Walk, seen: dict) -> None:
@@ -189,6 +230,8 @@ def errors(w: Walk, seen: dict) -> None:
     once and does not wait for the rest) and from the dispatcher."""
     G, S = CMD_GET, CMD_SET
     im, page, eeprom = seen["infomem"], seen["card_id"], seen["eeprom"]
+    prodtest = seen.get("prodtest", False)
+    past_last = dock.FACTORY_TEST_COUNT if prodtest else dock.FACTORY_TEST_COUNT_BEFORE_POWER_PROFILE
 
     def bad_crc(f: bytes) -> bytes:
         return f[:-2] + bytes([f[-2] ^ 0xFF, f[-1]])
@@ -221,12 +264,29 @@ def errors(w: Walk, seen: dict) -> None:
         (S, COMP_SHIMMER, PROP_CURR_TIME, "SET CURR_LOCAL_TIME"),
         (S, COMP_BAT, PROP_BAT_VALUE, "SET BAT VALUE"),
         (S, COMP_BLUETOOTH, PROP_BT_VER, "SET BT VER"),
-        (S, COMP_TEST, dock.FACTORY_TEST_COUNT, "SET TEST suite 4 (past the last)"),
+        (S, COMP_TEST, past_last, f"SET TEST suite {past_last} (past the last)"),
         (S, COMP_TEST, 0x7F, "SET TEST suite 0x7F"),
         (S, 0x7F, 0x00, "SET component 0x7F"),
     ]
+    if not prodtest:
+        # Shimmer3 and older Shimmer3R firmware have none of the production-test
+        # commands. SET TEST 4 is the suite past their last, above.
+        unknown += [
+            (G, COMP_SHIMMER, dock.PROP_BOOT_REPORT, "GET BOOT_REPORT (newer Shimmer3R only)"),
+            (G, COMP_SHIMMER, dock.PROP_BUTTON, "GET BUTTON (newer Shimmer3R only)"),
+            (S, COMP_SHIMMER, dock.PROP_LED_SET, "SET LED_SET (newer Shimmer3R only)"),
+            (G, COMP_TEST, dock.FACTORY_TEST_POWER_PROFILE, "GET TEST 4 (newer Shimmer3R only)"),
+        ]
     for cmd, comp, prop, label in unknown:
         w.expect(label, frame(cmd, comp, prop), BAD_CMD)
+    if prodtest:
+        for prop, label in [(dock.PROP_BOOT_REPORT, "BOOT_REPORT"), (dock.PROP_BUTTON, "BUTTON")]:
+            w.expect(f"GET {label} with a byte too many", frame(G, COMP_SHIMMER, prop, b"\x00"), BAD_ARG)
+        w.expect("GET TEST 4 with a byte too many",
+                 frame(G, COMP_TEST, dock.FACTORY_TEST_POWER_PROFILE, b"\x00"), BAD_ARG)
+        w.expect("SET LED_SET with one byte", frame(S, COMP_SHIMMER, dock.PROP_LED_SET, b"\x01"), BAD_ARG)
+        w.expect("SET LED_SET with a mask past blue",
+                 frame(S, COMP_SHIMMER, dock.PROP_LED_SET, b"\x08\x00"), BAD_ARG)
     if w.platform == S3:
         # Shimmer3R only. 0 seconds would cancel, so a Shimmer3 that wrongly took it still does nothing.
         w.expect("SET ENTER_BOOTLOADER on a Shimmer3", frame(S, COMP_SHIMMER, PROP_ENTER_BOOTLOADER, b"\x00"),
@@ -348,6 +408,12 @@ def sets(w: Walk, seen: dict) -> None:
         w.wrote.add("CARD_ID")
         d.write_card_id(page)
         w.check(d.card_id() == page, "CARD_ID does not read back after rewriting it")
+
+    # Newer Shimmer3R: hold the LEDs, then hand them back.
+    if seen.get("prodtest"):
+        w.wrote.add("LED_SET")
+        d.led_set(0x01, 0x04)
+        d.led_set(0xFF, 0xFF)
 
     # A page of the general expansion-board storage (EEPROM 16-31), with its own bytes.
     w.wrote.add("CARD_MEM")

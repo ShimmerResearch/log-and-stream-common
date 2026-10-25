@@ -208,6 +208,7 @@ What the suites cover today:
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
 | `test_boards` | `Boards/shimmer_boards.c` | ×2 | Every revision gate, across 25 board revisions |
 | `test_calibration` | `Calibration/shimmer_calibration.c` | ×2 | The length and offset bounds on the calibration dump: Bluetooth chunk reads and writes, record copies against the caller's slot, the dump's declared end and the RAM end, the SD calibration file's size, and a card that stops answering |
+| `test_factory_record` | `Test/shimmer_factory_record.c` | ×1 | The production-test layouts byte for byte: the boot report, the button state, the power-profile record (its CRC against the Python host reference, a damaged page refused, every state's round trip) and the power-profile readback and its 128-byte bound |
 | `test_platform_seam` | `Platform/platform_api.c`, `Boards/shimmer_boards.c` | ×2 | A platform's override of a weak hook beats the default even when the default links first; `log_and_stream_globals.h` declares its globals rather than defining them |
 
 `check_weak_decls.py` (`make -C Test/host weak-decls`) is the text-only half of
@@ -426,7 +427,7 @@ differs, and the difference matters for what you are looking for:
 | Platform | When the baud ladder is exhausted | What you see |
 |---|---|---|
 | **Shimmer3** | `while (1) { __bis_SR_register(LPM3_bits + GIE); }` — the boot never completes | **The unit is halted.** No Bluetooth, no logging, no dock response. Yellow at 5 Hz, because the blink timer still runs on ACLK |
-| **Shimmer3R** | `break` — boot continues without the radio | The unit comes up and logs, but has no Bluetooth. Yellow at 5 Hz |
+| **Shimmer3R** | `break` — boot continues without the radio | The unit comes up and logs, but has no Bluetooth. **No lasting LED pattern:** the boot moves on to the configuration stage straight after setting the failure stage, so the yellow 5 Hz pattern shows for a moment at most. From v1.01.024 the boot report says so (flag bit 1, [SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) Appendix A) |
 
 > `shimmer3-firmware` `LogAndStream_Shimmer3/main.c:300-321`;
 > `shimmer3r-firmware` `LogAndStream_Shimmer3R/Core/Src/main.c:732-739`;
@@ -435,7 +436,8 @@ differs, and the difference matters for what you are looking for:
 > The Shimmer3R behaviour is the friendlier one and the Shimmer3 behaviour is
 > the one that generates support calls — but **the Shimmer3R case is easier to
 > miss**, because a unit that boots and logs looks fine until someone tries to
-> connect to it. Check for the LED pattern on both, not just for "it booted".
+> connect to it. Check for the LED pattern on Shimmer3 and for a working
+> radio on Shimmer3R, not just for "it booted".
 
 Two modules on Shimmer3, one on Shimmer3R, and **six recognised firmware
 versions on the RN4678 alone**:
@@ -476,7 +478,7 @@ power-cycle and confirm it reaches idle:
 
 | # | Step | Expected |
 |---|---|---|
-| 5.1.1 | Power on | Reaches idle. **Not** yellow flashing at 5 Hz |
+| 5.1.1 | Power on | Reaches idle. Shimmer3: **not** yellow flashing at 5 Hz. Shimmer3R from v1.01.024: the dock's boot report has flag bit 1 (Bluetooth failed) clear and 0 baud-rate fallbacks |
 | 5.1.2 | `GET_BT_VERSION_STR_COMMAND` | Returns the banner, and it matches the module actually fitted |
 | 5.1.3 | Connect over classic Bluetooth | Connects and streams |
 | 5.1.4 | Connect over BLE, where the row supports it | Connects and streams |
@@ -1328,7 +1330,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 |---|---|
 | `smoke.boot_identity` | Hardware 10, LogAndStream identifier, the candidate's version, the MAC that `rig.toml` names |
 | `smoke.config_roundtrip` | The configuration reads back exactly as written, and a rate change round-trips; byte 230 bit 0 is self-set by design |
-| `smoke.dock_protocol` | The dock protocol over USB CDC, command by command ([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md)). Every GET in its Appendix A, checked for length and against `rig.toml` and the candidate; two clock reads half a second apart must advance by the time that passed. The writes, each read back: the clock, set to the PC's time, which must clear `rtcSetByBt` (byte 217 bit 7) and change nothing else in InfoMem; the board ID page and a page of EEPROM, each rewritten with its own bytes (an unprogrammed ID page is not written); `ENTER_BOOTLOADER` armed for 5 s, cancelled with 0, and outwaited on the same port. Every error reply: an unknown command byte, a LEN of 0 or over 133, a bad CRC, unhandled components and properties, a byte too many on a fixed-size property, and lengths and offsets out of range, each followed by a request that must be answered. The framing rules of the dock protocol's §2.1: junk before the `$`, a frame in two writes 20 ms apart, and a 250 ms gap, which must abandon the frame. Two requests in one write are recorded, not judged: the protocol is one request at a time. What it writes it puts back, and a write that ought to be refused carries the unit's own bytes |
+| `smoke.dock_protocol` | The dock protocol over USB CDC, command by command ([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md)). Every GET in its Appendix A, checked for length and against `rig.toml` and the candidate; two clock reads half a second apart must advance by the time that passed. The writes, each read back: the clock, set to the PC's time, which must clear `rtcSetByBt` (byte 217 bit 7) and change nothing else in InfoMem; the board ID page and a page of EEPROM, each rewritten with its own bytes (an unprogrammed ID page is not written); `ENTER_BOOTLOADER` armed for 5 s, cancelled with 0, and outwaited on the same port. Every error reply: an unknown command byte, a LEN of 0 or over 133, a bad CRC, unhandled components and properties, a byte too many on a fixed-size property, and lengths and offsets out of range, each followed by a request that must be answered. Gated on the version the unit reports: on Shimmer3R from v1.01.024 the production-test commands are read (boot report, button state, the power-profile readback, which must show the record **not armed**) and `LED_SET` is set and released, and the suite past the last is `5`; on anything older they must be refused `BAD_CMD` and the suite past the last is `4`. The walk **never** sends `SET TEST 4` to a unit that has it: an armed unit runs the power-profile sequence at its next boot. The framing rules of the dock protocol's §2.1: junk before the `$`, a frame in two writes 20 ms apart, and a 250 ms gap, which must abandon the frame. Two requests in one write are recorded, not judged: the protocol is one request at a time. What it writes it puts back, and a write that ought to be refused carries the unit's own bytes |
 | `smoke.bt_identity` | Over Bluetooth: hardware 10, the LogAndStream identifier and the candidate's version; an SD card present and usable |
 | `smoke.bt_stream` | 10 s stream: packet framing, no lost or duplicate samples, the rate on the device clock |
 | `smoke.usb_replug` | Undock and re-dock: the CDC port, the dock protocol and the SD drive all return |
