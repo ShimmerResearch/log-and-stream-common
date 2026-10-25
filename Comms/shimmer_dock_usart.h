@@ -63,6 +63,10 @@
 #endif
 #if defined(SHIMMER3R)
 #define UART_PROP_ENTER_BOOTLOADER 0x09
+/* Production test support (docs/SHIMMER3_DOCK_PROTOCOL.md section 4) */
+#define UART_PROP_BOOT_REPORT      0x0A /* GET: Test/shimmer_factory_record.h */
+#define UART_PROP_BUTTON           0x0B /* GET: Test/shimmer_factory_record.h */
+#define UART_PROP_LED_SET          0x0C /* SET: [lowerMask, upperMask] */
 #endif
 
 //component == UART_COMP_BAT:

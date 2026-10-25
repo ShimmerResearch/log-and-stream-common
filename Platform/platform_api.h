@@ -68,6 +68,14 @@ extern "C"
    * the clock but leaves the tick itself up to 100 ms off. */
   uint16_t platform_ledTickElapsedRtcTicks(void);
   void platform_ledTickShift(int16_t rtcTicks);
+  /* Boot report (LogAndStream_buildBootReport). How many times Bluetooth
+   * initialisation fell back to another baud rate at the last boot, the LSE
+   * drive level the boot applied (the RCC LSEDRV bits, 0xFF if the LSE is not
+   * running), and whether the RTC fell back to the LSI. The defaults report
+   * 0, 0xFF and 0. */
+  uint8_t platform_getBtBaudAttempts(void);
+  uint8_t platform_getLseDrive(void);
+  uint8_t platform_isRtcOnLsiFallback(void);
 
 #ifdef __cplusplus
 }

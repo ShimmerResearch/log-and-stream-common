@@ -765,6 +765,8 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
 #if defined(SHIMMER3R)
           case SD_TRANSFER_ABORT_COMMAND:
           case SD_FREE_SPACE_COMMAND:
+          case GET_BOOT_REPORT_COMMAND:
+          case GET_BUTTON_STATE_COMMAND:
 #endif
             gAction = data;
             ShimTask_set(TASK_BT_PROCESS_CMD);
@@ -1016,6 +1018,10 @@ void ShimBt_processCmd(void)
       case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
       case GET_ALT_MAG_CALIBRATION_COMMAND:
       case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
+#if defined(SHIMMER3R)
+      case GET_BOOT_REPORT_COMMAND:
+      case GET_BUTTON_STATE_COMMAND:
+#endif
       {
         getCmdWaitingResponse = gAction;
         break;
@@ -2343,6 +2349,20 @@ void ShimBt_sendRsp(void)
 #endif
         break;
       }
+#if defined(SHIMMER3R)
+      case GET_BOOT_REPORT_COMMAND:
+      {
+        *(resPacket + packet_length++) = BOOT_REPORT_RESPONSE;
+        packet_length += LogAndStream_buildBootReport(resPacket + packet_length);
+        break;
+      }
+      case GET_BUTTON_STATE_COMMAND:
+      {
+        *(resPacket + packet_length++) = BUTTON_STATE_RESPONSE;
+        packet_length += ShimBtn_buildState(resPacket + packet_length);
+        break;
+      }
+#endif
       case GET_BT_COMMS_BAUD_RATE:
       {
         *(resPacket + packet_length++) = BT_COMMS_BAUD_RATE_RESPONSE;

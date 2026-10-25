@@ -35,6 +35,9 @@ volatile uint8_t uartSendRspMac, uartSendRspVer, uartSendRspBat,
     uartSendRspRtcConfigTime, uartSendRspCurrentTime, uartSendRspGdi,
     uartSendRspGdm, uartSendRspGim, uartSendRspBtVer, uartSendRspAck,
     uartSendRspBadCmd, uartSendRspBadArg, uartSendRspBadCrc;
+#if defined(SHIMMER3R)
+volatile uint8_t uartSendRspBootReport, uartSendRspButton;
+#endif
 #if EN_CALIB_DUMP_RSP
 uint8_t uartSendRspCalibDump;
 #endif
@@ -68,6 +71,10 @@ void ShimDock_resetVariables(void)
   uartSendRspCalibDump = 0;
 #endif
   uartSendRspBtVer = 0;
+#if defined(SHIMMER3R)
+  uartSendRspBootReport = 0;
+  uartSendRspButton = 0;
+#endif
 
   uartTimeStart = 0;
 }
@@ -240,6 +247,28 @@ void ShimDock_processCmd(void)
                 uartSendRspBadArg = 1;
               }
               break;
+#if defined(SHIMMER3R)
+            case UART_PROP_BOOT_REPORT:
+              if (dockRxBuf[UART_RXBUF_LEN] == 2)
+              {
+                uartSendRspBootReport = 1;
+              }
+              else
+              {
+                uartSendRspBadArg = 1;
+              }
+              break;
+            case UART_PROP_BUTTON:
+              if (dockRxBuf[UART_RXBUF_LEN] == 2)
+              {
+                uartSendRspButton = 1;
+              }
+              else
+              {
+                uartSendRspBadArg = 1;
+              }
+              break;
+#endif
             case UART_PROP_INFOMEM:
               uartInfoMemLength = dockRxBuf[UART_RXBUF_DATA];
               uartInfoMemOffset = (uint16_t) dockRxBuf[UART_RXBUF_DATA + 1]
@@ -430,6 +459,20 @@ void ShimDock_processCmd(void)
               RTC_setAlarmRebootToBootloader(dockRxBuf[UART_RXBUF_DATA]);
 
               uartSendRspAck = 1;
+              break;
+            case UART_PROP_LED_SET:
+              /* [lowerMask, upperMask]: refused while booting, or for a mask
+               * other than R/G/B bits or a release (0xFF for both) */
+              if (dockRxBuf[UART_RXBUF_LEN] == 4
+                  && ShimLeds_overrideSet(dockRxBuf[UART_RXBUF_DATA],
+                      dockRxBuf[UART_RXBUF_DATA + 1]))
+              {
+                uartSendRspAck = 1;
+              }
+              else
+              {
+                uartSendRspBadArg = 1;
+              }
               break;
 #endif
             default:
@@ -668,6 +711,28 @@ void ShimDock_sendRsp(void)
       InfoMem_readCalib(uartRespBuf + uart_resp_len, uartCalibRamOffset, uartCalibRamLength);
     }
     uart_resp_len += uartCalibRamLength;
+  }
+#endif
+#if defined(SHIMMER3R)
+  else if (uartSendRspBootReport)
+  {
+    uartSendRspBootReport = 0;
+    *(uartRespBuf + uart_resp_len++) = '$';
+    *(uartRespBuf + uart_resp_len++) = UART_RESPONSE;
+    *(uartRespBuf + uart_resp_len++) = 2U + BOOT_REPORT_LEN;
+    *(uartRespBuf + uart_resp_len++) = UART_COMP_SHIMMER;
+    *(uartRespBuf + uart_resp_len++) = UART_PROP_BOOT_REPORT;
+    uart_resp_len += LogAndStream_buildBootReport(uartRespBuf + uart_resp_len);
+  }
+  else if (uartSendRspButton)
+  {
+    uartSendRspButton = 0;
+    *(uartRespBuf + uart_resp_len++) = '$';
+    *(uartRespBuf + uart_resp_len++) = UART_RESPONSE;
+    *(uartRespBuf + uart_resp_len++) = 2U + BUTTON_STATE_LEN;
+    *(uartRespBuf + uart_resp_len++) = UART_COMP_SHIMMER;
+    *(uartRespBuf + uart_resp_len++) = UART_PROP_BUTTON;
+    uart_resp_len += ShimBtn_buildState(uartRespBuf + uart_resp_len);
   }
 #endif
   else if (uartSendRspBtVer)

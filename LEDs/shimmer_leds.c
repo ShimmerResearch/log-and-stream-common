@@ -27,6 +27,18 @@ static volatile uint16_t blinkCntFrame;
 uint8_t lastLedToggleLwr;
 volatile uint8_t rwcErrorFlash;
 
+#if defined(SHIMMER3R)
+/* LED_SET (dock): the host holds both RGB LEDs in a colour of its choosing,
+ * for a production test's visual check. While it holds them the blink timer
+ * keeps running - it still drives the phase sync, the autostop check and
+ * everything else in LogAndStream_blinkTimerCommon() - but ShimLeds_blink()
+ * leaves the LEDs alone. Counted in blink-timer ticks. */
+static volatile uint8_t ledOverrideActive;
+static volatile uint16_t ledOverrideTicks;
+#define LED_OVERRIDE_TIMEOUT_TICKS \
+  ((uint16_t) (LED_OVERRIDE_TIMEOUT_MS / SHIMMER_BLINK_TIMER_PERIOD_MS))
+#endif
+
 static int bootLedIndex = 0;
 static int bootLedDirection = 1; //1: forward, -1: backward
 const uint8_t bootLedOrder[3] = { LED_LWR_GREEN, LED_LWR_YELLOW, LED_LWR_RED };
@@ -64,6 +76,11 @@ void ShimLeds_varsInit(void)
 
   bootLedIndex = 0;
   bootLedDirection = 1;
+
+#if defined(SHIMMER3R)
+  ledOverrideActive = 0;
+  ledOverrideTicks = 0;
+#endif
 }
 
 void ShimLeds_incrementCounters(void)
@@ -205,6 +222,18 @@ void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
 
 void ShimLeds_blink(void)
 {
+#if defined(SHIMMER3R)
+  if (ledOverrideActive)
+  {
+    if (++ledOverrideTicks < LED_OVERRIDE_TIMEOUT_TICKS)
+    {
+      return;
+    }
+    /* Released by time: carry on and show the unit's own state at once */
+    ledOverrideActive = 0;
+  }
+#endif
+
   /* Upper LED control */
   ShimLeds_blinkSetUprState();
 
@@ -693,3 +722,43 @@ uint8_t ShimLeds_getRtcErrorFlash(void)
 {
   return rwcErrorFlash;
 }
+
+#if defined(SHIMMER3R)
+static uint32_t ShimLeds_maskToRgb(uint8_t mask)
+{
+  return ((mask & LED_SET_RED) ? (uint32_t) LED_RGB_RED : 0U)
+      | ((mask & LED_SET_GREEN) ? (uint32_t) LED_RGB_GREEN : 0U)
+      | ((mask & LED_SET_BLUE) ? (uint32_t) LED_RGB_BLUE : 0U);
+}
+
+uint8_t ShimLeds_overrideSet(uint8_t lwrMask, uint8_t uprMask)
+{
+  if (lwrMask == LED_SET_RELEASE && uprMask == LED_SET_RELEASE)
+  {
+    ShimLeds_overrideRelease();
+    return 1;
+  }
+  /* Refused while booting, when the boot sequence owns the LEDs */
+  if (shimmerStatus.booting || (lwrMask & ~LED_SET_ALL) || (uprMask & ~LED_SET_ALL))
+  {
+    return 0;
+  }
+
+  ledOverrideTicks = 0;
+  ledOverrideActive = 1;
+  Board_ledLwrSetColour(ShimLeds_maskToRgb(lwrMask));
+  Board_ledUprSetColour(ShimLeds_maskToRgb(uprMask));
+  return 1;
+}
+
+void ShimLeds_overrideRelease(void)
+{
+  ledOverrideActive = 0;
+  ledOverrideTicks = 0;
+}
+
+uint8_t ShimLeds_isOverrideActive(void)
+{
+  return ledOverrideActive;
+}
+#endif

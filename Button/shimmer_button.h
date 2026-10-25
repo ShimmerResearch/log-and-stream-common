@@ -17,5 +17,9 @@
 
 void ShimBtn_init(void);
 uint8_t ShimBtn_pressReleaseAction(void);
+uint16_t ShimBtn_ticksToMs(uint64_t ticks);
+/* Writes the button state (Test/shimmer_factory_record.h) to out and returns
+ * its length, BUTTON_STATE_LEN */
+uint8_t ShimBtn_buildState(uint8_t *out);
 
 #endif /* LOG_AND_STREAM_COMMON_BUTTON_SHIMMER_BUTTON_H_ */

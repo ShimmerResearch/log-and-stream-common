@@ -160,7 +160,9 @@ typedef enum
   BOOT_STAGE_BLUETOOTH,
   BOOT_STAGE_BLUETOOTH_FAILURE,
   BOOT_STAGE_CONFIGURATION,
-  BOOT_STAGE_END
+  BOOT_STAGE_END,
+  /* Not a stage: the number of them, for arrays indexed by stage */
+  BOOT_STAGE_COUNT
 } boot_stage_t;
 
 typedef enum
