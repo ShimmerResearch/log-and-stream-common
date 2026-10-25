@@ -190,8 +190,14 @@ void ShimLeds_controlDuringBoot(boot_stage_t bootStageCurrent)
   }
   else
   {
-    //If the boot stage is not yet complete, toggle the LEDs to indicate booting
-    shimmerStatus.bootTimePerStageMs += SHIMMER_BLINK_TIMER_PERIOD_MS;
+    /* If the boot stage is not yet complete, toggle the LEDs to indicate
+     * booting. The count is a u16 of ms, so it stops short of wrapping: a
+     * stage can last longer than 65.5 s (an armed power-profile run lasts
+     * over a minute), and a wrapped count would read as a fresh stage. */
+    if (shimmerStatus.bootTimePerStageMs <= (uint16_t) (UINT16_MAX - SHIMMER_BLINK_TIMER_PERIOD_MS))
+    {
+      shimmerStatus.bootTimePerStageMs += SHIMMER_BLINK_TIMER_PERIOD_MS;
+    }
 
     //Note: This is a placeholder for legacy behavior, can be removed if not needed
     //// Turn on LEDs as per legacy behavior in Shimmer3

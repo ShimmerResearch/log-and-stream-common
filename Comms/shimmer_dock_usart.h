@@ -121,5 +121,10 @@ uint8_t ShimDock_rxCallback(uint8_t data);
 void ShimDock_processCmd(void);
 void ShimDock_sendRsp(void);
 uint8_t ShimDock_uartCheckCrc(uint8_t len);
+#if defined(SHIMMER3R)
+/* Writes the power-profile readback (Test/shimmer_factory_record.h) to out and
+ * returns its length, at most PP_READBACK_MAX_LEN */
+uint8_t ShimDock_buildPowerProfileReadback(uint8_t *out);
+#endif
 
 #endif /* SHIMMER3_COMMON_SOURCE_DOCK_SHIMMER_DOCK_COMMS_H_ */

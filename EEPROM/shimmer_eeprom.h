@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "CAT24C16/CAT24C16.h"
+#include "Test/shimmer_factory_record.h"
 
 //Bluetooth information is stored in the last EEPROM page
 #define EEPROM_ADDRESS_HW_DETAILS 0
@@ -41,6 +42,13 @@
 #define EEPROM_BT_MAC_BACKUP_MAGIC \
   0x4D42 /* "BM"; stored little-endian, so a raw hexdump reads 0x42,0x4D */
 #define EEPROM_BT_MAC_BACKUP_LAYOUT_VER 1
+
+/* Power-profile arm record (Test/shimmer_factory_record.h), one page directly
+ * below the Bluetooth MAC backup. Absolute bytes 1920-1935 (host offset
+ * 1904). Written by the dock's power-profile arm/disarm and by the run it
+ * arms. */
+#define EEPROM_ADDRESS_POWER_PROFILE \
+  (EEPROM_ADDRESS_BT_MAC_BACKUP - CAT24C16_PAGE_SIZE)
 
 enum EEPROM_BT_MAC_BACKUP_STATE
 {
@@ -261,6 +269,10 @@ uint8_t ShimEeprom_writeDaughterCardMem(uint16_t memOffset, uint8_t memLength, u
 uint8_t ShimEeprom_isBtMacValid(const uint8_t *mac);
 uint8_t ShimEeprom_readBtMacBackup(uint8_t *macOut, uint8_t *stateOut);
 uint8_t ShimEeprom_writeBtMacBackup(const uint8_t *mac, uint8_t state);
+/* Returns 1 with record filled if the page holds a valid record */
+uint8_t ShimEeprom_readPowerProfile(pp_record_t *record);
+/* Writes the record and reads it back; returns 1 only if they match */
+uint8_t ShimEeprom_writePowerProfile(const pp_record_t *record);
 #endif //SHIMMER3R
 
 #endif /* LOG_AND_STREAM_COMMON_COMMS_SHIMMER_EEPROM_H_ */

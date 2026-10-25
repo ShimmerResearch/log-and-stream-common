@@ -100,6 +100,188 @@ static void test_button_state(void)
   expectX("nothing written past the end", out[BUTTON_STATE_LEN], 0xA5);
 }
 
+/* The CRC bytes are computed by Extras' shimmer_crc.py, the in-repo host
+ * reference, which shares no code with the firmware's ShimSwCrc_calc() */
+static const uint8_t ppRecordVector[PP_RECORD_LEN] = {
+  0x50, 0x50,             /* magic */
+  0x01,                   /* layout */
+  0x03,                   /* DONE */
+  0x16,                   /* run_seq 22 */
+  0x34, 0x12,             /* nonce */
+  0x78, 0x56, 0x34, 0x12, /* step_ok */
+  0x1B, 0x00,             /* parts_found */
+  0x01,                   /* schedule version */
+  0xF2, 0xBF,             /* CRC */
+};
+
+static pp_record_t vectorRecord(void)
+{
+  pp_record_t r;
+  r.state = PP_STATE_DONE;
+  r.runSeq = 22U;
+  r.nonce = 0x1234U;
+  r.stepOk = 0x12345678UL;
+  r.partsFound = PP_PART_LIS3MDL | PP_PART_ADXL371 | PP_PART_BMP390 | PP_PART_BMP581;
+  r.scheduleVer = 1U;
+  return r;
+}
+
+static void test_pp_record_encode(void)
+{
+  pp_record_t r = vectorRecord();
+  uint8_t out[PP_RECORD_LEN + 1];
+
+  testCase("power-profile record: 16 bytes, CRC from the host reference");
+  memset(out, 0xA5, sizeof(out));
+  ShimFactoryRecord_encodePpRecord(&r, out);
+  expectBytes("bytes", out, ppRecordVector, PP_RECORD_LEN);
+  expectX("nothing written past the page", out[PP_RECORD_LEN], 0xA5);
+  expectU("one EEPROM page", PP_RECORD_LEN, 16);
+}
+
+static void test_pp_record_decode(void)
+{
+  pp_record_t r;
+  uint8_t page[PP_RECORD_LEN];
+  unsigned i;
+
+  testCase("power-profile record: decodes, and refuses a damaged page");
+  memset(&r, 0, sizeof(r));
+  expectU("valid", ShimFactoryRecord_decodePpRecord(ppRecordVector, &r), 1);
+  expectU("state", r.state, PP_STATE_DONE);
+  expectU("run_seq", r.runSeq, 22);
+  expectX("nonce", r.nonce, 0x1234);
+  expectX("step_ok", r.stepOk, 0x12345678UL);
+  expectX("parts_found", r.partsFound, 0x1B);
+  expectU("schedule", r.scheduleVer, 1);
+
+  /* Any one byte changed is refused, CRC bytes included */
+  for (i = 0; i < PP_RECORD_LEN; i++)
+  {
+    memcpy(page, ppRecordVector, sizeof(page));
+    page[i] ^= 0x01U;
+    expectU("one byte flipped", ShimFactoryRecord_decodePpRecord(page, &r), 0);
+  }
+
+  memset(page, 0xFF, sizeof(page));
+  expectU("erased EEPROM", ShimFactoryRecord_decodePpRecord(page, &r), 0);
+  memset(page, 0x00, sizeof(page));
+  expectU("zeroed EEPROM", ShimFactoryRecord_decodePpRecord(page, &r), 0);
+}
+
+static void test_pp_record_round_trip(void)
+{
+  static const uint8_t states[] = { PP_STATE_DISARMED, PP_STATE_ARMED,
+    PP_STATE_RUNNING, PP_STATE_DONE, PP_STATE_SKIPPED, PP_STATE_ABORTED };
+  pp_record_t r = vectorRecord();
+  pp_record_t back;
+  uint8_t page[PP_RECORD_LEN];
+  unsigned i;
+
+  testCase("power-profile record: every state round-trips, extremes too");
+  for (i = 0; i < sizeof(states); i++)
+  {
+    r.state = states[i];
+    r.nonce = (uint16_t) (i == 0 ? 0x0000U : 0xFFFFU);
+    r.stepOk = (i == 0) ? 0UL : 0xFFFFFFFFUL;
+    ShimFactoryRecord_encodePpRecord(&r, page);
+    memset(&back, 0, sizeof(back));
+    expectU("valid", ShimFactoryRecord_decodePpRecord(page, &back), 1);
+    expectU("state", back.state, states[i]);
+    expectX("nonce", back.nonce, r.nonce);
+    expectX("step_ok", back.stepOk, r.stepOk);
+  }
+  expectX("state values are protocol", PP_STATE_ABORTED, 5);
+  expectX("no record", PP_STATE_NONE, 0xFF);
+}
+
+static void test_pp_readback(void)
+{
+  pp_record_t r = vectorRecord();
+  pp_schedule_t s;
+  uint8_t out[PP_READBACK_MAX_LEN + 4];
+  static const uint8_t want[PP_READBACK_HEADER_LEN + 6] = {
+    0x01,                   /* layout */
+    0x03,                   /* DONE */
+    0x16,                   /* run_seq */
+    0x34, 0x12,             /* nonce */
+    0x78, 0x56, 0x34, 0x12, /* step_ok */
+    0x1B, 0x00,             /* parts_found */
+    0x23, 0x00,             /* parts expected */
+    0xE8, 0x03,             /* window 1000 ms */
+    0x01,                   /* marker */
+    0x02,                   /* n */
+    0x01, 0x34, 0x08,       /* MARKER 2100 ms */
+    0x02, 0x88, 0x13,       /* BASELINE 5000 ms */
+  };
+
+  testCase("power-profile readback: header, then 3 bytes per step");
+  memset(&s, 0, sizeof(s));
+  s.scheduleVer = 1U;
+  s.markerId = PP_MARKER_NONCE16;
+  s.baselineWindowMs = 1000U;
+  s.partsExpected = PP_PART_LIS3MDL | PP_PART_ADXL371 | PP_PART_ADS1292R;
+  expectU("add", ShimFactoryRecord_addPpStep(&s, PP_STEP_MARKER, PP_MARKER_DURATION_MS), 1);
+  expectU("add", ShimFactoryRecord_addPpStep(&s, PP_STEP_BASELINE, 5000U), 1);
+
+  memset(out, 0xA5, sizeof(out));
+  expectU("length", ShimFactoryRecord_encodePpReadback(&r, &s, out), sizeof(want));
+  expectBytes("bytes", out, want, sizeof(want));
+  expectX("nothing written past the end", out[sizeof(want)], 0xA5);
+  expectU("marker lasts 2.1 s", PP_MARKER_DURATION_MS, 2100);
+  expectU("run time: steps + windows + one pulse", ShimFactoryRecord_ppRunMs(&s),
+      2100U + 5000U + 2U * 1000U + PP_MARKER_PULSE_MS);
+}
+
+static void test_pp_readback_without_record(void)
+{
+  pp_schedule_t s;
+  uint8_t out[PP_READBACK_MAX_LEN];
+  unsigned i;
+
+  testCase("power-profile readback: no record reads NONE, fields zero");
+  memset(&s, 0, sizeof(s));
+  s.baselineWindowMs = 1000U;
+  s.markerId = PP_MARKER_NONCE16;
+  memset(out, 0xA5, sizeof(out));
+  expectU("length", ShimFactoryRecord_encodePpReadback(NULL, &s, out), PP_READBACK_HEADER_LEN);
+  expectX("state", out[1], PP_STATE_NONE);
+  for (i = 2; i < 11; i++)
+  {
+    expectX("record field", out[i], 0x00);
+  }
+  expectX("n", out[16], 0);
+}
+
+static void test_pp_readback_fits(void)
+{
+  pp_schedule_t s;
+  uint8_t out[PP_READBACK_MAX_LEN + 8];
+  unsigned i;
+
+  testCase("power-profile readback: never more than 128 bytes");
+  expectU("37 steps at most", PP_MAX_STEPS, 37);
+  memset(&s, 0, sizeof(s));
+  for (i = 0; i < PP_MAX_STEPS; i++)
+  {
+    expectU("add", ShimFactoryRecord_addPpStep(&s, PP_STEP_LED_LWR_RED, 1000U), 1);
+  }
+  expectU("the 38th is refused",
+      ShimFactoryRecord_addPpStep(&s, PP_STEP_BLUETOOTH, 1000U), 0);
+  memset(out, 0xA5, sizeof(out));
+  expectU("full length", ShimFactoryRecord_encodePpReadback(NULL, &s, out),
+      PP_READBACK_HEADER_LEN + 3U * PP_MAX_STEPS);
+  expectTrue("fits a dock reply",
+      PP_READBACK_HEADER_LEN + 3U * PP_MAX_STEPS <= PP_READBACK_MAX_LEN);
+  expectX("nothing past 128", out[PP_READBACK_MAX_LEN], 0xA5);
+
+  /* A corrupt count is clamped, not trusted */
+  s.n = 200U;
+  expectU("clamped", ShimFactoryRecord_encodePpReadback(NULL, &s, out),
+      PP_READBACK_HEADER_LEN + 3U * PP_MAX_STEPS);
+  expectU("n clamped", out[16], PP_MAX_STEPS);
+}
+
 int main(void)
 {
   hostTestSilenceUnused();
@@ -108,6 +290,12 @@ int main(void)
   test_flag_values();
   test_saturate();
   test_button_state();
+  test_pp_record_encode();
+  test_pp_record_decode();
+  test_pp_record_round_trip();
+  test_pp_readback();
+  test_pp_readback_without_record();
+  test_pp_readback_fits();
 
   return hostTestReport("test_factory_record");
 }

@@ -11,6 +11,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "Test/shimmer_factory_record.h"
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -76,6 +78,11 @@ extern "C"
   uint8_t platform_getBtBaudAttempts(void);
   uint8_t platform_getLseDrive(void);
   uint8_t platform_isRtcOnLsiFallback(void);
+  /* Shimmer3R power-profile run (Test/shimmer_factory_record.h). Fills in the
+   * schedule this board would run - the one function both the run and the
+   * dock readback use - and returns 1, or returns 0 if the platform has no
+   * power-profile run. The default returns 0. */
+  uint8_t platform_powerProfileSchedule(pp_schedule_t *schedule);
 
 #ifdef __cplusplus
 }

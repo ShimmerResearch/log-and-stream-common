@@ -161,6 +161,9 @@ typedef enum
   BOOT_STAGE_BLUETOOTH_FAILURE,
   BOOT_STAGE_CONFIGURATION,
   BOOT_STAGE_END,
+  /* Shimmer3R: an armed power-profile run, between CONFIGURATION and END.
+   * Listed after END so no earlier value moves. */
+  BOOT_STAGE_POWER_PROFILE,
   /* Not a stage: the number of them, for arrays indexed by stage */
   BOOT_STAGE_COUNT
 } boot_stage_t;

@@ -109,3 +109,9 @@ PLATFORM_WEAK uint8_t platform_isRtcOnLsiFallback(void)
 {
   return 0;
 }
+
+PLATFORM_WEAK uint8_t platform_powerProfileSchedule(pp_schedule_t *schedule)
+{
+  (void) schedule;
+  return 0;
+}

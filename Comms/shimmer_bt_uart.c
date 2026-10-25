@@ -1459,7 +1459,13 @@ void ShimBt_processCmd(void)
       }
       case SET_FACTORY_TEST:
       {
-        if (args[0] < FACTORY_TEST_COUNT)
+        /* The power-profile arm is a dock-only command: arming must not be
+         * possible from a radio link */
+        if (args[0] == FACTORY_TEST_POWER_PROFILE)
+        {
+          sendNack = 1;
+        }
+        else if (args[0] < FACTORY_TEST_COUNT)
         {
           ShimFactoryTest_setup(PRINT_TO_BT_UART, (factory_test_t) args[0]);
           ShimTask_set(TASK_FACTORY_TEST);

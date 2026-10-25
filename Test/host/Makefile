@@ -96,7 +96,8 @@ SRC_test_sd_pressure_id := test_sd_pressure_id.c \
 SRC_test_sd_write_buf := test_sd_write_buf.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c
 SRC_test_leds_phase  := test_leds_phase.c $(REPO)/LEDs/shimmer_leds_phase.c
-SRC_test_factory_record := test_factory_record.c $(REPO)/Test/shimmer_factory_record.c
+SRC_test_factory_record := test_factory_record.c $(REPO)/Test/shimmer_factory_record.c \
+                        $(REPO)/CRC/shimmer_swCrc.c
 SRC_test_sd_data_file := test_sd_data_file.c \
                         $(REPO)/SDCard/shimmer_sd_data_file.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c \

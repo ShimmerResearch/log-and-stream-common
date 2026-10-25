@@ -36,7 +36,9 @@ volatile uint8_t uartSendRspMac, uartSendRspVer, uartSendRspBat,
     uartSendRspGdm, uartSendRspGim, uartSendRspBtVer, uartSendRspAck,
     uartSendRspBadCmd, uartSendRspBadArg, uartSendRspBadCrc;
 #if defined(SHIMMER3R)
-volatile uint8_t uartSendRspBootReport, uartSendRspButton;
+volatile uint8_t uartSendRspBootReport, uartSendRspButton, uartSendRspPowerProfile;
+
+static uint8_t ShimDock_powerProfileSet(void);
 #endif
 #if EN_CALIB_DUMP_RSP
 uint8_t uartSendRspCalibDump;
@@ -74,6 +76,7 @@ void ShimDock_resetVariables(void)
 #if defined(SHIMMER3R)
   uartSendRspBootReport = 0;
   uartSendRspButton = 0;
+  uartSendRspPowerProfile = 0;
 #endif
 
   uartTimeStart = 0;
@@ -360,6 +363,20 @@ void ShimDock_processCmd(void)
               break;
           }
         }
+#if defined(SHIMMER3R)
+        else if (dockRxBuf[UART_RXBUF_COMP] == UART_COMP_TEST
+            && dockRxBuf[UART_RXBUF_PROP] == FACTORY_TEST_POWER_PROFILE)
+        { //get the power-profile record
+          if (dockRxBuf[UART_RXBUF_LEN] == 2)
+          {
+            uartSendRspPowerProfile = 1;
+          }
+          else
+          {
+            uartSendRspBadArg = 1;
+          }
+        }
+#endif
         else if (dockRxBuf[UART_RXBUF_COMP] == UART_COMP_BT)
         {
           switch (dockRxBuf[UART_RXBUF_PROP])
@@ -528,7 +545,24 @@ void ShimDock_processCmd(void)
         }
         else if (dockRxBuf[UART_RXBUF_COMP] == UART_COMP_TEST)
         { //set test
-          if (dockRxBuf[UART_RXBUF_PROP] < FACTORY_TEST_COUNT)
+          if (dockRxBuf[UART_RXBUF_PROP] == FACTORY_TEST_POWER_PROFILE)
+          {
+#if defined(SHIMMER3R)
+            /* Arm [1, nonce lo, nonce hi] or disarm [0], synchronously:
+             * written and read back before the ACK */
+            if (ShimDock_powerProfileSet())
+            {
+              uartSendRspAck = 1;
+            }
+            else
+            {
+              uartSendRspBadArg = 1;
+            }
+#else
+            uartSendRspBadCmd = 1;
+#endif
+          }
+          else if (dockRxBuf[UART_RXBUF_PROP] < FACTORY_TEST_COUNT)
           {
             ShimFactoryTest_setup(
                 PRINT_TO_DOCK_UART, (factory_test_t) dockRxBuf[UART_RXBUF_PROP]);
@@ -724,6 +758,18 @@ void ShimDock_sendRsp(void)
     *(uartRespBuf + uart_resp_len++) = UART_PROP_BOOT_REPORT;
     uart_resp_len += LogAndStream_buildBootReport(uartRespBuf + uart_resp_len);
   }
+  else if (uartSendRspPowerProfile)
+  {
+    uint8_t ppLen;
+    uartSendRspPowerProfile = 0;
+    *(uartRespBuf + uart_resp_len++) = '$';
+    *(uartRespBuf + uart_resp_len++) = UART_RESPONSE;
+    ppLen = ShimDock_buildPowerProfileReadback(uartRespBuf + uart_resp_len + 3U);
+    *(uartRespBuf + uart_resp_len++) = 2U + ppLen;
+    *(uartRespBuf + uart_resp_len++) = UART_COMP_TEST;
+    *(uartRespBuf + uart_resp_len++) = FACTORY_TEST_POWER_PROFILE;
+    uart_resp_len += ppLen;
+  }
   else if (uartSendRspButton)
   {
     uartSendRspButton = 0;
@@ -788,3 +834,48 @@ uint8_t ShimDock_uartCheckCrc(uint8_t len)
   uart_rx_crc += ((uint16_t) dockRxBuf[(uint8_t) (len + 1)]) << 8;
   return (uart_rx_crc == uart_calc_crc);
 }
+
+#if defined(SHIMMER3R)
+/* SET COMP_TEST/FACTORY_TEST_POWER_PROFILE. Returns 1 if the record was written
+ * and read back as asked, 0 for a malformed payload or a failed write. */
+static uint8_t ShimDock_powerProfileSet(void)
+{
+  pp_record_t record;
+  uint8_t len = dockRxBuf[UART_RXBUF_LEN];
+  uint8_t *data = (uint8_t *) &dockRxBuf[UART_RXBUF_DATA];
+  pp_schedule_t schedule;
+
+  memset(&record, 0, sizeof(record));
+  if (len == 5U && data[0] == 1U)
+  {
+    memset(&schedule, 0, sizeof(schedule));
+    if (!platform_powerProfileSchedule(&schedule))
+    {
+      return 0;
+    }
+    record.state = PP_STATE_ARMED;
+    record.nonce = (uint16_t) (data[1] | ((uint16_t) data[2] << 8));
+    record.scheduleVer = schedule.scheduleVer;
+  }
+  else if (len == 3U && data[0] == 0U)
+  {
+    record.state = PP_STATE_DISARMED;
+  }
+  else
+  {
+    return 0;
+  }
+  return ShimEeprom_writePowerProfile(&record);
+}
+
+uint8_t ShimDock_buildPowerProfileReadback(uint8_t *out)
+{
+  pp_record_t record;
+  pp_schedule_t schedule;
+  uint8_t valid = ShimEeprom_readPowerProfile(&record);
+
+  memset(&schedule, 0, sizeof(schedule));
+  (void) platform_powerProfileSchedule(&schedule);
+  return ShimFactoryRecord_encodePpReadback(valid ? &record : NULL, &schedule, out);
+}
+#endif
