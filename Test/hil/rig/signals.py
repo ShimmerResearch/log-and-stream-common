@@ -24,6 +24,9 @@ MIN_NOISE_LSB = 2.0             # resting sample-to-sample spread needed before 
 MIN_NOISY_AXES = 2              # axes that must carry that noise before a whole-sample run means anything
 VBATT_MV = (3000, 4300)
 I16_LIMITS = (-32768, 32767)
+# Shimmer3R's alt accel decodes to 12-bit counts (decode.split_channels), so it
+# saturates at the 12-bit limits. check_rest is used on Shimmer3R data only.
+LIMITS = {"alt_accel": (-2048, 2047)}
 
 
 def longest_run(x: np.ndarray) -> int:
@@ -110,7 +113,7 @@ def check_rest(chans: dict[int, np.ndarray], calibs: dict[str, Calib], packet_ra
         if run > allowed:
             problems.append(f"mag: {run} identical consecutive samples (allowed {allowed:.0f})")
 
-    # Dead or saturated axes on the signed 16-bit IMU channels.
+    # Dead or saturated axes on the signed IMU channels.
     for name in ("ln_accel", "gyro", "mag", "wr_accel", "alt_accel", "alt_mag"):
         raw = triplet(chans, name)
         if raw is None:
@@ -119,9 +122,11 @@ def check_rest(chans: dict[int, np.ndarray], calibs: dict[str, Calib], packet_ra
             col = raw[:, i]
             if len(col) > 20 and np.all(col == col[0]):
                 problems.append(f"{name} {axis}: constant {int(col[0])} for the whole capture")
-            sat = np.mean((col <= I16_LIMITS[0]) | (col >= I16_LIMITS[1]))
+            lo, hi = LIMITS.get(name, I16_LIMITS)
+            sat = np.mean((col <= lo) | (col >= hi))
             if sat > 0:
-                problems.append(f"{name} {axis}: {sat:.1%} of samples at the int16 limit")
+                width = "int12" if name in LIMITS else "int16"
+                problems.append(f"{name} {axis}: {sat:.1%} of samples at the {width} limit")
 
     if VBATT in chans:
         mv = float(np.median(chans[VBATT])) * 3000 / 4095 * 2

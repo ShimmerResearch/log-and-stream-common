@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Unit tests for rig.signals: the stale-sensor (staircase) checks on resting
-data. Run: python Test/hil/test_hil_signals.py (no hardware).
+data, and rig.decode's byte order for the alt accel. Run: python Test/hil/test_hil_signals.py (no hardware).
 
 The cases include the one that failed a good build: a resting gyro whose axes
 each repeat their last value about one sample in five, over a five-minute log at
@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
     import numpy as np
-    from rig import signals
+    from rig import bt, decode, signals
 except ImportError:  # pragma: no cover - CI without numpy
     np = None
 
@@ -101,6 +101,47 @@ class LongestRun(unittest.TestCase):
         x = np.array([[1, 2], [1, 2], [1, 3], [1, 3], [1, 3]])
         self.assertEqual(signals.longest_run(x), 3)
         self.assertEqual(signals.longest_run(x[:, 0]), 5)
+
+
+ALT_IDS = (0x14, 0x15, 0x16)
+
+
+def alt_row(counts12):
+    """One sample of the three alt accel channels as the Shimmer3R sends it:
+    each 12-bit count left-justified in a big-endian word."""
+    return b"".join(((c & 0xFFF) << 4).to_bytes(2, "big") for c in counts12)
+
+
+@unittest.skipIf(np is None, "numpy not installed")
+class AltAccelByteOrder(unittest.TestCase):
+    # The v1.01.023 release run: a resting ADXL371 (100 mg/LSB) read
+    # little-endian landed on 24576 / -32768 / 8192 and failed every full_* row
+    # as "at the int16 limit".
+    REST = [(1, -5, -10), (0, -6, -10), (2, -5, -11), (-1, -4, -10)]
+
+    def test_shimmer3r_decodes_12_bit_counts_with_sign(self):
+        rows = [alt_row(r) for r in self.REST]
+        chans = decode.split_channels(rows, list(ALT_IDS), bt.HW_SHIMMER3R)
+        got = np.column_stack([chans[c] for c in ALT_IDS]).astype(int).tolist()
+        self.assertEqual(got, [list(r) for r in self.REST])
+
+    def test_shimmer3_decodes_a_big_endian_int16(self):
+        rows = [(-300).to_bytes(2, "big", signed=True) * 3]
+        chans = decode.split_channels(rows, list(ALT_IDS), bt.HW_SHIMMER3)
+        self.assertEqual([chans[c][0] for c in ALT_IDS], [-300] * 3)
+
+    def test_resting_alt_accel_is_not_saturated(self):
+        rows = [alt_row(self.REST[i % 4]) for i in range(200)]
+        chans = decode.split_channels(rows, list(ALT_IDS), bt.HW_SHIMMER3R)
+        probs = signals.check_rest(chans, {}, 512.0)[0]
+        self.assertEqual([p for p in probs if "limit" in p], [])
+
+    def test_a_saturated_alt_accel_is_caught_at_12_bits(self):
+        rows = [alt_row((2047, -2048, 0)), alt_row((2047, -2048, 1))] * 50
+        chans = decode.split_channels(rows, list(ALT_IDS), bt.HW_SHIMMER3R)
+        probs = signals.check_rest(chans, {}, 512.0)[0]
+        self.assertIn("alt_accel x: 100.0% of samples at the int12 limit", probs)
+        self.assertIn("alt_accel y: 100.0% of samples at the int12 limit", probs)
 
 
 if __name__ == "__main__":

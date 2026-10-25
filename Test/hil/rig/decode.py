@@ -11,7 +11,7 @@ import struct
 
 import numpy as np
 
-from .bt import channel_width
+from .bt import HW_SHIMMER3R, channel_width
 
 # Kinematic triplets: name -> channel ids (x, y, z), and the 21-byte block for
 # each in InfoMem (offset), and whether sensitivity carries the gyro x100.
@@ -25,6 +25,10 @@ TRIPLETS = {
 }
 VBATT = 0x03
 SIGNED_I16 = {c for t in TRIPLETS.values() for c in t[0]}
+# The alt accel is big-endian on both platforms (STREAMING_DATA_FORMAT §5): on
+# Shimmer3R the ADXL371's 12-bit value, left-justified (the driver's i12*>); on
+# Shimmer3 the 9-axis chip's own accelerometer, a plain int16.
+BIG_ENDIAN = set(TRIPLETS["alt_accel"][0])
 
 
 def split_channels(rows: list[bytes], channels: list[int], hw: int) -> dict[int, np.ndarray]:
@@ -36,7 +40,11 @@ def split_channels(rows: list[bytes], channels: list[int], hw: int) -> dict[int,
         for c, w in zip(channels, widths):
             chunk = r[pos:pos + w]
             pos += w
-            if w == 2:
+            if w == 2 and c in BIG_ENDIAN:
+                v = struct.unpack(">h", chunk)[0]
+                if hw == HW_SHIMMER3R:
+                    v >>= 4                      # i12*>: arithmetic shift keeps the sign
+            elif w == 2:
                 v = struct.unpack("<h" if c in SIGNED_I16 else "<H", chunk)[0]
             elif w == 3:
                 v = int.from_bytes(chunk, "little")
