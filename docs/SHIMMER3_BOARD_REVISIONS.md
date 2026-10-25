@@ -7,6 +7,16 @@
 > retained for traceability; the **Verified against** block below names it
 > and says what a reader outside Shimmer can and cannot check.
 
+> **Source of truth:** this document is the authoritative list of Shimmer3 and
+> Shimmer3R SR numbers (board ID and revision) and the parts fitted to each.
+> The firmware gates in `Boards/shimmer_boards.c` and the HIL board table in
+> `Test/hil/rig/s3r_boards.py` follow it. Other documents and tools may copy
+> from it, and each copy should say that this document is the source and link
+> to it. Change it in the same PR as any board-gate change.
+>
+> The production base / `.1` / `.2` / `.3` family table under **Shimmer3R
+> revision quick reference** is read by tools, so keep its column layout.
+
 > **Verified against** — what these claims were read from. A pinned commit is
 > a citation, not a claim of currency.
 >
