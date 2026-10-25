@@ -269,8 +269,11 @@ uint8_t ShimBrd_isAdxl371Present(void)
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 1)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 2)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 8, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 1)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 8, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_BR_AMP_UNIFIED, 4, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_PROTO3_DELUXE, 4, 0)));
 }
@@ -282,8 +285,11 @@ uint8_t ShimBrd_isLis3mdlPresent(void)
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 1)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 7, 2)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 8, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 7, 1)
+          || ShimBrd_isBoardSrNumber(EXP_BRD_EXG_UNIFIED, 8, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_BR_AMP_UNIFIED, 4, 0)
           || ShimBrd_isBoardSrNumber(EXP_BRD_PROTO3_DELUXE, 4, 0)));
 }
