@@ -110,6 +110,16 @@ PLATFORM_WEAK uint8_t platform_isRtcOnLsiFallback(void)
   return 0;
 }
 
+PLATFORM_WEAK uint16_t platform_getBootPartsFound(void)
+{
+  return 0;
+}
+
+PLATFORM_WEAK uint16_t platform_getBootPartsExpected(void)
+{
+  return 0;
+}
+
 PLATFORM_WEAK uint8_t platform_powerProfileSchedule(pp_schedule_t *schedule)
 {
   (void) schedule;

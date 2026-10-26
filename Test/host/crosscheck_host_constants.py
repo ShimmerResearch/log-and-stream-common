@@ -251,10 +251,11 @@ def firmware_typedef_enum(path, type_name):
 
 
 def firmware_defines(path, prefix):
-    """{NAME: value} from `#define PREFIXNAME 0xNN`, whatever #if they sit in."""
+    """{NAME: value} from `#define PREFIXNAME 0xNN`, a U suffix allowed, whatever
+    #if they sit in."""
     out = {}
     for line in path.read_text(encoding="utf-8").splitlines():
-        m = re.match(r"#define\s+(" + re.escape(prefix) + r"[A-Z0-9_]*)\s+(0x[0-9A-Fa-f]+|\d+)\b", line)
+        m = re.match(r"#define\s+(" + re.escape(prefix) + r"[A-Z0-9_]*)\s+(0x[0-9A-Fa-f]+|\d+)[uU]?\b", line)
         if m:
             out[m.group(1)] = int(m.group(2), 0)
     if not out:
@@ -345,6 +346,28 @@ def check_dock(failures, notes):
     return checked
 
 
+FACTORY_RECORD_HEADER = REPO / "Test" / "shimmer_factory_record.h"
+
+
+def check_boot_report(failures, notes):
+    """The boot report's layout version, length and flags, and the part-probe
+    bits it shares with the power-profile record. A host that decodes the boot
+    report by a stale length or bit mis-reads every field after the change."""
+    fw = firmware_defines(FACTORY_RECORD_HEADER, "BOOT_REPORT_")
+    py = python_class_constants(DOCKED_HOST, "BootReport")
+    seen = compare_mapped(failures, "boot report", fw, py, lambda n: "BOOT_REPORT_" + n)
+    for name in sorted(set(fw) - seen):
+        failures.append(f"boot report: {name} = {fw[name]} is not in the host reference")
+    checked = len(py)
+
+    fw = firmware_defines(FACTORY_RECORD_HEADER, "PP_PART_")
+    py = python_class_constants(DOCKED_HOST, "PartBit")
+    seen = compare_mapped(failures, "part-probe bits", fw, py, lambda n: "PP_PART_" + n)
+    for name in sorted(set(fw) - seen):
+        failures.append(f"part-probe bits: {name} = {fw[name]:#06x} is not in the host reference")
+    return checked + len(py)
+
+
 def main():
     failures, notes = [], []
     checked = check_opcodes(failures, notes)
@@ -361,6 +384,7 @@ def main():
     )
     checked += check_factory_tests(failures, notes)
     checked += check_dock(failures, notes)
+    checked += check_boot_report(failures, notes)
 
     for note in notes:
         print(f"  NOTE {note}")

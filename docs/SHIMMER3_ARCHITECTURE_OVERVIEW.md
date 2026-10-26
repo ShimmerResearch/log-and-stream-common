@@ -370,8 +370,10 @@ run holds its stage for over a minute.
 Separately, `LogAndStream_setBootStage()` latches the HAL millisecond tick
 (`platform_getTick()`) at every stage change and adds the time spent to that
 stage's total. Those totals, whether the radio failure stage was entered, and
-three platform hooks (`platform_getBtBaudAttempts`, `platform_getLseDrive`,
-`platform_isRtcOnLsiFallback`) make up the **boot report** a Shimmer3R returns
+five platform hooks (`platform_getBtBaudAttempts`, `platform_getLseDrive`,
+`platform_isRtcOnLsiFallback`, and the part probe's
+`platform_getBootPartsFound` and `platform_getBootPartsExpected`) make up the
+**boot report** a Shimmer3R returns
 over the dock and Bluetooth
 ([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) Appendix A).
 

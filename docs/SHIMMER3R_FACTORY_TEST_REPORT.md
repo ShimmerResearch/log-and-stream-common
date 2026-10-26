@@ -387,8 +387,19 @@ With no valid record, `state` reads `0xFF` and the fields from `run_seq` to
 
 ### 6.5 The part probe
 
-With the sensing rail on, the run probes the SPI parts whose fitting varies by
-board. `parts_found` and the expected parts share these bits:
+The part probe checks the SPI parts whose fitting varies by board. It runs at
+**every boot**, in the configuration stage, and its result is in the boot
+report ([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) Appendix A,
+Bluetooth `0xB9`), so a station can cross-check the SR number on every unit
+from a plain boot. The boot powers the sensing rail for it, in the same window
+that identifies the pressure sensor, and powers the rail off afterwards. The
+power-profile run probes again in its sensing-rail step and keeps its own
+`parts_found` in the record, for the sampled units. The probe reads ID
+registers only, with bounded SPI timeouts, and reaches no `Error_Handler()`
+path on a part that does not answer.
+
+`parts_found` and the expected parts share these bits, in the boot report and
+in the record:
 
 | Bit | Part | Probe |
 |---:|---|---|
@@ -397,11 +408,13 @@ board. `parts_found` and the expected parts share these bits:
 | 2 | ADS7028 | `SYSTEM_STATUS` at its default (`ads7028_factoryTestChipId()`) |
 | 3 | BMP390 | identified by chip ID at boot |
 | 4 | BMP581 | identified by chip ID at boot |
-| 5 | ADS1292R | `EXG_init()` succeeds; probed only where the SR number says ExG |
+| 5 | ADS1292R | `EXG_init()` succeeds and both chips' `ID` register reads 73h (`EXG_self_test()`); probed only where the SR number says ExG |
 
 A BMP chosen at boot by the SR number, because neither chip answered, is not
 counted as found. The LSM6DSV, LIS2DW12 and LIS2MDL are on every Shimmer3R and
-are not probed; neither is the microphone. The expected parts come from the SR
+are not probed; neither is the microphone. The ADS1292R probe waits the
+driver's 1 s power-on reset, so it lengthens the boot of an ExG unit by about
+1 s; other boards pay about 20 ms. The expected parts come from the SR
 number's presence gates, so a mismatch narrows down a wrong SR number or a
 missing part; it does not prove the SR number right.
 

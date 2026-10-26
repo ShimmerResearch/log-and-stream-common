@@ -30,11 +30,14 @@
  *  18  2  configuration stage, ms
  *  20  1  Bluetooth baud-rate attempts (0 = the first baud rate answered)
  *  21  1  LSE drive level (RCC LSEDRV bits; 0xFF = LSE not running)
+ *  22  2  parts found by the part probe this boot (PP_PART_*)
+ *  24  2  parts the SR number says the board carries (PP_PART_*)
  *
- * Stage times saturate at 65535 ms. */
-#define BOOT_REPORT_LAYOUT_VER        1U
+ * Stage times saturate at 65535 ms. Both part masks read 0 when the platform
+ * has no part probe. Layout 1 was 22 bytes, without the part masks. */
+#define BOOT_REPORT_LAYOUT_VER        2U
 #define BOOT_REPORT_UID_LEN           12U
-#define BOOT_REPORT_LEN               22U
+#define BOOT_REPORT_LEN               26U
 
 #define BOOT_REPORT_FLAG_I2C_SLOW     0x01U /* I2C stage over 1 s */
 #define BOOT_REPORT_FLAG_BT_FAILED    0x02U /* Bluetooth init gave up */
@@ -52,6 +55,8 @@ typedef struct
   uint16_t configMs;
   uint8_t btBaudAttempts;
   uint8_t lseDrive;
+  uint16_t partsFound;
+  uint16_t partsExpected;
 } boot_report_t;
 
 /* Writes BOOT_REPORT_LEN bytes to out and returns that length. */
@@ -179,9 +184,11 @@ typedef enum
   PP_STEP_BLUETOOTH = 22, /* Bluetooth started as after boot */
 } pp_step_id_t;
 
-/* Parts the run probes for (parts_found) or the board should carry (parts
- * expected). The LSM6DSV, LIS2DW12 and LIS2MDL are on every Shimmer3R and
- * are not probed. */
+/* Parts the part probe found (parts_found) or the board should carry (parts
+ * expected), in the boot report and in the power-profile record and
+ * readback. The probe runs at every boot and again in the power-profile run.
+ * The LSM6DSV, LIS2DW12 and LIS2MDL are on every Shimmer3R and are not
+ * probed. */
 #define PP_PART_LIS3MDL  0x0001U
 #define PP_PART_ADXL371  0x0002U
 #define PP_PART_ADS7028  0x0004U

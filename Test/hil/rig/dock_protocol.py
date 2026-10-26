@@ -205,7 +205,13 @@ def production_test_gets(w: Walk) -> None:
     w.got.add("BOOT_REPORT")
     raw = d.boot_report()
     if w.check(len(raw) == dock.BOOT_REPORT_LEN, f"BOOT_REPORT gave {len(raw)} bytes, expected {dock.BOOT_REPORT_LEN}"):
-        w.check(raw[0] == 1, f"BOOT_REPORT layout version {raw[0]}, expected 1")
+        w.check(raw[0] == dock.BOOT_REPORT_LAYOUT_VER,
+                f"BOOT_REPORT layout version {raw[0]}, expected {dock.BOOT_REPORT_LAYOUT_VER}")
+        # Every Shimmer3R expects a pressure sensor, so 0 means the boot ran no
+        # part probe. Whether found matches expected is the station's call, not
+        # the walk's: a bench unit may carry a part its SR number does not list.
+        expected = int.from_bytes(raw[24:26], "little")
+        w.check(expected != 0, "BOOT_REPORT expects no parts - the boot ran no part probe")
 
     w.got.add("BUTTON")
     raw = d.get(COMP_SHIMMER, dock.PROP_BUTTON)

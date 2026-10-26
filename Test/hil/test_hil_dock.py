@@ -63,6 +63,8 @@ class FirmwareModel:
     unknown_code = BAD_CMD          # what an unhandled component or property gets
     clears_rtc_set_by_bt = True     # SET RWC_CFG_TIME clears InfoMem byte 217 bit 7
     honours_cancel = True           # ENTER_BOOTLOADER 0 cancels a pending reboot
+    boot_report_layout = dock.BOOT_REPORT_LAYOUT_VER
+    parts_found = parts_expected = 0x0009   # LIS3MDL + BMP390
 
     def __init__(self, clock: FakeTime, platform: str = "shimmer3r", card=(48, 6, 0)):
         self.clock = clock
@@ -249,7 +251,8 @@ class FirmwareModel:
     def _get_01_0a(self, c, p, n, d):
         if not self.prodtest:
             return self._reply(BAD_CMD)
-        self._fixed(n, 2, c, p, bytes([1]) + bytes(range(12)) + bytes(9))
+        self._fixed(n, 2, c, p, bytes([self.boot_report_layout]) + bytes(range(12)) + bytes(9)
+                    + struct.pack("<HH", self.parts_found, self.parts_expected))
 
     def _get_01_0b(self, c, p, n, d):
         if not self.prodtest:
@@ -397,6 +400,18 @@ class Walks(unittest.TestCase):
         m.pp_state = dock.PP_STATE_ARMED
         _, failures = self.run_prodtest_walk(m)
         self.assertTrue(any("power-profile record is armed" in f for f in failures), failures)
+
+    def test_a_boot_report_in_the_old_layout_is_caught(self):
+        _, failures = self.run_prodtest_walk(self.prodtest_model(boot_report_layout=1))
+        self.assertTrue(any("BOOT_REPORT layout version 1" in f for f in failures), failures)
+
+    def test_a_boot_that_ran_no_part_probe_is_caught(self):
+        _, failures = self.run_prodtest_walk(self.prodtest_model(parts_found=0, parts_expected=0))
+        self.assertTrue(any("ran no part probe" in f for f in failures), failures)
+
+    def test_a_part_mismatch_is_left_to_the_station(self):
+        _, failures = self.run_prodtest_walk(self.prodtest_model(parts_found=0x0008))
+        self.assertEqual(failures, [])
 
     def test_older_firmware_is_not_asked_for_the_production_test_commands(self):
         m = self.model()

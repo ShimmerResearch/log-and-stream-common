@@ -145,6 +145,8 @@ uint8_t LogAndStream_buildBootReport(uint8_t *out)
 
   report.btBaudAttempts = platform_getBtBaudAttempts();
   report.lseDrive = platform_getLseDrive();
+  report.partsFound = platform_getBootPartsFound();
+  report.partsExpected = platform_getBootPartsExpected();
 
   return ShimFactoryRecord_encodeBootReport(&report, out);
 }

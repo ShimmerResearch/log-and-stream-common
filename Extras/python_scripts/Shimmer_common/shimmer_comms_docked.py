@@ -81,6 +81,61 @@ class FACTORY_TEST(Enum):
     POWER_PROFILE = 4  # Shimmer3R, dock only: arms/reads the power-profile record
 
 
+class BootReport:
+    """The Shimmer3R boot report (dock GET MAIN_PROCESSOR/BOOT_REPORT, Bluetooth
+    0xB9 -> 0xB8), laid out by Test/shimmer_factory_record.h."""
+    LAYOUT_VER = 2
+    LEN = 26
+    UID_LEN = 12
+    # flags, byte 13
+    FLAG_I2C_SLOW = 0x01
+    FLAG_BT_FAILED = 0x02
+    FLAG_CONFIG_SLOW = 0x04
+    FLAG_LSE_FALLBACK = 0x08
+    LSE_DRIVE_NONE = 0xFF
+
+
+class PartBit:
+    """The part probe's bits (PP_PART_*): parts_found and parts expected in the
+    boot report, and in the power-profile record and readback."""
+    LIS3MDL = 0x0001
+    ADXL371 = 0x0002
+    ADS7028 = 0x0004
+    BMP390 = 0x0008
+    BMP581 = 0x0010
+    ADS1292R = 0x0020
+
+
+def part_names(mask):
+    """The PartBit names set in mask, in bit order."""
+    bits = sorted((bit, name) for name, bit in vars(PartBit).items() if name.isupper())
+    return [name for bit, name in bits if mask & bit]
+
+
+def parse_boot_report(payload):
+    """Decodes a boot report payload into a dict, or returns None if it is not
+    a layout this reference knows. Layout 1 (22 bytes) has no part masks."""
+    payload = bytes(payload)
+    if len(payload) < 22 or payload[0] not in (1, BootReport.LAYOUT_VER):
+        return None
+    if payload[0] == BootReport.LAYOUT_VER and len(payload) != BootReport.LEN:
+        return None
+    report = {
+        "layout": payload[0],
+        "uid": payload[1:13],
+        "flags": payload[13],
+        "i2c_ms": int.from_bytes(payload[14:16], "little"),
+        "bt_ms": int.from_bytes(payload[16:18], "little"),
+        "config_ms": int.from_bytes(payload[18:20], "little"),
+        "bt_baud_attempts": payload[20],
+        "lse_drive": payload[21],
+    }
+    if payload[0] >= 2:
+        report["parts_found"] = int.from_bytes(payload[22:24], "little")
+        report["parts_expected"] = int.from_bytes(payload[24:26], "little")
+    return report
+
+
 def assemble_tx_packet(uart_cmd=None, uart_component=None, uart_property=None, uart_args=None):
     if uart_args is None:
         packet = [PACKET_HEADER, uart_cmd, 2, uart_component, uart_property]
@@ -176,6 +231,18 @@ class ShimmerUart:
         else:
             self.shimmer_device.parse_hw_fw_ver_bytes(response)
             return True
+
+    def read_boot_report(self):
+        """Shimmer3R only: how the last boot went, as parse_boot_report() decodes
+        it, or False."""
+        tx_buf = assemble_tx_packet(UartPacketCmd.READ, UartComponent.MAIN_PROCESSOR,
+                                    UartProperty.MainProcessor.BOOT_REPORT, None)
+        response = self.send_uart(tx_buf)
+
+        if isinstance(response, int) or not response:
+            return False
+        report = parse_boot_report(response)
+        return report if report is not None else False
 
     def read_bluetooth_ver(self):
         tx_buf = assemble_tx_packet(UartPacketCmd.READ, UartComponent.RADIO_BLUETOOTH,

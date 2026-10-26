@@ -78,6 +78,11 @@ extern "C"
   uint8_t platform_getBtBaudAttempts(void);
   uint8_t platform_getLseDrive(void);
   uint8_t platform_isRtcOnLsiFallback(void);
+  /* Boot report, continued. The parts the part probe found at this boot, and
+   * the parts the SR number says the board carries, as PP_PART_* masks
+   * (Test/shimmer_factory_record.h). The defaults report 0 and 0: no probe. */
+  uint16_t platform_getBootPartsFound(void);
+  uint16_t platform_getBootPartsExpected(void);
   /* Shimmer3R power-profile run (Test/shimmer_factory_record.h). Fills in the
    * schedule this board would run - the one function both the run and the
    * dock readback use - and returns 1, or returns 0 if the platform has no

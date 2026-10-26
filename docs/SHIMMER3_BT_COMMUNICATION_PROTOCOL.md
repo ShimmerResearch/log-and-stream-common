@@ -1069,7 +1069,7 @@ The **Notes** column carries comparison flags, all of which are statements about
 | Opcode | FW name | Kind | Args | Response opcode | Response payload length | Gen | Blocked while sensing | Java name (if different) | SDK name (if different) | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `0xB8` | `BOOT_REPORT_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY, SDK_MISSING |
-| `0xB9` | `GET_BOOT_REPORT_COMMAND` | GET | 0 | `BOOT_REPORT_RESPONSE` | 22 | S3R |  |  |  | FW_ONLY, SDK_MISSING |
+| `0xB9` | `GET_BOOT_REPORT_COMMAND` | GET | 0 | `BOOT_REPORT_RESPONSE` | 26 | S3R |  |  |  | FW_ONLY, SDK_MISSING |
 | `0xBA` | `BUTTON_STATE_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY, SDK_MISSING |
 | `0xBB` | `GET_BUTTON_STATE_COMMAND` | GET | 0 | `BUTTON_STATE_RESPONSE` | 5 | S3R |  |  |  | FW_ONLY, SDK_MISSING |
 | `0xC1` | `SD_LIST_DIR_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
@@ -2841,7 +2841,7 @@ and ran nothing.
 #### `GET_BOOT_REPORT_COMMAND` (0xB9)
 
 - **Request:** `[0xB9]`
-- **Response:** `[ACK][0xB8][22 bytes]`
+- **Response:** `[ACK][0xB8][26 bytes]`
 - **Shimmer3R only, v1.01.024 and later.** Shimmer3 and older firmware ignore
   it (no reply).
 
@@ -2850,8 +2850,10 @@ report ([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) Appendix A):
 layout version, the 12-byte MCU unique ID, a flags byte (I2C stage over 1 s,
 Bluetooth initialisation gave up, configuration stage over 2 s, RTC on the
 LSI), the I2C, Bluetooth and configuration stage times in ms (u16 each,
-saturating), the Bluetooth baud-rate fallbacks and the LSE drive level.
-Built by `Test/shimmer_factory_record.c`, which both transports share.
+saturating), the Bluetooth baud-rate fallbacks, the LSE drive level, and two
+u16 part masks: the optional parts that answered the part probe at this boot
+and the ones the SR number expects. Built by `Test/shimmer_factory_record.c`,
+which both transports share.
 
 #### `GET_BUTTON_STATE_COMMAND` (0xBB)
 

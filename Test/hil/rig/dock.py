@@ -58,7 +58,8 @@ FACTORY_TEST_COUNT_BEFORE_POWER_PROFILE = 4
 # The first Shimmer3R firmware with the production-test commands: boot report,
 # button state, LED_SET and the power-profile record.
 PRODUCTION_TEST_CMDS_SINCE = (1, 1, 24)
-BOOT_REPORT_LEN = 22            # Test/shimmer_factory_record.h
+BOOT_REPORT_LEN = 26            # Test/shimmer_factory_record.h, layout 2
+BOOT_REPORT_LAYOUT_VER = 2      # layout 2 added parts_found and parts expected
 BUTTON_STATE_LEN = 5
 PP_READBACK_HEADER_LEN = 17
 PP_READBACK_MAX_LEN = 128
@@ -251,7 +252,10 @@ class DockLink:
             offset += len(chunk)
 
     def boot_report(self) -> bytes:
-        """Shimmer3R from PRODUCTION_TEST_CMDS_SINCE: how the last boot went (22 bytes)."""
+        """Shimmer3R from PRODUCTION_TEST_CMDS_SINCE: how the last boot went
+        (BOOT_REPORT_LEN bytes). Bytes 22-23 are the parts the part probe found
+        at that boot and 24-25 the parts the SR number expects (PP_PART_* bits,
+        Extras' PartBit)."""
         return self.get(COMP_SHIMMER, PROP_BOOT_REPORT)
 
     def button_state(self) -> tuple[int, int, int]:

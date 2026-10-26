@@ -39,7 +39,7 @@ static void test_boot_report_layout(void)
   uint8_t out[BOOT_REPORT_LEN + 4];
   unsigned i;
   static const uint8_t want[BOOT_REPORT_LEN] = {
-    0x01, /* layout */
+    0x02, /* layout */
     0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, /* UID */
     0x0B,       /* flags */
     0xE9, 0x03, /* I2C 1001 ms */
@@ -47,9 +47,11 @@ static void test_boot_report_layout(void)
     0xFF, 0xFF, /* config, saturated */
     0x02,       /* baud attempts */
     0x02,       /* LSE drive */
+    0x1B, 0x00, /* parts found: LIS3MDL, ADXL371, BMP390, BMP581 */
+    0x2D, 0x80, /* parts expected: LIS3MDL, ADS7028, BMP390, ADS1292R, bit 15 */
   };
 
-  testCase("boot report: 22 bytes, little-endian, in the documented order");
+  testCase("boot report: 26 bytes, layout 2, little-endian, documented order");
   for (i = 0; i < BOOT_REPORT_UID_LEN; i++)
   {
     r.uid[i] = (uint8_t) (0x10U + i);
@@ -60,12 +62,16 @@ static void test_boot_report_layout(void)
   r.configMs = ShimFactoryRecord_saturateMs(70000UL);
   r.btBaudAttempts = 2U;
   r.lseDrive = 2U;
+  r.partsFound = PP_PART_LIS3MDL | PP_PART_ADXL371 | PP_PART_BMP390 | PP_PART_BMP581;
+  r.partsExpected = (uint16_t) (PP_PART_LIS3MDL | PP_PART_ADS7028
+      | PP_PART_BMP390 | PP_PART_ADS1292R | 0x8000U);
 
   memset(out, 0xA5, sizeof(out));
   expectU("length", ShimFactoryRecord_encodeBootReport(&r, out), BOOT_REPORT_LEN);
   expectBytes("bytes", out, want, BOOT_REPORT_LEN);
   expectX("nothing written past the end", out[BOOT_REPORT_LEN], 0xA5);
   expectU("fits a dock reply", BOOT_REPORT_LEN <= 128U, 1);
+  expectU("layout version", BOOT_REPORT_LAYOUT_VER, 2);
 }
 
 static void test_flag_values(void)

@@ -351,7 +351,7 @@ counts component + property + value. Multi-byte integers are little-endian.
 | `DAUGHTER_CARD` `0x03` | `CARD_ID` `0x02` | `length` u8, `offset` u8 — `length ≤ 16`, `offset ≤ 15`, sum `≤ 16` | `length` bytes of the 16-byte daughter-card ID |
 | `DAUGHTER_CARD` | `CARD_MEM` `0x03` | `length` u8, `offset` u16 — `length ≤ 128`, `offset ≤ 2031`, sum `≤ 2032` | `length` bytes of EEPROM read from `offset + 16` |
 | `BT` `0x0A` | `VER` `0x03` | none (`LEN` 2) | the module's version string, as many bytes as it has (`LEN` = 2 + strlen) |
-| `SHIMMER` | `BOOT_REPORT` `0x0A` (Shimmer3R v1.01.024+) | none (`LEN` 2) | 22 bytes, laid out below (`LEN` 24) |
+| `SHIMMER` | `BOOT_REPORT` `0x0A` (Shimmer3R v1.01.024+) | none (`LEN` 2) | 26 bytes, laid out below (`LEN` 28) |
 | `SHIMMER` | `BUTTON` `0x0B` (Shimmer3R v1.01.024+) | none (`LEN` 2) | 5 bytes: level now u8 (1 = pressed), presses since boot u16 (wraps), length of the last completed press in ms u16 (saturates at 65535) (`LEN` 7) |
 | `TEST` `0x0B` | `POWER_PROFILE` `0x04` (Shimmer3R v1.01.024+) | none (`LEN` 2) | 17 + 3n bytes, at most 128: the readback of [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §6.4 |
 
@@ -360,7 +360,7 @@ ran:
 
 | Offset | Size | Field |
 |---:|---:|---|
-| 0 | 1 | layout version, `1` |
+| 0 | 1 | layout version, `2` |
 | 1 | 12 | MCU unique ID, the same 12 bytes in the same order as the Bluetooth `GET_UNIQUE_SERIAL_COMMAND` |
 | 13 | 1 | flags: bit 0 I2C stage over 1 s; bit 1 Bluetooth initialisation gave up after every baud rate; bit 2 configuration stage over 2 s; bit 3 RTC fell back to the LSI |
 | 14 | 2 | I2C stage, ms |
@@ -368,9 +368,20 @@ ran:
 | 18 | 2 | configuration stage, ms |
 | 20 | 1 | Bluetooth baud-rate fallbacks: 0 when the first baud rate answered |
 | 21 | 1 | LSE drive level, the RCC `LSEDRV` bits; `0xFF` when the RTC is on the LSI |
+| 22 | 2 | `parts_found`: the optional parts that answered the part probe at this boot |
+| 24 | 2 | parts expected: the optional parts the SR number says the board carries |
 
 Stage times are measured from the HAL millisecond tick between the boot-stage
 changes, and saturate at 65535.
+
+The two part masks use the bits of the power-profile record
+([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §6.5):
+bit 0 LIS3MDL, 1 ADXL371, 2 ADS7028, 3 BMP390, 4 BMP581, 5 ADS1292R. The probe
+runs at every boot, so a host can cross-check the SR number on a plain boot,
+with no power-profile run. A part in the expected mask but not in
+`parts_found` is missing or not answering; a part found but not expected
+points at a wrong SR number. Both masks read 0 on a platform with no part
+probe. Layout `1`, 22 bytes without the part masks, was never released.
 
 \* **Do not implement this one.** It is listed because the handler is in the
 source, but `EN_CALIB_DUMP_RSP` is `0` in `shimmer_dock_usart.c:30`, so it is

@@ -52,6 +52,8 @@ uint8_t ShimFactoryRecord_encodeBootReport(const boot_report_t *report, uint8_t 
   putU16(&out[18], report->configMs);
   out[20] = report->btBaudAttempts;
   out[21] = report->lseDrive;
+  putU16(&out[22], report->partsFound);
+  putU16(&out[24], report->partsExpected);
   return BOOT_REPORT_LEN;
 }
 
