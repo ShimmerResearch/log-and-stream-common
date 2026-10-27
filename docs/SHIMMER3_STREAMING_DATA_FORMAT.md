@@ -575,7 +575,7 @@ the gyroscope on every board and the magnetometer on first-generation boards:
 | | ICM-20948 (third): from `GYRO_XOUT_H` | **Big-endian** | | |
 | Wide-range accel `0x04`-`0x06` | LSM303DLHC (first), from `OUT_X_L_A` | Little-endian | LIS2DW12, from `OUT_X_L` | Little-endian |
 | | LSM303AHTR (second, third), from `OUT_X_L_A` | Little-endian | | |
-| | ICM-20948 standing in for the LSM303 (third, no LSM fitted): X and Z byte-swapped to little-endian by the packer | Little-endian, **Y axis garbled** (below) | | |
+| | ICM-20948 standing in for the LSM303 (third, no LSM fitted): X and Z byte-swapped to little-endian by the packer | Little-endian, **Y axis offset by +255 counts** (below) | | |
 | Magnetometer `0x07`-`0x09` | LSM303DLHC (first), from `OUT_X_H_M` | **Big-endian**, and axis order X, Z, Y (§4.1) | LIS2MDL, from `OUTX_L_REG` | Little-endian |
 | | LSM303AHTR (second, third), from `OUTX_L_REG_M` | Little-endian | | |
 | | ICM-20948's AK09916 (third, no LSM fitted), from `HXL` | Little-endian | | |
@@ -598,17 +598,45 @@ present on Shimmer3, where these IDs are the 9-axis chip's own accelerometer,
 a plain big-endian `int16`.
 
 > **On Shimmer3 boards where the ICM-20948 stands in for the LSM303, the
-> wide-range accelerometer's Y axis is garbled.** The packer inverts Y's sign
-> to match the LSM303's placement, but it assembles the value from the chip's
-> big-endian bytes as if they were little-endian, negates that, and writes the
-> result high byte first (`shimmer3-firmware` `LogAndStream_Shimmer3/i2c.c`,
-> `I2C_pollSensors`, at the revision pinned above). X and Z are correct. If
-> `v` is the Y word read little-endian and `swap()` exchanges its two bytes,
-> the intended value is `-swap(-swap(v))`, with the negations in 16-bit
-> two's complement. The boards affected are those
-> `ShimBrd_isWrAccelInUseIcm20948()` selects, the "Third (no LSM)" rows of
-> [SHIMMER3_BOARD_REVISIONS.md](SHIMMER3_BOARD_REVISIONS.md). This is a
-> firmware defect, recorded here so a host is not misled while it stands.
+> wide-range accelerometer's Y axis carries a +255-count offset.** The packer
+> inverts Y's sign to match the LSM303's placement. But it assembles the value
+> from the chip's big-endian bytes as if they were little-endian, negates that,
+> and writes the result high byte first (`shimmer3-firmware`
+> `LogAndStream_Shimmer3/i2c.c`, `I2C_pollSensors`, at the revision pinned
+> above). X and Z are correct.
+>
+> What a host reads is the intended value plus 255, with three exceptions:
+>
+> - **Intended value exactly 0:** the host reads 0.
+> - **Intended value from -255 to -1:** the host reads it plus 256.
+> - **Intended value above 32512:** the reading wraps to negative full scale.
+>
+> In uncalibrated data this shows as:
+>
+> - a Y offset of 255 counts, about 0.016 g at ±2 g and 0.125 g at ±16 g;
+> - one-sample dips of 255 counts while Y sits near 0 g;
+> - a wrap close to positive full scale.
+>
+> **Calibration:** a calibration made on affected firmware absorbs the offset
+> into its Y offset term. Such a unit needs its wide-range accelerometer
+> recalibrated once it runs fixed firmware.
+>
+> **Recovering the intended value exactly:** let `v` be the Y word read
+> little-endian, and let `swap()` exchange its two bytes. The intended value is
+> `-swap(-swap(v))`, with the negations in 16-bit two's complement.
+>
+> **Boards affected:** those `ShimBrd_isWrAccelInUseIcm20948()` selects, the
+> "Third (no LSM)" rows of
+> [SHIMMER3_BOARD_REVISIONS.md](SHIMMER3_BOARD_REVISIONS.md).
+>
+> **Checking a unit:** on these boards the alternate accelerometer
+> (`0x14`-`0x16`) carries the same ICM-20948 reading, as raw big-endian words.
+> Wide-range X then equals alternate X in every sample. Wide-range Y plus
+> alternate Y is 255 on affected firmware, and 0 once fixed (apart from the
+> exceptions above).
+>
+> **Fix:** shimmer3-firmware PR #129 (DEV-1298). This note will name the first
+> release that carries it.
 
 > **On Shimmer3R the magnetometer repeats its last reading when it has no new
 > one.** The LIS2MDL converts at up to 100 Hz, and a packet that finds no fresh
