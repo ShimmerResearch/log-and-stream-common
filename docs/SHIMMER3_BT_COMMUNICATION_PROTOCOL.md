@@ -269,7 +269,7 @@ other version's values:
 | Update | Field | Value carried over | Effect |
 |---|---|---|---|
 | to v1.4.18.18 (from v1.4.16.16 or earlier) | SPP MTU | 0 | One byte per RFCOMM frame on classic: under 1 KB/s |
-| to v1.4.18.18 (from v1.4.16.16 or earlier) | Configuration offset `0x04E`-`0x051` | `00000000` (v1.4.18.18 default `80808080`) | On the Infineon test builds: after any classic SPP connection, the module stops passing data from the sensor to a BLE connection until it restarts. Commands from the BLE host still arrive, so a BLE host sees a sensor that connects but never answers |
+| to v1.4.18.18 (from v1.4.16.16 or earlier) | Configuration offset `0x04E`-`0x051` | `00000000` (v1.4.18.18 default `80808080`) | On v1.4.18.18, the public release and the Infineon test builds alike: after any classic SPP connection, the module stops passing data from the sensor to a BLE connection until it restarts. Commands from the BLE host still arrive, so a BLE host sees a sensor that connects but never answers |
 | back to v1.4.16.16 (from v1.4.18.18) | SPP MTU | non-zero (v1.4.18.18 default) | Classic about a third slower: about 82 KB/s instead of about 128 KB/s |
 
 At power-up, while the module is still in its text mode, Shimmer3R firmware
