@@ -261,21 +261,36 @@ throughput. One reason v1.4.18.x is not on `SPP_SEND`: on those modules,
 Shimmer3R firmware does not use `SPP_SEND` on v1.4.18.x, so a host does not see
 this.
 
-**SPP MTU repair after a module update.** v1.4.18.18 checks a stored SPP MTU
-before each classic send. A module updated over the air from v1.4.16.16 or
-earlier keeps its old configuration, where that field is 0, and then sends one
-byte per RFCOMM frame (under 1 KB/s). At power-up, Shimmer3R firmware reads the
-field on the v1.4.18.18 builds it recognises by boot banner (the public release
-and two Infineon test builds) and, only if it is 0, writes the value Infineon
-supplied and stores it in module flash. This happens on the first boot after the update
-and never again. The module's Bluetooth address and bonds are unchanged, so no
-re-pairing is needed.
+**Module configuration repairs after a module update.** Updating the IF820 over
+the air keeps its stored configuration, in either direction. v1.4.18.18 changed
+two defaults in it, so a module that changes version this way runs with the
+other version's values:
+
+| Update | Field | Value carried over | Effect |
+|---|---|---|---|
+| to v1.4.18.18 (from v1.4.16.16 or earlier) | SPP MTU | 0 | One byte per RFCOMM frame on classic: under 1 KB/s |
+| to v1.4.18.18 (from v1.4.16.16 or earlier) | Configuration offset `0x04E`-`0x051` | `00000000` (v1.4.18.18 default `80808080`) | On the Infineon test builds: after any classic SPP connection, the module stops passing data from the sensor to a BLE connection until it restarts. Commands from the BLE host still arrive, so a BLE host sees a sensor that connects but never answers |
+| back to v1.4.16.16 (from v1.4.18.18) | SPP MTU | non-zero (v1.4.18.18 default) | Classic about a third slower: about 82 KB/s instead of about 128 KB/s |
+
+At power-up, while the module is still in its text mode, Shimmer3R firmware
+reads each of these fields on the module builds it recognises by boot banner.
+If the field holds the carried-over value, the firmware writes the running
+build's own default and stores it in module flash. The builds are the
+v1.4.18.18 public release and two Infineon test builds for the first two rows,
+and v1.4.16.16 for the third. The field addresses are internal to each module
+build, so other builds are left alone. A repair happens on the first boot after
+the update and never again. The module's Bluetooth address and bonds are
+unchanged, so no re-pairing is needed. Production v1.4.16.16 modules have an
+SPP MTU of 0 and are not touched.
 
 > `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`: `BT_selectDataPath()`
-> for the path, and `btSppMtuRepairStep()` with the `SPP_MTU_*` boot stages for
-> the repair. Earlier Shimmer3R firmware has no MTU repair and puts every
-> v1.4.17+ module, v1.4.18.x included, on `SPP_SEND`. **Not in the pinned
-> `shimmer3r-firmware` revision**: see
+> for the path, and `btCfgRepairStep()` with the `btCfgRepairs[]` table and the
+> `SPP_MTU_*`, `CFG_04E_*` and `CFG_MTU_1616_*` boot stages for the repairs. The
+> SPP MTU address and value on v1.4.18.18 are Infineon's; the `0x04E` address on
+> v1.4.18.18 and the v1.4.16.16 address were found on an IF820 development kit
+> and await Infineon's confirmation. Earlier Shimmer3R firmware has no repairs
+> and puts every v1.4.17+ module, v1.4.18.x included, on `SPP_SEND`. **Not in
+> the pinned `shimmer3r-firmware` revision**: see
 > [Still unverified](#still-unverified--not-found-in-code).
 
 **Link role on classic connections.** When a host opens a classic connection,
@@ -3693,11 +3708,11 @@ them.
 
 **Transport and framing**
 
-- **The Shimmer3R classic data path, SPP MTU repair and link-role flags
-  ([§2.1](#21-classic-bluetooth-spp)) are not yet in a pinned revision.** They
-  describe `shimmer3r-firmware` changes that were in review when written:
-  `BT_selectDataPath()`, `btSppMtuRepairStep()` and the `SPP_MTU_*` boot stages,
-  and `SBTP` flags `0x03` on v1.4.17+. None of them is present at `a8f105e5`. The
+- **The Shimmer3R classic data path, module configuration repairs and link-role
+  flags ([§2.1](#21-classic-bluetooth-spp)) are not yet in a pinned revision.**
+  They describe `shimmer3r-firmware` changes that were in review when written:
+  `BT_selectDataPath()`, `btCfgRepairStep()` and its boot stages, and `SBTP`
+  flags `0x03` on v1.4.17+. None of them is present at `a8f105e5`. The
   behaviour was bench-tested on IF820 v1.4.16.16, the v1.4.18.18 release and two
   Infineon test builds of it. **To do:** once the changes are on
   `shimmer3r-firmware`'s main branch, move the **Verified against** pin to that
