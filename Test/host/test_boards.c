@@ -274,31 +274,87 @@ static void test_bmp581_gate(void)
  * The ".1" minors dropped the LIS3MDL alt-magnetometer and the ADXL371 high-g
  * accel - except on the IMU board, which kept the ADXL371. Both gates list
  * exact revisions rather than ranges, so each entry is its own case.
+ *
+ * Every Shimmer3R board in docs/SHIMMER3_BOARD_REVISIONS.md is below, with
+ * what that document says is placed. The production base boards SR47-8-0 and
+ * SR48-8-0, and the SR48-7-2 BMP581 development build, carry both parts: only
+ * their ".1" and later minors do not.
  */
+typedef struct
+{
+  uint8_t srId;
+  uint8_t major;
+  uint8_t minor;
+  uint8_t lis3mdl;
+  uint8_t adxl371;
+} AltPartsCase;
+
 static void test_lis3mdl_and_adxl371_gates(void)
 {
+  static const AltPartsCase cases[] = {
+    /* IMU, SR31: the ADXL371 stays on every minor */
+    { SHIMMER3_IMU, 11, 0, 1, 1 },
+    { SHIMMER3_IMU, 11, 1, 0, 1 },
+    { SHIMMER3_IMU, 11, 2, 0, 1 },
+    { SHIMMER3_IMU, 11, 3, 0, 1 },
+
+    /* ExG, SR47 */
+    { EXP_BRD_EXG_UNIFIED, 7, 0, 1, 1 },
+    { EXP_BRD_EXG_UNIFIED, 7, 1, 1, 1 },
+    { EXP_BRD_EXG_UNIFIED, 8, 0, 1, 1 },
+    { EXP_BRD_EXG_UNIFIED, 8, 1, 0, 0 },
+    { EXP_BRD_EXG_UNIFIED, 8, 2, 0, 0 },
+    { EXP_BRD_EXG_UNIFIED, 8, 3, 0, 0 },
+
+    /* GSR+, SR48 */
+    { EXP_BRD_GSR_UNIFIED, 6, 0, 1, 1 },
+    { EXP_BRD_GSR_UNIFIED, 7, 0, 1, 1 },
+    { EXP_BRD_GSR_UNIFIED, 7, 1, 1, 1 },
+    { EXP_BRD_GSR_UNIFIED, 7, 2, 1, 1 },
+    { EXP_BRD_GSR_UNIFIED, 8, 0, 1, 1 },
+    { EXP_BRD_GSR_UNIFIED, 8, 1, 0, 0 },
+    { EXP_BRD_GSR_UNIFIED, 8, 2, 0, 0 },
+    { EXP_BRD_GSR_UNIFIED, 8, 3, 0, 0 },
+
+    /* Bridge Amplifier, SR49 */
+    { EXP_BRD_BR_AMP_UNIFIED, 4, 0, 1, 1 },
+    { EXP_BRD_BR_AMP_UNIFIED, 4, 1, 0, 0 },
+    { EXP_BRD_BR_AMP_UNIFIED, 4, 2, 0, 0 },
+    { EXP_BRD_BR_AMP_UNIFIED, 4, 3, 0, 0 },
+
+    /* Proto3 Deluxe, SR38 */
+    { EXP_BRD_PROTO3_DELUXE, 4, 0, 1, 1 },
+    { EXP_BRD_PROTO3_DELUXE, 4, 1, 0, 0 },
+    { EXP_BRD_PROTO3_DELUXE, 4, 2, 0, 0 },
+    { EXP_BRD_PROTO3_DELUXE, 4, 3, 0, 0 },
+  };
+  unsigned i;
+
   testCase("test_lis3mdl_and_adxl371_gates");
   hostStub_reset();
 
-  /* LIS3MDL: named revisions only. */
-  setBoard(HW_ID_SHIMMER3R, SHIMMER3_IMU, 11, 0);
-  expectTrue("SR31-11-0 has the LIS3MDL", ShimBrd_isLis3mdlPresent());
-  setBoard(HW_ID_SHIMMER3R, SHIMMER3_IMU, 11, 1);
-  expectFalse("SR31-11-1 dropped it", ShimBrd_isLis3mdlPresent());
-  setBoard(HW_ID_SHIMMER3R, EXP_BRD_GSR_UNIFIED, 7, 1);
-  expectTrue("SR48-7-1 has it", ShimBrd_isLis3mdlPresent());
-  setBoard(HW_ID_SHIMMER3R, EXP_BRD_GSR_UNIFIED, 8, 0);
-  expectFalse("SR48-8-0 does not", ShimBrd_isLis3mdlPresent());
-  setBoard(HW_ID_SHIMMER3, EXP_BRD_GSR_UNIFIED, 7, 1);
-  expectFalse("and never on a Shimmer3 host", ShimBrd_isLis3mdlPresent());
+  for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+  {
+    char what[80];
+    setBoard(HW_ID_SHIMMER3R, cases[i].srId, cases[i].major, cases[i].minor);
+    snprintf(what, sizeof(what), "%s LIS3MDL",
+        srName(cases[i].srId, cases[i].major, cases[i].minor));
+    expectU(what, ShimBrd_isLis3mdlPresent() ? 1 : 0, cases[i].lis3mdl);
+    snprintf(what, sizeof(what), "%s ADXL371",
+        srName(cases[i].srId, cases[i].major, cases[i].minor));
+    expectU(what, ShimBrd_isAdxl371Present() ? 1 : 0, cases[i].adxl371);
+  }
 
-  /* ADXL371: the IMU board is the exception that keeps it at .1. */
-  setBoard(HW_ID_SHIMMER3R, SHIMMER3_IMU, 11, 0);
-  expectTrue("SR31-11-0 has the ADXL371", ShimBrd_isAdxl371Present());
-  setBoard(HW_ID_SHIMMER3R, SHIMMER3_IMU, 11, 1);
-  expectTrue("SR31-11-1 keeps the ADXL371 - the IMU exception", ShimBrd_isAdxl371Present());
-  setBoard(HW_ID_SHIMMER3R, EXP_BRD_GSR_UNIFIED, 8, 0);
-  expectFalse("SR48-8-0 dropped it", ShimBrd_isAdxl371Present());
+  /* Both gates are Shimmer3R-only. */
+  setBoard(HW_ID_SHIMMER3, EXP_BRD_GSR_UNIFIED, 7, 1);
+  expectFalse("no LIS3MDL on a Shimmer3 host", ShimBrd_isLis3mdlPresent());
+  setBoard(HW_ID_SHIMMER3, EXP_BRD_GSR_UNIFIED, 8, 0);
+  expectFalse("no ADXL371 on a Shimmer3 host", ShimBrd_isAdxl371Present());
+
+  /* And neither on an unprogrammed card. */
+  setBoard(HW_ID_SHIMMER3R, 0xFF, 0xFF, 0xFF);
+  expectFalse("an unprogrammed card has no LIS3MDL", ShimBrd_isLis3mdlPresent());
+  expectFalse("an unprogrammed card has no ADXL371", ShimBrd_isAdxl371Present());
 }
 
 /* SR48-6-0 is the earliest Shimmer3R proto and is special in three places. */
