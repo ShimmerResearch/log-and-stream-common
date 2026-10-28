@@ -7,9 +7,18 @@ and MSC (the SD card). Both disappear while it is sensing and come back when it
 stops; the MSC side only exists while USB power is present and the card is
 assigned to USB (log_and_stream_common.c, LogAndStream_assignSdToUsb).
 
-The disk lookup uses PowerShell's Get-Disk (storage cmdlets, not WMI
-Win32_SerialPort, which pages every paired Bluetooth device and slows classic
-links for most of a minute).
+The disk lookup asks PowerShell's Get-Disk (the Storage Management provider)
+first, and the Win32_DiskDrive -> Win32_DiskPartition -> Win32_LogicalDisk
+association when Get-Disk does not list the unit. Get-Disk has failed two ways
+on a bench laptop while Win32_DiskDrive listed every unit:
+- It listed no disks at all, not even the system disk, for minutes at a time.
+  Each time, the provider's host service had started with "Provider: MISpace"
+  failing to load (StorageManagement/Operational event 1000), and it recovered
+  at the service's next clean start.
+- A unit back from a long undocked log was listed 1-2.5 min after Win32 listed
+  it, while the other units were listed throughout.
+Neither query touches WMI Win32_SerialPort, which pages every paired Bluetooth
+device and slows classic links for most of a minute.
 """
 
 from __future__ import annotations
@@ -32,14 +41,25 @@ def cdc_port(usb_serial: str) -> str | None:
     return None
 
 
-def usb_disks() -> list[dict]:
-    """[{number, name, serial, letters}] for every USB-attached disk."""
-    ps = ("Get-Disk | Where-Object BusType -eq 'USB' | ForEach-Object { "
-          "$l = @($_ | Get-Partition -ErrorAction SilentlyContinue | "
-          "Get-Volume -ErrorAction SilentlyContinue | Where-Object DriveLetter | "
-          "ForEach-Object { [string]$_.DriveLetter }); "
-          "[pscustomobject]@{number=$_.Number; name=$_.FriendlyName; "
-          "serial=([string]$_.SerialNumber).Trim(); letters=$l} } | ConvertTo-Json -Compress")
+GET_DISK = ("Get-Disk | Where-Object BusType -eq 'USB' | ForEach-Object { "
+            "$l = @($_ | Get-Partition -ErrorAction SilentlyContinue | "
+            "Get-Volume -ErrorAction SilentlyContinue | Where-Object DriveLetter | "
+            "ForEach-Object { [string]$_.DriveLetter }); "
+            "[pscustomobject]@{number=$_.Number; name=$_.FriendlyName; "
+            "serial=([string]$_.SerialNumber).Trim(); letters=$l} } | ConvertTo-Json -Compress")
+
+# The same shape from the Win32 classes, which answer when Get-Disk does not
+# (module doc). name is the Model, which ends in " USB Device".
+WIN32_DISKS = ("Get-CimInstance Win32_DiskDrive | Where-Object InterfaceType -eq 'USB' | ForEach-Object { "
+               "$d = $_; $l = @(Get-CimAssociatedInstance -InputObject $d -ResultClassName Win32_DiskPartition | "
+               "ForEach-Object { (Get-CimAssociatedInstance -InputObject $_ "
+               "-ResultClassName Win32_LogicalDisk).DeviceID } | "
+               "Where-Object { $_ } | ForEach-Object { $_.TrimEnd(':') }); "
+               "[pscustomobject]@{number=$d.Index; name=$d.Model; "
+               "serial=([string]$d.SerialNumber).Trim(); letters=$l} } | ConvertTo-Json -Compress")
+
+
+def _disks(ps: str) -> list[dict]:
     r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
                        capture_output=True, text=True, encoding="utf-8", timeout=60)
     out = r.stdout.strip()
@@ -49,12 +69,25 @@ def usb_disks() -> list[dict]:
     return data if isinstance(data, list) else [data]
 
 
-def drive(usb_serial: str) -> Path | None:
-    """The root of the unit's SD card as seen over USB, e.g. Path('F:/')."""
-    for d in usb_disks():
+def _root(disks: list[dict], usb_serial: str) -> Path | None:
+    for d in disks:
         if d["serial"].upper() == usb_serial.upper() and d.get("letters"):
             return Path(f"{d['letters'][0]}:/")
     return None
+
+
+def usb_disks() -> list[dict]:
+    """[{number, name, serial, letters}] for every USB-attached disk: Get-Disk's,
+    or Win32_DiskDrive's when Get-Disk lists none."""
+    return _disks(GET_DISK) or _disks(WIN32_DISKS)
+
+
+def drive(usb_serial: str) -> Path | None:
+    """The root of the unit's SD card as seen over USB, e.g. Path('F:/').
+    Win32_DiskDrive is asked whenever Get-Disk does not give this unit a
+    letter, even when Get-Disk lists other disks: its lag after a long log
+    is on the one disk (module doc)."""
+    return _root(_disks(GET_DISK), usb_serial) or _root(_disks(WIN32_DISKS), usb_serial)
 
 
 def dfu_devices() -> list[str]:
