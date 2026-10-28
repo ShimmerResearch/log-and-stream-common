@@ -8,6 +8,8 @@ port.
 """
 
 import asyncio
+import json
+import subprocess
 import sys
 import threading
 import time
@@ -34,7 +36,7 @@ except ImportError:
     _serial.SerialException = type("SerialException", (OSError,), {})
     sys.modules.update({"serial": _serial, "serial.tools": _tools, "serial.tools.list_ports": _lp})
 
-from rig import ble, bt, config, dock, flash, power, sdfile, throughput  # noqa: E402
+from rig import ble, bt, config, dock, flash, power, s3r_usb, sdfile, throughput  # noqa: E402
 import run_rc  # noqa: E402
 
 
@@ -221,6 +223,54 @@ class SessionDirs(unittest.TestCase):
             (Path(d2) / "data" / "exp" / "default-0002").mkdir()
             new = sdfile.session_dirs(Path(d2)) - sdfile.session_dirs(Path(d1))
         self.assertEqual(new, {Path("data/exp/default-0002")})
+
+
+class DriveLookup(unittest.TestCase):
+    """Get-Disk first, Win32_DiskDrive when Get-Disk does not list the unit.
+    On the bench laptop Get-Disk has listed no disks at all for minutes, and
+    listed a unit back from a long log minutes late, while Win32 listed both."""
+
+    UNIT = {"number": 7, "name": "Shimmer Shimmer 10E0 USB Device", "serial": "205036654236", "letters": ["I"]}
+    OTHER = {"number": 5, "name": "Shimmer Shimmer 15BC", "serial": "203C33795842", "letters": ["H"]}
+
+    @contextmanager
+    def powershell(self, get_disk, win32):
+        """subprocess.run answering each query with what PowerShell prints:
+        nothing for no disks, an object for one, a list for more."""
+        asked = []
+
+        def run(cmd, **kw):
+            which = {s3r_usb.GET_DISK: "get_disk", s3r_usb.WIN32_DISKS: "win32"}[cmd[-1]]
+            asked.append(which)
+            disks = get_disk if which == "get_disk" else win32
+            out = json.dumps(disks[0] if len(disks) == 1 else disks) if disks else ""
+            return subprocess.CompletedProcess(cmd, 0, stdout=out + "\r\n", stderr="")
+        with mock.patch.object(s3r_usb.subprocess, "run", run):
+            yield asked
+
+    def test_get_disk_empty_gives_the_drive_from_win32(self):
+        with self.powershell(get_disk=[], win32=[self.UNIT]):
+            self.assertEqual(s3r_usb.drive("205036654236"), Path("I:/"))
+            self.assertEqual(s3r_usb.usb_disks(), [self.UNIT])
+
+    def test_get_disk_missing_only_this_unit_asks_win32(self):
+        with self.powershell(get_disk=[self.OTHER], win32=[self.OTHER, self.UNIT]) as asked:
+            self.assertEqual(s3r_usb.drive("205036654236"), Path("I:/"))
+        self.assertEqual(asked, ["get_disk", "win32"])
+
+    def test_get_disk_listing_the_unit_without_a_letter_asks_win32(self):
+        with self.powershell(get_disk=[dict(self.UNIT, letters=[])], win32=[self.UNIT]):
+            self.assertEqual(s3r_usb.drive("205036654236"), Path("I:/"))
+
+    def test_win32_is_not_asked_when_get_disk_has_the_unit(self):
+        with self.powershell(get_disk=[self.OTHER, self.UNIT], win32=[]) as asked:
+            self.assertEqual(s3r_usb.drive("205036654236"), Path("I:/"))
+            self.assertEqual(s3r_usb.usb_disks(), [self.OTHER, self.UNIT])
+        self.assertEqual(asked, ["get_disk", "get_disk"])
+
+    def test_no_drive_when_neither_lists_the_unit(self):
+        with self.powershell(get_disk=[self.OTHER], win32=[self.OTHER]):
+            self.assertIsNone(s3r_usb.drive("205036654236"))
 
 
 class FakeHub:
