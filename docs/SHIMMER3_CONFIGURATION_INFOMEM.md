@@ -845,6 +845,13 @@ Two limits on relying on it:
 Hosts should still derive rather than depend on the correction, so that a device
 running firmware without it is not left in the bad state.
 
+> **Shimmer3 has no such correction.** The ODR rules in
+> `ShimConfig_checkAndCorrectConfig` sit inside `#if defined(SHIMMER3R)`, so a
+> Shimmer3 runs its MPU9x50/ICM-20948 gyro, its LSM303 wide-range accel and its
+> LSM303 magnetometer at whatever ODR is stored. On a Shimmer3, keeping the rule
+> above is entirely the host's job. The HIL release tier derives ODRs this way
+> (`Test/hil/rig/s3_config.py`, TEST_PROCEDURE §10.4).
+
 `ShimSdSync_checkSyncCenterName` also runs here and may adjust the sync
 configuration.
 

@@ -130,6 +130,15 @@ def candidate(pytestconfig):
 
 
 @pytest.fixture(scope="session")
+def base6(rig):
+    """The Base6 holding the Shimmer3s, opened once for every tier that uses it:
+    its slot mux is one serial port, which a second opener would be refused."""
+    from rig.base6 import Base6
+    with Base6(rig.base6_serial) as b:
+        yield b
+
+
+@pytest.fixture(scope="session")
 def power(rig, pytestconfig):
     if pytestconfig.getoption("--manual-power") or "hub" not in rig.capabilities():
         p = ManualPower()

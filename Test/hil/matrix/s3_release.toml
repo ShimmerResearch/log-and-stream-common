@@ -1,0 +1,199 @@
+# Shimmer3 release matrix. One [[row]] per configuration; each is a report item
+# release.<id>, run on every Shimmer3 in the Base6: one unit per radio firmware
+# that shipped (TEST_PROCEDURE §5.1). Stream rows only: a docked Shimmer3 gives
+# its SD card to the dock and will not log, and a Base6 cannot undock one slot,
+# so logging stays a manual sign-off item.
+#
+# Covers every pair of (rate, configure), (set, configure) and (configure, CRC),
+# and every range code with its sensor enabled. Not every (rate, set) pair: the
+# heavy sets would outrun the slowest radio at the top rates (below).
+#
+#   configure  infomem  = the whole 384-byte InfoMem over Bluetooth, as Consensys
+#                         writes it (SET_INFOMEM)
+#              commands = the individual commands, as older hosts and pyshimmer
+#                         do: SET_SENSORS, SET_SAMPLING_RATE, the range commands
+#                         and the ODR commands (BT_COMMUNICATION_PROTOCOL §7.8)
+#   crc        Bluetooth CRC mode 0/1/2
+#   ranges     configuration codes (INFOMEM §2, §4), Shimmer3 meanings:
+#              gyro 0-3 = ±250/500/1000/2000 dps (MPU9x50 and ICM-20948);
+#              alt_accel 0-3 = ±2/4/8/16 g (the 9-axis chip's accel);
+#              wr_accel 0-3 = ±2/4/8/16 g on an LSM303DLHC, but ±2/16/4/8 g on an
+#              LSM303AHTR and on the ICM-20948 standing in for it - the codes
+#              are the part's own register values (LogAndStream_Shimmer3/i2c.c).
+#              On a "no LSM" board with wr_accel enabled, the ICM-20948's accel
+#              takes the wr_accel range and alt_accel_range is not used.
+#
+# ODRs are not in the rows: the host derives them from the rate, as Shimmer3
+# firmware does not (rig/s3_config.py odr_codes; INFOMEM §10.6 is Shimmer3R's).
+#
+# Link budget. Bytes per second are rate x (4 + channel bytes + CRC). The
+# slowest shipped radio on the bench, RN42 v4.77, delivers a saturated stream of
+# about 15.5 KB/s (518 samples/s of the 30-byte load, rig.toml); the others carry
+# 23-29 KB/s. Every row fits under 75% of that slowest one, so a lost sample is a
+# finding, not the link. A unit whose own baseline says a row does not fit has
+# that row reported not_covered with the figures (test_s3_release.LINK_FIT).
+# Shimmer3's MCU also has a ceiling of its own: 13 channels at 1024 Hz deliver
+# about 950 Hz with no radio involved (DEV-1308), so the 1024 Hz rows carry the
+# LN accel alone.
+#
+#   row               B/pkt  B/s     row               B/pkt  B/s
+#   imu_51p2hz          24   1229    imu_256hz           24   6144
+#   full_51p2hz         49   2509    imu_wr_256hz        32   8192
+#   imu_alt_51p2hz      31   1587    imu_alt_256hz       32   8192
+#   imu_wr_128hz        31   3968    ln_gyro_512hz       19   9728
+#   full_128hz          47   6016    ln_gyro_512hz_cmd   18   9216
+#   imu_128hz           26   3328    ln_1024hz           10  10240
+#                                    ln_1024hz_cmd       10  10240
+
+platform = "shimmer3"
+
+[sets]
+imu = ["ln_accel", "gyro", "mag", "vbatt"]
+imu_wr = ["ln_accel", "gyro", "mag", "vbatt", "wr_accel"]
+imu_alt = ["ln_accel", "gyro", "vbatt", "alt_accel", "alt_mag"]
+full = ["ln_accel", "gyro", "mag", "vbatt", "wr_accel", "alt_accel", "alt_mag", "pressure"]
+ln_gyro = ["ln_accel", "gyro", "vbatt"]
+ln = ["ln_accel"]
+
+[[row]]
+id = "imu_51p2hz"
+rate_hz = 51.2
+sensors = "imu"
+configure = "infomem"
+crc = 0
+seconds = 20
+gyro_range = 0
+wr_accel_range = 0
+alt_accel_range = 0
+
+[[row]]
+id = "full_51p2hz"
+rate_hz = 51.2
+sensors = "full"
+configure = "commands"
+crc = 2
+seconds = 20
+gyro_range = 1
+wr_accel_range = 1
+alt_accel_range = 1
+
+[[row]]
+id = "imu_alt_51p2hz"
+rate_hz = 51.2
+sensors = "imu_alt"
+configure = "infomem"
+crc = 1
+seconds = 20
+gyro_range = 2
+wr_accel_range = 0
+alt_accel_range = 2
+
+[[row]]
+id = "imu_wr_128hz"
+rate_hz = 128
+sensors = "imu_wr"
+configure = "commands"
+crc = 1
+seconds = 20
+gyro_range = 3
+wr_accel_range = 2
+alt_accel_range = 0
+
+[[row]]
+id = "full_128hz"
+rate_hz = 128
+sensors = "full"
+configure = "infomem"
+crc = 0
+seconds = 20
+gyro_range = 0
+wr_accel_range = 3
+alt_accel_range = 3
+
+[[row]]
+id = "imu_128hz"
+rate_hz = 128
+sensors = "imu"
+configure = "infomem"
+crc = 2
+seconds = 20
+gyro_range = 1
+wr_accel_range = 0
+alt_accel_range = 0
+
+[[row]]
+id = "imu_256hz"
+rate_hz = 256
+sensors = "imu"
+configure = "commands"
+crc = 0
+seconds = 20
+gyro_range = 2
+wr_accel_range = 0
+alt_accel_range = 0
+
+[[row]]
+id = "imu_wr_256hz"
+rate_hz = 256
+sensors = "imu_wr"
+configure = "infomem"
+crc = 2
+seconds = 20
+gyro_range = 3
+wr_accel_range = 0
+alt_accel_range = 0
+
+[[row]]
+id = "imu_alt_256hz"
+rate_hz = 256
+sensors = "imu_alt"
+configure = "commands"
+crc = 2
+seconds = 20
+gyro_range = 0
+wr_accel_range = 0
+alt_accel_range = 0
+
+[[row]]
+id = "ln_gyro_512hz"
+rate_hz = 512
+sensors = "ln_gyro"
+configure = "infomem"
+crc = 1
+seconds = 20
+gyro_range = 1
+wr_accel_range = 0
+alt_accel_range = 0
+
+[[row]]
+id = "ln_gyro_512hz_cmd"
+rate_hz = 512
+sensors = "ln_gyro"
+configure = "commands"
+crc = 0
+seconds = 20
+gyro_range = 3
+wr_accel_range = 0
+alt_accel_range = 0
+
+[[row]]
+id = "ln_1024hz"
+rate_hz = 1024
+sensors = "ln"
+configure = "infomem"
+crc = 0
+seconds = 20
+gyro_range = 0
+wr_accel_range = 0
+alt_accel_range = 0
+
+[[row]]
+id = "ln_1024hz_cmd"
+rate_hz = 1024
+sensors = "ln"
+configure = "commands"
+crc = 0
+seconds = 20
+gyro_range = 0
+wr_accel_range = 0
+alt_accel_range = 0
