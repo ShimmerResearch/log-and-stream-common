@@ -29,6 +29,15 @@
 #if TEST_LOG_WITH_USB && !defined(SHIMMER3R)
 #error "TEST_LOG_WITH_USB is Shimmer3R-only"
 #endif
+/* Shimmer3R diagnostic builds only (DEV-1363). 1: record every gather's stage
+ * completions, and a snapshot of the sensor buses at each fail-safe stall, in
+ * a RAM struct read over SWD (gather_diag.c). Never ship with this set. */
+#ifndef GATHER_DIAG
+#define GATHER_DIAG 1
+#endif
+#if GATHER_DIAG && !defined(SHIMMER3R)
+#error "GATHER_DIAG is Shimmer3R-only"
+#endif
 
 #define IS_SUPPORTED_SINGLE_TOUCH 0
 /* 1: the LED blink phase follows the real-world clock (on an SD-sync node, the

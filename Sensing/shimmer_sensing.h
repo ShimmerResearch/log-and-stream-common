@@ -244,6 +244,15 @@ void ShimSens_adcCompleteCb(void);
 void ShimSens_i2cCompleteCb(void);
 void ShimSens_spiCompleteCb(void);
 void ShimSens_stageCompleteCb(uint8_t stage);
+/* DEV-1363 hooks, called only when GATHER_DIAG is set and implemented by the
+ * platform (Shimmer3R gather_diag.c). Declared unconditionally because this
+ * header can be read before log_and_stream_definitions.h. */
+void GatherDiag_onSessionStart(void);
+void GatherDiag_onStart(void);
+void GatherDiag_onStage(uint8_t stage);
+void GatherDiag_onComplete(void);
+void GatherDiag_onBusy(uint16_t stallCount);
+void GatherDiag_onStallReset(void);
 #if defined(SHIMMER4_SDK)
 void ShimSens_step1Start(void);
 void ShimSens_step2Start(void);

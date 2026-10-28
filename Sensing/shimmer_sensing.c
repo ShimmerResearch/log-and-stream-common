@@ -263,6 +263,9 @@ void ShimSens_startSensing(void)
     }
 #endif
 
+#if GATHER_DIAG
+    GatherDiag_onSessionStart();
+#endif
 #if defined(SHIMMER3)
     SampleTimerStart();
 #else
@@ -565,7 +568,18 @@ uint8_t ShimSens_sampleTimerTriggered(void)
       ShimSens_saveTimestampToPacket();
       ShimSens_resetCurrentCbFlags();
       PktRing_markInProgress(&sensing.ring);
+#if GATHER_DIAG
+      GatherDiag_onStart();
+#endif
       return platform_gatherData();
+#if GATHER_DIAG
+    case PKT_TICK_BUSY:
+      GatherDiag_onBusy(sensing.ring.stallCount);
+      return 0;
+    case PKT_TICK_STALL_RESET:
+      GatherDiag_onStallReset();
+      return 0;
+#endif
     default:
       /* Busy, stalled or nothing to do - this sample is skipped. */
       return 0;
@@ -609,6 +623,9 @@ void ShimSens_spiCompleteCb(void)
 
 void ShimSens_stageCompleteCb(uint8_t stage)
 {
+#if GATHER_DIAG
+  GatherDiag_onStage(stage);
+#endif
   currentCbFlags |= stage;
   if (currentCbFlags == expectedCbFlags)
   {
@@ -626,6 +643,9 @@ void ShimSens_stageCompleteCb(uint8_t stage)
         }
     */
 
+#if GATHER_DIAG
+    GatherDiag_onComplete();
+#endif
     if (PktRing_onComplete(&sensing.ring))
     {
       ShimTask_set(TASK_SAVEDATA);
