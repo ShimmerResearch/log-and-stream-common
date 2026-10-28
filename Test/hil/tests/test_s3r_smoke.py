@@ -15,7 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from rig import ble, bt, dock, dock_protocol, flash, midstream, s3r_usb, sdfile, throughput, usb_throughput
+from rig import ble, bt, dock, dock_protocol, flash, midstream, s3r_boards, s3r_usb, sdfile, throughput, usb_throughput
+from rig.s3r_config import S3rConfig, divider_for
 
 pytestmark = pytest.mark.smoke
 
@@ -468,3 +469,124 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
         problems.append(f"{len(new)} new SD sessions for {MIDSTREAM_CYCLES} log starts")
     assert not problems, f"{summary}: " + "; ".join(problems)
     hil_note(f"{summary}; {len(new)} sessions logged")
+
+
+INQUIRY_SECONDS = 60.0
+INQUIRY_INTERVAL_S = 0.25
+INQUIRY_RATE_HZ = 1024
+INQUIRY_SENSORS = {"ln_accel", "gyro", "mag", "vbatt", "wr_accel", "alt_accel", "alt_mag", "pressure", "gsr"}
+# v1.01.024 lost samples on about one inquiry in 17 (11 in 187 on the bench).
+# A clean log after fewer inquiries than this could be luck: 120 miss the race
+# about once in 1,500 runs, the ~190 a run sends about once in 80,000.
+MIN_INQUIRIES = 120
+TIMEOUT_100_MS = 3277           # log_and_stream_definitions.h: the gather fail-safe's limit
+
+
+def _failsafe_loss(divider: int) -> int:
+    """Samples lost when the packet ring's fail-safe releases a gather that never
+    completed (stallLimitPeriods, ShimSens_startSensing): 104 at 1024 Hz."""
+    return max(2, TIMEOUT_100_MS // divider) + 2
+
+
+@pytest.mark.hil("smoke.sd_inquiry_midlog", needs=["shimmer3r", "usb", "bt", "hub_port"])
+def test_sd_inquiry_midlog(unit, cdc, power, hil_note):
+    """INQUIRY every 0.25 s through a 60 s SD log at 1024 Hz: the log must lose nothing.
+
+    A regression case (TEST_PROCEDURE §7, DEV-1363). Up to v1.01.024 the
+    inquiry reply rebuilt the channel layout even while sensing, and the
+    rebuild raced the gather in the RTC interrupt. A gather that lost the race
+    never completed, and the packet ring's fail-safe released it 100 ms later:
+    104 samples at 1024 Hz, on about one inquiry in 17. A host that connects
+    to a unit already logging sends exactly this inquiry; the Java driver does
+    on connect. smoke.sd_log cannot see it: its one inquiry comes before
+    START_LOGGING.
+
+    1024 Hz with every sensor the board has fitted gives the race the most
+    gathers to hit. Fails on lost or duplicate samples, jitter past a quarter
+    period, a missing tail, or an inquiry that reports a layout other than the
+    log's. A gap of the fail-safe's length is named as such. A clean log after
+    fewer than MIN_INQUIRIES inquiries is not_covered: it could be luck.
+
+    Logging cannot start docked, so the hub port is the dock, as in
+    smoke.sd_log. The rate and sensors are stored configuration, so InfoMem is
+    saved to disk and put back.
+    """
+    port = bt.spp_port(unit.mac)
+    if not port:
+        pytest.skip(f"no paired SPP port for {unit.mac}")
+    with dock.open_when_ready(cdc) as d:
+        original = bytes(d.read_infomem())
+        card = d.get(dock.COMP_DAUGHTER_CARD, 0x02, bytes([3, 0]))[:3]
+    want = INQUIRY_SENSORS - (s3r_boards.OPTIONAL - s3r_boards.fitted_optional(card))
+    cfg = S3rConfig(original)
+    cfg.divider = divider_for(INQUIRY_RATE_HZ)
+    cfg.set_sensors(want)
+    backup = throughput.save_infomem(unit.name, original)
+    sent = 0
+    moved = []                  # inquiries whose layout differs from the one the log started with
+    error = None
+    try:
+        with dock.open_when_ready(cdc) as d:
+            d.write_infomem(cfg.bytes())
+            back = S3rConfig(d.read_infomem())
+        assert (back.divider, back.enabled()) == (cfg.divider, want), \
+            f"configuration read back divider {back.divider}, sensors {sorted(back.enabled())}; " \
+            f"wrote {cfg.divider}, {sorted(want)}"
+        root = s3r_usb.wait_drive(unit.usb_serial, 45)
+        before = sdfile.session_dirs(root)
+        power.off(unit.hub_port, unit.name)
+        try:
+            s3r_usb.wait_cdc_gone(unit.usb_serial, 15)
+            with bt.BtLink(port) as link:
+                inq = link.inquiry()
+                link.simple(bt.START_LOGGING)
+                link.wait_status(bt.STATUS_LOGGING, True, 10)
+                end = time.monotonic() + INQUIRY_SECONDS
+                while time.monotonic() < end:
+                    again = link.inquiry()
+                    sent += 1
+                    if (again.divider, again.channels) != (inq.divider, inq.channels):
+                        moved.append(sent)
+                    time.sleep(INQUIRY_INTERVAL_S)
+                link.simple(bt.STOP_LOGGING)
+                link.wait_status(bt.STATUS_LOGGING, False, 15)
+        finally:
+            power.on(unit.hub_port, unit.name)
+    except BaseException as e:
+        error = e
+        raise
+    finally:
+        _restore_infomem(unit, original, backup, error)
+
+    root = s3r_usb.wait_drive(unit.usb_serial, 90)
+    new = sorted(sdfile.session_dirs(root) - before)      # relative: the drive letter may have changed
+    assert len(new) == 1, f"expected one new session directory, found {len(new)}: {new}"
+    files = sorted(p for p in (root / new[0]).iterdir() if p.is_file())
+    assert files and files[0].name == "000", f"{new[0]}: no data file 000 ({[f.name for f in files]})"
+
+    fc = sdfile.check(files[0])
+    h = fc.header
+    covered_s = (fc.span_ticks + h.divider) / bt.TICKS_PER_S
+    summary = f"{sent} inquiries during {covered_s:.1f} s of logging at {cfg.rate_hz:.0f} Hz, {len(h.channels)} channels"
+    problems = []
+    if h.divider != cfg.divider:
+        problems.append(f"header divider {h.divider}, configured {cfg.divider}")
+    if h.channels != inq.channels:
+        problems.append(f"header channels {h.channels}, inquiry said {inq.channels}")
+    problems += _timing_problems(fc, h.divider)
+    steps = {d: n for d, n in sorted(fc.deltas.items()) if d > 1.5 * h.divider}
+    if steps:
+        failsafe = (_failsafe_loss(h.divider) + 1) * h.divider
+        problems.append("steps of " + ", ".join(f"{d} ticks x {n}" for d, n in steps.items()) +
+                        (f"; {failsafe} ticks is the packet ring's 100 ms fail-safe releasing a gather the "
+                         f"inquiry reply's rebuild broke (DEV-1363)" if failsafe in steps else ""))
+    if moved:
+        problems.append(f"{len(moved)} of {sent} inquiries reported a layout other than the log's "
+                        f"(the first was number {moved[0]})")
+    if covered_s < INQUIRY_SECONDS - LOG_TAIL_S:
+        problems.append(f"the records cover {covered_s:.2f} s of a log over {INQUIRY_SECONDS:.0f} s long: "
+                        "the end is missing")
+    assert not problems, f"{summary}: " + "; ".join(problems)
+    if sent < MIN_INQUIRIES:
+        pytest.skip(f"{summary}: no loss, but fewer than {MIN_INQUIRIES} inquiries cannot show the race is gone")
+    hil_note(f"{summary}: {fc.records} records, no loss, {fc.jitter} late stamps (max {fc.max_jitter_ticks} ticks)")

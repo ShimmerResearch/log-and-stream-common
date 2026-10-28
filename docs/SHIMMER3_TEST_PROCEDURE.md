@@ -864,11 +864,20 @@ value. [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md)
 | 5.6.4 | Log across a file-split boundary | Files continuous, no lost samples at the join |
 | 5.6.5 | Pull the card mid-log | Clean stop; the file up to that point is readable |
 | 5.6.6 | Start/stop 20 times | No leak, no drift, no stuck state |
+| 5.6.7 | **Talk to a unit that is already logging:** at 5.6.1's channels and rate, send `INQUIRY` every 0.25 s for a minute over Bluetooth | No gaps that 5.6.1's own log does not show |
 
 Check 5.6.1–5.6.3 in Consensys, not just for file size. **A packet with a zero
 timestamp reads as a 24-bit roll-over worth 512 s** — that is the DEV-1023
 signature, and `test_packet_ring` covers the mechanism, but only a real long-run
 recording covers the whole path.
+
+5.6.7 is a host connecting to a unit that a button press or an undock started
+logging: Consensys and the Java driver send `INQUIRY` on connect. Up to Shimmer3R
+v1.01.024 the reply rebuilt the channel layout while sensing, and about one
+inquiry in 17 cost 100 ms of samples (DEV-1363, §7). On Shimmer3R the rig runs it
+as `smoke.sd_inquiry_midlog` (§10.4), at 1024 Hz with every channel fitted. A
+Shimmer3 needs it walked by hand: it logs only undocked, and the bench's Base6
+cannot undock it. `Test/hil/rig/bt.py`'s `BtLink.inquiry()` sends the inquiries.
 
 ### 5.7 Battery and charging
 
@@ -1089,6 +1098,7 @@ case earns a permanent place here.
 | Radio bring-up | A unit halts at boot, yellow at 5 Hz, on some radio-firmware combinations | §5.1 — nothing automated reaches this |
 | Host constant drift | A host restates a firmware constant and the firmware moves it; the device is fine and every host is wrong | `crosscheck_host_constants.py` for the in-repo host, §6.4 for the rest |
 | BMP581 SR48 window | A plain `>= 7.2` wrongly claims SR48-8-0 and 8-1 | `test_boards` — both layers catch it |
+| DEV-1363 | A host connects to a unit that is already logging, and its `INQUIRY` costs the log 100 ms of samples | `smoke.sd_inquiry_midlog` on Shimmer3R, on the required list — plus §5.6.7 by hand on Shimmer3 |
 
 **When a fault escapes, add its case here and a test for it in the same PR.** A
 regression list that only grows by hand stops growing.
@@ -1335,6 +1345,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.usb_throughput` | Docked: a 32 MiB file written to the SD drive over USB mass storage and read back, both around the PC's file cache, compared, then removed. Write and read bytes per second against this unit's USB baseline (below); a read within USB Full Speed is reported as pointing at the link. `not_covered` without a baseline, with the figures to record, and on a host other than Windows |
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
 | `smoke.sd_start_midstream` | Undocked, six 2 s SD logs started and stopped inside one 256 Hz stream, link CRC on. Odd cycles send `START_LOGGING` alone; even ones send `SET_RWC` first, as the reference host does before every log start. The stream's stamps must never step back or sideways: no stamp at or behind the one before, no move of the sampling grid, no lost or duplicate samples, jitter within a quarter period. Each problem is reported with the cycle it followed, and with how many clock-set and plain starts disturbed the stream. A status query must show logging, and the card must hold one new session per cycle |
+| `smoke.sd_inquiry_midlog` | §5.6.7, the DEV-1363 regression case (§7), and the one smoke item on the required list. 1024 Hz with every sensor the board has fitted; undocked, `START_LOGGING`, then `INQUIRY` every 0.25 s for 60 s, then stop and re-dock. The new session must have no lost or duplicate samples, jitter within a quarter period, and its whole 60 s; every inquiry must report the layout the log started with. A gap of `TIMEOUT_100_MS / divider + 2` samples (104 at 1024 Hz, a 3,360-tick step) is named as the packet ring's fail-safe. The note says how many inquiries went out. A clean log after fewer than 120 is `not_covered`: v1.01.024 lost samples on about one inquiry in 17, so fewer could miss it by luck. InfoMem is saved to disk and put back |
 | `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt |
 | `smoke.ble_throughput` | As `smoke.bt_throughput`, over BLE (the IF820's CYSPP service, data as notifications), against this unit's BLE baseline. `not_covered` when the unit's EEPROM has BLE off (`bleEnabled`, EEPROM memory map §4.2) |
 
@@ -1356,6 +1367,10 @@ flash.
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |
 | `fleet.ble_throughput` | As `fleet.bt_throughput`, over BLE (the RN4678's transparent UART service), on the units with an RN4678. `not_covered` on an RN41 or RN42, or when the EEPROM has BLE off |
 | `fleet.sd_start_midstream` | `smoke.sd_start_midstream`'s commands at 51.2 Hz. A Shimmer3 starts logging only undocked, and a Base6 cannot undock one slot, so the log starts are refused. The clock sets still apply mid-stream, so the stream is judged the same way. A disturbed stream fails; a clean one is `not_covered`, because no log started |
+
+There is no fleet version of `smoke.sd_inquiry_midlog`. A Shimmer3 logs only
+undocked, the Base6 cannot undock one, and `rig/sdfile.py` reads only Shimmer3R
+files. §5.6.7 is walked by hand on a Shimmer3 instead.
 
 Neither dock item reaches a Base15 or a single-unit dock. Both carry the
 Shimmer3's dock UART through different hardware, and neither is on the bench. Nor
@@ -1467,7 +1482,11 @@ compared, and each item still fails if anything happened.
 
 Smoke, fleet and release items are not yet on the required lists. They join once they have run
 clean across a few candidates, so a flaky check never blocks a release on its
-first day.
+first day. The exception is `smoke.sd_inquiry_midlog`, on the Shimmer3R list
+from the start. It is a §7 regression case whose fault reached customers, so a
+candidate must not go out without it. A failure blocks any item anyway
+(§10.2, rule 3); being required also stops a candidate going out when no bench
+ran it.
 
 ### 10.5 Triage of a failed run
 
