@@ -1977,8 +1977,25 @@ void ShimBt_sendRsp(void)
       }
       case INQUIRY_COMMAND:
       {
-        /* Channel order/packet structure need to be assembled before sending the inquiry response so that the information is correct. */
-        ShimSens_configureChannels();
+        /* Channel order/packet structure need to be assembled before sending
+         * the inquiry response so that the information is correct.
+         *
+         * Not while sensing (DEV-1363). The running session's layout was
+         * built when it started, and it is what the stream and the log carry
+         * until sensing stops; Bluetooth refuses configuration writes while
+         * sensing (ShimBt_isCmdBlockedWhileSensing). Rebuilding it here races
+         * the gather. On Shimmer3R the gather runs in the RTC interrupt, and
+         * the rebuild zeroes each bus's channel count before restoring it,
+         * and clears i2c1Sens. A gather that starts in that window skips a
+         * bus, and a magnetometer read in flight has its completion dropped
+         * as stale. Either way the gather never completes, and the packet
+         * ring's fail-safe releases it 100 ms later, losing every sample in
+         * between. A host that connects to a unit that is already logging
+         * sends exactly this inquiry. */
+        if (!shimmerStatus.sensing)
+        {
+          ShimSens_configureChannels();
+        }
 
         *(resPacket + packet_length++) = INQUIRY_RESPONSE;
         *(uint16_t *) (resPacket + packet_length) = storedConfig->samplingRateTicks; //ADC sampling rate

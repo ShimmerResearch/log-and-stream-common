@@ -1383,6 +1383,18 @@ assembling its reply.
 
 > `Comms/shimmer_bt_uart.c:1853-1858`.
 
+While the device is sensing, it does not rebuild the layout. It reports the
+layout the running session started with, which is what the stream and the log
+carry. Configuration writes are refused while sensing, so that layout cannot
+have changed.
+
+> **Up to Shimmer3R v1.01.024 the handler rebuilt the layout even while sensing**
+> (DEV-1363). The rebuild raced the sample gather. About one inquiry in 17 sent
+> during a 1024 Hz log cost ~100 ms of samples: the gather never completed, and
+> the packet ring's fail-safe released it. A host that connects to a unit that
+> is already logging and sends an inquiry, as the Java driver does on connect,
+> could therefore leave a gap in the log.
+
 **A host must therefore re-issue `INQUIRY_COMMAND` after any configuration
 change and before starting a stream.** The channel-ID list in the response is a
 snapshot of the layout at that instant; there is no notification when it changes,
