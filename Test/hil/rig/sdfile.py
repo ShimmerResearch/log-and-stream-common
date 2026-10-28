@@ -15,7 +15,7 @@ import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .bt import HW_SHIMMER3R, channel_width, classify_step, ts_step
+from .bt import HW_SHIMMER3R, TS_WRAP, channel_width, classify_step, ts_step
 
 HEAD_S3R = 384
 SDH_TRIAL_CONFIG0 = 16
@@ -49,7 +49,7 @@ class Header:
 class FileCheck:
     header: Header
     records: int = 0
-    zero_ts: int = 0           # records stamped 00 00 00: invalid (§2.1)
+    zero_ts: int = 0           # records stamped 00 00 00 off the wrap: invalid (§2.1)
     gaps: int = 0
     missing: int = 0
     max_gap_ticks: int = 0
@@ -83,6 +83,18 @@ def read_header(raw: bytes) -> Header:
     )
 
 
+def invalid_zero(ts: int, last: int | None) -> bool:
+    """Whether a record stamped 00 00 00 is an unstamped one rather than the wrap.
+
+    The stamp is the low 24 bits of the RTC, so a sample whose tick lands on the
+    wrap is stamped zero: once every 512 s in a log whose stamps are multiples of
+    the divider. The streaming doc's unwrap rule 2 tells the two apart: a zero is
+    the wrap only when the stamp before it was within a second of it. The first
+    record has nothing before it and is taken as it is, as that rule takes it.
+    """
+    return ts == 0 and last is not None and last < TS_WRAP - 32768
+
+
 def check(path: Path, keep: bool = False) -> FileCheck:
     raw = Path(path).read_bytes()
     h = read_header(raw)
@@ -109,7 +121,7 @@ def check(path: Path, keep: bool = False) -> FileCheck:
                 fc.rows.append(raw[pos + 3:pos + rl])
             pos += rl
             fc.records += 1
-            if ts == 0:
+            if invalid_zero(ts, last):
                 fc.zero_ts += 1
                 continue
             if last is not None:
@@ -200,7 +212,7 @@ def check_session(session_dir: Path) -> SessionCheck:
         first_in_file = True
         for ts, _ in iter_records(f):
             sc.records += 1
-            if ts == 0:
+            if invalid_zero(ts, last):
                 sc.zero_ts += 1
                 continue
             if last is not None:
