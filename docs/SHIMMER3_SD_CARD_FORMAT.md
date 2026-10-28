@@ -187,12 +187,20 @@ and §5.
 > streaming document; the header's initial timestamp (§3.3) gives the absolute
 > anchor for the first record.
 
-> **A record's timestamp is never zero.** Records are stamped when the sample
-> tick starts them and are not written out otherwise, so `00 00 00` in the
-> field marks an invalid record rather than the counter's origin. Reading one
-> as a wrap costs the remainder of the file 512 seconds — see
+> **A record's timestamp is zero only at the wrap.** Records are stamped when
+> the sample tick starts them and are not written out otherwise. The stamp is
+> the RTC's low 24 bits, so a tick that lands exactly on the wrap is stamped
+> `00 00 00`: a real sample. A log whose stamps all fall on multiples of the
+> divider has one at every wrap. On the bench that was roughly one log in N at
+> divider N (Shimmer3R, 28 Oct 2026). Anywhere else, `00 00 00` marks a record
+> that was never stamped, and reading it as a wrap costs the rest of the file
+> 512 seconds.
+>
+> Rule 2 of the unwrap in
 > [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1
-> for which unwrapping rules survive it and which do not.
+> tells the two apart: a zero is the wrap only when the stamp before it is
+> within a second of it. Do not drop every zero-stamped record, because that
+> loses the real sample at each wrap.
 
 Records are not written one at a time. They accumulate into a 512-byte buffer
 which is handed to `f_write` when the next record will not fit (§4.1), so the

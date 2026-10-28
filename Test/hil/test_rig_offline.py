@@ -794,15 +794,18 @@ class TimestampSteps(unittest.TestCase):
                 self.assertEqual((st.dupes, st.gaps, st.missing), want)
 
 
-def sd_file(tmp, n_records, tail=b""):
-    """A Shimmer3R SD file with SD sync on, timestamp-only records, `tail` appended."""
+def sd_file(tmp, n_records, tail=b"", stamps=None, name="000"):
+    """A Shimmer3R SD file with SD sync on, timestamp-only records, `tail` appended.
+    The records are stamped one period (128) apart from 1, or with `stamps`."""
     head = bytearray(sdfile.HEAD_S3R)
     head[0:2] = (128).to_bytes(2, "little")
     head[30:32] = sdfile.HW_SHIMMER3R.to_bytes(2, "big")
     head[sdfile.SDH_TRIAL_CONFIG0] = sdfile.SDH_TIME_SYNC
     head[sdfile.SDH_NUM_ENABLED_CHANNELS] = 0
-    body = bytes(sdfile.SYNC_HEAD) + b"".join((1 + 128 * i).to_bytes(3, "little") for i in range(n_records))
-    p = Path(tmp) / "000"
+    if stamps is None:
+        stamps = [1 + 128 * i for i in range(n_records)]
+    body = bytes(sdfile.SYNC_HEAD) + b"".join(s.to_bytes(3, "little") for s in stamps)
+    p = Path(tmp) / name
     p.write_bytes(bytes(head) + body + tail)
     return p
 
@@ -857,6 +860,44 @@ class SdFileTrailing(unittest.TestCase):
         raw[sdfile.SDH_NUM_ENABLED_CHANNELS] = sdfile.S3R_MAX_CHANNELS + 1
         with self.assertRaisesRegex(sdfile.SdFileError, "at most"):
             sdfile.read_header(bytes(raw))
+
+
+class SdFileZeroStamp(unittest.TestCase):
+    # The stamp is the RTC's low 24 bits, so a log whose stamps are multiples of
+    # the divider stamps the sample at each 512 s wrap 00 00 00 (DEV-1361).
+    WRAP = bt.TS_WRAP
+
+    def check(self, stamps):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            return sdfile.check(sd_file(d, 0, stamps=stamps))
+
+    def test_a_zero_at_the_wrap_is_a_sample(self):
+        fc = self.check([self.WRAP - 256, self.WRAP - 128, 0, 128, 256])
+        self.assertEqual((fc.records, fc.zero_ts, fc.missing, fc.dupes, fc.jitter), (5, 0, 0, 0, 0))
+        self.assertEqual(fc.span_ticks, 4 * 128)
+
+    def test_a_zero_mid_range_is_an_unstamped_record(self):
+        # DEV-1023's: an extra record, never stamped, between two real ones.
+        fc = self.check([1000, 1128, 0, 1256, 1384])
+        self.assertEqual((fc.records, fc.zero_ts, fc.missing, fc.dupes), (5, 1, 0, 0))
+
+    def test_a_zero_more_than_a_second_before_the_wrap_is_unstamped(self):
+        fc = self.check([self.WRAP - 32768 - 128, 0, self.WRAP - 32768])
+        self.assertEqual(fc.zero_ts, 1)
+
+    def test_a_first_record_stamped_zero_is_a_sample(self):
+        fc = self.check([0, 128, 256])
+        self.assertEqual((fc.zero_ts, fc.missing, fc.span_ticks), (0, 0, 256))
+
+    def test_a_zero_at_the_wrap_across_a_file_split_is_a_sample(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            sd_file(d, 0, stamps=[self.WRAP - 256, self.WRAP - 128], name="000")
+            sd_file(d, 0, stamps=[0, 128], name="001")
+            sc = sdfile.check_session(Path(d))
+        self.assertEqual((sc.records, sc.zero_ts, sc.missing, sc.dupes), (4, 0, 0, 0))
+        self.assertEqual(sc.joins, [("001", 128)])
 
 
 class BuildInfoBinding(unittest.TestCase):

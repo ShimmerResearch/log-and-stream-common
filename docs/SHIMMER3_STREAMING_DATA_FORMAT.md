@@ -155,19 +155,24 @@ three bytes of a 32-bit counter read at the sampling instant
 > host can survive without unwrapping. Take the width from the firmware
 > version, not from the packet.
 
-> **The timestamp field is never zero, and a zero is not a wrap.** A packet is
+> **A zero is a wrap only when the counter was about to wrap.** A packet is
 > stamped when the sample tick starts it, and the firmware does not publish a
-> packet it did not stamp, so `0x000000` in the field means the record is
-> invalid — not that the counter reached its origin. LogAndStream v1.00.x
-> through v1.01.003 could emit one under SD write back-pressure on a Shimmer3
-> configured with no analog channels; the guards that prevent it are in
-> `Sensing/shimmer_packet_ring.c`.
+> packet it did not stamp. The stamp is the RTC's low 24 bits, so a tick that
+> lands exactly on the wrap is stamped `0x000000`: a real sample, with the
+> counter at its origin. A recording whose stamps all fall on multiples of the
+> divider has one every 512 s. Any other `0x000000` is a packet that was never
+> stamped. LogAndStream v1.00.x through v1.01.003 could emit one under SD write
+> back-pressure on a Shimmer3 configured with no analog channels; the guards
+> that prevent it are in `Sensing/shimmer_packet_ring.c`.
 >
 > The distinction is worth 512 seconds. Under the naive rule, a mid-range value
 > followed by `0` counts as a rollover and **every later sample in the recording
-> is 512 s late**. The rule below rejects the record instead, leaving the
-> previous value in place so the next record resumes at its true spacing. A host
-> importing a file is better off dropping zero-stamped records outright.
+> is 512 s late**. Rule 2 below rejects that record instead, leaving the
+> previous value in place so the next record resumes at its true spacing. It
+> keeps a `0` that follows a value within a second of the wrap.
+>
+> A host importing a file should apply the same rule rather than drop every
+> zero-stamped record. Dropping them all loses the real sample at each wrap.
 
 A host must unwrap it. The obvious approach — bump a rollover count whenever the
 raw value falls — is wrong three times over: it double-counts on a single

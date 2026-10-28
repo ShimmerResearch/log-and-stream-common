@@ -570,7 +570,7 @@ firmware and will agree with it about a shared mistake.
 | 5.4.1b | Magnetometer axis order | An LSM303DLHC board emits X, **Z**, **Y** — not X, Y, Z (§4.1) |
 | 5.4.1c | VBATT position | On an SR48-6-0 the MCU ADCs are configured first, so VBATT is **not** last (§4.2) |
 | 5.4.1d | Total packet length | Matches the sum of the enabled channel widths — a length that is right by accident on one board is wrong on another |
-| 5.4.1e | Timestamp advances by one sample period | And is never `00 00 00` |
+| 5.4.1e | Timestamp advances by one sample period | And is `00 00 00` only at the wrap, one period after a stamp within a second of it ([streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1, rule 2) |
 
 #### 5.4.2 Scaling and calibration, per sensor in use
 
