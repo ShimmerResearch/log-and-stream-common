@@ -129,7 +129,9 @@ def bench_routes(rig):
                 with dock.open_when_ready(b.uart_port) as d:
                     yield d
         else:
-            with dock.open_when_ready(s3r_usb.wait_cdc(unit.usb_serial, 60)) as d:
+            # At the end of a run this follows its last test, which may have
+            # streamed docked and so taken the unit's USB away (DEV-1368).
+            with dock.open_when_ready(s3r_usb.wait_usb_settled(unit.usb_serial, 90)) as d:
                 yield d
 
     def reset(unit):

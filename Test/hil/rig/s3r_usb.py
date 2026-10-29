@@ -133,3 +133,36 @@ def wait_drive(usb_serial: str, timeout_s: float = 45.0) -> Path:
             return d
         time.sleep(1.0)
     raise TimeoutError(f"SD card of {usb_serial} did not mount over USB within {timeout_s:.0f} s")
+
+
+def wait_usb_settled(usb_serial: str, timeout_s: float = 90.0) -> str:
+    """The unit's CDC port, once its whole USB device is back: the port and the
+    SD card's drive both present. Wait for this before the first dock exchange
+    after sensing or a re-dock.
+
+    With USB-C in, ShimSens_startSensing() tears the USB device down and the
+    stop brings it back with USB_init(), CDC and MSC together, so every docked
+    stream is a removal and a fresh enumeration. wait_cdc alone returns as soon
+    as the COM port exists, which can be part-way through it: on 28 Oct 2026,
+    2 of 88 release-tier configure steps failed straight after a docked stream
+    - no reply, or the port's I/O aborted - while those after a log row, which
+    had waited for the drive and read the log off it, never did (DEV-1368).
+    wait_drive also makes Windows mount the volume, since it checks that the
+    root exists.
+
+    No fixed settle after that. Both functions come up in one enumeration, so
+    once both are present it has finished; an exchange that fails then is the
+    unit's fault, which a host opening the port would meet too, and a delay
+    here would hide it. For the same reason a port that goes away again while
+    the drive mounts is raised, not waited out.
+    """
+    end = time.monotonic() + timeout_s
+    port = wait_cdc(usb_serial, timeout_s)
+    try:
+        wait_drive(usb_serial, max(1.0, end - time.monotonic()))
+    except TimeoutError:
+        raise TimeoutError(f"SD card of {usb_serial} did not mount over USB within {timeout_s:.0f} s, "
+                           f"though its CDC port {port} was back") from None
+    if not cdc_port(usb_serial):
+        raise OSError(f"USB CDC port {port} of {usb_serial} went away again while its drive mounted")
+    return port

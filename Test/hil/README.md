@@ -103,7 +103,7 @@ plug and unplug.
 | `rig/bt.py` | Bluetooth SPP: commands, status, streaming with timestamp checks, and commands sent mid-stream |
 | `rig/midstream.py` | SD logs started and stopped inside a stream: the command schedule, and the stamps judged across each start (steps back, grid moves) |
 | `rig/throughput.py` | Bluetooth throughput: the firmware's data-rate test, and a stream that outruns the link, against each unit's baseline |
-| `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial. The drive comes from Get-Disk, or from Win32_DiskDrive when Get-Disk does not list the unit: on one bench Get-Disk has listed no disks at all for minutes, and listed a unit back from a long log minutes late |
+| `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial. The drive comes from Get-Disk, or from Win32_DiskDrive when Get-Disk does not list the unit: on one bench Get-Disk has listed no disks at all for minutes, and listed a unit back from a long log minutes late. `wait_usb_settled` waits for both the port and the drive. A docked stream takes the unit's USB away until it stops, and the port can return before the rest of the device. So call `wait_usb_settled` before the first dock exchange after sensing or a re-dock (DEV-1368, TEST_PROCEDURE §10.4) |
 | `rig/usb_throughput.py` | The SD card's write and read rates over USB mass storage, timed around the PC's file cache |
 | `rig/sdfile.py` | Reads a Shimmer3R SD data file and checks its records |
 | `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version. USB DFU flashes only a DFU device that appeared after this unit was sent to its bootloader, and only if it is the only one |

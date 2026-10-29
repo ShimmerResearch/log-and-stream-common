@@ -1332,6 +1332,23 @@ release like any other (§10.2, rule 3) unless it is accepted:
 result, as a sign-off's waiver does (§10.1). Setup and layout are in
 `Test/hil/README.md`.
 
+**A Shimmer3R's USB goes away while it senses.** With USB-C in,
+`ShimSens_startSensing()` tears the unit's USB device down, CDC port and drive
+together, and the stop brings it back with `USB_init()`. So every docked
+stream is a removal (Windows logs Kernel-PnP event 1010, "surprise removed")
+and then a fresh enumeration. The COM port can be back before the rest of the
+device. On 28 Oct 2026, 2 of 88 release-tier configure steps failed straight
+after a docked stream: no reply, or the port's I/O aborted (DEV-1368). So
+before its first dock exchange after sensing or a re-dock, the suite waits
+until the unit's CDC port and drive are both present
+(`s3r_usb.wait_usb_settled`), with no fixed delay after that. Nothing retries
+the release tier's configure step, so an exchange that fails once both are
+back is a finding about the unit, not the re-enumeration. The smoke tier's
+InfoMem restore does retry, so the unit is not left with a test's
+configuration, and notes any failed attempt on its item. `smoke.usb_replug`
+and `soak.dock_cycles` still talk to the port as soon as it appears, as a host
+would, because that is what they check.
+
 The **smoke** tier, Shimmer3R over USB-C:
 
 | Item | Checks |

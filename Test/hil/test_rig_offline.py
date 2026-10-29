@@ -273,6 +273,69 @@ class DriveLookup(unittest.TestCase):
             self.assertIsNone(s3r_usb.drive("205036654236"))
 
 
+class UsbSettled(unittest.TestCase):
+    """wait_usb_settled: a unit's CDC port and drive both back before a dock
+    exchange. Sensing with USB-C in takes the whole USB device away and the stop
+    re-enumerates it; the port alone can be up part-way through (DEV-1368)."""
+
+    @contextmanager
+    def unit(self, port_at=None, drive_at=None, port_gone=None):
+        """A unit whose port is up from port_at s, except within the (from, to)
+        window port_gone, and whose drive is mounted from drive_at, on a clock
+        that only sleep advances. None: never."""
+        clock = {"t": 0.0}
+
+        def cdc_port(serial):
+            t = clock["t"]
+            up = port_at is not None and t >= port_at and not (port_gone and port_gone[0] <= t < port_gone[1])
+            return "COM9" if up else None
+
+        def drive(serial):
+            return HERE if drive_at is not None and clock["t"] >= drive_at else None
+
+        def sleep(s):
+            clock["t"] += s
+        fake_time = types.SimpleNamespace(monotonic=lambda: clock["t"], sleep=sleep)
+        with mock.patch.object(s3r_usb, "cdc_port", cdc_port), \
+                mock.patch.object(s3r_usb, "drive", drive), \
+                mock.patch.object(s3r_usb, "time", fake_time):
+            yield clock
+
+    def test_a_port_without_its_drive_is_not_enough(self):
+        with self.unit(port_at=1, drive_at=6) as clock:
+            self.assertEqual(s3r_usb.wait_usb_settled("A", 60), "COM9")
+            self.assertGreaterEqual(clock["t"], 6)
+
+    def test_returns_at_once_when_both_are_back(self):
+        with self.unit(port_at=0, drive_at=0) as clock:
+            self.assertEqual(s3r_usb.wait_usb_settled("A", 60), "COM9")
+            self.assertEqual(clock["t"], 0)
+
+    def test_no_drive_times_out_on_one_deadline_naming_the_port(self):
+        with self.unit(port_at=15) as clock:
+            with self.assertRaises(TimeoutError) as cm:
+                s3r_usb.wait_usb_settled("A", 20)
+            self.assertLessEqual(clock["t"], 21)
+        self.assertIn("did not mount", str(cm.exception))
+        self.assertIn("COM9", str(cm.exception))
+
+    def test_no_port_times_out(self):
+        with self.unit(drive_at=0):
+            with self.assertRaises(TimeoutError) as cm:
+                s3r_usb.wait_usb_settled("A", 10)
+        self.assertIn("CDC port", str(cm.exception))
+
+    def test_a_port_that_goes_again_is_raised_not_waited_out(self):
+        # Gone while the drive mounts and back later: a second enumeration, a
+        # fault to see rather than absorb.
+        with self.unit(port_at=0, drive_at=5, port_gone=(3, 8)) as clock:
+            with self.assertRaises(OSError) as cm:
+                s3r_usb.wait_usb_settled("A", 60)
+            self.assertLess(clock["t"], 8)
+        self.assertNotIsInstance(cm.exception, TimeoutError)
+        self.assertIn("went away again", str(cm.exception))
+
+
 class FakeHub:
     def __init__(self, on_ports):
         self.mask = sum(1 << (p - 1) for p in on_ports)

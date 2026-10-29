@@ -43,7 +43,9 @@ IMU = {"ln_accel", "gyro", "mag", "vbatt"}
 
 @contextmanager
 def s3r_config(unit, rate_hz, sensors=IMU):
-    port = s3r_usb.wait_cdc(unit.usb_serial, 60)
+    # Every docked stream takes the unit's USB away until it stops, so the
+    # port and drive are waited for before each dock exchange (DEV-1368).
+    port = s3r_usb.wait_usb_settled(unit.usb_serial, 60)
     with dock.open_when_ready(port) as d:
         original = d.read_infomem()
         cfg = S3rConfig(original)
@@ -53,7 +55,7 @@ def s3r_config(unit, rate_hz, sensors=IMU):
     try:
         yield
     finally:
-        port = s3r_usb.wait_cdc(unit.usb_serial, 120)
+        port = s3r_usb.wait_usb_settled(unit.usb_serial, 120)
         with dock.open_when_ready(port) as d:
             d.write_infomem(original)
 
