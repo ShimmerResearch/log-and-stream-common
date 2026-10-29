@@ -1350,6 +1350,30 @@ configuration, and notes any failed attempt on its item. `smoke.usb_replug`
 and `soak.dock_cycles` still talk to the port as soon as it appears, as a host
 would, because that is what they check.
 
+**Host service stalls.** Every failed dock exchange after a re-enumeration on
+28-29 Oct 2026, two in the release tier and one in `soak.dock_cycles`, fell
+inside a 30 s stall on the bench laptop (DEV-1368).
+- **What a stall is.** Two Windows services that handle device events, an
+  endpoint-security sensor and the search indexer, stopped answering the
+  Service Control Manager. It logged System event 7011 for each when it gave
+  up, 30 s after the stall began.
+- **They look host-side.** Each stall began as a unit re-enumerated, but
+  stalls also came with no failure, and with no Shimmer on USB at all.
+- **Waiting for the port and drive does not outlast one.** So when a dock
+  exchange fails within 35 s of the unit's last USB arrival (PnP's
+  LastArrivalDate), the suite waits until a stall over the failure would be
+  logged, about 32 s after it. If one was, it raises `HostServiceStall` naming
+  it (`s3r_usb.stall_named`).
+- **It is still a failure.** Nothing retries the release tier's configure
+  step. The bench's record of these stalls, and how to triage one, is in
+  bench-tools `hil/known_issues.md`. `soak.dock_cycles` counts such cycles
+  apart from its failures and notes them.
+- **The dock link configures the port once.** It used to restore the port's
+  timeout after every exchange (`DockLink.read_reply`). pyserial reconfigures
+  the port at every timeout assignment, which sends the unit CDC control
+  requests, and that call was the one that failed with WinError 995 inside a
+  stall.
+
 The **smoke** tier, Shimmer3R over USB-C:
 
 | Item | Checks |
@@ -1494,7 +1518,7 @@ compared, and each item still fails if anything happened.
 | Item | Checks |
 |---|---|
 | `soak.long_log` | Shimmer3R, undocked, logging at 256 Hz for 75 min × scale. The session's files are checked as one recording, and each file must join the next at exactly one sample period across the hourly rollover |
-| `soak.dock_cycles` | Repeated hub-port undock/re-dock. Every cycle, the CDC port, the dock protocol and the SD drive must return; re-enumeration time is recorded |
+| `soak.dock_cycles` | Repeated hub-port undock/re-dock. Every cycle, the CDC port, the dock protocol and the SD drive must return; re-enumeration time is recorded. A cycle whose dock exchange failed inside a host service stall (§10.4) is counted apart and noted, not failed |
 | `soak.bt_reconnect` | On every unit, connect → status → 3 s stream at 51.2 Hz → stop → status → close, repeated. Counts connect failures, stops without an ACK, links left silent, and lost samples. On Shimmer3, two failed connects in a row trigger a reset through the Base6 and a retry, and the count records whether the reset brought Bluetooth back |
 | `soak.long_stream` | A long Shimmer3R stream at 256 Hz: lost samples, duplicates, resyncs, jitter, and whether the stop is ACKed |
 

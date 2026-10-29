@@ -203,7 +203,9 @@ def _restore_infomem(unit, original: bytes, backup: Path, load_error: BaseExcept
     throughput run failed with "The device does not recognize the command".
     A failed attempt is tried again, because the unit must not keep the load's
     configuration, but it is noted on the item rather than lost: after the wait
-    it is a fault, not the re-enumeration.
+    it is a fault, not the re-enumeration. One that failed inside a host
+    service stall says so (s3r_usb.stall_named), and since naming it waits the
+    stall out, the next attempt comes after it.
     Runs in a finally block, so a failure names the load's own error and the
     backup to restore from by hand, and is chained from the load's error.
     """
@@ -211,7 +213,7 @@ def _restore_infomem(unit, original: bytes, backup: Path, load_error: BaseExcept
     for _ in range(RESTORE_ATTEMPTS):
         try:
             port = s3r_usb.wait_usb_settled(unit.usb_serial, 90)
-            with dock.open_when_ready(port) as d:
+            with s3r_usb.stall_named(unit.usb_serial), dock.open_when_ready(port) as d:
                 d.write_infomem(original)
                 if _masked(d.read_infomem()) != _masked(original):
                     raise dock.DockError("read back differs")

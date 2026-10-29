@@ -131,7 +131,8 @@ def bench_routes(rig):
         else:
             # At the end of a run this follows its last test, which may have
             # streamed docked and so taken the unit's USB away (DEV-1368).
-            with dock.open_when_ready(s3r_usb.wait_usb_settled(unit.usb_serial, 90)) as d:
+            port = s3r_usb.wait_usb_settled(unit.usb_serial, 90)
+            with s3r_usb.stall_named(unit.usb_serial), dock.open_when_ready(port) as d:
                 yield d
 
     def reset(unit):

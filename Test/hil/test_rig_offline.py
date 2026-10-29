@@ -336,6 +336,131 @@ class UsbSettled(unittest.TestCase):
         self.assertIn("went away again", str(cm.exception))
 
 
+class HostStall(unittest.TestCase):
+    """stall_named: a dock exchange that fails soon after the unit's USB arrival
+    names any host service stall it fell inside (System event 7011), and is
+    still a failure (DEV-1368)."""
+
+    ARRIVED = 1_000_000.0
+
+    @contextmanager
+    def host(self, arrived=ARRIVED, timeouts=(), now=None):
+        """A unit that arrived at `arrived` (None: no record), a System log with
+        these (time, service) 7011s, each readable once logged, and a clock that
+        only sleep advances, from `now` (default 3 s after the arrival)."""
+        clock = {"t": now if now is not None else (arrived or 0) + 3, "reads": 0}
+
+        def sleep(s):
+            clock["t"] += s
+
+        def service_timeouts(since):
+            clock["reads"] += 1
+            clock["read_at"] = clock["t"]
+            return sorted((t, s) for t, s in timeouts if since <= t <= clock["t"])
+        fake_time = types.SimpleNamespace(time=lambda: clock["t"], sleep=sleep)
+        with mock.patch.object(s3r_usb, "last_arrival", lambda serial: arrived), \
+                mock.patch.object(s3r_usb, "service_timeouts", service_timeouts), \
+                mock.patch.object(s3r_usb, "time", fake_time):
+            yield clock
+
+    def fail_with(self, error):
+        with s3r_usb.stall_named("A"):
+            raise error
+
+    def test_a_failure_inside_a_stall_names_it_and_still_fails(self):
+        a = self.ARRIVED
+        cause = dock.serial.SerialException("Cannot configure port, something went wrong (995)")
+        with self.host(timeouts=[(a + 30.2, "WSearch"), (a + 30.2, "Sense")]) as clock:
+            with self.assertRaises(s3r_usb.HostServiceStall) as cm:
+                self.fail_with(cause)
+            # The stall shows only when the SCM gives up on it, 30 s after it began.
+            self.assertGreaterEqual(clock["read_at"], a + 3 + s3r_usb.SCM_TIMEOUT_S)
+        e = cm.exception
+        self.assertIs(e.__cause__, cause)
+        self.assertIsInstance(e, OSError)       # still caught where a SerialException is
+        self.assertIn("Cannot configure port", str(e))
+        self.assertIn("System event 7011 for Sense, WSearch at", str(e))
+        self.assertIn("known_issues", str(e))
+
+    def test_a_dock_error_inside_a_stall_is_named_too(self):
+        with self.host(timeouts=[(self.ARRIVED + 30, "Sense")]):
+            with self.assertRaises(s3r_usb.HostServiceStall) as cm:
+                self.fail_with(dock.DockError("no reply to 2403"))
+        self.assertIn("DockError: no reply", str(cm.exception))
+
+    def test_with_no_stall_logged_the_failure_goes_on_as_it_was(self):
+        cause = dock.DockError("no reply to 2403")
+        with self.host() as clock:
+            with self.assertRaises(dock.DockError) as cm:
+                self.fail_with(cause)
+            self.assertEqual(clock["reads"], 1)
+        self.assertIs(cm.exception, cause)
+
+    def test_a_stall_logged_before_the_arrival_is_not_this_one(self):
+        cause = dock.DockError("no reply to 2403")
+        with self.host(timeouts=[(self.ARRIVED - 5, "Sense")]):
+            with self.assertRaises(dock.DockError) as cm:
+                self.fail_with(cause)
+        self.assertIs(cm.exception, cause)
+
+    def test_a_failure_long_after_the_arrival_is_raised_at_once(self):
+        cause = dock.DockError("no reply to 2403")
+        with self.host(now=self.ARRIVED + 60) as clock:
+            with self.assertRaises(dock.DockError) as cm:
+                self.fail_with(cause)
+            self.assertEqual((clock["t"], clock["reads"]), (self.ARRIVED + 60, 0))
+        self.assertIs(cm.exception, cause)
+
+    def test_no_arrival_on_record_is_raised_at_once(self):
+        with self.host(arrived=None) as clock:
+            with self.assertRaises(dock.DockError):
+                self.fail_with(dock.DockError("no reply"))
+            self.assertEqual(clock["reads"], 0)
+
+    def test_other_errors_are_not_looked_into(self):
+        with self.host(timeouts=[(self.ARRIVED + 30, "Sense")]) as clock:
+            for error in (ValueError("bad row"), AssertionError("configuration: divider")):
+                with self.subTest(error=error), self.assertRaises(type(error)):
+                    self.fail_with(error)
+            self.assertEqual(clock["reads"], 0)
+
+    def test_a_named_stall_is_not_named_again(self):
+        inner = s3r_usb.HostServiceStall("already named")
+        with self.host(timeouts=[(self.ARRIVED + 30, "Sense")]) as clock:
+            with self.assertRaises(s3r_usb.HostServiceStall) as cm:
+                self.fail_with(inner)
+            self.assertEqual(clock["reads"], 0)
+        self.assertIs(cm.exception, inner)
+
+    def test_a_failed_lookup_leaves_the_failure_itself(self):
+        def broken(since):
+            raise subprocess.TimeoutExpired("powershell", 60)
+        cause = dock.DockError("no reply")
+        with self.host(), mock.patch.object(s3r_usb, "service_timeouts", broken):
+            with self.assertRaises(dock.DockError) as cm:
+                self.fail_with(cause)
+        self.assertIs(cm.exception, cause)
+
+    def test_last_arrival_reads_the_composite_device(self):
+        with mock.patch.object(s3r_usb, "_powershell", return_value="1793262028007") as ps:
+            self.assertEqual(s3r_usb.last_arrival("204e36594236"), 1793262028.007)
+        self.assertIn(r"'USB\VID_0483&PID_5710\204E36594236'", ps.call_args[0][0])
+        with mock.patch.object(s3r_usb, "_powershell", return_value=""):
+            self.assertIsNone(s3r_usb.last_arrival("204E36594236"))
+
+    def test_service_timeouts_are_parsed_filtered_and_ordered(self):
+        one = '{"ms":1793262058007,"service":"Sense"}'
+        many = ('[{"ms":1793262058007,"service":"WSearch"},{"ms":1793262058007,"service":"Sense"},'
+                '{"ms":1793224246170,"service":"Sense"}]')
+        with mock.patch.object(s3r_usb, "_powershell", return_value=one):
+            self.assertEqual(s3r_usb.service_timeouts(1793262000), [(1793262058.007, "Sense")])
+        with mock.patch.object(s3r_usb, "_powershell", return_value=many):
+            self.assertEqual(s3r_usb.service_timeouts(1793262000),
+                             [(1793262058.007, "Sense"), (1793262058.007, "WSearch")])
+        with mock.patch.object(s3r_usb, "_powershell", return_value=""):
+            self.assertEqual(s3r_usb.service_timeouts(1793262000), [])
+
+
 class FakeHub:
     def __init__(self, on_ports):
         self.mask = sum(1 << (p - 1) for p in on_ports)
@@ -1099,6 +1224,54 @@ class DockOpenRetries(unittest.TestCase):
         self.assertEqual(len(made), 2)
         self.assertTrue(made[0].closed, "the first link was left open")
         self.assertIs(link, made[1])
+
+
+class DockReplyTimeout(unittest.TestCase):
+    """read_reply reconfigures the port only for a timeout it is asked to change.
+    pyserial reconfigures at every assignment, which on the Shimmer3R's CDC port
+    sends the unit control requests, and that call was the one aborted with
+    WinError 995 inside a host service stall (DEV-1368)."""
+
+    class Port:
+        def __init__(self, reply=b""):
+            self._timeout, self.assigned, self.reply = 1.0, [], bytearray(reply)
+
+        @property
+        def timeout(self):
+            return self._timeout
+
+        @timeout.setter
+        def timeout(self, t):
+            self.assigned.append(t)
+            self._timeout = t
+
+        def read(self, n):
+            out = bytes(self.reply[:n])
+            del self.reply[:n]
+            return out
+
+    def link(self, reply=b""):
+        d = dock.DockLink.__new__(dock.DockLink)
+        d.ser = self.Port(reply)
+        return d
+
+    def test_the_port_keeps_the_timeout_it_has(self):
+        for t in (None, 1.0):
+            with self.subTest(timeout_s=t):
+                d = self.link()
+                self.assertIsNone(d.read_reply(t))
+                self.assertEqual(d.ser.assigned, [])
+
+    def test_a_different_timeout_is_set_and_put_back(self):
+        d = self.link()
+        self.assertIsNone(d.read_reply(5.0))
+        self.assertEqual(d.ser.assigned, [5.0, 1.0])
+
+    def test_a_reply_is_read_without_touching_the_port(self):
+        ack = bytes([dock.START, dock.ACK])
+        d = self.link(ack + dock.crc16(ack).to_bytes(2, "little"))
+        self.assertEqual(d.read_reply().code, dock.ACK)
+        self.assertEqual(d.ser.assigned, [])
 
 
 def rate_packets(counters) -> bytes:

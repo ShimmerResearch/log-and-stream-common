@@ -57,11 +57,11 @@ LOG_START_S = 1.0               # the window release.sd_log_start owns
 def original_config(unit):
     """The unit's configuration before the matrix, put back afterwards."""
     port = s3r_usb.wait_usb_settled(unit.usb_serial, 60)
-    with dock.open_when_ready(port) as d:
+    with s3r_usb.stall_named(unit.usb_serial), dock.open_when_ready(port) as d:
         image = d.read_infomem()
     yield image
     port = s3r_usb.wait_usb_settled(unit.usb_serial, 90)
-    with dock.open_when_ready(port) as d:
+    with s3r_usb.stall_named(unit.usb_serial), dock.open_when_ready(port) as d:
         d.write_infomem(image)
 
 
@@ -71,10 +71,11 @@ def _configure(unit, row) -> tuple[S3rConfig, set[str]]:
     The row before may have streamed docked, which takes the unit's USB away
     until the stop, so its port and drive are waited for first
     (s3r_usb.wait_usb_settled). Nothing here retries: an exchange that fails
-    once both are back is a fault in its own right (DEV-1368).
+    once both are back is a fault in its own right (DEV-1368). One that fails
+    inside a host service stall says so (s3r_usb.stall_named), and still fails.
     """
     port = s3r_usb.wait_usb_settled(unit.usb_serial, 90)
-    with dock.open_when_ready(port) as d:
+    with s3r_usb.stall_named(unit.usb_serial), dock.open_when_ready(port) as d:
         card = d.get(dock.COMP_DAUGHTER_CARD, 0x02, bytes([3, 0]))[:3]
         unfitted = s3r_boards.OPTIONAL - s3r_boards.fitted_optional(card)
         want = SETS[row["sensors"]] - unfitted
