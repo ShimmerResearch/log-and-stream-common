@@ -1994,6 +1994,37 @@ class S3ReleaseConfigure(unittest.TestCase):
         back.b[9] ^= 0x02                            # GSR range, not a field the row sets
         self.assertIn("other bytes differ at offsets [9]", self.rel._differences(want, back))
 
+    def open_failing(self, error, base6):
+        """_open_bt against a link that always fails with `error`; returns (failure text, slots reset)."""
+        unit = types.SimpleNamespace(mac="44B7D02FA615", base6_slot=1)
+        resets = []
+
+        def link(*a, **k):
+            raise error
+        with mock.patch.object(self.rel.bt, "spp_port", lambda mac: "COM9"), \
+                mock.patch.object(self.rel.bt, "BtLink", link), \
+                mock.patch.object(self.rel, "reset_slot", lambda b, slot: resets.append(slot)), \
+                mock.patch.object(self.rel.time, "sleep", lambda s: None):
+            with self.assertRaises(self.rel.pytest.fail.Exception) as cm:
+                self.rel._open_bt(unit, base6)
+        return str(cm.exception), resets
+
+    def test_a_unit_silent_over_bluetooth_is_reset_through_its_slot(self):
+        # Seen 29 Oct 2026: RN4678 V1.23 took the link and answered nothing until reset (DEV-1136).
+        text, resets = self.open_failing(bt.BtError("timed out: wanted 1 bytes, got 0"), base6=object())
+        self.assertEqual(resets, [1])
+        self.assertIn("slot 1 reset", text)
+
+    def test_a_link_that_never_opens_resets_nothing(self):
+        # A page that fails is not known to be the unit's: Windows, the radio's pairing, range.
+        text, resets = self.open_failing(OSError(22, "The semaphore timeout period has expired."), base6=object())
+        self.assertEqual(resets, [])
+        self.assertIn("no Bluetooth connection", text)
+
+    def test_without_the_base6_nothing_is_reset(self):
+        _, resets = self.open_failing(bt.BtError("timed out"), base6=None)
+        self.assertEqual(resets, [])
+
 
 def _can_collect():
     import importlib.util

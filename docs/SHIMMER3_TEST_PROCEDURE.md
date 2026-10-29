@@ -1486,6 +1486,9 @@ four ways:
   put back after the last, the dump over Bluetooth and then InfoMem over the
   dock. The dump needs it because every `SET_INFOMEM` at offset 0 re-stamps its
   records for the ranges the image sets (BT_COMMUNICATION_PROTOCOL §7.5).
+  A unit that takes the Bluetooth link but answers nothing fails that row and
+  is reset through its Base6 slot. The rows after it then still run, and its
+  dump can still go back. A reset clears this state (known issue DEV-1136).
 - **The host derives the ODRs.** Shimmer3 firmware does not raise an ODR to
   cover the packet rate: §10.6 of the InfoMem document is Shimmer3R's. So each
   row writes ODR codes that cover its rate on every Shimmer3 part

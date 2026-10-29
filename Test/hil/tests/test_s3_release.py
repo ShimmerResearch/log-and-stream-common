@@ -43,7 +43,7 @@ import pytest
 from rig import bt, decode, dock, signals, throughput
 from rig.s3_config import (MAG_FLOOR_HZ, S3Config, calib_records, divider_for, expected_channels, odr_codes,
                            packet_bytes)
-from rig.s3_flash import _masked, restore_infomem
+from rig.s3_flash import _masked, reset_slot, restore_infomem
 
 try:
     import tomllib
@@ -82,6 +82,7 @@ MAX_JITTER_FRACTION = 0.25
 # stream_samples_per_s, in 30-byte load packets).
 LINK_FIT = 0.75
 LOAD_PACKET = 4 + sum(bt.channel_width(c, bt.HW_SHIMMER3) for c in throughput.LOAD_CHANNELS)
+RESET_SETTLE_S = 4.0            # radio bring-up after a slot reset, as rig/btmode.py waits
 
 
 @dataclass
@@ -92,10 +93,16 @@ class Saved:
     backup: Path
 
 
-def _open_bt(unit, attempts: int = 2, wait_s: float = 10.0) -> bt.BtLink:
+def _open_bt(unit, base6=None, attempts: int = 2, wait_s: float = 10.0) -> bt.BtLink:
     """Connect, retrying as fleet's open_bt does: on this bench a classic link
     right after another unit's stream can be slow to page, and Windows can hold
-    a COM port for a moment after pairing activity. Neither is the unit's."""
+    a COM port for a moment after pairing activity. Neither is the unit's.
+
+    Given the Base6, a unit that takes the link but answers nothing is reset
+    through its slot before the failure is raised: silent over classic BT while
+    the dock works (known_issues DEV-1136), which a reset clears. Seen 29 Oct
+    2026 on RN4678 V1.23 after ten rows. Without the reset every later row on
+    the unit fails the same way, and its calibration dump cannot be put back."""
     port = bt.spp_port(unit.mac)
     if not port:
         pytest.skip(f"no paired SPP port for {unit.mac} - pair its classic side once in Windows")
@@ -109,6 +116,11 @@ def _open_bt(unit, attempts: int = 2, wait_s: float = 10.0) -> bt.BtLink:
             time.sleep(wait_s * (2 if held else 1))
     if held:
         pytest.skip(f"{port} is held open by another process ({last}) - not tested")
+    if base6 is not None and isinstance(last, bt.BtError):
+        reset_slot(base6, unit.base6_slot)
+        time.sleep(RESET_SETTLE_S)
+        pytest.fail(f"{port}: the unit took the link but answered nothing after {attempts + 1} attempts ({last}); "
+                    f"slot {unit.base6_slot} reset for what follows (DEV-1136)")
     pytest.fail(f"{port}: no Bluetooth connection after {attempts + 1} attempts ({last})")
 
 
@@ -127,15 +139,18 @@ def saved(unit, base6):
 
     # The dump first: writing it pushes its blocks into InfoMem
     # (CALIBRATION §8.3), which the dock write after it then puts back.
-    problem = None
-    try:
-        with _open_bt(unit) as link:
-            if link.read_calib_dump() != dump:
-                link.write_calib_dump(dump)
+    # Twice: a unit silent over Bluetooth is reset by the first try (_open_bt).
+    for _ in range(2):
+        problem = None
+        try:
+            with _open_bt(unit, base6) as link:
                 if link.read_calib_dump() != dump:
-                    problem = "read back differs"
-    except (Exception, pytest.skip.Exception, pytest.fail.Exception) as e:
-        problem = repr(e)                         # InfoMem still goes back
+                    link.write_calib_dump(dump)
+                    if link.read_calib_dump() != dump:
+                        problem = "read back differs"
+            break
+        except (Exception, pytest.skip.Exception, pytest.fail.Exception) as e:
+            problem = repr(e)                     # InfoMem still goes back
     base6.select(unit.base6_slot)
     restore_infomem(base6, infomem, None, backup)
     if problem:
@@ -201,7 +216,7 @@ def _configure(unit, base6, row, saved: Saved) -> tuple[S3Config, str]:
     """
     note = row["configure"]
     try:
-        with _open_bt(unit) as link:
+        with _open_bt(unit, base6) as link:
             base = S3Config(link.read_infomem())       # as a host reads it first
             want = _intended(base, row)
             if row["configure"] == "commands":
@@ -276,7 +291,7 @@ def test_row(row, unit, rig, base6, saved, request, hil_note):
         pytest.skip(f"not streamed: its configuration over Bluetooth did not take (release.bt_config): {e}")
     aside.config(None)
 
-    with _open_bt(unit) as link:
+    with _open_bt(unit, base6) as link:
         inq = link.inquiry()
         # Calibration as a streaming host gets it: for the current ranges.
         calibs = decode.calibs_from_blob(link.all_calibration())
@@ -292,7 +307,7 @@ def test_row(row, unit, rig, base6, saved, request, hil_note):
     if hung:
         # The silent link is closed (which also resets the CRC mode, §3.3):
         # confirm on a fresh one that sensing really stopped.
-        with _open_bt(unit) as again:
+        with _open_bt(unit, base6) as again:
             again.wait_status(bt.STATUS_SENSING, False, timeout_s=15)
 
     sensors = SETS[row["sensors"]]
