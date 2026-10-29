@@ -19,7 +19,7 @@ import time
 import pytest
 
 from rig import ble, bt, dock, dock_protocol, midstream, throughput
-from rig.base6 import Base6
+from rig.s3_flash import restore_infomem
 
 pytestmark = pytest.mark.fleet
 
@@ -51,12 +51,6 @@ def parse_radio(banner: str) -> tuple[str, str] | None:
         module = "RN41" if "RN-41" in banner else "RN42"
         return module, m.group(1)
     return None
-
-
-@pytest.fixture(scope="session")
-def base6(rig):
-    with Base6(rig.base6_serial) as b:
-        yield b
 
 
 @pytest.fixture
@@ -127,34 +121,6 @@ def test_dock_protocol(unit, docklink, candidate, hil_note):
 
 
 STREAM_DIVIDER = 640    # 51.2 Hz: well inside every shipped radio's capacity
-RESTORE_ATTEMPTS = 3
-
-
-def restore_infomem(base6, original: bytes, stream_error: BaseException | None,
-                    backup=None) -> list[str]:
-    """Write the unit's own InfoMem (from offset 0) back; return what each failed attempt saw.
-
-    Runs in a finally block, so a failure here must not replace the stream's
-    own exception: when both fail, the DockError names the stream's error and
-    is chained from it.
-    """
-    seen = []
-    for _ in range(RESTORE_ATTEMPTS):
-        try:
-            with dock.open_when_ready(base6.uart_port) as d:
-                d.write_infomem(original, offset=0)
-                if masked(d.read_infomem(0, len(original))) != masked(original):
-                    raise dock.DockError("read back differs")
-            return seen
-        except (dock.DockError, OSError) as e:   # serial.SerialException is an OSError
-            seen.append(str(e))
-            time.sleep(1.0)
-    msg = f"could not restore the configuration over the dock: {seen}"
-    if backup is not None:
-        msg += f"; the original is in {backup}"
-    if stream_error is not None:
-        raise dock.DockError(f"{msg} - after the stream itself failed with {stream_error!r}") from stream_error
-    raise dock.DockError(msg)
 
 
 @pytest.mark.hil("fleet.bt_stream", needs=["shimmer3", "bt", "dock"])

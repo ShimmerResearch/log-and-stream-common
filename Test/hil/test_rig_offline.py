@@ -9,6 +9,7 @@ port.
 
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -36,7 +37,7 @@ except ImportError:
     _serial.SerialException = type("SerialException", (OSError,), {})
     sys.modules.update({"serial": _serial, "serial.tools": _tools, "serial.tools.list_ports": _lp})
 
-from rig import ble, bt, config, dock, flash, power, s3r_usb, sdfile, throughput  # noqa: E402
+from rig import ble, bt, config, dock, flash, power, s3_config, s3r_usb, sdfile, throughput  # noqa: E402
 import run_rc  # noqa: E402
 
 
@@ -1634,6 +1635,435 @@ class BleSerialReads(unittest.TestCase):
         self.assertEqual(link.hw, bt.HW_SHIMMER3R)
         self.assertEqual(written[0], bytes([bt.SET_CRC, 0]))
         self.assertIs(link.ser, s)
+
+
+# --- configuration over Bluetooth (DEV-1366) -------------------------------------
+
+class ConfigSpp(FakeSpp):
+    """The configuration side of a unit's Bluetooth command handler: GET/SET_INFOMEM,
+    GET/SET_CALIB_DUMP, the sampling rate and the per-setting commands
+    (BT_COMMUNICATION_PROTOCOL §7.5, §7.6, §7.8)."""
+
+    def __init__(self, dump=b""):
+        super().__init__(1)
+        self.im = bytearray(bytes(range(256)) * 2)
+        self.dump = bytearray(dump)
+        self.settings = {name: 0 for name in bt.SETTINGS}
+        self.divider = 640
+        self.writes = []
+        self.nack_sets = False
+
+    def write(self, data):
+        data = bytes(data)
+        self.writes.append(data)
+        op, args = data[0], data[1:]
+        n, at = (args[0], int.from_bytes(args[1:3], "little")) if len(args) >= 3 else (0, 0)
+        if op == bt.GET_INFOMEM:
+            self.buf += bytes([bt.ACK, bt.INFOMEM_RSP, n]) + self.im[at:at + n]
+        elif op == bt.SET_INFOMEM:
+            if self.nack_sets:
+                self.buf += bytes([bt.NACK])
+                return
+            self.im[at:at + n] = args[3:3 + n]
+            self.buf += bytes([bt.ACK])
+        elif op == bt.GET_CALIB_DUMP:
+            self.buf += bytes([bt.ACK, bt.CALIB_DUMP_RSP, n]) + args[1:3] + bytes(self.dump[at:at + n]).ljust(n, b"\0")
+        elif op == bt.SET_CALIB_DUMP:
+            if at == 0:
+                self.dump = bytearray(1024)
+            self.dump[at:at + n] = args[3:3 + n]
+            self.buf += bytes([bt.ACK])
+        elif op == bt.SET_SAMPLING_RATE:
+            self.divider = int.from_bytes(args[:2], "little")
+            self.buf += bytes([bt.ACK])
+        elif op == bt.SET_SENSORS:
+            self.im[3:6] = args[:3]
+            self.buf += bytes([bt.ACK])
+        elif op == bt.GET_SAMPLING_RATE:
+            self.buf += bytes([bt.ACK, bt.SAMPLING_RATE_RSP]) + self.divider.to_bytes(2, "little")
+        else:
+            for name, (set_op, rsp, get_op) in bt.SETTINGS.items():
+                if op == set_op:
+                    self.settings[name] = args[0]
+                    self.buf += bytes([bt.ACK])
+                elif op == get_op:
+                    self.buf += bytes([bt.ACK, rsp, self.settings[name]])
+
+
+def config_link(dump=b""):
+    link = bt.BtLink.__new__(bt.BtLink)
+    link.hw, link._nstatus, link.crc_mode = bt.HW_SHIMMER3, 1, 0
+    link.ser = ConfigSpp(dump)
+    return link
+
+
+def calib_dump(records):
+    """A calibration dump (CALIBRATION §2): records of (id, range, ts, 21-byte data)."""
+    body = bytes(8) + b"".join(sid.to_bytes(2, "little") + bytes([rng, len(data)]) + ts + data
+                               for sid, rng, ts, data in records)
+    return len(body).to_bytes(2, "little") + body
+
+
+def block(n):
+    return bytes([n]) * s3_config.BLOCK_LEN
+
+
+class BtConfiguration(unittest.TestCase):
+    def test_infomem_is_read_in_128_byte_pages(self):
+        link = config_link()
+        self.assertEqual(link.read_infomem(), bytes(link.ser.im[:384]))
+        self.assertEqual([w[:4] for w in link.ser.writes],
+                         [bytes([bt.GET_INFOMEM, 128, 0, 0]), bytes([bt.GET_INFOMEM, 128, 128, 0]),
+                          bytes([bt.GET_INFOMEM, 128, 0, 1])])
+
+    def test_a_write_goes_up_in_ascending_pages(self):
+        link = config_link()
+        image = bytes(range(128)) * 3
+        link.write_infomem(image)
+        self.assertEqual([(w[0], w[1], int.from_bytes(w[2:4], "little")) for w in link.ser.writes],
+                         [(bt.SET_INFOMEM, 128, 0), (bt.SET_INFOMEM, 128, 128), (bt.SET_INFOMEM, 128, 256)])
+        self.assertEqual(bytes(link.ser.im[:384]), image)
+
+    def test_a_request_outside_the_window_is_refused_before_it_is_sent(self):
+        # The firmware ACKs a read out of bounds with no response (§7.5): a host
+        # waiting for one would hang, so it is never asked.
+        link = config_link()
+        for offset, length in ((500, 20), (0, 0), (-1, 4)):
+            with self.subTest(offset=offset, length=length), self.assertRaises(bt.BtError):
+                link.read_infomem(offset, length)
+        self.assertEqual(link.ser.writes, [])
+
+    def test_a_nacked_write_raises(self):
+        link = config_link()
+        link.ser.nack_sets = True
+        with self.assertRaises(bt.BtError):
+            link.write_infomem(bytes(128))
+
+    def test_the_calibration_dump_is_read_to_its_own_length(self):
+        dump = calib_dump([(30, r, bytes(8), block(r)) for r in range(16)])       # 538 bytes, as a fresh Shimmer3
+        link = config_link(dump)
+        self.assertEqual(len(dump), 538)
+        self.assertEqual(link.read_calib_dump(), dump)
+        self.assertEqual([int.from_bytes(w[2:4], "little") for w in link.ser.writes], [0, 128, 256, 384, 512])
+        self.assertEqual(link.ser.writes[-1][1], 538 - 512)
+
+    def test_a_dump_goes_back_from_offset_0_up(self):
+        dump = calib_dump([(30, r, bytes(8), block(r)) for r in range(5)])
+        link = config_link()
+        link.write_calib_dump(dump)
+        self.assertEqual([int.from_bytes(w[2:4], "little") for w in link.ser.writes], [0, 128])
+        self.assertEqual(bytes(link.ser.dump[:len(dump)]), dump)
+
+    def test_a_blob_whose_length_field_disagrees_is_not_written(self):
+        link = config_link()
+        with self.assertRaises(bt.BtError):
+            link.write_calib_dump(calib_dump([(30, 0, bytes(8), block(0))]) + b"\0")
+        self.assertEqual(link.ser.writes, [])
+
+    def test_each_setting_round_trips_through_its_own_opcodes(self):
+        link = config_link()
+        for i, name in enumerate(bt.SETTINGS):
+            link.set_setting(name, i + 1)
+        self.assertEqual({name: link.get_setting(name) for name in bt.SETTINGS},
+                         {name: i + 1 for i, name in enumerate(bt.SETTINGS)})
+
+    def test_the_sampling_divider_round_trips_and_zero_is_refused(self):
+        link = config_link()
+        link.set_sampling_divider(32)
+        self.assertEqual(link.get_sampling_divider(), 32)
+        with self.assertRaises(bt.BtError):
+            link.set_sampling_divider(0)
+
+
+class S3ConfigFields(unittest.TestCase):
+    def config(self):
+        return s3_config.S3Config(bytes(384))
+
+    def test_the_load_sensors_are_the_throughput_loads_bits(self):
+        cfg = self.config()
+        cfg.set_sensors({"ln_accel", "gyro", "mag", "vbatt", "wr_accel"})
+        self.assertEqual(cfg.sensor_bytes(), throughput.LOAD_SENSORS)
+        self.assertEqual(cfg.enabled(), {"ln_accel", "gyro", "mag", "vbatt", "wr_accel"})
+
+    def test_a_field_leaves_its_neighbours_alone(self):
+        cfg = self.config()
+        cfg.put("mag_range", 1)
+        cfg.put("mag_rate", 7)
+        cfg.put("gyro_range", 3)
+        self.assertEqual(cfg.b[8], (1 << 5) | (7 << 2) | 3)
+        cfg.put("mag_rate", 0)
+        self.assertEqual((cfg.get("mag_range"), cfg.get("gyro_range")), (1, 3))
+
+    def test_51p2hz_derives_the_firmwares_own_defaults(self):
+        # ShimConfig_setDefaultConfig: LSM303 100 Hz, MPU9x50 divider 0x9B.
+        codes = s3_config.odr_codes(51.2)
+        self.assertEqual((codes["wr_accel_rate"], codes["gyro_rate"]), (5, 0x9B))
+
+    def test_each_odr_covers_the_rate_on_every_part(self):
+        for rate in (51.2, 102.4, 128, 256, 512, 1024):
+            with self.subTest(rate=rate):
+                codes = s3_config.odr_codes(rate)
+                dlhc, ah = next((d, a) for c, d, a in s3_config.WR_ACCEL_CODES if c == codes["wr_accel_rate"])
+                self.assertGreaterEqual(min(dlhc, ah), rate)
+                div = codes["gyro_rate"]
+                self.assertGreaterEqual(8000 / (1 + div), rate)
+                self.assertLess(8000 / (2 + div), rate, "the largest divider that covers it")
+                self.assertEqual(codes["wr_accel_lp_mode"], 0)
+
+    def test_the_mag_goes_fast_above_75hz_but_not_through_its_command(self):
+        self.assertEqual(s3_config.odr_codes(51.2)["mag_rate"], s3_config.MAG_SLOW)
+        self.assertEqual(s3_config.odr_codes(128)["mag_rate"], s3_config.MAG_FAST)
+        self.assertEqual(s3_config.odr_codes(128, via_commands=True)["mag_rate"], s3_config.MAG_SLOW)
+
+    def test_channels_follow_the_firmwares_order(self):
+        full = {"ln_accel", "gyro", "mag", "vbatt", "wr_accel", "alt_accel", "alt_mag", "pressure"}
+        self.assertEqual(s3_config.expected_channels(full, dlhc=False),
+                         [0x00, 0x01, 0x02, 0x03, 0x0A, 0x0B, 0x0C, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09,
+                          0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B])
+        self.assertEqual(s3_config.expected_channels({"mag"}, dlhc=True), [0x07, 0x09, 0x08])
+
+    def test_packet_bytes(self):
+        full = {"ln_accel", "gyro", "mag", "vbatt", "wr_accel", "alt_accel", "alt_mag", "pressure"}
+        self.assertEqual(s3_config.packet_bytes(full), 47)
+        self.assertEqual(s3_config.packet_bytes(full, crc=2), 49)
+        self.assertEqual(s3_config.packet_bytes({"ln_accel"}), 10)
+
+    def dump(self):
+        stamped = (12345).to_bytes(8, "little")
+        return calib_dump([(2, 0, stamped, block(1))]
+                          + [(30, r, stamped if r == 1 else bytes(8), block(30 + r)) for r in range(4)]
+                          + [(31, r, bytes(8), block(40 + r)) for r in range(4)])
+
+    def test_the_dumps_block_for_each_range_goes_into_infomem(self):
+        cfg = self.config()
+        cfg.put("gyro_range", 1)
+        cfg.put("wr_accel_range", 2)
+        missing = cfg.with_calibration(s3_config.calib_records(self.dump()))
+        self.assertEqual(bytes(cfg.b[34:55]), block(1))
+        self.assertEqual(bytes(cfg.b[55:76]), block(31))
+        self.assertEqual(bytes(cfg.b[97:118]), block(42))
+        # No mag record at all: zeros, what GET_ALL_CALIBRATION reports (CALIBRATION §8.2).
+        self.assertEqual(missing, ["mag"])
+        self.assertEqual(bytes(cfg.b[76:97]), bytes(21))
+
+    def test_a_zero_timestamp_is_a_default_seed(self):
+        cfg = self.config()
+        records = s3_config.calib_records(self.dump())
+        cfg.put("gyro_range", 1)
+        self.assertEqual(cfg.default_calibrations(records), {"wr_accel", "mag"})
+        cfg.put("gyro_range", 2)
+        self.assertEqual(cfg.default_calibrations(records), {"gyro", "wr_accel", "mag"})
+
+
+try:
+    import tomllib as _toml
+except ModuleNotFoundError:
+    try:
+        import tomli as _toml
+    except ModuleNotFoundError:
+        _toml = None
+
+# The slowest shipped radio's saturated stream on the bench: RN42 v4.77, 517.9
+# samples/s of the 30-byte load (hil/rig-shim-lap-023.toml in bench-tools).
+SLOWEST_RADIO_B_PER_S = 517.9 * 30
+S3_LINK_FIT = 0.75              # test_s3_release.LINK_FIT
+
+
+@unittest.skipIf(_toml is None, "needs tomllib (3.11+) or tomli")
+class S3ReleaseMatrix(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        with open(HERE / "matrix" / "s3_release.toml", "rb") as f:
+            cls.m = _toml.load(f)
+        cls.sets = {k: set(v) for k, v in cls.m["sets"].items()}
+        cls.rows = cls.m["row"]
+
+    def test_it_is_marked_for_shimmer3(self):
+        # So HIL_MATRIX and render.py --matrix tell it from the Shimmer3R matrix.
+        self.assertEqual(self.m["platform"], "shimmer3")
+
+    def test_rows_are_well_formed(self):
+        ids = [r["id"] for r in self.rows]
+        self.assertEqual(len(ids), len(set(ids)))
+        for s in self.sets.values():
+            self.assertLessEqual(s, s3_config.STREAMABLE)
+        for r in self.rows:
+            with self.subTest(row=r["id"]):
+                self.assertIn(r["sensors"], self.sets)
+                self.assertIn(r["configure"], ("infomem", "commands"))
+                self.assertIn(r["crc"], (0, 1, 2))
+                for f in ("gyro_range", "wr_accel_range", "alt_accel_range"):
+                    self.assertIn(r[f], range(4))
+
+    def test_every_pair_is_covered(self):
+        rows = self.rows
+        self.assertEqual({(r["configure"], r["crc"]) for r in rows},
+                         {(c, k) for c in ("infomem", "commands") for k in (0, 1, 2)})
+        for key in ("rate_hz", "sensors"):
+            for v in {r[key] for r in rows}:
+                with self.subTest(**{key: v}):
+                    self.assertEqual({r["configure"] for r in rows if r[key] == v}, {"infomem", "commands"})
+
+    def test_every_range_code_runs_with_its_sensor_on(self):
+        for field, sensor in (("gyro_range", "gyro"), ("wr_accel_range", "wr_accel"),
+                              ("alt_accel_range", "alt_accel")):
+            with self.subTest(field=field):
+                self.assertEqual({r[field] for r in self.rows if sensor in self.sets[r["sensors"]]}, set(range(4)))
+
+    def test_every_row_fits_the_slowest_radio(self):
+        for r in self.rows:
+            with self.subTest(row=r["id"]):
+                need = r["rate_hz"] * s3_config.packet_bytes(self.sets[r["sensors"]], r["crc"])
+                self.assertLessEqual(need, S3_LINK_FIT * SLOWEST_RADIO_B_PER_S)
+
+    def test_1024hz_rows_keep_to_the_mcus_adc(self):
+        # 13 channels at 1024 Hz deliver about 950 Hz with no radio involved (DEV-1308).
+        for r in self.rows:
+            if r["rate_hz"] >= 1024:
+                with self.subTest(row=r["id"]):
+                    self.assertLessEqual(self.sets[r["sensors"]], {"ln_accel", "vbatt"})
+
+
+def _release_module():
+    """tests/test_s3_release.py, which imports pytest; None without it."""
+    import importlib.util
+    if "_s3_release" in sys.modules:
+        return sys.modules["_s3_release"]
+    if importlib.util.find_spec("pytest") is None or _toml is None:
+        return None
+    spec = importlib.util.spec_from_file_location("_s3_release", HERE / "tests" / "test_s3_release.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod                     # its dataclass looks itself up there
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("HIL_MATRIX", None)
+        spec.loader.exec_module(mod)
+    return mod
+
+
+@unittest.skipIf(_release_module() is None, "needs pytest and a TOML reader")
+class S3ReleaseConfigure(unittest.TestCase):
+    """What test_s3_release writes over Bluetooth, and how it reads the result back."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rel = _release_module()
+        cls.row = next(r for r in cls.rel.ROWS if r["id"] == "imu_wr_128hz")
+
+    def base(self):
+        cfg = s3_config.S3Config(bytes(384))
+        cfg.divider = 640
+        cfg.put("gyro_rate", 0x9B)
+        return cfg
+
+    def test_the_meant_image_carries_the_row_and_the_derived_odrs(self):
+        want = self.rel._intended(self.base(), self.row)
+        self.assertEqual(want.divider, 256)
+        self.assertEqual(want.enabled(), self.rel.SETS["imu_wr"])
+        self.assertEqual((want.get("gyro_range"), want.get("wr_accel_range")), (3, 2))
+        codes = s3_config.odr_codes(128, via_commands=True)
+        self.assertEqual({f: want.get(f) for f in codes}, codes)
+
+    def test_commands_send_every_field_and_read_each_back(self):
+        want = self.rel._intended(self.base(), self.row)
+        link = config_link()
+        self.assertEqual(self.rel._by_commands(link, want), [])
+        self.assertEqual(link.ser.divider, 256)
+        self.assertEqual(link.ser.writes[0], bytes([bt.SET_SENSORS]) + want.sensor_bytes())
+        self.assertEqual({k: link.ser.settings[k] for k in link.ser.settings},
+                         {k: want.get(k) for k in bt.SETTINGS})
+
+    def test_a_setting_the_firmware_clamped_is_named(self):
+        want = self.rel._intended(self.base(), self.row)
+        link = config_link()
+        real_write = link.ser.write
+
+        def clamping(data):
+            real_write(data)
+            if data[0] == bt.SETTINGS["mag_rate"][0]:
+                link.ser.settings["mag_rate"] = 6 if data[1] > 6 else data[1]
+        link.ser.write = clamping
+        want.put("mag_rate", 7)
+        self.assertEqual(self.rel._by_commands(link, want), ["GET mag_rate 6, set 7"])
+
+    def test_a_read_back_names_the_fields_that_differ(self):
+        want = self.rel._intended(self.base(), self.row)
+        back = s3_config.S3Config(want.bytes())
+        back.put("gyro_rate", 4)
+        back.b[230] |= 0x01                          # flagWriteCfgToSd: the firmware's own
+        self.assertEqual(self.rel._differences(want, back), ["gyro_rate 4, meant 61"])
+        back.b[9] ^= 0x02                            # GSR range, not a field the row sets
+        self.assertIn("other bytes differ at offsets [9]", self.rel._differences(want, back))
+
+    def open_failing(self, error, base6):
+        """_open_bt against a link that always fails with `error`; returns (failure text, slots reset)."""
+        unit = types.SimpleNamespace(mac="44B7D02FA615", base6_slot=1)
+        resets = []
+
+        def link(*a, **k):
+            raise error
+        with mock.patch.object(self.rel.bt, "spp_port", lambda mac: "COM9"), \
+                mock.patch.object(self.rel.bt, "BtLink", link), \
+                mock.patch.object(self.rel, "reset_slot", lambda b, slot: resets.append(slot)), \
+                mock.patch.object(self.rel.time, "sleep", lambda s: None):
+            with self.assertRaises(self.rel.pytest.fail.Exception) as cm:
+                self.rel._open_bt(unit, base6)
+        return str(cm.exception), resets
+
+    def test_a_unit_silent_over_bluetooth_is_reset_through_its_slot(self):
+        # Seen 29 Oct 2026: RN4678 V1.23 took the link and answered nothing until reset (DEV-1136).
+        text, resets = self.open_failing(bt.BtError("timed out: wanted 1 bytes, got 0"), base6=object())
+        self.assertEqual(resets, [1])
+        self.assertIn("slot 1 reset", text)
+
+    def test_a_link_that_never_opens_resets_nothing(self):
+        # A page that fails is not known to be the unit's: Windows, the radio's pairing, range.
+        text, resets = self.open_failing(OSError(22, "The semaphore timeout period has expired."), base6=object())
+        self.assertEqual(resets, [])
+        self.assertIn("no Bluetooth connection", text)
+
+    def test_without_the_base6_nothing_is_reset(self):
+        _, resets = self.open_failing(bt.BtError("timed out"), base6=None)
+        self.assertEqual(resets, [])
+
+
+def _can_collect():
+    import importlib.util
+    return all(importlib.util.find_spec(m) for m in ("pytest", "serial", "numpy")) and _toml is not None
+
+
+@unittest.skipUnless(_can_collect(), "needs pytest, pyserial, numpy and a TOML reader")
+class ReleaseTierPicksThePlatform(unittest.TestCase):
+    """run_rc.py --tier release runs `pytest -m release` with the candidate's
+    build-info: a Shimmer3 candidate must get the Shimmer3 matrix, and only it."""
+
+    RIG = ('bench = "b"\n[base6]\nserial = "X"\n'
+           '[[unit]]\nname = "s3"\nplatform = "shimmer3"\nmac = "000666000001"\nbase6_slot = 1\n'
+           '[[unit]]\nname = "s3r"\nplatform = "shimmer3r"\nmac = "000666000002"\nusb_serial = "ABC"\n')
+
+    def collect(self, platform):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            rig, info = Path(d) / "rig.toml", Path(d) / "build-info.json"
+            rig.write_text(self.RIG, encoding="utf-8")
+            info.write_text(json.dumps({"platform": platform, "commit": "0" * 40, "firmware_version": "1.01.009"}),
+                            encoding="utf-8")
+            env = {k: v for k, v in os.environ.items() if k not in ("HIL_MATRIX", "HIL_RIG")}
+            p = subprocess.run([sys.executable, "-m", "pytest", str(HERE / "tests"), "--collect-only", "-q",
+                                "-m", "release", "--rig", str(rig), "--candidate", str(info),
+                                "-p", "no:cacheprovider"],
+                               capture_output=True, text=True, env=env, cwd=d)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        return p.stdout
+
+    def test_a_shimmer3_candidate_gets_the_shimmer3_matrix(self):
+        out = self.collect("shimmer3")
+        self.assertIn("test_s3_release.py::test_row[s3-imu_51p2hz]", out)
+        self.assertNotIn("test_s3r_release.py", out)
+
+    def test_a_shimmer3r_candidate_gets_its_own(self):
+        out = self.collect("shimmer3r")
+        self.assertIn("test_s3r_release.py::test_row[", out)
+        self.assertNotIn("test_s3_release.py", out)
 
 
 if __name__ == "__main__":

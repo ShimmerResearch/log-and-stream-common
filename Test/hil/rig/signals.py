@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from .bt import HW_SHIMMER3R
 from .decode import VBATT, Calib, triplet
 
 G = 9.80665
@@ -25,8 +26,8 @@ MIN_NOISY_AXES = 2              # axes that must carry that noise before a whole
 VBATT_MV = (3000, 4300)
 I16_LIMITS = (-32768, 32767)
 # Shimmer3R's alt accel decodes to 12-bit counts (decode.split_channels), so it
-# saturates at the 12-bit limits. check_rest is used on Shimmer3R data only.
-LIMITS = {"alt_accel": (-2048, 2047)}
+# saturates at the 12-bit limits. On Shimmer3 it is the 9-axis chip's int16.
+S3R_LIMITS = {"alt_accel": (-2048, 2047)}
 
 
 def longest_run(x: np.ndarray) -> int:
@@ -41,9 +42,15 @@ def longest_run(x: np.ndarray) -> int:
 
 
 def check_rest(chans: dict[int, np.ndarray], calibs: dict[str, Calib], packet_rate_hz: float,
-               mag_ceiling_hz: float = 100.0) -> tuple[list[str], str]:
+               mag_ceiling_hz: float = 100.0, hw: int = HW_SHIMMER3R,
+               defaults: frozenset[str] | set[str] = frozenset()) -> tuple[list[str], str]:
+    """`defaults` names the sensors whose calibration is a firmware default seed
+    rather than a calibration of this unit. Their magnitude and mean are not
+    judged: a default carries no offset, and a Shimmer3's MPU9x50 gyro can sit
+    tens of dps from zero until one is removed."""
     problems: list[str] = []
     notes: list[str] = []
+    limits = S3R_LIMITS if hw == HW_SHIMMER3R else {}
 
     for name in ("ln_accel", "wr_accel", "alt_accel"):
         raw = triplet(chans, name)
@@ -53,9 +60,12 @@ def check_rest(chans: dict[int, np.ndarray], calibs: dict[str, Calib], packet_ra
         if name == "alt_accel" and (c is None or c.absent or np.all(np.abs(c.sens) <= 1)):
             # ADXL371 ships with a placeholder calibration (CALIBRATION §6.2):
             # its physical values mean nothing until a real one is written.
+            # A Shimmer3's GET_ALL_CALIBRATION has no alt accel block at all.
             notes.append("alt accel uncalibrated, magnitude not checked")
         elif c is None or c.absent:
             notes.append(f"{name}: no calibration stored, magnitude not checked")
+        elif name in defaults:
+            notes.append(f"{name}: default calibration, magnitude not checked")
         else:
             mag = float(np.median(np.linalg.norm(c.apply(raw), axis=1)))
             notes.append(f"{name} |a| {mag:.2f}")
@@ -67,6 +77,8 @@ def check_rest(chans: dict[int, np.ndarray], calibs: dict[str, Calib], packet_ra
         c = calibs.get("gyro")
         if c is None or c.absent:
             notes.append("gyro: no calibration stored, mean not checked")
+        elif "gyro" in defaults:
+            notes.append("gyro: default calibration, mean not checked")
         else:
             mean = np.mean(c.apply(raw), axis=0)
             worst = float(np.max(np.abs(mean)))
@@ -122,10 +134,10 @@ def check_rest(chans: dict[int, np.ndarray], calibs: dict[str, Calib], packet_ra
             col = raw[:, i]
             if len(col) > 20 and np.all(col == col[0]):
                 problems.append(f"{name} {axis}: constant {int(col[0])} for the whole capture")
-            lo, hi = LIMITS.get(name, I16_LIMITS)
+            lo, hi = limits.get(name, I16_LIMITS)
             sat = np.mean((col <= lo) | (col >= hi))
             if sat > 0:
-                width = "int12" if name in LIMITS else "int16"
+                width = "int12" if name in limits else "int16"
                 problems.append(f"{name} {axis}: {sat:.1%} of samples at the {width} limit")
 
     if VBATT in chans:

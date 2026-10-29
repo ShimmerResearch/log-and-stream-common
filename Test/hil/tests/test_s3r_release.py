@@ -40,9 +40,15 @@ except ModuleNotFoundError:     # pragma: no cover
 
 pytestmark = pytest.mark.release
 
-# HIL_MATRIX points at another matrix file - an experiment's rows, say. A run
-# bound to a release candidate must use the default (run_rc.py does).
-MATRIX = Path(os.environ.get("HIL_MATRIX") or Path(__file__).resolve().parents[1] / "matrix" / "s3r_release.toml")
+# HIL_MATRIX points at another matrix file - an experiment's rows, say - unless
+# the file says it is for Shimmer3 (platform = "shimmer3"), which is
+# test_s3_release's. A run bound to a release candidate must use the default
+# (run_rc.py does).
+MATRIX = Path(__file__).resolve().parents[1] / "matrix" / "s3r_release.toml"
+if os.environ.get("HIL_MATRIX"):
+    with open(os.environ["HIL_MATRIX"], "rb") as f:
+        if tomllib.load(f).get("platform") != "shimmer3":
+            MATRIX = Path(os.environ["HIL_MATRIX"])
 with open(MATRIX, "rb") as f:
     _M = tomllib.load(f)
 SETS = {k: set(v) for k, v in _M["sets"].items()}

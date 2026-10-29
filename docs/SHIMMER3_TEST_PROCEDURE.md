@@ -1431,8 +1431,8 @@ grid. The stream runs with link CRC on, because without it a frame is
 confirmed by a plausible timestamp step, and an off-grid stamp would be
 dropped as a misframe instead of judged.
 
-The **release** tier (Shimmer3R so far) runs the configuration matrix in
-`Test/hil/matrix/s3r_release.toml`. There are about 22 rows, chosen so every
+The **release** tier runs a configuration matrix on each platform. On Shimmer3R
+it is the one in `Test/hil/matrix/s3r_release.toml`. There are about 22 rows, chosen so every
 pair of the following appears in at least one row: rate (51.2 to 1024 Hz),
 sensor set, mode (Bluetooth stream; SD log, with the hub port acting as the
 undock; or both together) and Bluetooth CRC mode. Two of them are five-minute
@@ -1460,6 +1460,63 @@ Two observations are kept as their own items so they do not fail every row
 they touch: `release.sd_log_start` (samples lost in the first second of a log)
 and `release.stop_ack` (a stream stop that goes unACKed, or leaves the link
 silent until a reconnect).
+
+On **Shimmer3** the matrix is `Test/hil/matrix/s3_release.toml`, 13 rows run on
+each Base6 unit, one per shipped radio. `run_rc.py --tier release` picks it for
+a Shimmer3 candidate. Each row is its own item, `release.<row>`. Every row
+streams; none logs. A docked Shimmer3 gives its SD card to the dock and refuses
+a log start, and a Base6 cannot undock one slot, so logging and logging while
+streaming stay with the manual §5.6. The rows differ from the Shimmer3R tier in
+four ways:
+
+- **Configured over Bluetooth, the customer's route.** A row's `configure`
+  field picks how:
+  - `infomem`: the whole 384-byte image in three `SET_INFOMEM` pages, as
+    Consensys writes it. This exercises the InfoMem flash write the firmware
+    makes with the radio held off (DEV-1246).
+  - `commands`: `SET_SENSORS`, `SET_SAMPLING_RATE`, the range commands and the
+    ODR commands, each read back with its `GET`, as older hosts do.
+
+  The rows cover each method with each rate, sensor set and CRC mode.
+- **The dock only checks and restores.** After the write, InfoMem is read over
+  the Base6 dock and must equal what was meant, byte for byte (byte 230 bit 0
+  excepted). That comparison is its own item, `release.bt_config`. A row whose
+  configuration did not take is not streamed, and is reported `not_covered`.
+  Each unit's InfoMem and calibration dump are saved before the first row and
+  put back after the last, the dump over Bluetooth and then InfoMem over the
+  dock. The dump needs it because every `SET_INFOMEM` at offset 0 re-stamps its
+  records for the ranges the image sets (BT_COMMUNICATION_PROTOCOL §7.5).
+  A unit that takes the Bluetooth link but answers nothing fails that row and
+  is reset through its Base6 slot. The rows after it then still run, and its
+  dump can still go back. A reset clears this state (known issue DEV-1136).
+- **The host derives the ODRs.** Shimmer3 firmware does not raise an ODR to
+  cover the packet rate: §10.6 of the InfoMem document is Shimmer3R's. So each
+  row writes ODR codes that cover its rate on every Shimmer3 part
+  (`Test/hil/rig/s3_config.py`), and each InfoMem write carries the calibration
+  dump's own blocks for the ranges it sets, as Consensys does. Otherwise the
+  write would file the old range's calibration under the new one. A wide-range
+  accel range code means the part's own register value: ±2/4/8/16 g on an
+  LSM303DLHC, ±2/16/4/8 g on an LSM303AHTR or the ICM-20948 standing in for it.
+- **Every row fits the slowest radio.** RN42 v4.77 delivers about 15.5 KB/s of
+  a saturated stream on the bench. Each row needs at most 75% of that, so a lost
+  sample is a finding and not the link. If a unit's own throughput baseline in
+  `rig.toml` says a row does not fit, that row is `not_covered` on that unit,
+  with the figures. The MCU has a ceiling of its own, about 950 Hz with 13
+  channels (DEV-1308), so the 1024 Hz rows carry only the LN accel.
+
+The checks after the stream are the Shimmer3R tier's:
+
+- **Timing and framing:** loss, duplicates, jitter, device-clock rate, link CRC.
+- **The inquiry:** its divider, setup bytes 6-9 and the channel list in the
+  firmware's order (STREAMING_DATA_FORMAT §4.1) must match what was stored. The
+  magnetometer may be listed X, Z, Y, the LSM303DLHC's order.
+- **Signals at rest:** the gyro and the LSM303DLHC magnetometer are decoded
+  big-endian. The magnitude and mean checks are made only where the unit's
+  calibration dump holds a real calibration for that range. A firmware default
+  seed carries no offset, and an MPU9x50 gyro can sit tens of dps off zero
+  without one.
+
+`release.stop_ack` is kept apart as on Shimmer3R.
 
 Run release-tier rows with STM32CubeIDE and Consensys closed. The suite warns
 when they are open. On USB arrival the IDE pages every Bluetooth COM port,

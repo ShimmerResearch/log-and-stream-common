@@ -22,6 +22,14 @@ python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022 --no-flash --tier soa
 python Test/hil/run_rc.py LogAndStream_Shimmer3_v1.01.007 --no-flash --tier soak
 ```
 
+The release tier's configuration matrix works the same way. `--tier release` runs the matrix for the
+candidate's platform: `matrix/s3r_release.toml` on the Shimmer3Rs, configured over USB, or
+`matrix/s3_release.toml` on each Base6 Shimmer3, configured over Bluetooth:
+
+```
+python Test/hil/run_rc.py LogAndStream_Shimmer3_v1.01.009 --no-flash --tier release
+```
+
 A failure in the report blocks the release, required item or not, unless it
 carries a waiver. `--waive ITEM=ISSUE` puts the issue key into that item's
 result when it fails or is not covered, as a manual sign-off's waiver does, and
@@ -100,7 +108,7 @@ plug and unplug.
 | `rig/config.py` | `rig.toml` |
 | `rig/power.py` | Hub port power (through bench-tools `hub/hubctl.py`), or the operator |
 | `rig/dock.py` | The dock protocol over the Shimmer3R USB CDC port |
-| `rig/bt.py` | Bluetooth SPP: commands, status, streaming with timestamp checks, and commands sent mid-stream |
+| `rig/bt.py` | Bluetooth SPP: commands, status, streaming with timestamp checks, and commands sent mid-stream; configuration as a host writes it (InfoMem, the calibration dump, the rate, sensor and per-setting commands) |
 | `rig/midstream.py` | SD logs started and stopped inside a stream: the command schedule, and the stamps judged across each start (steps back, grid moves) |
 | `rig/throughput.py` | Bluetooth throughput: the firmware's data-rate test, and a stream that outruns the link, against each unit's baseline |
 | `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial. The drive comes from Get-Disk, or from Win32_DiskDrive when Get-Disk does not list the unit: on one bench Get-Disk has listed no disks at all for minutes, and listed a unit back from a long log minutes late |
@@ -109,13 +117,15 @@ plug and unplug.
 | `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version. USB DFU flashes only a DFU device that appeared after this unit was sent to its bootloader, and only if it is the only one |
 | `rig/base6.py` | Base6 slot mux: which slots are occupied, select one, mask its BSL lines |
 | `rig/msp430_bsl.py` | MSP430 ROM bootloader client (port of Consensys's): erase, write, CRC-verify |
-| `rig/s3_flash.py` | Flashes a Shimmer3 in a Base6 slot, backing up and restoring its InfoMem |
+| `rig/s3_flash.py` | Flashes a Shimmer3 in a Base6 slot, backing up and restoring its InfoMem; restores a unit's InfoMem over the dock after a test |
+| `rig/s3_config.py` | Shimmer3 InfoMem fields the matrix varies, the ODRs a host derives for a rate (Shimmer3 firmware does not raise them), calibration blocks from the dump, and the channel order an inquiry should report |
 | `rig/s3r_config.py` | Shimmer3R InfoMem fields the matrix varies: rate, sensors, ranges, and the ODRs to check |
 | `rig/s3r_boards.py` | Which optional sensors a Shimmer3R board has fitted (ported from Boards/shimmer_boards.c) |
 | `rig/decode.py` | Packets or SD records to per-channel arrays; calibration from a blob, an SD header or InfoMem |
 | `rig/signals.py` | Checks on a resting unit: 1 g, gyro ≈ 0, stuck/staircase/saturated axes, VBatt |
 | `matrix/s3r_release.toml` | The Shimmer3R release matrix: one row per configuration |
-| `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (the matrix) or `soak` (long-running, advisory; `HIL_SOAK_SCALE` sets the length) |
+| `matrix/s3_release.toml` | The Shimmer3 release matrix: stream rows, each configured over Bluetooth by InfoMem or by the individual commands |
+| `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (each platform's matrix) or `soak` (long-running, advisory; `HIL_SOAK_SCALE` sets the length) |
 | `triage.py` | Claude triage of a failed run: advice in `triage.md`, never a verdict |
 | `test_hil_*.py` | Unit tests for the above that need no hardware; run by `make -C Test/host` |
 
