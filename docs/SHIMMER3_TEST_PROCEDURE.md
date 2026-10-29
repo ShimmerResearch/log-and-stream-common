@@ -1336,8 +1336,9 @@ result, as a sign-off's waiver does (§10.1). Setup and layout are in
 `ShimSens_startSensing()` tears the unit's USB device down, CDC port and drive
 together, and the stop brings it back with `USB_init()`. So every docked
 stream is a removal (Windows logs Kernel-PnP event 1010, "surprise removed")
-and then a fresh enumeration. The COM port can be back before the rest of the
-device. On 28 Oct 2026, 2 of 88 release-tier configure steps failed straight
+and then a fresh enumeration
+([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) §7). The COM port can
+be back before the rest of the device. On 28 Oct 2026, 2 of 88 release-tier configure steps failed straight
 after a docked stream: no reply, or the port's I/O aborted (DEV-1368). So
 before its first dock exchange after sensing or a re-dock, the suite waits
 until the unit's CDC port and drive are both present
