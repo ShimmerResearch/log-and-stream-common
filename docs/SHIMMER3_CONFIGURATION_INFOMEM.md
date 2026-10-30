@@ -207,7 +207,7 @@ generations give a byte different meanings both are shown.
 | 215 | `myTrialID` (uint8_t) | `NV_SD_MYTRIAL_ID` | `idxSDMyTrialID` | `idxSDMyTrialID` | both |  |
 | 216 | `numberOfShimmers` (uint8_t) | `NV_SD_NSHIMMER` | `idxSDNumOfShimmers` | `idxSDNumOfShimmers` | both |  |
 | 217 | bit 7 `rtcSetByBt`; bit 6 `btPinSetup`; bit 5 `userButtonEnable`; bit 4 `rtcErrorEnable`; bit 3 `bluetoothDisable`; bit 2 `syncEnable`; bit 1 `masterEnable`; bit 0 `sdErrorEnable` | `NV_SD_TRIAL_CONFIG0` | `idxSDExperimentConfig0` | `idxSDExperimentConfig0` | both |  |
-| 218 | bit 7 `singleTouchStart`; bit 6 `unusedIdx218Bit6`; bit 5 `unusedIdx218Bit5`; bit 4 `tcxo`; bit 3 `unusedIdx218Bit3`; bit 2 `ttlInputEnable`; bit 1 `buttonEventMarkerEnable`; bit 0 `lowBatteryAutoStop` | `NV_SD_TRIAL_CONFIG1` | `idxSDExperimentConfig1` | `idxSDExperimentConfig1` | both |  |
+| 218 | bit 7 `singleTouchStart`; bit 6 `unusedIdx218Bit6`; bit 5 `ttlInputEnable`; bit 4 `tcxo`; bit 3 `unusedIdx218Bit3`; bit 2 `unusedIdx218Bit2`; bit 1 `buttonEventMarkerEnable`; bit 0 `lowBatteryAutoStop` | `NV_SD_TRIAL_CONFIG1` | `idxSDExperimentConfig1` | `idxSDExperimentConfig1` | both |  |
 | 219 | `btIntervalSecs` (uint8_t) | `NV_SD_BT_INTERVAL` | `idxSDBTInterval` | `idxSDBTInterval` | both |  |
 | 220 | `experimentLengthEstimatedInSecMsb` (uint8_t) | `NV_EST_EXP_LEN_MSB` | `idxEstimatedExpLengthMsb` | `idxEstimatedExpLengthMsb` | both |  |
 | 221 | `experimentLengthEstimatedInSecLsb` (uint8_t) | `NV_EST_EXP_LEN_LSB` | `idxEstimatedExpLengthLsb` | `idxEstimatedExpLengthLsb` | both |  |
@@ -593,13 +593,31 @@ Three things matter when writing configuration bytes directly:
 | Bit | Field | Meaning |
 |---:|---|---|
 | 7 | `singleTouchStart` | One button press starts a synchronised trial |
+| 5 | `ttlInputEnable` | Record the TTL input's edges, captured by a timer, in the same event file ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md) §3). Default 0 |
 | 4 | `tcxo` | Use the temperature-compensated oscillator |
-| 2 | `ttlInputEnable` | Record the TTL input's edges, captured by a timer, in the same event file ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md) §3). Default 0 |
 | 1 | `buttonEventMarkerEnable` | Record every button press and release in an event file beside the data file; a double press then starts and stops logging ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md)). Default 0 |
 | 0 | `lowBatteryAutoStop` | Stop logging on low battery |
 
-Bits 6, 5 and 3 are unused. Both `tcxo` and `singleTouchStart` are forced
+Bits 6, 3 and 2 are unused. Both `tcxo` and `singleTouchStart` are forced
 off at validation on hardware that does not support them (§10).
+
+> **Bits 2 and 3 must stay unused: older hosts write them.** Both come from
+> `SET_TRIAL_CONFIG_COMMAND`, which stores byte 218 as sent.
+>
+> - **Bit 2.** The Java driver's `ShimmerBluetooth.combineTrialConfig()` always
+>   sets it, for a "monitor" flag that no firmware reads, so every
+>   `writeTrial()` stores a 1 there. The C# API sends back whatever it last
+>   read. A unit last configured that way may hold a 1 in bit 2 today.
+> - **Bit 3.** The Java and C# APIs put the expansion-power setting there.
+>
+> The same Java call clears bits 0, 1, 5 and 6, which it does not pack, and the
+> Java driver's full configuration write zeroes the byte before setting bits
+> 0, 4 and 7. A host should read byte 218, change only the bits it means to,
+> and write it back.
+>
+> Bits 5 and 6 held the accelerometer's high-resolution and low-power flags in
+> the SDLog firmware that came before LogAndStream. No current firmware or
+> host sets them, which is why `ttlInputEnable` is bit 5.
 
 ### 8.3 Defaults for the string fields
 

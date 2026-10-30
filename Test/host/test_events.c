@@ -605,10 +605,31 @@ static void test_ttl_flood_is_throttled(void)
   ShimEvt_onSessionStop();
 }
 
+static void test_config_bits_in_byte_218(void)
+{
+  gConfigBytes *cfg = ShimConfig_getStoredConfig();
+
+  testCase("the enables sit in byte 218 where the SD header flags say");
+  cfg->rawBytes[NV_SD_TRIAL_CONFIG1] = 0;
+  cfg->buttonEventMarkerEnable = 1;
+  expectU("markers", cfg->rawBytes[NV_SD_TRIAL_CONFIG1], SDH_BUTTON_EVENT_MARKER);
+  cfg->buttonEventMarkerEnable = 0;
+  cfg->ttlInputEnable = 1;
+  expectU("TTL", cfg->rawBytes[NV_SD_TRIAL_CONFIG1], SDH_TTL_INPUT);
+  expectU("TTL is bit 5", SDH_TTL_INPUT, 0x20);
+  /* Older hosts' SET_TRIAL_CONFIG writes bits 2 and 3: the Java driver
+   * always sets bit 2 (docs/SHIMMER3_CONFIGURATION_INFOMEM.md 8.2) */
+  cfg->rawBytes[NV_SD_TRIAL_CONFIG1] = 0x0C;
+  expectU("bits 2 and 3 enable nothing",
+      cfg->ttlInputEnable | cfg->buttonEventMarkerEnable, 0);
+  cfg->rawBytes[NV_SD_TRIAL_CONFIG1] = 0;
+}
+
 int main(void)
 {
   hostTestSilenceUnused();
 
+  test_config_bits_in_byte_218();
   test_nothing_without_the_config_bit();
   test_session();
   test_old_presses_are_not_written();
