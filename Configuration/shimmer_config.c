@@ -914,6 +914,16 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
   storedConfig.singleTouchStart = 0;
 #endif //IS_SUPPORTED_SINGLE_TOUCH
 
+#if defined(SHIMMER3R)
+  /* SR48-6-0's button is wired to BOOT0, whose interrupt is used for dock
+   * detection, so there are no button edges to record */
+  if (storedConfig.buttonEventMarkerEnable && ShimBrd_isBoardSr48_6_0())
+  {
+    storedConfig.buttonEventMarkerEnable = 0;
+    settingCorrected = 1;
+  }
+#endif
+
   if (ShimBrd_areADS1292RClockLinesTied() && !(storedConfig.exgADS1292rRegsCh1.config2 & 0x08))
   {
     /* Amend configuration byte 2 of ADS chip 1 to have bit 3 set to 1.

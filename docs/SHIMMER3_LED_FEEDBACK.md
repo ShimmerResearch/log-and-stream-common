@@ -302,6 +302,11 @@ documented here is the live path.
 Solid green — `LED_LWR_GREEN` on Shimmer3, PWM green on Shimmer3R. Red and
 yellow are explicitly cleared.
 
+`buttonPressed` is the debounced level, set from the main loop as each edge is
+processed ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §2), so the
+green follows the button within a few milliseconds and does not flicker with
+contact bounce.
+
 ### 4.2 Host-commanded red
 
 Solid red. Green and yellow cleared.

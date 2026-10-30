@@ -323,10 +323,14 @@ void ShimSdDataFile_fileInit(void)
   sensing.isFileCreated = 1;
   /* Start of a logging session: the refusal counters describe this run. */
   SdWrBuf_init(&sdWrBuf);
+
+  /* Only queues the event file's open, so the data file's start is no later */
+  ShimEvt_onSessionStart(sdFileCrTs);
 }
 
 void ShimSdDataFile_close(void)
 {
+  ShimEvt_onSessionStop();
   ShimSdDataFile_closeDataFile();
   //Board_sdPower(0);
   shimmerStatus.sdBadFile = 0;
@@ -508,6 +512,7 @@ void ShimSdDataFile_writeToCard(void)
     ShimSdDataFile_writeSdHeaderToFile();
 
     sensing.newSdFileTsFlag = NEW_SD_FILE_TS_PENDING_UPDATE;
+    ShimEvt_onFileSplit(sdFileCrTs);
   }
 
   /* Sync file every minute */
@@ -518,6 +523,7 @@ void ShimSdDataFile_writeToCard(void)
     assert_param(file_status == FR_OK);
 #endif
     sdFileSyncTs = RTC_get64();
+    ShimEvt_onSyncTick();
   }
 
   sensing.isSdOperating = 0;
@@ -676,3 +682,10 @@ uint8_t *ShimSdDataFile_fileNamePtrGet(void)
 {
   return &fileName[0];
 }
+
+#if USE_FATFS
+const char *ShimSdDataFile_getDataFileName(void)
+{
+  return dataFileName;
+}
+#endif

@@ -207,7 +207,7 @@ generations give a byte different meanings both are shown.
 | 215 | `myTrialID` (uint8_t) | `NV_SD_MYTRIAL_ID` | `idxSDMyTrialID` | `idxSDMyTrialID` | both |  |
 | 216 | `numberOfShimmers` (uint8_t) | `NV_SD_NSHIMMER` | `idxSDNumOfShimmers` | `idxSDNumOfShimmers` | both |  |
 | 217 | bit 7 `rtcSetByBt`; bit 6 `btPinSetup`; bit 5 `userButtonEnable`; bit 4 `rtcErrorEnable`; bit 3 `bluetoothDisable`; bit 2 `syncEnable`; bit 1 `masterEnable`; bit 0 `sdErrorEnable` | `NV_SD_TRIAL_CONFIG0` | `idxSDExperimentConfig0` | `idxSDExperimentConfig0` | both |  |
-| 218 | bit 7 `singleTouchStart`; bit 6 `unusedIdx218Bit6`; bit 5 `unusedIdx218Bit5`; bit 4 `tcxo`; bit 3 `unusedIdx218Bit3`; bit 2 `unusedIdx218Bit2`; bit 1 `unusedIdx218Bit1`; bit 0 `lowBatteryAutoStop` | `NV_SD_TRIAL_CONFIG1` | `idxSDExperimentConfig1` | `idxSDExperimentConfig1` | both |  |
+| 218 | bit 7 `singleTouchStart`; bit 6 `unusedIdx218Bit6`; bit 5 `unusedIdx218Bit5`; bit 4 `tcxo`; bit 3 `unusedIdx218Bit3`; bit 2 `unusedIdx218Bit2`; bit 1 `buttonEventMarkerEnable`; bit 0 `lowBatteryAutoStop` | `NV_SD_TRIAL_CONFIG1` | `idxSDExperimentConfig1` | `idxSDExperimentConfig1` | both |  |
 | 219 | `btIntervalSecs` (uint8_t) | `NV_SD_BT_INTERVAL` | `idxSDBTInterval` | `idxSDBTInterval` | both |  |
 | 220 | `experimentLengthEstimatedInSecMsb` (uint8_t) | `NV_EST_EXP_LEN_MSB` | `idxEstimatedExpLengthMsb` | `idxEstimatedExpLengthMsb` | both |  |
 | 221 | `experimentLengthEstimatedInSecLsb` (uint8_t) | `NV_EST_EXP_LEN_LSB` | `idxEstimatedExpLengthLsb` | `idxEstimatedExpLengthLsb` | both |  |
@@ -576,7 +576,7 @@ Three things matter when writing configuration bytes directly:
 |---:|---|---|
 | 7 | `rtcSetByBt` | The real-world clock was set over Bluetooth this session |
 | 6 | `btPinSetup` | Legacy. Always forced to 0 (§10) |
-| 5 | `userButtonEnable` | Button starts/stops logging. Default 1 |
+| 5 | `userButtonEnable` | Button starts/stops logging: a single press, or a double press when `buttonEventMarkerEnable` is set ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md) §2.3). Default 1 |
 | 4 | `rtcErrorEnable` | Signal an unset clock through the LEDs |
 | 3 | `bluetoothDisable` | Default 0 |
 | 2 | `syncEnable` | Multi-device SD sync |
@@ -594,9 +594,10 @@ Three things matter when writing configuration bytes directly:
 |---:|---|---|
 | 7 | `singleTouchStart` | One button press starts a synchronised trial |
 | 4 | `tcxo` | Use the temperature-compensated oscillator |
+| 1 | `buttonEventMarkerEnable` | Record every button press and release in an event file beside the data file; a double press then starts and stops logging ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md)). Default 0 |
 | 0 | `lowBatteryAutoStop` | Stop logging on low battery |
 
-Bits 6, 5, 3, 2 and 1 are unused. Both `tcxo` and `singleTouchStart` are forced
+Bits 6, 5, 3 and 2 are unused. Both `tcxo` and `singleTouchStart` are forced
 off at validation on hardware that does not support them (§10).
 
 ### 8.3 Defaults for the string fields
@@ -712,6 +713,7 @@ image being written back on that account alone.
 |---|---|
 | `tcxo` | Forced to 0 where `IS_SUPPORTED_TCXO` is false |
 | `singleTouchStart` | Forced to 0 where `IS_SUPPORTED_SINGLE_TOUCH` is false. Where supported, setting it also forces `userButtonEnable` and `syncEnable` on — single-touch needs both |
+| `buttonEventMarkerEnable` | Forced to 0 on a Shimmer3R SR48-6-0 board, whose button drives BOOT0 and is used for dock detection |
 | `exgADS1292rRegsCh1.config2` bit 3 | Forced to 1 where the ADS1292R clock lines are tied |
 | `btPinSetup` | Always forced to 0 — the Bluetooth driver no longer needs it |
 

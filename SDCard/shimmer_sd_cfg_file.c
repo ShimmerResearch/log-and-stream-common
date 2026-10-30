@@ -24,8 +24,11 @@ static const uint8_t all0xff[6U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
  * ShimSdCfgFile_generate(). parse() calls generate() only when its own f_open()
  * failed or after its f_close(), so the two never have the file open at once.
  * A FIL carries a 512-byte sector buffer, and with one in each frame
- * parse() -> generate() was the deepest stack path in the firmware. */
+ * parse() -> generate() was the deepest stack path in the firmware.
+ *
+ * The event file borrows it for a logging session (ShimSdCfgFile_lendFil). */
 static FIL cfgFile;
+static uint8_t cfgFileLent;
 
 /* ShimSdCfgFile_parse() backs the configuration bytes up here before parsing
  * and restores the calibration bytes from it afterwards. It is file scope
@@ -50,102 +53,103 @@ static int cfg_key_is(const char *line, const char *key)
 }
 
 //Keys (without the trailing '=')
-#define CFG_KEY_ACCEL              "accel"
-#define CFG_KEY_GYRO               "gyro"
-#define CFG_KEY_MAG                "mag"
-#define CFG_KEY_EXG1_24BIT         "exg1_24bit"
-#define CFG_KEY_EXG2_24BIT         "exg2_24bit"
-#define CFG_KEY_GSR                "gsr"
-#define CFG_KEY_EXTCH7             "extch7"
-#define CFG_KEY_EXTCH6             "extch6"
-#define CFG_KEY_EXTCH0             "extch0"
-#define CFG_KEY_EXTCH1             "extch1"
-#define CFG_KEY_BR_AMP             "br_amp"
-#define CFG_KEY_STR                "str"
-#define CFG_KEY_VBAT               "vbat"
-#define CFG_KEY_ACCEL_D            "accel_d"
-#define CFG_KEY_EXTCH15            "extch15"
-#define CFG_KEY_INTCH1             "intch1"
-#define CFG_KEY_INTCH12            "intch12"
-#define CFG_KEY_INTCH13            "intch13"
-#define CFG_KEY_INTCH14            "intch14"
-#define CFG_KEY_EXTCH2             "extch2"
-#define CFG_KEY_INTCH3             "intch3"
-#define CFG_KEY_INTCH0             "intch0"
-#define CFG_KEY_INTCH2             "intch2"
-#define CFG_KEY_ACCEL_ALT          "accel_alt"
-#define CFG_KEY_MAG_ALT            "mag_alt"
+#define CFG_KEY_ACCEL                      "accel"
+#define CFG_KEY_GYRO                       "gyro"
+#define CFG_KEY_MAG                        "mag"
+#define CFG_KEY_EXG1_24BIT                 "exg1_24bit"
+#define CFG_KEY_EXG2_24BIT                 "exg2_24bit"
+#define CFG_KEY_GSR                        "gsr"
+#define CFG_KEY_EXTCH7                     "extch7"
+#define CFG_KEY_EXTCH6                     "extch6"
+#define CFG_KEY_EXTCH0                     "extch0"
+#define CFG_KEY_EXTCH1                     "extch1"
+#define CFG_KEY_BR_AMP                     "br_amp"
+#define CFG_KEY_STR                        "str"
+#define CFG_KEY_VBAT                       "vbat"
+#define CFG_KEY_ACCEL_D                    "accel_d"
+#define CFG_KEY_EXTCH15                    "extch15"
+#define CFG_KEY_INTCH1                     "intch1"
+#define CFG_KEY_INTCH12                    "intch12"
+#define CFG_KEY_INTCH13                    "intch13"
+#define CFG_KEY_INTCH14                    "intch14"
+#define CFG_KEY_EXTCH2                     "extch2"
+#define CFG_KEY_INTCH3                     "intch3"
+#define CFG_KEY_INTCH0                     "intch0"
+#define CFG_KEY_INTCH2                     "intch2"
+#define CFG_KEY_ACCEL_ALT                  "accel_alt"
+#define CFG_KEY_MAG_ALT                    "mag_alt"
 //Legacy names used under SHIMMER3 parsing
-#define CFG_KEY_ACCEL_MPU          "accel_mpu"
-#define CFG_KEY_MAG_MPU            "mag_mpu"
+#define CFG_KEY_ACCEL_MPU                  "accel_mpu"
+#define CFG_KEY_MAG_MPU                    "mag_mpu"
 
-#define CFG_KEY_EXG1_16BIT         "exg1_16bit"
-#define CFG_KEY_EXG2_16BIT         "exg2_16bit"
-#define CFG_KEY_PRES               "pres"
-#define CFG_KEY_SAMPLE_RATE        "sample_rate"
-#define CFG_KEY_MG_INTERNAL_RATE   "mg_internal_rate"
-#define CFG_KEY_MG_RANGE           "mg_range"
-#define CFG_KEY_MAG_ALT_RANGE      "mag_alt_range"
-#define CFG_KEY_ACC_INTERNAL_RATE  "acc_internal_rate"
-#define CFG_KEY_ACCEL_ALT_RANGE    "accel_alt_range"
-#define CFG_KEY_ACCEL_LN_RANGE     "accel_ln_range"
-#define CFG_KEY_PRES_BMP180_PREC   "pres_bmp180_prec"
-#define CFG_KEY_PRES_BMP280_PREC   "pres_bmp280_prec"
-#define CFG_KEY_PRES_BMP390_PREC   "pres_bmp390_prec"
-#define CFG_KEY_PRES_BMP581_PREC   "pres_bmp581_prec"
-#define CFG_KEY_GSR_RANGE          "gsr_range"
-#define CFG_KEY_EXP_POWER          "exp_power"
-#define CFG_KEY_GYRO_RANGE         "gyro_range"
-#define CFG_KEY_GYRO_SAMPLINGRATE  "gyro_samplingrate"
-#define CFG_KEY_ACC_RANGE          "acc_range"
-#define CFG_KEY_ACC_LPM            "acc_lpm"
-#define CFG_KEY_ACC_HRM            "acc_hrm"
-#define CFG_KEY_MAG_ALT_RATE       "mag_alt_rate"
-#define CFG_KEY_ACCEL_ALT_RATE     "accel_alt_rate"
+#define CFG_KEY_EXG1_16BIT                 "exg1_16bit"
+#define CFG_KEY_EXG2_16BIT                 "exg2_16bit"
+#define CFG_KEY_PRES                       "pres"
+#define CFG_KEY_SAMPLE_RATE                "sample_rate"
+#define CFG_KEY_MG_INTERNAL_RATE           "mg_internal_rate"
+#define CFG_KEY_MG_RANGE                   "mg_range"
+#define CFG_KEY_MAG_ALT_RANGE              "mag_alt_range"
+#define CFG_KEY_ACC_INTERNAL_RATE          "acc_internal_rate"
+#define CFG_KEY_ACCEL_ALT_RANGE            "accel_alt_range"
+#define CFG_KEY_ACCEL_LN_RANGE             "accel_ln_range"
+#define CFG_KEY_PRES_BMP180_PREC           "pres_bmp180_prec"
+#define CFG_KEY_PRES_BMP280_PREC           "pres_bmp280_prec"
+#define CFG_KEY_PRES_BMP390_PREC           "pres_bmp390_prec"
+#define CFG_KEY_PRES_BMP581_PREC           "pres_bmp581_prec"
+#define CFG_KEY_GSR_RANGE                  "gsr_range"
+#define CFG_KEY_EXP_POWER                  "exp_power"
+#define CFG_KEY_GYRO_RANGE                 "gyro_range"
+#define CFG_KEY_GYRO_SAMPLINGRATE          "gyro_samplingrate"
+#define CFG_KEY_ACC_RANGE                  "acc_range"
+#define CFG_KEY_ACC_LPM                    "acc_lpm"
+#define CFG_KEY_ACC_HRM                    "acc_hrm"
+#define CFG_KEY_MAG_ALT_RATE               "mag_alt_rate"
+#define CFG_KEY_ACCEL_ALT_RATE             "accel_alt_rate"
 
-#define CFG_KEY_USER_BUTTON_ENABLE "user_button_enable"
-#define CFG_KEY_RTC_ERROR_ENABLE   "rtc_error_enable"
-#define CFG_KEY_SD_ERROR_ENABLE    "sd_error_enable"
-#define CFG_KEY_IAMMASTER          "iammaster"
-#define CFG_KEY_SYNC               "sync"
-#define CFG_KEY_LOW_BATT_AUTOSTOP  "low_battery_autostop"
-#define CFG_KEY_INTERVAL           "interval"
-#define CFG_KEY_BT_DISABLED        "bluetoothDisabled"
+#define CFG_KEY_USER_BUTTON_ENABLE         "user_button_enable"
+#define CFG_KEY_BUTTON_EVENT_MARKER_ENABLE "button_event_marker_enable"
+#define CFG_KEY_RTC_ERROR_ENABLE           "rtc_error_enable"
+#define CFG_KEY_SD_ERROR_ENABLE            "sd_error_enable"
+#define CFG_KEY_IAMMASTER                  "iammaster"
+#define CFG_KEY_SYNC                       "sync"
+#define CFG_KEY_LOW_BATT_AUTOSTOP          "low_battery_autostop"
+#define CFG_KEY_INTERVAL                   "interval"
+#define CFG_KEY_BT_DISABLED                "bluetoothDisabled"
 
-#define CFG_KEY_MAX_EXP_LEN        "max_exp_len"
-#define CFG_KEY_EST_EXP_LEN        "est_exp_len"
-#define CFG_KEY_NODE               "node"
-#define CFG_KEY_CENTER             "center"
-#define CFG_KEY_SINGLETOUCH        "singletouch"
-#define CFG_KEY_MYID               "myid"
-#define CFG_KEY_NSHIMMER           "Nshimmer"
-#define CFG_KEY_SHIMMERNAME        "shimmername"
-#define CFG_KEY_EXPERIMENTID       "experimentid"
-#define CFG_KEY_CONFIGTIME         "configtime"
+#define CFG_KEY_MAX_EXP_LEN                "max_exp_len"
+#define CFG_KEY_EST_EXP_LEN                "est_exp_len"
+#define CFG_KEY_NODE                       "node"
+#define CFG_KEY_CENTER                     "center"
+#define CFG_KEY_SINGLETOUCH                "singletouch"
+#define CFG_KEY_MYID                       "myid"
+#define CFG_KEY_NSHIMMER                   "Nshimmer"
+#define CFG_KEY_SHIMMERNAME                "shimmername"
+#define CFG_KEY_EXPERIMENTID               "experimentid"
+#define CFG_KEY_CONFIGTIME                 "configtime"
 
-#define CFG_KEY_DERIVED_CHANNELS   "derived_channels"
+#define CFG_KEY_DERIVED_CHANNELS           "derived_channels"
 
 //EXG register keys
-#define CFG_KEY_EXG_1_CONFIG1      "EXG_ADS1292R_1_CONFIG1"
-#define CFG_KEY_EXG_1_CONFIG2      "EXG_ADS1292R_1_CONFIG2"
-#define CFG_KEY_EXG_1_LOFF         "EXG_ADS1292R_1_LOFF"
-#define CFG_KEY_EXG_1_CH1SET       "EXG_ADS1292R_1_CH1SET"
-#define CFG_KEY_EXG_1_CH2SET       "EXG_ADS1292R_1_CH2SET"
-#define CFG_KEY_EXG_1_RLD_SENS     "EXG_ADS1292R_1_RLD_SENS"
-#define CFG_KEY_EXG_1_LOFF_SENS    "EXG_ADS1292R_1_LOFF_SENS"
-#define CFG_KEY_EXG_1_LOFF_STAT    "EXG_ADS1292R_1_LOFF_STAT"
-#define CFG_KEY_EXG_1_RESP1        "EXG_ADS1292R_1_RESP1"
-#define CFG_KEY_EXG_1_RESP2        "EXG_ADS1292R_1_RESP2"
-#define CFG_KEY_EXG_2_CONFIG1      "EXG_ADS1292R_2_CONFIG1"
-#define CFG_KEY_EXG_2_CONFIG2      "EXG_ADS1292R_2_CONFIG2"
-#define CFG_KEY_EXG_2_LOFF         "EXG_ADS1292R_2_LOFF"
-#define CFG_KEY_EXG_2_CH1SET       "EXG_ADS1292R_2_CH1SET"
-#define CFG_KEY_EXG_2_CH2SET       "EXG_ADS1292R_2_CH2SET"
-#define CFG_KEY_EXG_2_RLD_SENS     "EXG_ADS1292R_2_RLD_SENS"
-#define CFG_KEY_EXG_2_LOFF_SENS    "EXG_ADS1292R_2_LOFF_SENS"
-#define CFG_KEY_EXG_2_LOFF_STAT    "EXG_ADS1292R_2_LOFF_STAT"
-#define CFG_KEY_EXG_2_RESP1        "EXG_ADS1292R_2_RESP1"
-#define CFG_KEY_EXG_2_RESP2        "EXG_ADS1292R_2_RESP2"
+#define CFG_KEY_EXG_1_CONFIG1              "EXG_ADS1292R_1_CONFIG1"
+#define CFG_KEY_EXG_1_CONFIG2              "EXG_ADS1292R_1_CONFIG2"
+#define CFG_KEY_EXG_1_LOFF                 "EXG_ADS1292R_1_LOFF"
+#define CFG_KEY_EXG_1_CH1SET               "EXG_ADS1292R_1_CH1SET"
+#define CFG_KEY_EXG_1_CH2SET               "EXG_ADS1292R_1_CH2SET"
+#define CFG_KEY_EXG_1_RLD_SENS             "EXG_ADS1292R_1_RLD_SENS"
+#define CFG_KEY_EXG_1_LOFF_SENS            "EXG_ADS1292R_1_LOFF_SENS"
+#define CFG_KEY_EXG_1_LOFF_STAT            "EXG_ADS1292R_1_LOFF_STAT"
+#define CFG_KEY_EXG_1_RESP1                "EXG_ADS1292R_1_RESP1"
+#define CFG_KEY_EXG_1_RESP2                "EXG_ADS1292R_1_RESP2"
+#define CFG_KEY_EXG_2_CONFIG1              "EXG_ADS1292R_2_CONFIG1"
+#define CFG_KEY_EXG_2_CONFIG2              "EXG_ADS1292R_2_CONFIG2"
+#define CFG_KEY_EXG_2_LOFF                 "EXG_ADS1292R_2_LOFF"
+#define CFG_KEY_EXG_2_CH1SET               "EXG_ADS1292R_2_CH1SET"
+#define CFG_KEY_EXG_2_CH2SET               "EXG_ADS1292R_2_CH2SET"
+#define CFG_KEY_EXG_2_RLD_SENS             "EXG_ADS1292R_2_RLD_SENS"
+#define CFG_KEY_EXG_2_LOFF_SENS            "EXG_ADS1292R_2_LOFF_SENS"
+#define CFG_KEY_EXG_2_LOFF_STAT            "EXG_ADS1292R_2_LOFF_STAT"
+#define CFG_KEY_EXG_2_RESP1                "EXG_ADS1292R_2_RESP1"
+#define CFG_KEY_EXG_2_RESP2                "EXG_ADS1292R_2_RESP2"
 
 //Write helpers (depend on local buffer and bw symbols in scope)
 #define CFG_WRITE_INT(file, key, value)               \
@@ -166,8 +170,32 @@ void ShimSdCfgFile_init(void)
 {
 }
 
+FIL *ShimSdCfgFile_lendFil(void)
+{
+  if (cfgFileLent)
+  {
+    return 0;
+  }
+  cfgFileLent = 1;
+  memset(&cfgFile, 0, sizeof(cfgFile));
+  return &cfgFile;
+}
+
+void ShimSdCfgFile_returnFil(void)
+{
+  memset(&cfgFile, 0, sizeof(cfgFile));
+  cfgFileLent = 0;
+}
+
 void ShimSdCfgFile_generate(void)
 {
+  /* Never while the event file has the file object: that is a logging session,
+   * and sdlog.cfg is only written outside one */
+  if (cfgFileLent)
+  {
+    return;
+  }
+
   if (!shimmerStatus.docked && LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile)
   {
     uint8_t sd_power_state = shimmerStatus.sdPowerOn;
@@ -272,6 +300,8 @@ void ShimSdCfgFile_generate(void)
 
       //trial config
       CFG_WRITE_INT(&cfgFile, CFG_KEY_USER_BUTTON_ENABLE, storedConfig->userButtonEnable);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_BUTTON_EVENT_MARKER_ENABLE,
+          storedConfig->buttonEventMarkerEnable);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_RTC_ERROR_ENABLE, storedConfig->rtcErrorEnable);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_SD_ERROR_ENABLE, storedConfig->sdErrorEnable);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_IAMMASTER, storedConfig->masterEnable);
@@ -397,6 +427,12 @@ void ShimSdCfgFile_parse(void)
   uint32_t max_exp_len = 0;
 
   uint8_t triggerSdCardUpdate = 0;
+
+  /* Never while the event file has the file object (see generate()) */
+  if (cfgFileLent)
+  {
+    return;
+  }
 
   LogAndStream_checkSdInSlot();
   gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
@@ -666,6 +702,10 @@ void ShimSdCfgFile_parse(void)
       else if (cfg_key_is(buffer, CFG_KEY_USER_BUTTON_ENABLE))
       {
         storedConfigPtr->userButtonEnable = (atoi(equals) == 0) ? 0 : 1;
+      }
+      else if (cfg_key_is(buffer, CFG_KEY_BUTTON_EVENT_MARKER_ENABLE))
+      {
+        storedConfigPtr->buttonEventMarkerEnable = (atoi(equals) == 0) ? 0 : 1;
       }
       else if (cfg_key_is(buffer, CFG_KEY_IAMMASTER))
       { //0=slave=node

@@ -391,13 +391,15 @@ typedef union
 
     //SDTrialConfig1
     uint8_t lowBatteryAutoStop : 1;
-    uint8_t unusedIdx218Bit1   : 1;
-    uint8_t unusedIdx218Bit2   : 1;
-    uint8_t unusedIdx218Bit3   : 1;
-    uint8_t tcxo               : 1;
-    uint8_t unusedIdx218Bit5   : 1;
-    uint8_t unusedIdx218Bit6   : 1;
-    uint8_t singleTouchStart   : 1;
+    /* Record every button edge as an event marker; a double press then
+     * starts and stops logging (Events/shimmer_events.h) */
+    uint8_t buttonEventMarkerEnable : 1;
+    uint8_t unusedIdx218Bit2        : 1;
+    uint8_t unusedIdx218Bit3        : 1;
+    uint8_t tcxo                    : 1;
+    uint8_t unusedIdx218Bit5        : 1;
+    uint8_t unusedIdx218Bit6        : 1;
+    uint8_t singleTouchStart        : 1;
 
     uint8_t btIntervalSecs;
     uint8_t experimentLengthEstimatedInSecMsb; //Used for SD Sync (min = 1)

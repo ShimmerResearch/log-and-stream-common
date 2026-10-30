@@ -73,18 +73,23 @@ channel encodings are identical, only the framing around them differs.
 
 ## 1. Card layout
 
-A card in service holds up to four things:
+A card in service holds up to five things:
 
 ```
 /
 ├── sdlog.cfg                          text configuration (§5)
 ├── Calibration/
 │   └── calib_<mac4>                   calibration blob (§6)
-└── data/
-    └── <experimentId>_<configTime>/    one directory per trial
-        └── <shimmerName>-<NNN>/        one directory per logging session
-            ├── 000                     binary data file
-            ├── 001
+├── data/
+│   └── <experimentId>_<configTime>/    one directory per trial
+│       └── <shimmerName>-<NNN>/        one directory per logging session
+│           ├── 000                     binary data file
+│           ├── 001
+│           └── ...
+└── events/                            only with event markers on (§1.5)
+    └── <experimentId>_<configTime>/    the same names as under data/
+        └── <shimmerName>-<NNN>/
+            ├── 000                     events for data/.../000
             └── ...
 ```
 
@@ -158,6 +163,17 @@ characters. Shimmer3R's FatFs handles up to 255.
 > its short name, such as `LONGNA~1`, so the session scan of §1.2 does not
 > match it. Shimmer3 cannot create or open a name that long, but the firmware
 > never needs to.
+
+### 1.5 Event files
+
+With `buttonEventMarkerEnable` set, each data file gets an event file of the
+same name under `events/` instead of `data/`, recording button presses with
+their own timestamps. It has its own header and 16-byte records, and splits when
+the data file does: see [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md).
+Its longest path is 53 characters.
+
+Nothing that reads `data/` sees these files, which is why they are not beside
+the data files.
 
 ## 2. Data file structure
 
@@ -282,7 +298,7 @@ Appendix A and is not repeated here. What follows is the header's own layout.
 | 3-7 | `SDH_SENSORS0..4` | 5 | Sensor enable bitmaps |
 | 8-14 | `SDH_CONFIG_SETUP_BYTE0..6` | 7 | Setup bytes |
 | 15 | — | 1 | Unused (`0xFF`) |
-| 16-17 | `SDH_TRIAL_CONFIG0/1` | 2 | Trial config bit flags |
+| 16-17 | `SDH_TRIAL_CONFIG0/1` | 2 | Trial config bit flags: copies of configuration bytes 217 and 218. Byte 17 bit 1, `SDH_BUTTON_EVENT_MARKER`, says an event file was recorded (§1.5) |
 | 18 | `SDH_BROADCAST_INTERVAL` | 1 | Sync broadcast interval, seconds |
 | 19 | `SDH_BT_COMMS_BAUD_RATE` | 1 | Stored, not applied |
 | 20-21 | `SDH_EST_EXP_LEN_MSB/LSB` | 2 | Estimated length, **big-endian** |
@@ -721,7 +737,8 @@ fitted sensor:
 
 Trial and sync:
 
-`user_button_enable`, `rtc_error_enable`, `sd_error_enable`, `iammaster`,
+`user_button_enable`, `button_event_marker_enable`, `rtc_error_enable`,
+`sd_error_enable`, `iammaster`,
 `sync`, `singletouch`, `low_battery_autostop`, `interval`,
 `bluetoothDisabled`, `max_exp_len`, `est_exp_len`, `node`, `center`,
 `myid`, `Nshimmer`, `shimmername`, `experimentid`, `configtime`,

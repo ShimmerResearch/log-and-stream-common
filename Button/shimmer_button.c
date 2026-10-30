@@ -11,99 +11,98 @@
 
 #include "log_and_stream_includes.h"
 
-//Time-stamps
-uint64_t buttonPressTs, buttonReleaseCurrentTs, buttonReleasePrevTs;
-//Time difference calculations
-uint64_t buttonReleaseTd, buttonPressReleaseTd;
+/* Main loop only */
+static ShimBtnGesture gesture;
 
 void ShimBtn_init(void)
 {
-  buttonPressTs = 0;
-  buttonReleaseCurrentTs = 0;
-  buttonReleasePrevTs = 0;
-  buttonReleaseTd = 0;
-  buttonPressReleaseTd = 0;
+  ShimBtnGesture_init(&gesture);
 }
 
-/* Returns 1 to indicate MCU should be woken to carry out a task. */
-uint8_t ShimBtn_pressReleaseAction(void)
+static uint8_t isMarkerMode(void)
 {
-  uint8_t wake = 0;
-  shimmerStatus.buttonPressed = Board_isBtnPressed();
-  if (shimmerStatus.buttonPressed)
-  { //button pressed
-    buttonPressTs = RTC_get64();
-  }
-  else
-  { //button released
-    buttonReleaseCurrentTs = RTC_get64();
+  return ShimConfig_getStoredConfig()->buttonEventMarkerEnable;
+}
 
-    //Guard against bogus long-press when no prior press was recorded
-    if (buttonPressTs != 0 && buttonReleaseCurrentTs >= buttonPressTs)
-    {
-      buttonPressReleaseTd = buttonReleaseCurrentTs - buttonPressTs;
-    }
-    else
-    {
-      buttonPressReleaseTd = 0;
-    }
+/* Not while the device is being configured, nor while SD sync is mid-way
+ * through an exchange */
+static uint8_t isActionAllowed(void)
+{
+  return !shimmerStatus.configuring
+      && !(shimmerStatus.btConnected && shimmerStatus.sdSyncCommTimerRunning);
+}
 
-    buttonReleaseTd = buttonReleaseCurrentTs - buttonReleasePrevTs;
-
-    /* long button press: >=5s */
-    if (buttonPressReleaseTd >= TICKS_5_SECONDS)
-    {
-      //Consume the event; update the last-release timestamp to prevent repeats
-      //(No long-press action defined yet)
-      buttonReleasePrevTs = buttonReleaseCurrentTs;
-    }
-    /* 0.5s < Press > 5s: take action as long as the device isn't currently in
-     * the middle of configuring and SD SYNC isn't in the middle of an
-     * operation. */
-    else if ((buttonReleaseTd > TICKS_0_5_SECONDS) && !shimmerStatus.configuring
-        && !(shimmerStatus.btConnected && shimmerStatus.sdSyncCommTimerRunning))
-    {
-      buttonReleasePrevTs = buttonReleaseCurrentTs;
+static void toggleLogging(void)
+{
 #if TEST_PRESS2UNDOCK
-      if (shimmerStatus.docked)
-      {
-        shimmerStatus.docked = 0;
-      }
-      else
-      {
-        shimmerStatus.docked = 1;
-      }
-      LogAndStream_dockedStateChange();
-      if (!shimmerStatus.sensing)
-      {
-        wake = 1;
-      }
+  shimmerStatus.docked = shimmerStatus.docked ? 0 : 1;
+  LogAndStream_dockedStateChange();
 #else
-      if (ShimConfig_getStoredConfig()->userButtonEnable)
-      {
-        //toggles sensing and refresh BT timers (for the centre)
-        if (shimmerStatus.sdLogging == 0)
-        {
-          ShimTask_setStartLoggingIfReady();
-        }
-        else
-        {
-          ShimTask_setStopLogging();
-        }
-        wake = 1;
-      }
-#endif
+  if (ShimConfig_getStoredConfig()->userButtonEnable)
+  {
+    //toggles sensing and refresh BT timers (for the centre)
+    if (shimmerStatus.sdLogging == 0)
+    {
+      ShimTask_setStartLoggingIfReady();
     }
-    /* Short press, take no action */
     else
     {
-      //Always update last release to avoid stale deltas causing spurious triggers later
-      buttonReleasePrevTs = buttonReleaseCurrentTs;
-      __NOP();
+      ShimTask_setStopLogging();
     }
-
-    //Single place to clear the press timestamp after handling a release
-    buttonPressTs = 0;
   }
-  return wake;
+#endif
+}
+
+static void applyResult(const ShimBtnGestureResult *res, uint8_t markerMode)
+{
+  uint8_t i;
+  for (i = 0; i < res->numEdges; i++)
+  {
+    /* Written only here, in the main loop, so the LEDs follow the debounced
+     * level rather than every bounce */
+    shimmerStatus.buttonPressed = res->edge[i].level;
+    if (markerMode)
+    {
+      ShimEvt_recordButtonEdge(res->edge[i].ts, res->edge[i].level,
+          res->edge[i].synthesized ? EVT_FLAG_SYNTHESIZED : 0U);
+    }
+  }
+
+  if (res->toggleLogging && isActionAllowed())
+  {
+    toggleLogging();
+  }
+}
+
+void ShimBtn_processEdge(uint64_t ts, uint8_t isPress)
+{
+  ShimBtnGestureResult res;
+  uint8_t markerMode = isMarkerMode();
+
+  ShimBtnGesture_edge(&gesture, ts, isPress, markerMode, &res);
+  applyResult(&res, markerMode);
+}
+
+uint8_t ShimBtn_isRecheckPending(void)
+{
+  return gesture.bouncePending;
+}
+
+void ShimBtn_recheckIfDue(uint64_t now)
+{
+  ShimBtnGestureResult res;
+  uint8_t markerMode;
+
+  if (!ShimBtnGesture_isRecheckDue(&gesture, now))
+  {
+    return;
+  }
+  markerMode = isMarkerMode();
+  ShimBtnGesture_recheck(&gesture, Board_isBtnPressed(), markerMode, &res);
+  applyResult(&res, markerMode);
+}
+
+uint8_t ShimBtn_isPressed(void)
+{
+  return gesture.level;
 }

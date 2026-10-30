@@ -45,6 +45,7 @@ void LogAndStream_init(void)
   ShimEeprom_init();
   ShimLeds_varsInit();
   ShimBtn_init();
+  ShimEvt_init();
   ShimRtc_init();
 
   LogAndStream_setSdInfoSyncDelayed(0);
@@ -124,6 +125,13 @@ uint8_t LogAndStream_blinkTimerCommon(void)
 #endif //TEST_TASK_MONITOR
 
   ShimLeds_incrementCounters();
+
+  /* A button edge ignored as bounce is rechecked against the pin once the line
+   * has been quiet; this tick is what brings the main loop back to do it */
+  if (ShimEvt_tick())
+  {
+    wakeMcu = 1;
+  }
 
   if (shimmerStatus.booting)
   {
