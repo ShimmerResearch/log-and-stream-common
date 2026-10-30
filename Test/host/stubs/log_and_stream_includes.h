@@ -64,6 +64,7 @@
 #include "CRC/shimmer_crc.h"
 #include "CRC/shimmer_swCrc.h"
 #include "Calibration/shimmer_calibration.h"
+#include "Configuration/shimmer_button_log_mode.h"
 #include "Configuration/shimmer_config.h"
 #include "EEPROM/shimmer_eeprom.h"
 #include "LEDs/shimmer_leds.h"

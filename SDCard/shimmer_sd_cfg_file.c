@@ -104,6 +104,8 @@ static int cfg_key_is(const char *line, const char *key)
 #define CFG_KEY_ACCEL_ALT_RATE     "accel_alt_rate"
 
 #define CFG_KEY_USER_BUTTON_ENABLE "user_button_enable"
+#define CFG_KEY_BUTTON_MODE        "button_mode"
+#define CFG_KEY_LOG_TRIGGERS       "log_triggers"
 #define CFG_KEY_RTC_ERROR_ENABLE   "rtc_error_enable"
 #define CFG_KEY_SD_ERROR_ENABLE    "sd_error_enable"
 #define CFG_KEY_IAMMASTER          "iammaster"
@@ -272,6 +274,10 @@ void ShimSdCfgFile_generate(void)
 
       //trial config
       CFG_WRITE_INT(&cfgFile, CFG_KEY_USER_BUTTON_ENABLE, storedConfig->userButtonEnable);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_BUTTON_MODE,
+          ShimBtnLogMode_buttonMode(storedConfig->buttonLogMode));
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_LOG_TRIGGERS,
+          ShimBtnLogMode_logTriggers(storedConfig->buttonLogMode));
       CFG_WRITE_INT(&cfgFile, CFG_KEY_RTC_ERROR_ENABLE, storedConfig->rtcErrorEnable);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_SD_ERROR_ENABLE, storedConfig->sdErrorEnable);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_IAMMASTER, storedConfig->masterEnable);
@@ -666,6 +672,16 @@ void ShimSdCfgFile_parse(void)
       else if (cfg_key_is(buffer, CFG_KEY_USER_BUTTON_ENABLE))
       {
         storedConfigPtr->userButtonEnable = (atoi(equals) == 0) ? 0 : 1;
+      }
+      else if (cfg_key_is(buffer, CFG_KEY_BUTTON_MODE))
+      {
+        storedConfigPtr->buttonLogMode = ShimBtnLogMode_withButtonMode(
+            storedConfigPtr->buttonLogMode, atoi(equals));
+      }
+      else if (cfg_key_is(buffer, CFG_KEY_LOG_TRIGGERS))
+      {
+        storedConfigPtr->buttonLogMode = ShimBtnLogMode_withLogTriggers(
+            storedConfigPtr->buttonLogMode, atoi(equals));
       }
       else if (cfg_key_is(buffer, CFG_KEY_IAMMASTER))
       { //0=slave=node

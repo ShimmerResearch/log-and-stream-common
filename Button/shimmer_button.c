@@ -79,7 +79,7 @@ uint8_t ShimBtn_pressReleaseAction(void)
         wake = 1;
       }
 #else
-      if (ShimConfig_getStoredConfig()->userButtonEnable)
+      if (ShimConfig_doesPressToggleLogging())
       {
         //toggles sensing and refresh BT timers (for the centre)
         if (shimmerStatus.sdLogging == 0)
