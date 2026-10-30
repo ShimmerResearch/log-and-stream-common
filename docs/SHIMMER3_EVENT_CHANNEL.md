@@ -24,7 +24,14 @@ press, as it always has (§2.3).
 
 `userButtonEnable` (byte 217 bit 5) still decides whether the button may start
 and stop logging at all. With markers on and `userButtonEnable` off, presses are
-recorded and logging is left alone.
+recorded and the button leaves logging alone.
+
+> **`userButtonEnable` off also starts logging on undock.** With it off (and
+> `singleTouchStart` off), the unit starts logging whenever it leaves the dock
+> with a card in the slot (`ShimSens_startLoggingIfUndockStartEnabled()`). On a
+> Shimmer3R, unplugging USB-C counts as leaving the dock. So turning the button
+> off does not stop a unit logging, and nothing in the event channel changes
+> that.
 
 On a Shimmer3R SR48-6-0 board the bit is cleared at validation: that board's
 button is wired to BOOT0, whose interrupt is used for dock detection, so there

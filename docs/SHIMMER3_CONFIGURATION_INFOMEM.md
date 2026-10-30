@@ -576,7 +576,7 @@ Three things matter when writing configuration bytes directly:
 |---:|---|---|
 | 7 | `rtcSetByBt` | The real-world clock was set over Bluetooth this session |
 | 6 | `btPinSetup` | Legacy. Always forced to 0 (§10) |
-| 5 | `userButtonEnable` | Button starts/stops logging: a single press, or a double press when `buttonEventMarkerEnable` is set ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md) §2.3). Default 1 |
+| 5 | `userButtonEnable` | Button starts/stops logging: a single press, or a double press when `buttonEventMarkerEnable` is set ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md) §2.3). With it 0 and `singleTouchStart` 0, logging starts on every undock with a card in; on Shimmer3R, unplugging USB-C counts as an undock (`ShimSens_startLoggingIfUndockStartEnabled`). Default 1 |
 | 4 | `rtcErrorEnable` | Signal an unset clock through the LEDs |
 | 3 | `bluetoothDisable` | Default 0 |
 | 2 | `syncEnable` | Multi-device SD sync |
