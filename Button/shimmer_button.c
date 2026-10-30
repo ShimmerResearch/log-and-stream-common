@@ -38,7 +38,7 @@ static void toggleLogging(void)
   shimmerStatus.docked = shimmerStatus.docked ? 0 : 1;
   LogAndStream_dockedStateChange();
 #else
-  if (ShimConfig_getStoredConfig()->userButtonEnable)
+  if (ShimConfig_doesPressToggleLogging())
   {
     //toggles sensing and refresh BT timers (for the centre)
     if (shimmerStatus.sdLogging == 0)

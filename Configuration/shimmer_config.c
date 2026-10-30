@@ -809,6 +809,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
 {
   uint8_t settingCorrected = 0;
   uint8_t i = 0;
+  uint8_t buttonLogMode, userButtonEnable;
 
   if (storedConfig.chEnGsr
 #if defined(SHIMMER3)
@@ -900,7 +901,24 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
   }
 #endif
 
+  /* Byte 232 keeps only what this firmware acts on, so a host reading it back
+   * sees what the unit will do (docs/SHIMMER3_CONFIGURATION_INFOMEM.md 8.3) */
+  buttonLogMode = ShimBtnLogMode_correct(storedConfig.buttonLogMode);
+  if (buttonLogMode != storedConfig.buttonLogMode)
+  {
+    storedConfig.buttonLogMode = buttonLogMode;
+    settingCorrected = 1;
+  }
+
 #if IS_SUPPORTED_SINGLE_TOUCH
+  /* The sync centre's press starts every node, so single touch needs a press
+   * that can start logging */
+  if (storedConfig.singleTouchStart && !ShimBtnLogMode_allowsSingleTouch(buttonLogMode))
+  {
+    storedConfig.singleTouchStart = 0;
+    settingCorrected = 1;
+  }
+
   //the button always works for singletouch mode
   //sync always works for singletouch mode
   if (storedConfig.singleTouchStart
@@ -923,6 +941,18 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
     settingCorrected = 1;
   }
 #endif
+
+  /* Hosts and firmware that know only byte 217 go by userButtonEnable, and a
+   * full configuration write from such a host keeps it while writing 0 to byte
+   * 232. Hold it at the mode's nearest equivalent, so that falling back to it
+   * never adds an undock start */
+  userButtonEnable = ShimBtnLogMode_nearestUserButtonEnable(
+      buttonLogMode, storedConfig.userButtonEnable);
+  if (userButtonEnable != storedConfig.userButtonEnable)
+  {
+    storedConfig.userButtonEnable = userButtonEnable;
+    settingCorrected = 1;
+  }
 
   if (ShimBrd_areADS1292RClockLinesTied() && !(storedConfig.exgADS1292rRegsCh1.config2 & 0x08))
   {
@@ -1183,6 +1213,34 @@ uint8_t ShimConfig_isMicrophoneEnabled(void)
 }
 #endif
 
+uint8_t ShimConfig_doesPressToggleLogging(void)
+{
+  return ShimBtnLogMode_doesPressToggleLogging(
+      storedConfig.buttonLogMode, storedConfig.userButtonEnable);
+}
+
+uint8_t ShimConfig_doesUndockStartLogging(void)
+{
+  return ShimBtnLogMode_doesUndockStartLogging(
+      storedConfig.buttonLogMode, storedConfig.userButtonEnable,
+#if IS_SUPPORTED_SINGLE_TOUCH
+      storedConfig.singleTouchStart
+#else
+      0
+#endif
+  );
+}
+
+uint8_t ShimConfig_isLoggingDisabled(void)
+{
+  return ShimBtnLogMode_isLoggingDisabled(storedConfig.buttonLogMode);
+}
+
+uint8_t ShimConfig_isButtonDisabled(void)
+{
+  return ShimBtnLogMode_isButtonDisabled(storedConfig.buttonLogMode);
+}
+
 uint8_t ShimConfig_isGSREnabled(void)
 {
   return storedConfig.chEnGsr;
@@ -1262,8 +1320,12 @@ void ShimConfig_createBlankConfigBytes(void)
   /* Copy MAC ID directly from BT module */
   memcpy(&storedConfig.macAddr[0], ShimBt_macIdBytesPtrGet(), 6);
 
+  /* 0, not 0xFF: the sdlog.cfg parse starts from here and sets its fields
+   * one key at a time */
+  storedConfig.buttonLogMode = 0;
+
   /* Reset unused bytes */
-  memset(&storedConfig.rawBytes[NV_BT_SET_PIN + 1], 0xFF, 24);
+  memset(&storedConfig.rawBytes[NV_BUTTON_LOG_MODE + 1], 0xFF, 23);
 
   /* Reset node addresses */
   memset(&storedConfig.rawBytes[NV_CENTER], 0xFF, 128);

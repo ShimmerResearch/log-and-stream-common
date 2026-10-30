@@ -330,7 +330,8 @@ Appendix A and is not repeated here. What follows is the header's own layout.
 | 217-221 | `SDH_DERIVED_CHANNELS_3..7` | 5 | |
 | 222-223 | `SDH_TEMP_PRES_EXTRA_CALIB_BYTES` | 2 | BMP280 only |
 | 224 | `SDH_PRESSURE_SENSOR_ID` | 1 | Fitted pressure sensor and how it was identified — see §3.4. `0xFF` before S3R v1.01.018 / S3 v1.01.006 |
-| 225-250 | — | 26 | Unused (`0xFF`) |
+| 225 | `SDH_BUTTON_LOG_MODE` | 1 | Button and logging mode, configuration byte 232 as the firmware acted on it (CONFIGURATION_INFOMEM §8.3). `0xFF` from firmware before the field, which reads as 0 by the same rule |
+| 226-250 | — | 25 | Unused (`0xFF`) |
 | 251 | `SDH_INITIAL_TIMESTAMP_4` | 1 | **Most significant of the 5** |
 | 252-255 | `SDH_INITIAL_TIMESTAMP_0..3` | 4 | Lower 4 bytes, LSB order |
 | **256-276** | `SDH_ALT_ACCEL_CALIBRATION` | 21 | S3R only |
@@ -689,7 +690,7 @@ the read back unchanged.
 | Function | Direction | When |
 |---|---|---|
 | `ShimSdCfgFile_generate` | configuration bytes → file | When the configuration has changed and the file needs refreshing |
-| `ShimSdCfgFile_parse` | file → configuration bytes | On `ShimSdCfgFile_readSdConfiguration` |
+| `ShimSdCfgFile_parse` | file → configuration bytes | On `ShimSdCfgFile_readSdConfiguration`: at boot and at every undock, unless a configuration change is waiting to be written to the card (`flagWriteCfgToSd`), in which case the file is generated instead |
 
 `ShimSdCfgFile_generate` only runs when the device is **not docked**, a card is
 present, and the card is not marked bad — and only when
@@ -737,12 +738,19 @@ fitted sensor:
 
 Trial and sync:
 
-`user_button_enable`, `button_event_marker_enable`, `rtc_error_enable`,
-`sd_error_enable`, `iammaster`,
-`sync`, `singletouch`, `low_battery_autostop`, `interval`,
-`bluetoothDisabled`, `max_exp_len`, `est_exp_len`, `node`, `center`,
-`myid`, `Nshimmer`, `shimmername`, `experimentid`, `configtime`,
+`user_button_enable`, `button_event_marker_enable`, `button_mode`, `log_triggers`,
+`rtc_error_enable`, `sd_error_enable`, `iammaster`, `sync`, `singletouch`,
+`low_battery_autostop`, `interval`, `bluetoothDisabled`, `max_exp_len`,
+`est_exp_len`, `node`, `center`, `myid`, `Nshimmer`, `shimmername`,
+`experimentid`, `configtime`,
 `derived_channels`
+
+> **`button_mode` and `log_triggers` are the two fields of configuration byte
+> 232** (CONFIGURATION_INFOMEM §8.3), written as numbers: `button_mode` 0-7
+> and `log_triggers` 0-3. A value outside those ranges makes the whole byte
+> read as 0, as does a file without the keys - so a card written by older
+> firmware puts the unit back to `user_button_enable` deciding, at the next
+> undock.
 
 ExG registers, twenty keys, named after the register:
 

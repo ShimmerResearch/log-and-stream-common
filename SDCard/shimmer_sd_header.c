@@ -11,6 +11,7 @@
 #include "version.h"
 #include <Boards/shimmer_boards.h>
 #include <Calibration/shimmer_calibration.h>
+#include <Configuration/shimmer_button_log_mode.h>
 #include <Configuration/shimmer_config.h>
 #include <SDCard/shimmer_sd_header.h>
 #include <SDCard/shimmer_sd_pressure_id.h>
@@ -152,6 +153,9 @@ void ShimSdHead_config2SdHead(void)
   sdHeadText[SDH_MAX_EXP_LEN_LSB] = configBytes->rawBytes[NV_MAX_EXP_LEN_LSB];
   sdHeadText[SDH_TRIAL_CONFIG0] = configBytes->rawBytes[NV_SD_TRIAL_CONFIG0];
   sdHeadText[SDH_TRIAL_CONFIG1] = configBytes->rawBytes[NV_SD_TRIAL_CONFIG1];
+  /* As the firmware acts on it. A header from firmware before this field has
+   * 0xFF here, which reads as legacy by the same rule */
+  sdHeadText[SDH_BUTTON_LOG_MODE] = ShimBtnLogMode_correct(configBytes->buttonLogMode);
   sdHeadText[SDH_BROADCAST_INTERVAL] = configBytes->rawBytes[NV_SD_BT_INTERVAL];
 
 #if defined(SHIMMER3)

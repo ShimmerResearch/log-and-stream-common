@@ -185,6 +185,14 @@ uint8_t ShimTask_NORM_set(TaskId_t task_id)
   return 0;
 }
 
+/* The real accessor's body, over the stub config: shimmer_config.c is not
+ * host-buildable, so the byte 232 module is linked in on its own */
+uint8_t ShimConfig_doesPressToggleLogging(void)
+{
+  gConfigBytes *cfg = ShimConfig_getStoredConfig();
+  return ShimBtnLogMode_doesPressToggleLogging(cfg->buttonLogMode, cfg->userButtonEnable);
+}
+
 /* ---- helpers ------------------------------------------------------------- */
 
 #define DIR_SESSION "DefaultTrial_1793350800/Shimmer_A1B2-004"

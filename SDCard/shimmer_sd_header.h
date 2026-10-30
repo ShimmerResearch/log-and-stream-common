@@ -103,6 +103,7 @@
 #define SDH_DERIVED_CHANNELS_7          221
 #define SDH_TEMP_PRES_EXTRA_CALIB_BYTES 222
 #define SDH_PRESSURE_SENSOR_ID          224 //see SDCard/shimmer_sd_pressure_id.h
+#define SDH_BUTTON_LOG_MODE             225 //configuration byte 232, corrected
 #define SDH_INITIAL_TIMESTAMP_4         251 //MSB
 #define SDH_INITIAL_TIMESTAMP_0         252 //LSB
 #define SDH_INITIAL_TIMESTAMP_1         253
