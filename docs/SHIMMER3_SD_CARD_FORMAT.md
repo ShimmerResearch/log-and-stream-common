@@ -82,7 +82,7 @@ A card in service holds up to four things:
 │   └── calib_<mac4>                   calibration blob (§6)
 └── data/
     └── <experimentId>_<configTime>/    one directory per trial
-        └── <shimmerName>-<NNNN>/       one directory per logging session
+        └── <shimmerName>-<NNN>/        one directory per logging session
             ├── 000                     binary data file
             ├── 001
             └── ...
@@ -112,11 +112,13 @@ when the cards are collected.
 ### 1.2 Session directory
 
 ```
-<experimentDir>/<shimmerName>-<NNNN>
+<experimentDir>/<shimmerName>-<NNN>
 ```
 
 `<shimmerName>` is the 12-character device name from bytes 187-198.
-`<NNNN>` is a four-digit zero-padded counter.
+`<NNN>` is a three-digit zero-padded counter. `ShimUtil_ItoaWith0` keeps only
+the low three digits, so after `-999` the next name is `-000` again; that
+directory already exists, and `f_mkdir` fails.
 
 The counter is chosen by scanning the experiment directory for existing
 directories whose name matches this device's name, taking the highest suffix
@@ -139,6 +141,23 @@ digits, zero-padded, no extension, incrementing from zero via `fileNum++`.
 > with `%03d` simply produces four digits, so the sequence continues correctly,
 > but tools that assume a fixed-width name will break. At the one-hour rollover
 > of §4.1, reaching 999 takes about 41 days of continuous logging.
+
+### 1.4 Name lengths
+
+The names the firmware creates are short. The longest single name is the
+experiment directory's `<experimentId>_<configTime>`, at 23 characters
+(12 + 1 + 10). The longest path is a data file's: `data/`, that name, the
+16-character session directory, then the file number. That is 49 characters
+with a three-digit file number, and 51 at the five-digit maximum of `fileNum`.
+
+Shimmer3 builds FatFs with `_MAX_LFN` 64, so it handles names of up to 64
+characters. Shimmer3R's FatFs handles up to 255.
+
+> **On Shimmer3, a longer name is seen only by its 8.3 short name.** A
+> directory created on the card with a name over 64 characters reads back as
+> its short name, such as `LONGNA~1`, so the session scan of §1.2 does not
+> match it. Shimmer3 cannot create or open a name that long, but the firmware
+> never needs to.
 
 ## 2. Data file structure
 

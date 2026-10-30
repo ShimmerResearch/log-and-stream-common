@@ -82,7 +82,9 @@ DIR dir; //Directory object
 #endif
 FIL dataFile;
 FILINFO dataFileInfo;
-char dataFileName[256];
+/* dirName plus "/" and fileNum, a uint16_t printed with "%03d", so up to five
+ * digits (ShimSdDataFile_makeFileName). */
+char dataFileName[sizeof(dirName) + 6];
 
 #if _FATFS == FATFS_V_0_12C
 extern uint8_t retSD;  /* Return value for SD */
