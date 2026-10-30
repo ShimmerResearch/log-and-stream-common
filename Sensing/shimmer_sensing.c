@@ -120,11 +120,15 @@ void ShimSens_configureChannels(void)
 
 /* Check if the conditions are met to start logging to SD card.
  * Return 1 if conditions are met, 0 otherwise.
+ *
+ * Every start comes through here - the button, leaving the dock, a Bluetooth
+ * command and a single-touch sync - so this is where configuration byte 232
+ * turns logging off.
  */
 uint8_t ShimSens_checkStartLoggingConditions(void)
 {
-  return shimmerStatus.sdInserted && !shimmerStatus.sdBadFile
-      && shimmerStatus.sdlogReady && !shimmerStatus.sdLogging
+  return !ShimConfig_isLoggingDisabled() && shimmerStatus.sdInserted
+      && !shimmerStatus.sdBadFile && shimmerStatus.sdlogReady && !shimmerStatus.sdLogging
 #if TEST_LOG_WITH_USB
       && !shimmerStatus.docked;
 #else
@@ -814,17 +818,16 @@ uint8_t ShimSens_getNumEnabledChannels(void)
       ;
 }
 
-void ShimSens_startLoggingIfUndockStartEnabled(void)
+/* Returns 1 if a start was queued, in which case the in-stream status goes to
+ * the host once logging has started */
+uint8_t ShimSens_startLoggingIfUndockStartEnabled(void)
 {
-  gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
-#if IS_SUPPORTED_SINGLE_TOUCH
-  if (!storedConfigPtr->singleTouchStart && !storedConfigPtr->userButtonEnable)
-#else
-  if (!storedConfigPtr->userButtonEnable)
-#endif
+  if (ShimConfig_doesUndockStartLogging() && ShimSens_checkStartLoggingConditions())
   {
     ShimTask_setStartLoggingIfReady();
+    return 1;
   }
+  return 0;
 }
 
 uint8_t ShimSens_checkAutostopLoggingCondition(void)

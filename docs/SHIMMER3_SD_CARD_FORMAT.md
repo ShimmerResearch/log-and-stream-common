@@ -73,18 +73,23 @@ channel encodings are identical, only the framing around them differs.
 
 ## 1. Card layout
 
-A card in service holds up to four things:
+A card in service holds up to five things:
 
 ```
 /
 ├── sdlog.cfg                          text configuration (§5)
 ├── Calibration/
 │   └── calib_<mac4>                   calibration blob (§6)
-└── data/
-    └── <experimentId>_<configTime>/    one directory per trial
-        └── <shimmerName>-<NNNN>/       one directory per logging session
-            ├── 000                     binary data file
-            ├── 001
+├── data/
+│   └── <experimentId>_<configTime>/    one directory per trial
+│       └── <shimmerName>-<NNN>/        one directory per logging session
+│           ├── 000                     binary data file
+│           ├── 001
+│           └── ...
+└── events/                            only when presses are recorded (§1.5)
+    └── <experimentId>_<configTime>/    the same names as under data/
+        └── <shimmerName>-<NNN>/
+            ├── 000                     events for data/.../000
             └── ...
 ```
 
@@ -112,11 +117,13 @@ when the cards are collected.
 ### 1.2 Session directory
 
 ```
-<experimentDir>/<shimmerName>-<NNNN>
+<experimentDir>/<shimmerName>-<NNN>
 ```
 
 `<shimmerName>` is the 12-character device name from bytes 187-198.
-`<NNNN>` is a four-digit zero-padded counter.
+`<NNN>` is a three-digit zero-padded counter. `ShimUtil_ItoaWith0` keeps only
+the low three digits, so after `-999` the next name is `-000` again; that
+directory already exists, and `f_mkdir` fails.
 
 The counter is chosen by scanning the experiment directory for existing
 directories whose name matches this device's name, taking the highest suffix
@@ -139,6 +146,35 @@ digits, zero-padded, no extension, incrementing from zero via `fileNum++`.
 > with `%03d` simply produces four digits, so the sequence continues correctly,
 > but tools that assume a fixed-width name will break. At the one-hour rollover
 > of §4.1, reaching 999 takes about 41 days of continuous logging.
+
+### 1.4 Name lengths
+
+The names the firmware creates are short. The longest single name is the
+experiment directory's `<experimentId>_<configTime>`, at 23 characters
+(12 + 1 + 10). The longest path is a data file's: `data/`, that name, the
+16-character session directory, then the file number. That is 49 characters
+with a three-digit file number, and 51 at the five-digit maximum of `fileNum`.
+
+Shimmer3 builds FatFs with `_MAX_LFN` 64, so it handles names of up to 64
+characters. Shimmer3R's FatFs handles up to 255.
+
+> **On Shimmer3, a longer name is seen only by its 8.3 short name.** A
+> directory created on the card with a name over 64 characters reads back as
+> its short name, such as `LONGNA~1`, so the session scan of §1.2 does not
+> match it. Shimmer3 cannot create or open a name that long, but the firmware
+> never needs to.
+
+### 1.5 Event files
+
+In a button mode that records presses (configuration byte 232, button mode 4
+or 5), or with the TTL input on (byte 232 bit 5), each data file gets an event
+file of the same name under `events/` instead of `data/`, recording button
+presses and TTL input edges with their own timestamps. It has its own header
+and 16-byte records, and splits when the data file does: see [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md).
+Its longest path is 53 characters.
+
+Nothing that reads `data/` sees these files, which is why they are not beside
+the data files.
 
 ## 2. Data file structure
 
@@ -263,7 +299,7 @@ Appendix A and is not repeated here. What follows is the header's own layout.
 | 3-7 | `SDH_SENSORS0..4` | 5 | Sensor enable bitmaps |
 | 8-14 | `SDH_CONFIG_SETUP_BYTE0..6` | 7 | Setup bytes |
 | 15 | — | 1 | Unused (`0xFF`) |
-| 16-17 | `SDH_TRIAL_CONFIG0/1` | 2 | Trial config bit flags |
+| 16-17 | `SDH_TRIAL_CONFIG0/1` | 2 | Trial config bit flags: copies of configuration bytes 217 and 218 |
 | 18 | `SDH_BROADCAST_INTERVAL` | 1 | Sync broadcast interval, seconds |
 | 19 | `SDH_BT_COMMS_BAUD_RATE` | 1 | Stored, not applied |
 | 20-21 | `SDH_EST_EXP_LEN_MSB/LSB` | 2 | Estimated length, **big-endian** |
@@ -295,7 +331,8 @@ Appendix A and is not repeated here. What follows is the header's own layout.
 | 217-221 | `SDH_DERIVED_CHANNELS_3..7` | 5 | |
 | 222-223 | `SDH_TEMP_PRES_EXTRA_CALIB_BYTES` | 2 | BMP280 only |
 | 224 | `SDH_PRESSURE_SENSOR_ID` | 1 | Fitted pressure sensor and how it was identified — see §3.4. `0xFF` before S3R v1.01.018 / S3 v1.01.006 |
-| 225-250 | — | 26 | Unused (`0xFF`) |
+| 225 | `SDH_BUTTON_LOG_MODE` | 1 | Button, logging and TTL input settings: configuration byte 232 as the firmware acted on it (CONFIGURATION_INFOMEM §8.3). `0xFF` from firmware before the field, which reads as 0 by the same rule |
+| 226-250 | — | 25 | Unused (`0xFF`) |
 | 251 | `SDH_INITIAL_TIMESTAMP_4` | 1 | **Most significant of the 5** |
 | 252-255 | `SDH_INITIAL_TIMESTAMP_0..3` | 4 | Lower 4 bytes, LSB order |
 | **256-276** | `SDH_ALT_ACCEL_CALIBRATION` | 21 | S3R only |
@@ -654,7 +691,7 @@ the read back unchanged.
 | Function | Direction | When |
 |---|---|---|
 | `ShimSdCfgFile_generate` | configuration bytes → file | When the configuration has changed and the file needs refreshing |
-| `ShimSdCfgFile_parse` | file → configuration bytes | On `ShimSdCfgFile_readSdConfiguration` |
+| `ShimSdCfgFile_parse` | file → configuration bytes | On `ShimSdCfgFile_readSdConfiguration`: at boot and at every undock, unless a configuration change is waiting to be written to the card (`flagWriteCfgToSd`), in which case the file is generated instead |
 
 `ShimSdCfgFile_generate` only runs when the device is **not docked**, a card is
 present, and the card is not marked bad — and only when
@@ -702,11 +739,19 @@ fitted sensor:
 
 Trial and sync:
 
-`user_button_enable`, `rtc_error_enable`, `sd_error_enable`, `iammaster`,
-`sync`, `singletouch`, `low_battery_autostop`, `interval`,
-`bluetoothDisabled`, `max_exp_len`, `est_exp_len`, `node`, `center`,
-`myid`, `Nshimmer`, `shimmername`, `experimentid`, `configtime`,
+`user_button_enable`, `button_mode`, `log_triggers`, `ttl_input_enable`,
+`rtc_error_enable`, `sd_error_enable`, `iammaster`, `sync`, `singletouch`,
+`low_battery_autostop`, `interval`, `bluetoothDisabled`, `max_exp_len`,
+`est_exp_len`, `node`, `center`, `myid`, `Nshimmer`, `shimmername`,
+`experimentid`, `configtime`,
 `derived_channels`
+
+> **`button_mode`, `log_triggers` and `ttl_input_enable` are configuration
+> byte 232** (CONFIGURATION_INFOMEM §8.3): bits 0-2, 3-4 and 5, written as
+> numbers. `button_mode` takes 0-7 and `log_triggers` 0-3; a value outside
+> those ranges makes the whole byte read as 0, as does a file without the keys.
+> So a card written by older firmware puts the unit back to
+> `user_button_enable` deciding, at the next undock.
 
 ExG registers, twenty keys, named after the register:
 

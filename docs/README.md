@@ -29,6 +29,7 @@ The documents a host application needs to talk to a device or read its data.
 | [SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) | The wired protocol over the dock UART and Shimmer3R USB-C. A different protocol, not a subset |
 | [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) | Live data packets: layout, the channel registry, per-platform channel order, encodings, raw-to-physical conversion |
 | [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) | The on-card layout: directory structure, the binary file header, sample records, `sdlog.cfg`, the calibration file |
+| [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) | Button event markers and the TTL input: the gestures, the timer capture, and the event file recorded beside each data file |
 | [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) | The 512-byte configuration image: full byte map, validation rules, defaults, and the InfoMem-to-SD-header mapping |
 | [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) | Calibration in both its shapes, the 21-byte kinematic block, default seeds, and the conversion maths |
 | [SHIMMER3R_SD_FILE_TRANSFER.md](SHIMMER3R_SD_FILE_TRANSFER.md) | Retrieving logged files over Bluetooth (Shimmer3R only) |

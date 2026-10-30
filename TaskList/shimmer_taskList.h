@@ -137,6 +137,11 @@ typedef enum TaskId_Tag
    * everything else on purpose: data packets are refused while a reply is
    * held, so nothing competes with it for the ring. */
   TASK_BT_REPLY_RETRY = (0x00000001UL << 25U),
+  /* Button edges queued by the interrupt, and the event file's open, split and
+   * sync (Events/shimmer_events.h). Last of all: edges carry their own times,
+   * so waiting costs nothing, and the event file must never delay the data
+   * file. */
+  TASK_EVENT_CHANNEL = (0x00000001UL << 26U),
 } TaskId_t;
 //return the task id of the current task
 

@@ -67,7 +67,7 @@ From the `Core/Src` initialisers:
 | ADC | `hadc1`, `hadc2`, `hadc4` | MCU-internal measurements |
 | SDMMC | `hsd1` | SD card |
 | UART | `huart1`, `huart3` (`huart6` initialised, used only under `SHIMMER4_SDK`) | `huart1` dock (115200), `huart3` Bluetooth; no debug UART |
-| TIM | `htim2`, `htim3`, `htim6`, `htim7` (`htim1` declared but never initialised) | Sampling, timeouts, PWM |
+| TIM | `htim2`, `htim3`, `htim6`, `htim7`; `TIM1`, `TIM16` and `TIM17` set up register by register, outside the HAL (§3) | LED PWM and blink, delays; TTL input capture; factory-test LSE measurement |
 | GPDMA | multiple | SPI and SDMMC transfers |
 | CRC | — | **Removed (DEV-1003).** Was configured (poly `0x1021`, init `0xB0CA`) but never called; all checksums run the shared software CRC by design. See `SHIMMER3_ARCHITECTURE_OVERVIEW` for the measurements, and for the conditions that would justify bringing it back |
 | RNG | `hrng` | Initialised, no consumer |
@@ -84,16 +84,21 @@ From the `Core/Src` initialisers:
 
 ## 3. Timers
 
-`htim2`, `htim3`, `htim6` and `htim7` are initialised and referenced heavily.
-**`htim1` is not initialised at all**: there is no `MX_TIM1_Init`, and its one
-appearance is a commented-out `HAL_TIM_Base_MspDeInit(&htim1)` in `spi.c`.
+`htim2`, `htim3`, `htim6` and `htim7` are initialised by CubeMX and referenced
+heavily. Three more timers are set up register by register outside the HAL,
+so they appear in no `MX_*_Init` and in no `.ioc`:
 
-> **TIM1 is the one to check before claiming a channel.** It has no init
-> function, which makes it genuinely free rather than merely idle — and its
-> channels are the natural home for an input-capture feature. An event-capture
-> investigation identified TIM1_CH1 as the candidate for a hardware capture
-> input precisely because the timer is unused. Confirm the current
-> state before assuming either that it is free or that it is not.
+| Timer | Owner | When |
+|---|---|---|
+| `TIM1` | The TTL input: `PE9` as `TIM1_CH1`, rising edges on CC1 and falling on CC2, both from TI1, at 1 MHz (`Shimmer_Driver/hal_EventCapture.c`, [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md)) | Only during a logging session with `ttlInputEnable` set |
+| `TIM16`, `TIM17` | The factory test's LSE measurement (`Shimmer_Driver/hal_FactoryTest.c`) | Only during that test |
+
+`htim1` is not declared anywhere; its one appearance is a commented-out
+`HAL_TIM_Base_MspDeInit(&htim1)` in `spi.c`.
+
+> **Check the register-level users before claiming a timer.** CubeMX shows
+> `TIM1`, `TIM16` and `TIM17` as free, and the code that uses them does not
+> go through the HAL.
 
 ## 4. EXTI lines
 
@@ -101,10 +106,11 @@ appearance is a commented-out `HAL_TIM_Base_MspDeInit(&htim1)` in `spi.c`.
 
 > **An EXTI line is shared by pin number across every port.** `EXTI9` is
 > occupied by VBUS detection, which means **PE9 cannot be used as an interrupt
-> source** even though the pin itself is otherwise free. This is the specific
-> constraint that stalled an event-capture design: PE9 is available as
-> TIM1_CH1, so it can be used for hardware *capture*, but not for a GPIO
-> interrupt.
+> source** even though the pin itself is otherwise free. That is why the TTL
+> input on PE9 is read by `TIM1` input capture instead (§3). Capture is an
+> alternate-function mode, which leaves the EXTI line alone; when capture is
+> disarmed PE9 goes back to a plain input, not to the EXTI mode CubeMX gives
+> it, which would take `EXTI9` from `PA9`.
 
 > **Check the EXTI line, not just the pin.** The STM32 external-interrupt
 > controller multiplexes by pin number: `PA9`, `PB9`, `PC9`, `PE9` all contend
@@ -193,7 +199,7 @@ input or output. Pins not listed are unassigned.
 | PE6 | GPIO out | CS_LIS3MDL | |
 | PE7 | GPIO | LSM6DSV_INT1 | EXTI |
 | PE8 | GPIO | BT_HOST_WAKE | |
-| PE9 | GPIO | GPIO_EXTERNAL | header pin; shares EXTI line 9 with `PA9` |
+| PE9 | GPIO / TIM1_CH1 | GPIO_EXTERNAL | header pin; shares EXTI line 9 with `PA9`; `TIM1_CH1` (AF1) while the TTL input is armed |
 | PE10 | EXTI10 | LIS2MDL_DRDY | |
 | PE11 | EXTI11 | BMP390_INT | |
 | PE12 | GPIO out | SW_SENSE_IO | |
@@ -224,9 +230,9 @@ per-sensor drivers, not in the pin map.
   `GPDMA1` channel 0 `USART3_RX`, 1 `USART3_TX`, 4 `SPI1_RX`, 5 `SPI1_TX`,
   6 `SPI2_RX`, 7 `SPI2_TX`, 8 `SPI3_RX`, 9 `SPI3_TX`, 10 `I2C1_RX`.
   Channels 2, 3 and 11-15 are free. SDMMC1 uses its own internal DMA.
-- ~~What `htim1` currently drives~~ — resolved: nothing. There is no
-  `MX_TIM1_Init`; the single reference is a commented-out `MspDeInit` in
-  `spi.c`. `TIM1` is free. The LED PWM timers are `TIM2` (upper RGB,
+- ~~What `htim1` currently drives~~ — resolved: no HAL handle; `TIM1` is the
+  TTL input capture, set up outside the HAL (§3). The LED PWM timers are
+  `TIM2` (upper RGB,
   `PA0`/`PB10`/`PB11`) and `TIM3` (lower RGB, `PE3`/`PE4`/`PE5`), both
   prescaler 48, period 255.
 - ~~`hadc4`'s role~~ — resolved: `ADC4` is configured for `ADC_CHANNEL_VCORE`

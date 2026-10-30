@@ -63,7 +63,8 @@ INCLUDES := -I . \
 # Suites that need no stub platform at all - the modules under them include
 # nothing but the C library.
 STANDALONE_SUITES := test_swcrc test_packet_ring test_util test_sd_pressure_id \
-                     test_leds_phase
+                     test_leds_phase test_event_record test_button_gesture \
+                     test_button_log_mode
 
 # Suites built once per SD write-buffer count. That count is a compile-time
 # constant because the buffers are a fixed array, so covering more than one
@@ -77,8 +78,9 @@ SD_WRBUF_COUNTS := 1 2 4 32
 
 # Suites built once, against the stub platform, as Shimmer3R. test_sd_data_file
 # is Shimmer3R-only by nature: the writer's batching, alignment offset, split
-# guard and short-write recovery exist only there.
-SINGLE_PLATFORM_SUITES := test_crc test_sd_data_file
+# guard and short-write recovery exist only there. test_events drives the event
+# file through a fake FatFs, whose types the stubs give as Shimmer3R's.
+SINGLE_PLATFORM_SUITES := test_crc test_sd_data_file test_events
 
 # Suites built twice, once per platform. See the note above.
 DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards test_bt_reply \
@@ -96,6 +98,17 @@ SRC_test_sd_pressure_id := test_sd_pressure_id.c \
 SRC_test_sd_write_buf := test_sd_write_buf.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c
 SRC_test_leds_phase  := test_leds_phase.c $(REPO)/LEDs/shimmer_leds_phase.c
+SRC_test_event_record := test_event_record.c $(REPO)/Events/shimmer_event_record.c \
+                        $(REPO)/CRC/shimmer_swCrc.c
+SRC_test_button_gesture := test_button_gesture.c \
+                        $(REPO)/Button/shimmer_button_gesture.c
+SRC_test_events      := test_events.c $(REPO)/Events/shimmer_events.c \
+                        $(REPO)/Events/shimmer_event_record.c \
+                        $(REPO)/Button/shimmer_button.c \
+                        $(REPO)/Button/shimmer_button_gesture.c \
+                        $(REPO)/Configuration/shimmer_button_log_mode.c
+SRC_test_button_log_mode := test_button_log_mode.c \
+                        $(REPO)/Configuration/shimmer_button_log_mode.c
 SRC_test_sd_data_file := test_sd_data_file.c \
                         $(REPO)/SDCard/shimmer_sd_data_file.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c \
@@ -124,6 +137,9 @@ INC_test_util        := -I . -I $(REPO)
 INC_test_sd_write_buf := -I . -I $(REPO)
 INC_test_sd_pressure_id := -I . -I $(REPO)
 INC_test_leds_phase  := -I . -I $(REPO)
+INC_test_event_record := -I . -I $(REPO)
+INC_test_button_gesture := -I . -I $(REPO)
+INC_test_button_log_mode := -I . -I $(REPO)
 
 ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) \
               $(DUAL_PLATFORM_SUITES) $(SD_WRBUF_SUITES)
@@ -301,10 +317,13 @@ DUAL_COMPILE_MODULES := \
   Battery/shimmer_battery.c \
   Boards/shimmer_boards.c \
   Button/shimmer_button.c \
+  Button/shimmer_button_gesture.c \
   CRC/shimmer_crc.c \
   CRC/shimmer_swCrc.c \
   Calibration/shimmer_calibration.c \
   Comms/shimmer_bt_reply.c \
+  Events/shimmer_event_record.c \
+  Configuration/shimmer_button_log_mode.c \
   LEDs/shimmer_leds_phase.c \
   Platform/platform_api.c \
   RTC/shimmer_rtc.c \
