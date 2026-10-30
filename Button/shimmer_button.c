@@ -15,6 +15,10 @@
 uint64_t buttonPressTs, buttonReleaseCurrentTs, buttonReleasePrevTs;
 //Time difference calculations
 uint64_t buttonReleaseTd, buttonPressReleaseTd;
+/* For the button state readback: presses since boot, and how long the last
+ * completed one lasted */
+static uint16_t buttonPressCount;
+static uint16_t buttonLastPressMs;
 
 void ShimBtn_init(void)
 {
@@ -23,6 +27,8 @@ void ShimBtn_init(void)
   buttonReleasePrevTs = 0;
   buttonReleaseTd = 0;
   buttonPressReleaseTd = 0;
+  buttonPressCount = 0;
+  buttonLastPressMs = 0;
 }
 
 /* Returns 1 to indicate MCU should be woken to carry out a task. */
@@ -33,6 +39,7 @@ uint8_t ShimBtn_pressReleaseAction(void)
   if (shimmerStatus.buttonPressed)
   { //button pressed
     buttonPressTs = RTC_get64();
+    buttonPressCount++;
   }
   else
   { //button released
@@ -49,6 +56,11 @@ uint8_t ShimBtn_pressReleaseAction(void)
     }
 
     buttonReleaseTd = buttonReleaseCurrentTs - buttonReleasePrevTs;
+
+    if (buttonPressReleaseTd)
+    {
+      buttonLastPressMs = ShimBtn_ticksToMs(buttonPressReleaseTd);
+    }
 
     /* long button press: >=5s */
     if (buttonPressReleaseTd >= TICKS_5_SECONDS)
@@ -106,4 +118,21 @@ uint8_t ShimBtn_pressReleaseAction(void)
     buttonPressTs = 0;
   }
   return wake;
+}
+
+/* 32768 Hz ticks to ms, stopping at 65535 ms rather than wrapping. Split so
+ * no intermediate overflows, whatever the width of int. */
+uint16_t ShimBtn_ticksToMs(uint64_t ticks)
+{
+  if (ticks >= (uint64_t) 65535U * 32768U / 1000U + 1U)
+  {
+    return 0xFFFFU;
+  }
+  return ShimFactoryRecord_saturateMs((uint32_t) ((ticks * 1000U) / 32768U));
+}
+
+uint8_t ShimBtn_buildState(uint8_t *out)
+{
+  return ShimFactoryRecord_encodeButtonState(
+      Board_isBtnPressed() ? 1U : 0U, buttonPressCount, buttonLastPressMs, out);
 }

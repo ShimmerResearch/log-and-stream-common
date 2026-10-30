@@ -231,6 +231,143 @@ def check_enum(failures, notes, label, fw_path, fw_enum, py_path, py_class, name
     return checked
 
 
+def firmware_typedef_enum(path, type_name):
+    """{NAME: value} from `typedef enum { NAME = n, ... } type_name;`. Every value
+    must be spelled out: an implicit one is a protocol value nobody wrote down."""
+    text = path.read_text(encoding="utf-8")
+    m = re.search(r"typedef\s+enum\s*\{([^{}]*)\}\s*" + re.escape(type_name) + r"\s*;", text)
+    if not m:
+        raise SystemExit(f"FAIL: typedef enum {type_name} not found in {path.name} - renamed?")
+    body = re.sub(r"/\*.*?\*/|//[^\n]*", "", m.group(1), flags=re.S)
+    out = {}
+    for item in (i.strip() for i in body.split(",")):
+        if not item:
+            continue
+        d = re.fullmatch(r"([A-Z][A-Z0-9_]*)\s*=\s*(0x[0-9A-Fa-f]+|\d+)", item)
+        if not d:
+            raise SystemExit(f"FAIL: {type_name} in {path.name}: '{item}' has no explicit value")
+        out[d.group(1)] = int(d.group(2), 0)
+    return out
+
+
+def firmware_defines(path, prefix):
+    """{NAME: value} from `#define PREFIXNAME 0xNN`, a U suffix allowed, whatever
+    #if they sit in."""
+    out = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"#define\s+(" + re.escape(prefix) + r"[A-Z0-9_]*)\s+(0x[0-9A-Fa-f]+|\d+)[uU]?\b", line)
+        if m:
+            out[m.group(1)] = int(m.group(2), 0)
+    if not out:
+        raise SystemExit(f"FAIL: no {prefix}* defines parsed from {path.name}")
+    return out
+
+
+def python_nested_class_constants(path, outer, inner):
+    """{NAME: value} from `class outer:` -> `class inner:` (indented)."""
+    text = path.read_text(encoding="utf-8")
+    m = re.search(r"^class\s+" + re.escape(outer) + r"\b.*?:\n(.*?)(?=^\S)", text, re.S | re.M)
+    if not m:
+        raise SystemExit(f"FAIL: class {outer} not found in {path.name}")
+    n = re.search(r"^([ \t]+)class\s+" + re.escape(inner) + r"\b.*?:\n(.*?)(?=^\1\S|\Z)", m.group(1),
+                  re.S | re.M)
+    if not n:
+        raise SystemExit(f"FAIL: class {outer}.{inner} not found in {path.name}")
+    out = {}
+    for line in n.group(2).splitlines():
+        d = re.match(r"\s+([A-Z][A-Z0-9_]*)\s*=\s*(0x[0-9A-Fa-f]+|\d+)\s*(?:#.*)?$", line)
+        if d:
+            out[d.group(1)] = int(d.group(2), 0)
+    if not out:
+        raise SystemExit(f"FAIL: class {outer}.{inner} in {path.name} yielded no constants")
+    return out
+
+
+def compare_mapped(failures, label, fw, py, to_fw_name):
+    """Every host constant must exist in the firmware, at the same value. Returns
+    the firmware names the host constants map to."""
+    seen = set()
+    for py_name, py_value in sorted(py.items()):
+        fw_name = to_fw_name(py_name)
+        seen.add(fw_name)
+        if fw_name not in fw:
+            failures.append(f"{label}: the host reference defines {py_name} = {py_value:#04x}, "
+                            f"the firmware has no {fw_name}")
+        elif fw[fw_name] != py_value:
+            failures.append(f"{label}: {fw_name} is {fw[fw_name]:#04x} in the firmware, "
+                            f"{py_name} is {py_value:#04x} in the host reference")
+    return seen
+
+
+DOCKED_HOST = HOST / "shimmer_comms_docked.py"
+DOCK_HEADER = REPO / "Comms" / "shimmer_dock_usart.h"
+
+
+def check_factory_tests(failures, notes):
+    """factory_test_t is the dock's COMP_TEST property and the 0xA8 argument, so
+    it is protocol on two transports. All of it must be in the host reference."""
+    fw = firmware_typedef_enum(REPO / "Test" / "shimmer_test.h", "factory_test_t")
+    fw.pop("FACTORY_TEST_COUNT", None)
+    py = python_class_constants(DOCKED_HOST, "FACTORY_TEST")
+    seen = compare_mapped(failures, "factory test suites", fw, py, lambda n: "FACTORY_TEST_" + n)
+    for name in sorted(set(fw) - seen):
+        failures.append(f"factory test suites: {name} = {fw[name]} is not in the host reference")
+    return len(py)
+
+
+# The host reference's dock names, where they differ from the firmware's.
+DOCK_COMPONENT_NAMES = {"MAIN_PROCESSOR": "UART_COMP_SHIMMER", "RADIO_BLUETOOTH": "UART_COMP_BT"}
+DOCK_PROPERTY_NAMES = {"RTC_CFG_TIME": "UART_PROP_RWC_CFG_TIME"}
+
+
+def check_dock(failures, notes):
+    """The dock's components and properties (docs/SHIMMER3_DOCK_PROTOCOL.md).
+    Properties are per component, but the firmware defines them in one flat
+    namespace, so each host property is looked up by name and checked by value."""
+    comps = firmware_defines(DOCK_HEADER, "UART_COMP_")
+    props = firmware_defines(DOCK_HEADER, "UART_PROP_")
+    py_comps = python_class_constants(DOCKED_HOST, "UartComponent")
+    seen = compare_mapped(failures, "dock components", comps, py_comps,
+                          lambda n: DOCK_COMPONENT_NAMES.get(n, "UART_COMP_" + n))
+    checked = len(py_comps)
+    absent = sorted(set(comps) - seen)
+    if absent:
+        notes.append(f"dock components: not in the host reference - {', '.join(absent)}")
+
+    seen = set()
+    for inner in ("MainProcessor", "Bat", "DaughterCard", "Bluetooth"):
+        py = python_nested_class_constants(DOCKED_HOST, "UartProperty", inner)
+        seen |= compare_mapped(failures, f"dock {inner} properties", props, py,
+                               lambda n: DOCK_PROPERTY_NAMES.get(n, "UART_PROP_" + n))
+        checked += len(py)
+    absent = sorted(set(props) - seen)
+    if absent:
+        notes.append(f"dock properties: not in the host reference - {', '.join(absent)}")
+    return checked
+
+
+FACTORY_RECORD_HEADER = REPO / "Test" / "shimmer_factory_record.h"
+
+
+def check_boot_report(failures, notes):
+    """The boot report's layout version, length and flags, and the part-probe
+    bits it shares with the power-profile record. A host that decodes the boot
+    report by a stale length or bit mis-reads every field after the change."""
+    fw = firmware_defines(FACTORY_RECORD_HEADER, "BOOT_REPORT_")
+    py = python_class_constants(DOCKED_HOST, "BootReport")
+    seen = compare_mapped(failures, "boot report", fw, py, lambda n: "BOOT_REPORT_" + n)
+    for name in sorted(set(fw) - seen):
+        failures.append(f"boot report: {name} = {fw[name]} is not in the host reference")
+    checked = len(py)
+
+    fw = firmware_defines(FACTORY_RECORD_HEADER, "PP_PART_")
+    py = python_class_constants(DOCKED_HOST, "PartBit")
+    seen = compare_mapped(failures, "part-probe bits", fw, py, lambda n: "PP_PART_" + n)
+    for name in sorted(set(fw) - seen):
+        failures.append(f"part-probe bits: {name} = {fw[name]:#06x} is not in the host reference")
+    return checked + len(py)
+
+
 def main():
     failures, notes = [], []
     checked = check_opcodes(failures, notes)
@@ -245,6 +382,9 @@ def main():
         HOST / "shimmer_device.py", "SrHwVer",
         name_map={"HW_ID_SHIMMER3": "SHIMMER3", "HW_ID_SHIMMER3R": "SHIMMER3R"},
     )
+    checked += check_factory_tests(failures, notes)
+    checked += check_dock(failures, notes)
+    checked += check_boot_report(failures, notes)
 
     for note in notes:
         print(f"  NOTE {note}")

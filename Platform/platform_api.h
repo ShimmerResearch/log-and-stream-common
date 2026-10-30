@@ -11,6 +11,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "Test/shimmer_factory_record.h"
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -68,6 +70,24 @@ extern "C"
    * the clock but leaves the tick itself up to 100 ms off. */
   uint16_t platform_ledTickElapsedRtcTicks(void);
   void platform_ledTickShift(int16_t rtcTicks);
+  /* Boot report (LogAndStream_buildBootReport). How many times Bluetooth
+   * initialisation fell back to another baud rate at the last boot, the LSE
+   * drive level the boot applied (the RCC LSEDRV bits, 0xFF if the LSE is not
+   * running), and whether the RTC fell back to the LSI. The defaults report
+   * 0, 0xFF and 0. */
+  uint8_t platform_getBtBaudAttempts(void);
+  uint8_t platform_getLseDrive(void);
+  uint8_t platform_isRtcOnLsiFallback(void);
+  /* Boot report, continued. The parts the part probe found at this boot, and
+   * the parts the SR number says the board carries, as PP_PART_* masks
+   * (Test/shimmer_factory_record.h). The defaults report 0 and 0: no probe. */
+  uint16_t platform_getBootPartsFound(void);
+  uint16_t platform_getBootPartsExpected(void);
+  /* Shimmer3R power-profile run (Test/shimmer_factory_record.h). Fills in the
+   * schedule this board would run - the one function both the run and the
+   * dock readback use - and returns 1, or returns 0 if the platform has no
+   * power-profile run. The default returns 0. */
+  uint8_t platform_powerProfileSchedule(pp_schedule_t *schedule);
 
 #ifdef __cplusplus
 }

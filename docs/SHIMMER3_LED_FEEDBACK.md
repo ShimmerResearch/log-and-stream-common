@@ -399,6 +399,24 @@ over:
 On Shimmer3R only, if `bslCheckTimeMs > 0` the bootloader indication (§6) pre-
 empts everything above.
 
+**A Shimmer3R power-profile run** (`BOOT_STAGE_POWER_PROFILE`,
+[SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §6) shows
+none of the above. The run stops the LED blink timer for its whole length, about
+a minute, and drives the LEDs itself: a 500 ms flash of every channel, sixteen
+short or long flashes encoding the nonce, a 20 ms flash at every step, and each
+channel alone for a second near the end. An operator who sees a unit flash
+like that and then sit dark has not found a fault; it boots normally when the
+run ends, and the blink timer is restarted. The per-stage count the timeouts
+above read stops at 65.5 s rather than wrapping.
+
+**`LED_SET`** (Shimmer3R, over the dock;
+[SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) §4.2) lets a host hold
+both RGB LEDs in colours of its choosing, for a production test's visual check.
+It is refused during boot. While it holds them, `ShimLeds_blink()` returns at
+once and shows nothing of the unit's own state, but the blink timer keeps
+running for everything else it drives. The hold ends when the host releases it
+(`0xFF 0xFF`), on any dock or USB change, or after 60 s.
+
 ## 6. Bootloader (Shimmer3R only)
 
 `ShimLeds_blinkSetLwrEnteringBslMode` sets the upper LED off and toggles the

@@ -32,6 +32,7 @@
 #include "Sensing/shimmer_packet_ring.h"
 #include "Sensing/shimmer_sensing.h"
 #include "TaskList/shimmer_taskList.h"
+#include "Test/shimmer_factory_record.h"
 #include "Test/shimmer_test.h"
 #include "Test/shimmer_test_leds_states.h"
 #include "Util/shimmer_util.h"

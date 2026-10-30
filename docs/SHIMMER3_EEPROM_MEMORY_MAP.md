@@ -54,7 +54,8 @@ brand record moved nothing else:
 | Start | End | Size | Constant | Content |
 |---:|---:|---:|---|---|
 | 0 | 15 | 16 | `EEPROM_ADDRESS_HW_DETAILS` | Expansion-board ID page (§3) |
-| 16 | 1935 | 1920 | — | General expansion-board storage, host-writable |
+| 16 | 1919 | 1904 | — | General expansion-board storage, host-writable |
+| 1920 | 1935 | 16 | `EEPROM_ADDRESS_POWER_PROFILE` | Power-profile record, **S3R only** (§8). Unused on S3, where it stays general storage |
 | 1936 | 1951 | 16 | `EEPROM_ADDRESS_BT_MAC_BACKUP` | Bluetooth MAC backup record, **S3R only** (§7). Unused on S3, where it stays general storage |
 | 1952 | 2031 | 80 | `EEPROM_ADDRESS_BRAND_DETAILS` | Brand record, 5 pages (§5) |
 | 2032 | 2047 | 16 | `EEPROM_ADDRESS_BLUETOOTH_DETAILS` | Radio settings page (§4) |
@@ -67,6 +68,7 @@ EEPROM_ADDRESS_BLUETOOTH_DETAILS = CAT24C16_TOTAL_SIZE - CAT24C16_PAGE_SIZE
 EEPROM_BRAND_DETAILS_SIZE        = 5 * CAT24C16_PAGE_SIZE = 80
 EEPROM_ADDRESS_BRAND_DETAILS     = 2032 - 80 = 1952
 EEPROM_ADDRESS_BT_MAC_BACKUP     = 1952 - 16 = 1936   (S3R only)
+EEPROM_ADDRESS_POWER_PROFILE     = 1936 - 16 = 1920   (S3R only)
 EEPROM_AVAILABLE_SIZE            = 2048 - 16 = 2032
 ```
 
@@ -389,9 +391,43 @@ the EEPROM write cycle with `HAL_Delay`.
 > overwrites whatever a host stored in this page. Before this record existed,
 > the page was general expansion-board storage.
 
+## 8. Power-profile record (1920-1935, Shimmer3R only)
+
+The arm, state and outcome of the power-profile run that a production test
+arms over the dock
+([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §6). The
+dock's arm and disarm write it, and so does the run at each step boundary;
+nothing else does. Firmware before v1.01.024 does not touch the page.
+
+One 16-byte page (host offset 1904), built byte by byte by
+`ShimFactoryRecord_encodePpRecord` (`Test/shimmer_factory_record.c`), so it
+does not depend on a compiler's struct packing:
+
+| Offset | Field | Type | Notes |
+|---:|---|---|---|
+| 0-1 | `magic` | `uint16` LE | `PP_RECORD_MAGIC` = `0x5050` ("PP") |
+| 2 | `layoutVer` | `uint8` | `PP_RECORD_LAYOUT_VER` = 1 |
+| 3 | `state` | `uint8` | `PP_STATE_*`: 0 disarmed, 1 armed, 2 running, 3 done, 4 skipped, 5 aborted |
+| 4 | `run_seq` | `uint8` | index of the step the run is on, written before each step |
+| 5-6 | `nonce` | `uint16` LE | from the arm |
+| 7-10 | `step_ok` | `uint32` LE | bit *i* set when step *i* completed |
+| 11-12 | `parts_found` | `uint16` LE | `PP_PART_*` |
+| 13 | schedule version | `uint8` | of the schedule the run used |
+| 14-15 | `crc` | 2 bytes | `ShimSwCrc_calc` over bytes 0-13, low byte first: the comms CRC |
+
+`ShimEeprom_readPowerProfile` accepts the page only if the magic, layout
+version and CRC match; anything else, an erased page included, reads as no
+record. `ShimEeprom_writePowerProfile` reads the page back and reports success
+only on a byte-for-byte match: the dock ACKs an arm only then.
+
+> **The page sits inside the host-writable window**, as the MAC backup does. A
+> host write to host offsets 1904-1919 overwrites the record, and a damaged
+> record reads as none, which disarms the unit. The page is clear of the
+> region the factory EEPROM test uses as scratch (bytes 16-143).
+
 ## Still unverified / not found in code
 
-- **What occupies bytes 16-1935.** Confirmed: no firmware structure claims
+- **What occupies bytes 16-1919.** Confirmed: no firmware structure claims
   the range and no default content is written. What *is* now established is
   the host access rule: `CARD_MEM` reads address `offset + 16` with
   `offset ≤ 2031`, so the host window is bytes 16-2047, and writes go through

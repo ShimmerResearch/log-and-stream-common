@@ -162,7 +162,7 @@ A request addresses a **component** and a **property** of it.
 | `UART_COMP_GSR` | `0x05` | GSR |
 | `UART_COMP_RADIO_802154` | `0x09` | ShimmerGQ builds only |
 | `UART_COMP_BT` | `0x0A` | Bluetooth |
-| `UART_COMP_TEST` | `0x0B` | Factory test |
+| `UART_COMP_TEST` | `0x0B` | Factory test suites, and on Shimmer3R the power-profile record (§4.4) |
 
 ### 4.2 `UART_COMP_SHIMMER` properties
 
@@ -178,10 +178,24 @@ A request addresses a **component** and a **property** of it.
 | `UART_PROP_LED0_STATE` | `0x07` | ShimmerGQ only |
 | `UART_PROP_DEVICE_BOOT` | `0x08` | ShimmerGQ only |
 | `UART_PROP_ENTER_BOOTLOADER` | `0x09` | **Shimmer3R only** |
+| `UART_PROP_BOOT_REPORT` | `0x0A` | **Shimmer3R v1.01.024 and later.** GET: how the last boot went |
+| `UART_PROP_BUTTON` | `0x0B` | **Shimmer3R v1.01.024 and later.** GET: the user button's state |
+| `UART_PROP_LED_SET` | `0x0C` | **Shimmer3R v1.01.024 and later.** SET: hold both LEDs in a host's colours |
 
 > **`UART_PROP_ENTER_BOOTLOADER` exists only on Shimmer3R** and is the wired
 > route into firmware update. See
 > [SHIMMER3_BUILD_AND_PROGRAMMING.md](SHIMMER3_BUILD_AND_PROGRAMMING.md).
+
+> **`0x0A`-`0x0C` are for production test** and exist only on Shimmer3R from
+> v1.01.024. Shimmer3 and older Shimmer3R firmware answer them
+> `UART_BAD_CMD_RESPONSE`, which is how a host tells. Their payloads are in
+> Appendix A, and the boot report and button state are also on Bluetooth
+> (`0xB9`/`0xB8`, `0xBB`/`0xBA`).
+>
+> **`LED_SET` takes the LEDs from the firmware's own patterns** until it is
+> released: by `0xFF 0xFF`, by any dock or USB change, or after 60 s. The LED
+> blink timer keeps running underneath, so nothing else it drives stops. It is
+> refused while the unit is booting.
 
 ### 4.3 Other components' properties
 
@@ -216,6 +230,8 @@ A request addresses a **component** and a **property** of it.
 None of these is handled: `ShimDock_processCmd` has no branch for
 `UART_COMP_D_ACCEL`, so a request to it is answered `UART_BAD_CMD_RESPONSE`.
 
+`UART_COMP_TEST`: see §4.4.
+
 `UART_COMP_GSR` has no properties of its own — the header lists
 `UART_PROP_ENABLE`, `UART_PROP_SAMPLE_RATE`, `UART_PROP_RANGE` and
 `UART_PROP_DIVIDER` **all commented out**.
@@ -229,6 +245,39 @@ None of these is handled: `ShimDock_processCmd` has no branch for
 > **Several properties are declared only as commented-out lines**, which makes
 > them look supported when reading the header. The GSR component in particular
 > has none live.
+
+### 4.4 `UART_COMP_TEST` properties
+
+The property is a `factory_test_t` value (`Test/shimmer_test.h`), the same
+number the Bluetooth `SET_FACTORY_TEST` (`0xA8`) takes.
+
+| Property | Name | GET | SET |
+|---:|---|---|---|
+| `0` | `FACTORY_TEST_MAIN` | `BAD_CMD` | runs the suite, report to the dock (§5) |
+| `1` | `FACTORY_TEST_LEDS` | `BAD_CMD` | runs the suite |
+| `2` | `FACTORY_TEST_ICS` | `BAD_CMD` | runs the suite |
+| `3` | `FACTORY_TEST_LED_STATES` | `BAD_CMD` | runs the suite |
+| `4` | `FACTORY_TEST_POWER_PROFILE` | **Shimmer3R v1.01.024 and later:** the power-profile readback | **Shimmer3R v1.01.024 and later:** arms or disarms the power-profile record |
+| `5` and up | — | `BAD_CMD` | `BAD_CMD` |
+
+On Shimmer3, and on Shimmer3R before v1.01.024, property `4` is answered
+`BAD_CMD` for both, as a suite past their last.
+
+**The power-profile record** arms the unit to run a fixed current-profile
+sequence at its next boot, with no cable attached, for a power analyser to
+capture. The record, the sequence, the marker and the readback are specified
+in [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §6.
+
+- **Arm and disarm are synchronous.** The record is written to the EEPROM and
+  read back inside the dock handler, and `UART_ACK_RESPONSE` comes only if it
+  read back as written. A failed write, like a malformed payload, is answered
+  `UART_BAD_ARG_RESPONSE`; a GET then shows what the page holds. No report is
+  printed and no task is queued.
+- **Over the dock only.** The Bluetooth `SET_FACTORY_TEST` with suite `4` is
+  NACKed, so an unattended radio link cannot arm a unit.
+- **A host that is not a production test must not SET it.** An armed unit
+  runs the sequence at its next undocked boot, holding the boot for over a
+  minute. GET is harmless.
 
 ## 5. Command handling
 
@@ -302,6 +351,37 @@ counts component + property + value. Multi-byte integers are little-endian.
 | `DAUGHTER_CARD` `0x03` | `CARD_ID` `0x02` | `length` u8, `offset` u8 — `length ≤ 16`, `offset ≤ 15`, sum `≤ 16` | `length` bytes of the 16-byte daughter-card ID |
 | `DAUGHTER_CARD` | `CARD_MEM` `0x03` | `length` u8, `offset` u16 — `length ≤ 128`, `offset ≤ 2031`, sum `≤ 2032` | `length` bytes of EEPROM read from `offset + 16` |
 | `BT` `0x0A` | `VER` `0x03` | none (`LEN` 2) | the module's version string, as many bytes as it has (`LEN` = 2 + strlen) |
+| `SHIMMER` | `BOOT_REPORT` `0x0A` (Shimmer3R v1.01.024+) | none (`LEN` 2) | 26 bytes, laid out below (`LEN` 28) |
+| `SHIMMER` | `BUTTON` `0x0B` (Shimmer3R v1.01.024+) | none (`LEN` 2) | 5 bytes: level now u8 (1 = pressed), presses since boot u16 (wraps), length of the last completed press in ms u16 (saturates at 65535) (`LEN` 7) |
+| `TEST` `0x0B` | `POWER_PROFILE` `0x04` (Shimmer3R v1.01.024+) | none (`LEN` 2) | 17 + 3n bytes, at most 128: the readback of [SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §6.4 |
+
+**Boot report** (`Test/shimmer_factory_record.h`), latched as the last boot
+ran:
+
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 1 | layout version, `2` |
+| 1 | 12 | MCU unique ID, the same 12 bytes in the same order as the Bluetooth `GET_UNIQUE_SERIAL_COMMAND` |
+| 13 | 1 | flags: bit 0 I2C stage over 1 s; bit 1 Bluetooth initialisation gave up after every baud rate; bit 2 configuration stage over 2 s; bit 3 RTC fell back to the LSI |
+| 14 | 2 | I2C stage, ms |
+| 16 | 2 | Bluetooth stage, ms, including any failure stage |
+| 18 | 2 | configuration stage, ms |
+| 20 | 1 | Bluetooth baud-rate fallbacks: 0 when the first baud rate answered |
+| 21 | 1 | LSE drive level, the RCC `LSEDRV` bits; `0xFF` when the RTC is on the LSI |
+| 22 | 2 | `parts_found`: the optional parts that answered the part probe at this boot |
+| 24 | 2 | parts expected: the optional parts the SR number says the board carries |
+
+Stage times are measured from the HAL millisecond tick between the boot-stage
+changes, and saturate at 65535.
+
+The two part masks use the bits of the power-profile record
+([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §6.5):
+bit 0 LIS3MDL, 1 ADXL371, 2 ADS7028, 3 BMP390, 4 BMP581, 5 ADS1292R. The probe
+runs at every boot, so a host can cross-check the SR number on a plain boot,
+with no power-profile run. A part in the expected mask but not in
+`parts_found` is missing or not answering; a part found but not expected
+points at a wrong SR number. Both masks read 0 on a platform with no part
+probe. Layout `1`, 22 bytes without the part masks, was never released.
 
 \* **Do not implement this one.** It is listed because the handler is in the
 source, but `EN_CALIB_DUMP_RSP` is `0` in `shimmer_dock_usart.c:30`, so it is
@@ -322,7 +402,10 @@ table used to give was wrong. `0x07` in the `SHIMMER` component's own space is
 | `SHIMMER` | `ENTER_BOOTLOADER` `0x09` (Shimmer3R only) | 1 byte: seconds until reboot; `0` cancels | arms `RTC_setAlarmRebootToBootloader`, sets `bslRebootPending` |
 | `DAUGHTER_CARD` | `CARD_ID` `0x02` | `length` u8, `offset` u8, then `length` bytes — `length ≤ 16`, `offset ≤ 15`, sum `≤ 16` (earlier firmware did not check the sum, so a write could run past byte 15 into the daughter-card memory) | writes EEPROM bytes 0-15 and refreshes the in-RAM daughter-card ID |
 | `DAUGHTER_CARD` | `CARD_MEM` `0x03` | `length` u8, `offset` u16, then `length` bytes | `ShimEeprom_writeDaughterCardMem` — writes at `offset + 16`; rejects zero length, over-long or out-of-range writes with `BAD_ARG` |
-| `TEST` `0x0B` | *suite index* | none | property byte `< FACTORY_TEST_COUNT` → `ShimFactoryTest_setup(PRINT_TO_DOCK_UART, suite)` and `TASK_FACTORY_TEST`; otherwise `BAD_CMD` |
+| `SHIMMER` | `LED_SET` `0x0C` (Shimmer3R v1.01.024+) | 2 bytes: lower LED mask, upper LED mask, each bit 0 red, bit 1 green, bit 2 blue (`LEN` must be 4); `0xFF 0xFF` releases | holds both LEDs in those colours (§4.2). `BAD_ARG` while booting or for any other mask |
+| `TEST` `0x0B` | *suite index* `0`-`3` | none | `ShimFactoryTest_setup(PRINT_TO_DOCK_UART, suite)` and `TASK_FACTORY_TEST`; the ACK comes before the report |
+| `TEST` `0x0B` | `POWER_PROFILE` `0x04` (Shimmer3R v1.01.024+) | `1`, nonce lo, nonce hi (`LEN` 5) arms; `0` (`LEN` 3) disarms | writes the record and reads it back before answering (§4.4); `BAD_ARG` for any other payload or a failed write. `BAD_CMD` on Shimmer3 and older Shimmer3R |
+| `TEST` `0x0B` | `5` and up | — | `BAD_CMD` |
 
 Any component/property pair not in these tables → `UART_BAD_CMD_RESPONSE`
 (`0xFC`); a recognised pair with a bad `LEN` or an out-of-range argument →
@@ -331,7 +414,8 @@ Any component/property pair not in these tables → `UART_BAD_CMD_RESPONSE`
 the two leading bytes).
 
 > **Only the fixed-size properties have their `LEN` checked**: MAC, VER, the
-> two clock GETs, the clock SET, BAT and the BT version. INFOMEM, CARD_ID and
+> two clock GETs, the clock SET, BAT, the BT version, and on Shimmer3R the
+> boot report, button, `LED_SET` and power-profile GET and SET. INFOMEM, CARD_ID and
 > CARD_MEM, and the ENTER_BOOTLOADER and TEST SETs, take their arguments from
 > fixed offsets whatever `LEN` says. A frame shorter than its arguments is
 > therefore not refused: its own CRC bytes are read as them, and the bench saw a
@@ -342,6 +426,14 @@ On Shimmer3R the response goes to USB-CDC when USB is plugged in and initialised
 otherwise to the dock UART; on Shimmer3 always to the dock UART.
 
 ## Still unverified / not found in code
+
+- **The production-test commands** — `BOOT_REPORT`, `BUTTON`, `LED_SET` and
+  `TEST` property `4` — are later than the pin in **Verified against**, and
+  have not yet been on the bench. Their layouts are pinned by the host test
+  `test_factory_record`, and the conformance walk (`rig/dock_protocol.py`)
+  reads them, checks the power-profile record is not armed, and never arms it.
+  **Move under Verified against** once a release carries them and the walk has
+  passed on it.
 
 - **`RWC_CFG_TIME` writes InfoMem only when `rtcSetByBt` changes.** The
   conditional write (`ShimRtc_setRtcSetByBt`, `RTC/shimmer_rtc.c`) is in a

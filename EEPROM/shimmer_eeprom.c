@@ -503,4 +503,31 @@ uint8_t ShimEeprom_writeBtMacBackup(const uint8_t *mac, uint8_t state)
   return ShimEeprom_readBtMacBackup(&macReadBack[0], &stateReadBack)
       && memcmp(&macReadBack[0], mac, sizeof(macReadBack)) == 0 && stateReadBack == state;
 }
+
+uint8_t ShimEeprom_readPowerProfile(pp_record_t *record)
+{
+  uint8_t page[PP_RECORD_LEN];
+
+  if (!ShimEeprom_isPresent())
+  {
+    return 0;
+  }
+  eepromRead(EEPROM_ADDRESS_POWER_PROFILE, sizeof(page), &page[0]);
+  return ShimFactoryRecord_decodePpRecord(&page[0], record);
+}
+
+uint8_t ShimEeprom_writePowerProfile(const pp_record_t *record)
+{
+  uint8_t page[PP_RECORD_LEN];
+  uint8_t readBack[PP_RECORD_LEN];
+
+  if (!ShimEeprom_isPresent())
+  {
+    return 0;
+  }
+  ShimFactoryRecord_encodePpRecord(record, &page[0]);
+  eepromWrite(EEPROM_ADDRESS_POWER_PROFILE, sizeof(page), &page[0]);
+  eepromRead(EEPROM_ADDRESS_POWER_PROFILE, sizeof(readBack), &readBack[0]);
+  return memcmp(&page[0], &readBack[0], sizeof(page)) == 0;
+}
 #endif //SHIMMER3R

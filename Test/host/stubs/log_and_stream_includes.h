@@ -77,6 +77,7 @@
 #include "Sensing/shimmer_packet_ring.h"
 #include "Sensing/shimmer_sensing.h"
 #include "TaskList/shimmer_taskList.h"
+#include "Test/shimmer_factory_record.h"
 #include "Util/shimmer_util.h"
 #include "log_and_stream_common.h"
 #include "log_and_stream_definitions.h"

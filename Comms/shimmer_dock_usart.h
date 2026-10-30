@@ -63,6 +63,10 @@
 #endif
 #if defined(SHIMMER3R)
 #define UART_PROP_ENTER_BOOTLOADER 0x09
+/* Production test support (docs/SHIMMER3_DOCK_PROTOCOL.md section 4) */
+#define UART_PROP_BOOT_REPORT      0x0A /* GET: Test/shimmer_factory_record.h */
+#define UART_PROP_BUTTON           0x0B /* GET: Test/shimmer_factory_record.h */
+#define UART_PROP_LED_SET          0x0C /* SET: [lowerMask, upperMask] */
 #endif
 
 //component == UART_COMP_BAT:
@@ -117,5 +121,10 @@ uint8_t ShimDock_rxCallback(uint8_t data);
 void ShimDock_processCmd(void);
 void ShimDock_sendRsp(void);
 uint8_t ShimDock_uartCheckCrc(uint8_t len);
+#if defined(SHIMMER3R)
+/* Writes the power-profile readback (Test/shimmer_factory_record.h) to out and
+ * returns its length, at most PP_READBACK_MAX_LEN */
+uint8_t ShimDock_buildPowerProfileReadback(uint8_t *out);
+#endif
 
 #endif /* SHIMMER3_COMMON_SOURCE_DOCK_SHIMMER_DOCK_COMMS_H_ */

@@ -982,6 +982,15 @@ v1.01.006. The two platforms' version numbers overlap, so this gate
 is one of those that must compare the hardware identifier too — see
 [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §3.4.
 
+The production-test features added in Shimmer3R v1.01.024 — the boot report,
+the button state, `LED_SET` and the power-profile record — add **no**
+configuration bytes and move none, so they need no layout gate. Their gate is
+on the commands ([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) §4).
+The power-profile arm in particular lives in the EEPROM, not in InfoMem
+([SHIMMER3_EEPROM_MEMORY_MAP.md](SHIMMER3_EEPROM_MEMORY_MAP.md) §8): writing a
+saved InfoMem image back neither arms nor disarms a unit, and reading InfoMem
+does not show whether one is armed.
+
 > **For current LogAndStream on Shimmer3, and for all Shimmer3R, every gate
 > evaluates true.** Only the newest layout is live. The gates matter when
 > reading a device that has not been updated, or a stored configuration

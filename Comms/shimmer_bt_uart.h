@@ -247,6 +247,12 @@
 #define DUMMY_COMMAND                                 0xB5
 #define RESET_BT_ERROR_COUNTS                         0xB6
 #define SET_FEATURE                                   0xB7
+/* Production test support, Shimmer3R only (older firmware and Shimmer3
+ * ignore them). Payloads are laid out in Test/shimmer_factory_record.h. */
+#define BOOT_REPORT_RESPONSE                          0xB8
+#define GET_BOOT_REPORT_COMMAND                       0xB9
+#define BUTTON_STATE_RESPONSE                         0xBA
+#define GET_BUTTON_STATE_COMMAND                      0xBB
 
 /* SD-card file transfer over BT. Opcodes are reserved protocol-wide but the
  * commands are currently only served on SHIMMER3R (older FW silently ignores

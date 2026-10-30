@@ -141,7 +141,7 @@ Grouped by what they cover:
 | Platform-specific sensors | `MPU9150_startMagMeasurement`, `BMPX80_startMeasurement` (Shimmer3 only) |
 | Fault handling | `triggerShimmerErrorState` |
 
-`Platform/platform_api.h` adds a second, softer boundary: thirteen hooks whose
+`Platform/platform_api.h` adds a second, softer boundary: seventeen hooks whose
 default implementations in `platform_api.c` are `PLATFORM_WEAK`, so a platform
 overrides only what it needs. `PLATFORM_WEAK` resolves to the right attribute
 for GCC/Clang, IAR and ARMCC.
@@ -359,9 +359,27 @@ behaviour described here is the `NORM` path.
 | `BOOT_STAGE_BLUETOOTH_FAILURE` | Radio failed |
 | `BOOT_STAGE_CONFIGURATION` | Configuration and calibration load |
 | `BOOT_STAGE_END` | Normal operation |
+| `BOOT_STAGE_POWER_PROFILE` | Shimmer3R: an armed power-profile run, between `CONFIGURATION` and `END` ([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §6). Listed after `END` so no earlier value moved |
+| `BOOT_STAGE_COUNT` | Not a stage: the number of them |
 
 `shimmerStatus.bootTimePerStageMs` accumulates per stage and is compared
-against per-stage timeouts.
+against per-stage timeouts. It is a `uint16_t` of milliseconds advanced by the
+LED blink timer, so it stops at 65.5 s rather than wrapping: a power-profile
+run holds its stage for over a minute.
+
+Separately, `LogAndStream_setBootStage()` latches the HAL millisecond tick
+(`platform_getTick()`) at every stage change and adds the time spent to that
+stage's total. Those totals, whether the radio failure stage was entered, and
+five platform hooks (`platform_getBtBaudAttempts`, `platform_getLseDrive`,
+`platform_isRtcOnLsiFallback`, and the part probe's
+`platform_getBootPartsFound` and `platform_getBootPartsExpected`) make up the
+**boot report** a Shimmer3R returns
+over the dock and Bluetooth
+([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) Appendix A).
+
+On Shimmer3R, `Init()` calls `PowerProfile_runIfArmed()` just before booting
+ends. With nothing armed it reads one EEPROM page and returns; an armed record
+takes the boot over for the run.
 
 > **`BOOT_STAGE_BLUETOOTH_FAILURE` is a stage, not a flag.** It sits between
 > `BLUETOOTH` and `CONFIGURATION` in the enum, and the LED code tests for it

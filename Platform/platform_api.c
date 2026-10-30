@@ -94,3 +94,34 @@ PLATFORM_WEAK void platform_ledTickShift(int16_t rtcTicks)
   //default no-op
   (void) rtcTicks;
 }
+
+PLATFORM_WEAK uint8_t platform_getBtBaudAttempts(void)
+{
+  return 0;
+}
+
+PLATFORM_WEAK uint8_t platform_getLseDrive(void)
+{
+  return 0xFF;
+}
+
+PLATFORM_WEAK uint8_t platform_isRtcOnLsiFallback(void)
+{
+  return 0;
+}
+
+PLATFORM_WEAK uint16_t platform_getBootPartsFound(void)
+{
+  return 0;
+}
+
+PLATFORM_WEAK uint16_t platform_getBootPartsExpected(void)
+{
+  return 0;
+}
+
+PLATFORM_WEAK uint8_t platform_powerProfileSchedule(pp_schedule_t *schedule)
+{
+  (void) schedule;
+  return 0;
+}
