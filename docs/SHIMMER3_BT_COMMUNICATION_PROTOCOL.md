@@ -3301,7 +3301,7 @@ starts the stream, zero stops it. It is accepted while sensing.
 - **It belongs to the connection.** It is cleared on connect, on disconnect and
   by `FEATURE_NONE`, so a host opts in again after every reconnection.
 - **It does not enable an input.** The inputs are the ones enabled in
-  configuration byte 218, bits 1 and 2
+  configuration byte 218, bits 1 and 5
   ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §1).
   `GET_EVENT_CHANNEL_STATUS_COMMAND` says which they are.
 - **It arms the TTL input.** While a host is opted in, an enabled TTL input is

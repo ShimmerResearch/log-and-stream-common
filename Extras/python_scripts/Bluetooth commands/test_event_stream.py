@@ -23,7 +23,7 @@ status counters, then opts out and checks that nothing more arrives.
                    while logging should be in the file at exactly the same time.
 
 Enable the inputs first: configuration byte 218, bit 1 for button markers and
-bit 2 for the TTL input. Opting in enables neither. Exits 1 if a check fails.
+bit 5 for the TTL input. Opting in enables neither. Exits 1 if a check fails.
 
 "Late" is how long a frame took to arrive, measured against the quickest frame
 of the run, since the device's clock and the PC's share no zero.
@@ -286,7 +286,7 @@ def run(args):
         bt.close_port()
         return 1
     if not status["enables"] & 3:
-        print("WARNING: neither input is enabled (configuration byte 218 bits 1 and 2), "
+        print("WARNING: neither input is enabled (configuration byte 218 bits 1 and 5), "
               "so only the initial state will arrive.")
     if flag(status, "stream on"):
         # Opting in again would change nothing, so no initial state would come
