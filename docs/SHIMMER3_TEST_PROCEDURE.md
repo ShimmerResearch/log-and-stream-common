@@ -355,15 +355,49 @@ release. A jump nobody can explain is a finding, not a curiosity — this is a
 ## 4. Gate 3 — on-device automated
 
 **Required for every release, on at least one unit per platform.** These drive a
-real device over a real link. They are `unittest` suites, so they run
+real device over a real link. The first two are `unittest` suites, so they run
 unattended and report properly.
 
-| Suite | Link | Covers |
+| Script | Link | Covers |
 |---|---|---|
 | `Extras/python_scripts/Bluetooth commands/test_bt_cmds.py` | Bluetooth | Every get/set command pair, response framing, length bytes |
 | `Extras/python_scripts/Docked commands/test_docked_cmds.py` | Dock UART / USB-C | The dock protocol, which is a different protocol and not a subset |
-| `Extras/python_scripts/Bluetooth commands/test_sd_transfer.py` | Bluetooth | SD file transfer (Shimmer3R) |
-| `Extras/python_scripts/Bluetooth commands/btCalv1Test.py` | Bluetooth | Calibration read-back |
+| `Extras/python_scripts/Bluetooth commands/test_sd_transfer.py` | Bluetooth | SD file transfer (Shimmer3R): free space, listing, stat, a refused delete, and the largest file downloaded. A script that prints its results, not a suite |
+| `Extras/python_scripts/Bluetooth commands/btCalv1Test.py` | Bluetooth | An interactive tool that writes and reads back one sensor's calibration at a time. `test_bt_cmds` covers the same commands unattended |
+
+Give the COM port as the first argument (`python test_bt_cmds.py COM12 -v`);
+without one, each script lists the ports and asks. `unittest` options such as
+`-v` or a test name follow the port.
+
+What the suites change on the unit, and what they put back:
+
+- **`test_bt_cmds`** resets the configuration and the calibration to defaults
+  and writes its own values into both. It reads the unit's own at the start and
+  writes them back at the end. It restores the 123 bytes of daughter-card memory
+  it writes, and the in-stream ACK prefix it turns off. It sets the clock to the
+  PC's time and leaves it there.
+- **`test_docked_cmds`** writes InfoMem and 128 bytes of daughter-card memory,
+  restoring both. It rewrites the card ID with its own value. On a Shimmer3R it
+  arms a reboot into the bootloader and cancels it.
+
+Some results depend on the board, as the firmware is documented to behave, and
+the suites expect that:
+
+- **A Shimmer3R raises an enabled sensor's output rate to cover the packet
+  rate** ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md)
+  §10.6). So on a Shimmer3R the rate tests run at a 1 Hz packet rate, below
+  every rate they write, and the InfoMem image carries the WR accel rate the
+  firmware would choose.
+- **A Shimmer3 forces `magRange` to 0** unless the mag is an LSM303DLHC (§10.3).
+  The suite tells which part is fitted from the inquiry's channel order.
+- **NACKs:** `GET_MPU9150_MAG_SENS_ADJ_VALS` is NACKed without an MPU-9x50, and
+  `SET_SD_SYNC` outside a running sync session.
+- **A BMP581 has no pressure coefficients** to return.
+
+Two need the unit **undocked and off USB**, because otherwise the card belongs
+to the dock or the PC: `GET_DIR` in `test_bt_cmds`, which is skipped otherwise,
+and `test_sd_transfer`. A unit whose user button is disabled starts logging when
+undocked, and the card cannot be read while it logs, so stop that log first.
 
 Run them against a **factory-reset configuration first**, then against the
 configuration a customer is most likely to have. A device only ever tested from

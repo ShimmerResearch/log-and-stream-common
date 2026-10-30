@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import time
 import unittest
 
 from Shimmer_common import util_shimmer, util_shimmer_time, shimmer_device, shimmer_app_common, shimmer_comms_docked
@@ -28,7 +29,8 @@ class TestShimmerDockCommunication(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # cls._connection.destroy()
+        # Release the port: on a Base6 it is the dock UART that the next tool needs.
+        cls.shimmer.dock_port.ser.close()
         print("All done")
 
     def test_01_read_mac_id(self):
@@ -277,63 +279,37 @@ class TestShimmerDockCommunication(unittest.TestCase):
             print("Bootloader command not supported")
             return
 
-        print(Fore.LIGHTMAGENTA_EX + "Request to enter bootloader mode via command")
+        # ENTER_BOOTLOADER arms a reboot into the ST bootloader after the given number of seconds,
+        # and 0 cancels it (DOCK_PROTOCOL). Arm it, cancel it, then outwait the delay: the unit
+        # must still answer in its application. Letting it fire would leave the unit in the
+        # bootloader with nothing here to bring it back out; firmware update exercises that route.
+        print(Fore.LIGHTMAGENTA_EX + "Arm a reboot into the bootloader, then cancel it")
         timeout_seconds = 5
 
-        tx_bytes = shimmer_comms_docked.assemble_tx_packet(UartPacketCmd.WRITE, UartComponent.MAIN_PROCESSOR, UartProperty.MainProcessor.ENTER_BOOTLOADER, [timeout_seconds])
-        response = self.shimmer.dock_port.send_uart(tx_bytes)
+        def enter_bootloader(seconds):
+            tx_bytes = shimmer_comms_docked.assemble_tx_packet(UartPacketCmd.WRITE, UartComponent.MAIN_PROCESSOR,
+                                                                UartProperty.MainProcessor.ENTER_BOOTLOADER, [seconds])
+            return self.shimmer.dock_port.send_uart(tx_bytes)
 
-        if isinstance(response, bool):
-            print("Error")
-            self.assertTrue(False)
-        elif isinstance(response, int) and response == UartPacketCmd.BAD_CMD_RESPONSE:
-            print("Error: BAD_CMD_RESPONSE")
-            self.assertTrue(False)
-        elif isinstance(response, int) and response == UartPacketCmd.BAD_ARG_RESPONSE:
-            print("Error: BAD_ARG_RESPONSE")
-            self.assertTrue(False)
-        elif isinstance(response, int) and response == UartPacketCmd.BAD_CRC_RESPONSE:
-            print("Error: BAD_CRC_RESPONSE")
-            self.assertTrue(False)
-        else:
-            print("Success")
+        self.assertEqual(enter_bootloader(timeout_seconds), UartPacketCmd.ACK_RESPONSE, "Arming was not ACKed")
+        time.sleep(0.3)
+        response = enter_bootloader(0)
+        if response != UartPacketCmd.ACK_RESPONSE:
+            response = enter_bootloader(0)  # armed now, so one retry before it fires
+        self.assertEqual(response, UartPacketCmd.ACK_RESPONSE, "Cancelling was not ACKed")
 
-        # Immediately check that device has become unresponsive
-        print("Verifying device has become unresponsive...")
-
-        import time
-        poll_interval = 0.5
-        start_time = time.time()
-        still_responding = False
-
-        while time.time() - start_time < timeout_seconds:
-            try:
-                # Try a simple harmless query to see if the device still responds
-                tx_check = shimmer_comms_docked.assemble_tx_packet(
-                    UartPacketCmd.READ,
-                    UartComponent.MAIN_PROCESSOR,
-                    UartProperty.MainProcessor.MAC,
-                    None
-                )
-                rx_check = self.shimmer.dock_port.send_uart(tx_check)
-
-                if isinstance(rx_check, (bytes, bytearray)) and len(rx_check) > 0:
-                    print("Warning: device responded unexpectedly.")
-                    still_responding = True
-                    break
-            except Exception as e:
-                # If exception occurs, assume it's due to no response (expected)
-                print(f"Expected exception (device likely rebooting): {e}")
-                break
-
-            time.sleep(poll_interval)
-
-        self.assertFalse(still_responding, "Device responded after reboot command – it should have become unresponsive.")
-
-        # self.shimmer.dock_port.reset_device(boot_mode=False)
-
+        print("Waiting past the armed delay...")
+        time.sleep(timeout_seconds + 1.5)
+        tx_check = shimmer_comms_docked.assemble_tx_packet(UartPacketCmd.READ, UartComponent.MAIN_PROCESSOR,
+                                                           UartProperty.MainProcessor.MAC, None)
+        rx_check = self.shimmer.dock_port.send_uart(tx_check)
+        # A data reply comes back as a list of bytes; False means nothing answered.
+        self.assertTrue(isinstance(rx_check, list) and len(rx_check) > 0,
+                        "No reply after the delay: the reboot into the bootloader was not cancelled")
+        print("Success")
         print("")
 
 
 if __name__ == '__main__':
-    unittest.main()
+    # The COM port, when given, is the first argument; unittest gets the rest.
+    unittest.main(argv=shimmer_app_common.unittest_argv())
