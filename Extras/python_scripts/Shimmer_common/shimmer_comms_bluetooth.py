@@ -169,6 +169,7 @@ class BtCmds:
     GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND = 0xA7
     SET_SD_SYNC_COMMAND = 0xE0
     SD_SYNC_RESPONSE = 0xE1
+    NACK_COMMAND_PROCESSED = 0xFE
     ACK_COMMAND_PROCESSED = 0xFF
     SET_FACTORY_TEST = 0xA8
     SET_ALT_ACCEL_CALIBRATION_COMMAND = 0xA9
@@ -202,6 +203,33 @@ class BtCmds:
     SD_DELETE_COMMAND = 0xCA
     SD_DELETE_RESPONSE = 0xCB
     INSTREAM_CMD_RESPONSE = 0x8A
+
+
+class _ContinuousReader:
+    """Takes bytes from a serial port as they arrive, for a reply that streams.
+
+    take(n) returns the next n bytes, reading whatever the port holds each
+    time round, and None once timeout_ms passes with nothing new arriving.
+    """
+
+    def __init__(self, ser, timeout_ms):
+        self.ser = ser
+        self.timeout_s = timeout_ms / 1000
+        self.buf = bytearray()
+
+    def take(self, n):
+        last_rx = time.monotonic()
+        while len(self.buf) < n:
+            waiting = self.ser.inWaiting()
+            chunk = self.ser.read(waiting if waiting else 1)
+            if chunk:
+                self.buf += chunk
+                last_rx = time.monotonic()
+            elif time.monotonic() - last_rx > self.timeout_s:
+                return None
+        out = bytes(self.buf[:n])
+        del self.buf[:n]
+        return out
 
 
 class ShimmerBluetooth:
@@ -497,7 +525,15 @@ class ShimmerBluetooth:
         Returns (xfer_status, next_offset, data). xfer_status is None on a
         comms/CRC/sequence failure (resume by re-requesting from
         offset + len(data)), else the SD_FILE_STATUS_RESPONSE code
-        (0=window complete, 1=EOF, ...)."""
+        (0=window complete, 1=EOF, ...).
+
+        The device sends the whole window without waiting for the host
+        (SHIMMER3R_SD_FILE_TRANSFER.md §4), at tens of KB/s. So the bytes
+        are read continuously as they arrive and the frames parsed from
+        that buffer. Reading a frame at a time through wait_for_response(),
+        which polls every 100 ms, lost data over a Windows Classic SPP port:
+        every window stopped after about 7.5 KB (DEV-1383). timeout_ms is
+        the longest silence allowed between bytes."""
         p = self._sd_path_bytes(path)
         cmd = ([BtCmds.SD_FILE_READ_COMMAND,
                 offset & 0xFF, (offset >> 8) & 0xFF, (offset >> 16) & 0xFF, (offset >> 24) & 0xFF,
@@ -505,25 +541,32 @@ class ShimmerBluetooth:
                 (window_len >> 24) & 0xFF,
                 block_len & 0xFF, (block_len >> 8) & 0xFF, len(p)] + p)
         data = bytearray()
-        if not self.send_bluetooth(cmd):
-            return None, offset, bytes(data)
-        if not self.wait_for_ack(timeout_ms):
+        rx = _ContinuousReader(self.ser, timeout_ms)
+        # Not send_bluetooth(): its 100 ms pause after writing would leave the
+        # start of the window unread.
+        if self.debug_tx_rx_packets:
+            print("UART TX: " + util_shimmer.byte_array_to_hex_string(cmd))
+        self.ser.write(cmd)
+        ack = rx.take(1)
+        if ack is None or ack[0] != BtCmds.ACK_COMMAND_PROCESSED:
             return None, offset, bytes(data)
 
         expected_seq = 0
         while True:
-            hdr2 = self.wait_for_response(2, timeout_ms)
-            if len(hdr2) < 2 or hdr2[0] != BtCmds.INSTREAM_CMD_RESPONSE:
+            hdr2 = rx.take(2)
+            if hdr2 is None or hdr2[0] != BtCmds.INSTREAM_CMD_RESPONSE:
                 return None, offset + len(data), bytes(data)
             if hdr2[1] == BtCmds.SD_FILE_DATA_RESPONSE:
-                hdr = self.wait_for_response(5, timeout_ms)  # session, seq u16, len u16
-                if len(hdr) < 5:
+                hdr = rx.take(5)  # session, seq u16, len u16
+                if hdr is None:
                     return None, offset + len(data), bytes(data)
                 seq = hdr[1] | (hdr[2] << 8)
                 length = hdr[3] | (hdr[4] << 8)
-                payload_crc = self.wait_for_response(length + 2, timeout_ms)
-                if len(payload_crc) < length + 2:
+                payload_crc = rx.take(length + 2)
+                if payload_crc is None:
                     return None, offset + len(data), bytes(data)
+                if self.debug_tx_rx_packets:
+                    print("UART RX: SD data seq %d, %d bytes" % (seq, length))
                 frame = list(hdr2) + list(hdr) + list(payload_crc)
                 if not shimmer_crc.crc_check(len(frame), frame):
                     print("SD data frame CRC failure at seq %d" % seq)
@@ -537,8 +580,8 @@ class ShimmerBluetooth:
                 if on_block:
                     on_block(payload)
             elif hdr2[1] == BtCmds.SD_FILE_STATUS_RESPONSE:
-                rest = self.wait_for_response(8, timeout_ms)  # session, status, nextOffset u32, crc
-                if len(rest) < 8:
+                rest = rx.take(8)  # session, status, nextOffset u32, crc
+                if rest is None:
                     return None, offset + len(data), bytes(data)
                 frame = list(hdr2) + list(rest)
                 if not shimmer_crc.crc_check(len(frame), frame):
