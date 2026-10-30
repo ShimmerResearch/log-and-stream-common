@@ -455,7 +455,7 @@ void ShimEvt_onSessionStart(uint64_t fileOpenTs)
   evtFile.error = 0;
   evtFile.seq = 0;
   evtFile.dropped = 0;
-  if (!ShimConfig_getStoredConfig()->buttonEventMarkerEnable)
+  if (!ShimConfig_doesButtonRecordPresses())
   {
     prerollCount = 0;
     return;

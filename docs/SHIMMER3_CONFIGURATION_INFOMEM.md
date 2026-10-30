@@ -207,7 +207,7 @@ generations give a byte different meanings both are shown.
 | 215 | `myTrialID` (uint8_t) | `NV_SD_MYTRIAL_ID` | `idxSDMyTrialID` | `idxSDMyTrialID` | both |  |
 | 216 | `numberOfShimmers` (uint8_t) | `NV_SD_NSHIMMER` | `idxSDNumOfShimmers` | `idxSDNumOfShimmers` | both |  |
 | 217 | bit 7 `rtcSetByBt`; bit 6 `btPinSetup`; bit 5 `userButtonEnable`; bit 4 `rtcErrorEnable`; bit 3 `bluetoothDisable`; bit 2 `syncEnable`; bit 1 `masterEnable`; bit 0 `sdErrorEnable` | `NV_SD_TRIAL_CONFIG0` | `idxSDExperimentConfig0` | `idxSDExperimentConfig0` | both |  |
-| 218 | bit 7 `singleTouchStart`; bit 6 `unusedIdx218Bit6`; bit 5 `unusedIdx218Bit5`; bit 4 `tcxo`; bit 3 `unusedIdx218Bit3`; bit 2 `unusedIdx218Bit2`; bit 1 `buttonEventMarkerEnable`; bit 0 `lowBatteryAutoStop` | `NV_SD_TRIAL_CONFIG1` | `idxSDExperimentConfig1` | `idxSDExperimentConfig1` | both |  |
+| 218 | bit 7 `singleTouchStart`; bit 6 `unusedIdx218Bit6`; bit 5 `unusedIdx218Bit5`; bit 4 `tcxo`; bit 3 `unusedIdx218Bit3`; bit 2 `unusedIdx218Bit2`; bit 1 `unusedIdx218Bit1`; bit 0 `lowBatteryAutoStop` | `NV_SD_TRIAL_CONFIG1` | `idxSDExperimentConfig1` | `idxSDExperimentConfig1` | both |  |
 | 219 | `btIntervalSecs` (uint8_t) | `NV_SD_BT_INTERVAL` | `idxSDBTInterval` | `idxSDBTInterval` | both |  |
 | 220 | `experimentLengthEstimatedInSecMsb` (uint8_t) | `NV_EST_EXP_LEN_MSB` | `idxEstimatedExpLengthMsb` | `idxEstimatedExpLengthMsb` | both |  |
 | 221 | `experimentLengthEstimatedInSecLsb` (uint8_t) | `NV_EST_EXP_LEN_LSB` | `idxEstimatedExpLengthLsb` | `idxEstimatedExpLengthLsb` | both |  |
@@ -577,7 +577,7 @@ Three things matter when writing configuration bytes directly:
 |---:|---|---|
 | 7 | `rtcSetByBt` | The real-world clock was set over Bluetooth this session |
 | 6 | `btPinSetup` | Legacy. Always forced to 0 (§10) |
-| 5 | `userButtonEnable` | Button starts/stops logging: a single press, or a double press when `buttonEventMarkerEnable` is set ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md) §2.3). Default 1. With it 0 and `singleTouchStart` 0, logging also starts on every undock with a card in; on Shimmer3R, unplugging USB-C counts as an undock (`ShimSens_startLoggingIfUndockStartEnabled`). Ignored while byte 232's button mode is not 0, and then held at that mode's nearest equivalent (§8.3) |
+| 5 | `userButtonEnable` | Button starts/stops logging. Default 1. With it 0 and `singleTouchStart` 0, logging also starts on every undock with a card in; on Shimmer3R, unplugging USB-C counts as an undock (`ShimSens_startLoggingIfUndockStartEnabled`). Ignored while byte 232's button mode is not 0, and then held at that mode's nearest equivalent (§8.3) |
 | 4 | `rtcErrorEnable` | Signal an unset clock through the LEDs |
 | 3 | `bluetoothDisable` | Default 0 |
 | 2 | `syncEnable` | Multi-device SD sync |
@@ -595,10 +595,9 @@ Three things matter when writing configuration bytes directly:
 |---:|---|---|
 | 7 | `singleTouchStart` | One button press starts a synchronised trial |
 | 4 | `tcxo` | Use the temperature-compensated oscillator |
-| 1 | `buttonEventMarkerEnable` | Record every button press and release in an event file beside the data file; a double press then starts and stops logging ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md)). Default 0 |
 | 0 | `lowBatteryAutoStop` | Stop logging on low battery |
 
-Bits 6, 5, 3 and 2 are unused. Both `tcxo` and `singleTouchStart` are forced
+Bits 6, 5, 3, 2 and 1 are unused. Both `tcxo` and `singleTouchStart` are forced
 off at validation on hardware that does not support them (§10).
 
 ### 8.3 Button and logging mode, byte 232
@@ -609,7 +608,7 @@ logging, and no bit turns logging off. Byte 232 says both.
 
 | Bits | Field | Values |
 |---:|---|---|
-| 0-2 | Button mode | **0** legacy: `userButtonEnable` decides, as before this byte existed. **1** disabled: a press does nothing, and the LED gives no feedback while it is held. **2** single press: a press starts and stops logging. 3-7 are reserved; 3-5 are kept for double-press and event-marker modes |
+| 0-2 | Button mode | **0** legacy: `userButtonEnable` decides, as before this byte existed. **1** disabled: a press does nothing, and the LED gives no feedback while it is held. **2** single press: a press starts and stops logging. **3** double press: a double press starts and stops logging. **4** double press, presses recorded: the same, and every press and release is recorded in the event channel ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md)). **5** presses recorded: every press and release is recorded, and a press never starts or stops logging. 6-7 are reserved |
 | 3-4 | Log triggers | Read only when the button mode is not 0. **0** a host command only. **1** a host command, or leaving the dock (on Shimmer3R, unplugging USB-C counts). **2** nothing: SD logging is off. 3 is reserved |
 | 5-6 | — | Unused, and cleared |
 | 7 | — | Must be 0 |
@@ -625,6 +624,15 @@ Every value the firmware keeps, and what it does:
 | `0x02` | Starts and stops logging | A host command or a press | 1 |
 | `0x0A` | Starts and stops logging | A host command, a press or an undock | 1 |
 | `0x12` | Nothing, but the LED shows the press | Nothing: logging is off | 1 |
+| `0x03` | A double press starts and stops logging | A host command or a double press | 1 |
+| `0x0B` | A double press starts and stops logging | A host command, a double press or an undock | 1 |
+| `0x13` | Nothing, but the LED shows the press | Nothing: logging is off | 1 |
+| `0x04` | Recorded; a double press starts and stops logging | A host command or a double press | 1 |
+| `0x0C` | Recorded; a double press starts and stops logging | A host command, a double press or an undock | 1 |
+| `0x14` | Recorded, for a Bluetooth host that has opted in; nothing else | Nothing: logging is off | 1 |
+| `0x05` | Recorded; nothing else | A host command | 1 |
+| `0x0D` | Recorded; nothing else | A host command or an undock | 0 |
+| `0x15` | Recorded, for a Bluetooth host that has opted in; nothing else | Nothing: logging is off | 1 |
 
 - **Anything the firmware cannot act on reads as 0.** That covers bit 7 set,
   a reserved value, and log triggers under button mode 0.
@@ -652,7 +660,8 @@ Every value the firmware keeps, and what it does:
   writes byte 217 back with 0 in byte 232, then falls back to behaviour that
   never adds an undock start.
 - **Single touch needs a press that can start logging.** The correction clears
-  `singleTouchStart` unless the button mode is 0, or is 2 with logging on.
+  `singleTouchStart` unless the button mode is 0, or is one that starts
+  logging (2, 3 or 4) with logging on.
   Single touch still suppresses the undock start.
 - **Setting it.** Over Bluetooth, write the one byte with `SET_INFOMEM_COMMAND`:
   `0x8C 0x01 0xE8 0x00 <value>`. Like every configuration write, this is
@@ -778,7 +787,7 @@ image being written back on that account alone.
 |---|---|
 | `tcxo` | Forced to 0 where `IS_SUPPORTED_TCXO` is false |
 | `singleTouchStart` | Forced to 0 where `IS_SUPPORTED_SINGLE_TOUCH` is false, and where `buttonLogMode` leaves no press that can start logging (§8.3). Where supported, setting it also forces `userButtonEnable` and `syncEnable` on — single-touch needs both |
-| `buttonEventMarkerEnable` | Forced to 0 on a Shimmer3R SR48-6-0 board, whose button drives BOOT0 and is used for dock detection |
+| `buttonLogMode` | On a Shimmer3R SR48-6-0 board, whose button drives BOOT0 and is used for dock detection, press recording is taken out: button mode 4 becomes 3 and 5 becomes 1 |
 | `exgADS1292rRegsCh1.config2` bit 3 | Forced to 1 where the ADS1292R clock lines are tied |
 | `btPinSetup` | Always forced to 0 — the Bluetooth driver no longer needs it |
 

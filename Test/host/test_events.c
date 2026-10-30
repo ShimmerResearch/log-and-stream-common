@@ -5,7 +5,8 @@
  * The event file follows the data file's lifecycle but never delays it: its
  * open, split and sync wait for TASK_EVENT_CHANNEL. Pinned here, against a fake
  * FatFs that keeps every file in memory:
- * - nothing is written unless buttonEventMarkerEnable is set;
+ * - nothing is written unless configuration byte 232's button mode records
+ *   presses;
  * - the file opens beside the data file, under events/, only when the task runs,
  *   and starts with the gesture that started logging and the state at the open;
  * - a heartbeat is written at the one-minute sync only after 60 s of nothing;
@@ -185,12 +186,22 @@ uint8_t ShimTask_NORM_set(TaskId_t task_id)
   return 0;
 }
 
-/* The real accessor's body, over the stub config: shimmer_config.c is not
+/* The real accessors' bodies, over the stub config: shimmer_config.c is not
  * host-buildable, so the byte 232 module is linked in on its own */
 uint8_t ShimConfig_doesPressToggleLogging(void)
 {
   gConfigBytes *cfg = ShimConfig_getStoredConfig();
   return ShimBtnLogMode_doesPressToggleLogging(cfg->buttonLogMode, cfg->userButtonEnable);
+}
+
+uint8_t ShimConfig_isDoublePress(void)
+{
+  return ShimBtnLogMode_isDoublePress(ShimConfig_getStoredConfig()->buttonLogMode);
+}
+
+uint8_t ShimConfig_doesButtonRecordPresses(void)
+{
+  return ShimBtnLogMode_recordsPresses(ShimConfig_getStoredConfig()->buttonLogMode);
 }
 
 /* ---- helpers ------------------------------------------------------------- */
@@ -216,7 +227,10 @@ static void reset(uint8_t markers)
   cfgFilLends = 0;
   pinPressed = 0;
   strcpy(dataFileName, "data/" DIR_SESSION "/000");
-  ShimConfig_getStoredConfig()->buttonEventMarkerEnable = markers;
+  /* Markers on is button mode 4: a double press starts and stops logging, and
+   * every press is recorded */
+  ShimConfig_getStoredConfig()->buttonLogMode
+      = markers ? BTN_MODE_DOUBLE_RECORDED : BTN_MODE_LEGACY;
   ShimBtn_init();
   ShimEvt_init();
 }

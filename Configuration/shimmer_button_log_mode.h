@@ -33,11 +33,16 @@
 #define BTN_LOG_MODE_TRIGGER_MASK  0x18U
 #define BTN_LOG_MODE_INVALID       0x80U
 
-/* Bits 0-2: what a press does. Values 3-7 are reserved and read as
- * BTN_MODE_LEGACY; 3-5 are kept for double-press and event-marker modes. */
+/* Bits 0-2: what a press does. Values 6-7 are reserved and read as
+ * BTN_MODE_LEGACY. "Recorded" means every press and release goes to the event
+ * channel (Events/shimmer_events.h); a double press is then what starts and
+ * stops logging, so that a marker press cannot stop a recording. */
 #define BTN_MODE_LEGACY            0U /* userButtonEnable decides */
 #define BTN_MODE_DISABLED          1U /* nothing, and no LED while held */
 #define BTN_MODE_SINGLE_PRESS      2U /* a press starts and stops logging */
+#define BTN_MODE_DOUBLE_PRESS      3U /* a double press starts and stops it */
+#define BTN_MODE_DOUBLE_RECORDED   4U /* the same, and every press recorded */
+#define BTN_MODE_RECORDED          5U /* every press recorded, nothing else */
 
 /* Bits 3-4: what else may start logging. 3 is reserved and reads as
  * BTN_MODE_LEGACY. */
@@ -70,6 +75,15 @@ uint8_t ShimBtnLogMode_doesUndockStartLogging(uint8_t raw,
 
 uint8_t ShimBtnLogMode_isLoggingDisabled(uint8_t raw);
 uint8_t ShimBtnLogMode_isButtonDisabled(uint8_t raw);
+
+/* Whether starting and stopping takes a double press rather than a single one */
+uint8_t ShimBtnLogMode_isDoublePress(uint8_t raw);
+/* Whether every press and release goes to the event channel */
+uint8_t ShimBtnLogMode_recordsPresses(uint8_t raw);
+/* The corrected byte with press recording taken out, for a board with no
+ * button edges to record: a recorded double press becomes a plain double
+ * press, and recording alone becomes disabled. */
+uint8_t ShimBtnLogMode_withoutPressRecording(uint8_t raw);
 
 /* Whether single touch can work: it needs a press that can start logging. */
 uint8_t ShimBtnLogMode_allowsSingleTouch(uint8_t raw);

@@ -38,7 +38,7 @@ static int isValid(uint8_t raw)
 {
   uint8_t mode = raw & 0x07U;
   uint8_t trig = (raw >> 3) & 0x03U;
-  return !(raw & 0x80U) && (mode == 1U || mode == 2U) && trig <= 2U;
+  return !(raw & 0x80U) && mode >= 1U && mode <= 5U && trig <= 2U;
 }
 
 static void test_constants(void)
@@ -47,6 +47,9 @@ static void test_constants(void)
   expectX("legacy", BTN_MODE_LEGACY, 0);
   expectX("button disabled", BTN_MODE_DISABLED, 1);
   expectX("single press", BTN_MODE_SINGLE_PRESS, 2);
+  expectX("double press", BTN_MODE_DOUBLE_PRESS, 3);
+  expectX("double press, presses recorded", BTN_MODE_DOUBLE_RECORDED, 4);
+  expectX("presses recorded only", BTN_MODE_RECORDED, 5);
   expectX("host only", LOG_TRIG_HOST, 0);
   expectX("host or undock", LOG_TRIG_HOST_UNDOCK, 1);
   expectX("logging off", LOG_TRIG_NONE, 2);
@@ -79,8 +82,8 @@ static void test_correct_every_value(void)
     }
     expectX("correcting twice changes nothing", ShimBtnLogMode_correct(fixed), fixed);
   }
-  /* 2 button modes x 3 log triggers x 4 combinations of bits 5-6 */
-  expectU("values that stand", kept, 24);
+  /* 5 button modes x 3 log triggers x 4 combinations of bits 5-6 */
+  expectU("values that stand", kept, 60);
 }
 
 static void test_values_no_host_meant(void)
@@ -90,10 +93,9 @@ static void test_values_no_host_meant(void)
   expectX("0x00 (host that writes 0)", ShimBtnLogMode_correct(0x00), 0);
   /* A legacy button mode does not read its log triggers, so they go */
   expectX("legacy with log triggers set", ShimBtnLogMode_correct(byteOf(0, 2)), 0);
-  /* Kept for double press and event markers: not built, so legacy */
-  expectX("button mode 3", ShimBtnLogMode_correct(byteOf(3, 0)), 0);
-  expectX("button mode 4", ShimBtnLogMode_correct(byteOf(4, 1)), 0);
-  expectX("button mode 5", ShimBtnLogMode_correct(byteOf(5, 2)), 0);
+  /* Reserved, so legacy */
+  expectX("button mode 6", ShimBtnLogMode_correct(byteOf(6, 0)), 0);
+  expectX("button mode 7", ShimBtnLogMode_correct(byteOf(7, 1)), 0);
   expectX("reserved log triggers", ShimBtnLogMode_correct(byteOf(1, 3)), 0);
   expectX("valid fields, bit 7 set", ShimBtnLogMode_correct(0x80U | byteOf(1, 2)), 0);
 }
@@ -126,6 +128,12 @@ static void test_queries_apply_the_correction(void)
         ShimBtnLogMode_isButtonDisabled(fixed));
     expectU("single touch", ShimBtnLogMode_allowsSingleTouch(raw),
         ShimBtnLogMode_allowsSingleTouch(fixed));
+    expectU("double press", ShimBtnLogMode_isDoublePress(raw),
+        ShimBtnLogMode_isDoublePress(fixed));
+    expectU("records presses", ShimBtnLogMode_recordsPresses(raw),
+        ShimBtnLogMode_recordsPresses(fixed));
+    expectX("without press recording", ShimBtnLogMode_withoutPressRecording(raw),
+        ShimBtnLogMode_withoutPressRecording(fixed));
   }
 }
 
@@ -143,6 +151,8 @@ static void test_legacy_is_unchanged(void)
   expectU("logging stays on", ShimBtnLogMode_isLoggingDisabled(0), 0);
   expectU("button LED stays on", ShimBtnLogMode_isButtonDisabled(0), 0);
   expectU("single touch allowed", ShimBtnLogMode_allowsSingleTouch(0), 1);
+  expectU("single press", ShimBtnLogMode_isDoublePress(0), 0);
+  expectU("nothing recorded", ShimBtnLogMode_recordsPresses(0), 0);
   expectU("userButtonEnable 0 left alone",
       ShimBtnLogMode_nearestUserButtonEnable(0, 0), 0);
   expectU("userButtonEnable 1 left alone",
@@ -157,15 +167,28 @@ static void test_mode_table(void)
   {
     uint8_t mode, trig;
     uint8_t press, undock, loggingOff, buttonOff, singleTouch, nearestUbe;
+    uint8_t doublePress, records;
   } rows[] = {
-    /* mode trig            press undock off  btnOff st  ube */
-    { 1, LOG_TRIG_HOST, 0, 0, 0, 1, 0, 1 },
-    { 1, LOG_TRIG_HOST_UNDOCK, 0, 1, 0, 1, 0, 0 },
-    { 1, LOG_TRIG_NONE, 0, 0, 1, 1, 0, 1 },
-    { 2, LOG_TRIG_HOST, 1, 0, 0, 0, 1, 1 },
-    { 2, LOG_TRIG_HOST_UNDOCK, 1, 1, 0, 0, 1, 1 },
+    /* mode, trig: press undock off btnOff st ube, double records */
+    { 1, LOG_TRIG_HOST, 0, 0, 0, 1, 0, 1, 0, 0 },
+    { 1, LOG_TRIG_HOST_UNDOCK, 0, 1, 0, 1, 0, 0, 0, 0 },
+    { 1, LOG_TRIG_NONE, 0, 0, 1, 1, 0, 1, 0, 0 },
+    { 2, LOG_TRIG_HOST, 1, 0, 0, 0, 1, 1, 0, 0 },
+    { 2, LOG_TRIG_HOST_UNDOCK, 1, 1, 0, 0, 1, 1, 0, 0 },
     /* Logging off wins: the press still asks, the start check refuses */
-    { 2, LOG_TRIG_NONE, 1, 0, 1, 0, 0, 1 },
+    { 2, LOG_TRIG_NONE, 1, 0, 1, 0, 0, 1, 0, 0 },
+    { 3, LOG_TRIG_HOST, 1, 0, 0, 0, 1, 1, 1, 0 },
+    { 3, LOG_TRIG_HOST_UNDOCK, 1, 1, 0, 0, 1, 1, 1, 0 },
+    { 3, LOG_TRIG_NONE, 1, 0, 1, 0, 0, 1, 1, 0 },
+    { 4, LOG_TRIG_HOST, 1, 0, 0, 0, 1, 1, 1, 1 },
+    { 4, LOG_TRIG_HOST_UNDOCK, 1, 1, 0, 0, 1, 1, 1, 1 },
+    /* Presses still recorded, for a host streaming them over Bluetooth */
+    { 4, LOG_TRIG_NONE, 1, 0, 1, 0, 0, 1, 1, 1 },
+    { 5, LOG_TRIG_HOST, 0, 0, 0, 0, 0, 1, 0, 1 },
+    /* The press cannot start logging and leaving the dock does, so byte 217
+     * alone says the same with the button off */
+    { 5, LOG_TRIG_HOST_UNDOCK, 0, 1, 0, 0, 0, 0, 0, 1 },
+    { 5, LOG_TRIG_NONE, 0, 0, 1, 0, 0, 1, 0, 1 },
   };
 
   unsigned i;
@@ -188,6 +211,42 @@ static void test_mode_table(void)
     expectU("logging off", ShimBtnLogMode_isLoggingDisabled(raw), rows[i].loggingOff);
     expectU("button off", ShimBtnLogMode_isButtonDisabled(raw), rows[i].buttonOff);
     expectU("single touch", ShimBtnLogMode_allowsSingleTouch(raw), rows[i].singleTouch);
+    expectU("double press", ShimBtnLogMode_isDoublePress(raw), rows[i].doublePress);
+    expectU("records presses", ShimBtnLogMode_recordsPresses(raw), rows[i].records);
+  }
+}
+
+static void test_board_without_button_edges(void)
+{
+  unsigned v;
+  uint8_t raw, without, ube;
+
+  /* Shimmer3R SR48-6-0, whose button drives BOOT0 */
+  testCase("taking press recording out changes nothing else");
+  expectX("double press, recorded",
+      ShimBtnLogMode_withoutPressRecording(byteOf(4, 1)), byteOf(3, 1));
+  expectX("recorded only", ShimBtnLogMode_withoutPressRecording(byteOf(5, 2)),
+      byteOf(1, 2));
+  for (v = 0; v < 256U; v++)
+  {
+    raw = (uint8_t) v;
+    without = ShimBtnLogMode_withoutPressRecording(raw);
+    expectU("nothing recorded", ShimBtnLogMode_recordsPresses(without), 0);
+    expectU("same log triggers", ShimBtnLogMode_logTriggers(without),
+        ShimBtnLogMode_logTriggers(raw));
+    expectU("same gesture", ShimBtnLogMode_isDoublePress(without),
+        ShimBtnLogMode_isDoublePress(raw));
+    expectX("already corrected", ShimBtnLogMode_correct(without), without);
+    for (ube = 0; ube < 2U; ube++)
+    {
+      expectU("same press", ShimBtnLogMode_doesPressToggleLogging(without, ube),
+          ShimBtnLogMode_doesPressToggleLogging(raw, ube));
+      expectU("same undock", ShimBtnLogMode_doesUndockStartLogging(without, ube, 0),
+          ShimBtnLogMode_doesUndockStartLogging(raw, ube, 0));
+      expectU("same userButtonEnable",
+          ShimBtnLogMode_nearestUserButtonEnable(without, ube),
+          ShimBtnLogMode_nearestUserButtonEnable(raw, ube));
+    }
   }
 }
 
@@ -260,6 +319,7 @@ int main(void)
   test_queries_apply_the_correction();
   test_legacy_is_unchanged();
   test_mode_table();
+  test_board_without_button_edges();
   test_fallback_never_adds_an_undock_start();
   test_sdlog_cfg_round_trip();
 

@@ -904,6 +904,14 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
   /* Byte 232 keeps only what this firmware acts on, so a host reading it back
    * sees what the unit will do (docs/SHIMMER3_CONFIGURATION_INFOMEM.md 8.3) */
   buttonLogMode = ShimBtnLogMode_correct(storedConfig.buttonLogMode);
+#if defined(SHIMMER3R)
+  /* SR48-6-0's button is wired to BOOT0, whose interrupt is used for dock
+   * detection, so there are no button edges to record */
+  if (ShimBrd_isBoardSr48_6_0())
+  {
+    buttonLogMode = ShimBtnLogMode_withoutPressRecording(buttonLogMode);
+  }
+#endif
   if (buttonLogMode != storedConfig.buttonLogMode)
   {
     storedConfig.buttonLogMode = buttonLogMode;
@@ -931,16 +939,6 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
 #else
   storedConfig.singleTouchStart = 0;
 #endif //IS_SUPPORTED_SINGLE_TOUCH
-
-#if defined(SHIMMER3R)
-  /* SR48-6-0's button is wired to BOOT0, whose interrupt is used for dock
-   * detection, so there are no button edges to record */
-  if (storedConfig.buttonEventMarkerEnable && ShimBrd_isBoardSr48_6_0())
-  {
-    storedConfig.buttonEventMarkerEnable = 0;
-    settingCorrected = 1;
-  }
-#endif
 
   /* Hosts and firmware that know only byte 217 go by userButtonEnable, and a
    * full configuration write from such a host keeps it while writing 0 to byte
@@ -1239,6 +1237,16 @@ uint8_t ShimConfig_isLoggingDisabled(void)
 uint8_t ShimConfig_isButtonDisabled(void)
 {
   return ShimBtnLogMode_isButtonDisabled(storedConfig.buttonLogMode);
+}
+
+uint8_t ShimConfig_isDoublePress(void)
+{
+  return ShimBtnLogMode_isDoublePress(storedConfig.buttonLogMode);
+}
+
+uint8_t ShimConfig_doesButtonRecordPresses(void)
+{
+  return ShimBtnLogMode_recordsPresses(storedConfig.buttonLogMode);
 }
 
 uint8_t ShimConfig_isGSREnabled(void)

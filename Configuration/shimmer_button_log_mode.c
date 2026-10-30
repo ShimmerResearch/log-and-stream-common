@@ -10,12 +10,13 @@
 
 static uint8_t isButtonModeBuilt(uint8_t mode)
 {
-  return (mode == BTN_MODE_DISABLED) || (mode == BTN_MODE_SINGLE_PRESS);
+  return (mode >= BTN_MODE_DISABLED) && (mode <= BTN_MODE_RECORDED);
 }
 
 static uint8_t canPressStartLogging(uint8_t mode)
 {
-  return mode == BTN_MODE_SINGLE_PRESS;
+  return (mode == BTN_MODE_SINGLE_PRESS) || (mode == BTN_MODE_DOUBLE_PRESS)
+      || (mode == BTN_MODE_DOUBLE_RECORDED);
 }
 
 uint8_t ShimBtnLogMode_correct(uint8_t raw)
@@ -95,6 +96,36 @@ uint8_t ShimBtnLogMode_isLoggingDisabled(uint8_t raw)
 uint8_t ShimBtnLogMode_isButtonDisabled(uint8_t raw)
 {
   return ShimBtnLogMode_buttonMode(raw) == BTN_MODE_DISABLED;
+}
+
+uint8_t ShimBtnLogMode_isDoublePress(uint8_t raw)
+{
+  uint8_t mode = ShimBtnLogMode_buttonMode(raw);
+
+  return (mode == BTN_MODE_DOUBLE_PRESS) || (mode == BTN_MODE_DOUBLE_RECORDED);
+}
+
+uint8_t ShimBtnLogMode_recordsPresses(uint8_t raw)
+{
+  uint8_t mode = ShimBtnLogMode_buttonMode(raw);
+
+  return (mode == BTN_MODE_DOUBLE_RECORDED) || (mode == BTN_MODE_RECORDED);
+}
+
+uint8_t ShimBtnLogMode_withoutPressRecording(uint8_t raw)
+{
+  uint8_t fixed = ShimBtnLogMode_correct(raw);
+  uint8_t rest = fixed & (uint8_t) ~BTN_LOG_MODE_BUTTON_MASK;
+
+  switch (fixed & BTN_LOG_MODE_BUTTON_MASK)
+  {
+    case BTN_MODE_DOUBLE_RECORDED:
+      return (uint8_t) (rest | BTN_MODE_DOUBLE_PRESS);
+    case BTN_MODE_RECORDED:
+      return (uint8_t) (rest | BTN_MODE_DISABLED);
+    default:
+      return fixed;
+  }
 }
 
 uint8_t ShimBtnLogMode_allowsSingleTouch(uint8_t raw)

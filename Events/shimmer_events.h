@@ -4,7 +4,8 @@
  * The event channel: input edges recorded with their own timestamps,
  * independent of the sampling rate, in an event file beside each data file
  * (docs/SHIMMER3_EVENT_CHANNEL.md). The input today is the user button, whose
- * edges are recorded while buttonEventMarkerEnable is set.
+ * edges are recorded in the button modes of configuration byte 232 that say so
+ * (ShimConfig_doesButtonRecordPresses).
  *
  * Interrupt handlers only queue an edge with its time. Everything else runs in
  * the main loop, in TASK_EVENT_CHANNEL, the lowest-priority task. The event
