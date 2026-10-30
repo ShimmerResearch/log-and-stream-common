@@ -280,9 +280,9 @@ documented here is the live path.
 
 | Priority | Condition | State |
 |---:|---|---|
-| 1 | `buttonPressed` | Solid green (§4.1) |
+| 1 | `buttonPressed` **and** the button not disabled | Solid green (§4.1) |
 | 2 | `toggleLedRedCmd` | Solid red (§4.2) |
-| 3 | Undocked **and** (bad SD file or no card) **and** `sdErrorEnable` | SD error flash (§4.3) |
+| 3 | Undocked **and** (bad SD file or no card) **and** `sdErrorEnable` **and** logging not turned off | SD error flash (§4.3) |
 | 4 | *otherwise* | Battery / charging status (§4.4) |
 
 > **Button feedback outranks every error and the battery display.** While the
@@ -307,6 +307,11 @@ processed ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §2), so the
 green follows the button within a few milliseconds and does not flicker with
 contact bounce.
 
+Not shown when configuration byte 232 disables the button (button mode 1,
+CONFIGURATION_INFOMEM §8.3): a press then does nothing, and the LED does not
+suggest otherwise. Every other button mode shows it, including a press that
+does nothing because logging is turned off.
+
 ### 4.2 Host-commanded red
 
 Solid red. Green and yellow cleared.
@@ -324,9 +329,11 @@ Green flashing at 5 Hz — on during `...200ms`, off otherwise.
 > is that it *flashes* at 5 Hz, where a healthy battery indication is a brief
 > pulse every 5 seconds.
 
-Requires all three of: undocked, a card fault (`sdBadFile` or `!sdInserted`),
-and `sdErrorEnable` set in configuration byte 217 bit 0. With that bit clear
-there is no card-error indication at all.
+Requires all four of: undocked, a card fault (`sdBadFile` or `!sdInserted`),
+`sdErrorEnable` set in configuration byte 217 bit 0, and logging not turned off
+by configuration byte 232 (CONFIGURATION_INFOMEM §8.3). With logging off an
+empty slot is how the unit is meant to be, so it is not flagged. With
+`sdErrorEnable` clear there is no card-error indication at all.
 
 ### 4.4 Battery and charging
 

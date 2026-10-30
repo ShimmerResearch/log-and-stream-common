@@ -573,8 +573,6 @@ void ShimEvt_process(void)
 void ShimEvt_onSessionStart(uint64_t fileOpenTs)
 {
 #if USE_FATFS
-  gConfigBytes *cfg = ShimConfig_getStoredConfig();
-
   evtFile.sessionActive = 0;
   evtFile.isOpen = 0;
   evtFile.splitPending = 0;
@@ -582,8 +580,9 @@ void ShimEvt_onSessionStart(uint64_t fileOpenTs)
   evtFile.error = 0;
   evtFile.seq = 0;
   evtFile.dropped = 0;
-  evtFile.enables = (uint8_t) ((cfg->buttonEventMarkerEnable ? EVT_ENABLE_BUTTON : 0U)
-      | (cfg->ttlInputEnable ? EVT_ENABLE_TTL : 0U));
+  evtFile.enables
+      = (uint8_t) ((ShimConfig_doesButtonRecordPresses() ? EVT_ENABLE_BUTTON : 0U)
+          | (ShimConfig_isTtlInputEnabled() ? EVT_ENABLE_TTL : 0U));
   if (evtFile.enables == 0U)
   {
     prerollCount = 0;

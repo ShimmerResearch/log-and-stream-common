@@ -548,6 +548,8 @@ void LogAndStream_setupDock(void)
 
 void LogAndStream_setupUndock(void)
 {
+  uint8_t undockStartQueued = 0;
+
   ShimBatt_setBatteryInterval(BATT_INTERVAL_SECS_UNDOCKED);
 
 #if TEST_LOG_WITH_USB && defined(SHIMMER3R)
@@ -569,12 +571,6 @@ void LogAndStream_setupUndock(void)
   Board_dockDetectN(1);
   Board_setSdPower(0);
 
-  /* Send instream response here if user button is enabled. Otherwise it will be send later when undock start logging is started. */
-  if (ShimConfig_getStoredConfig()->userButtonEnable || !LogAndStream_checkSdInSlot())
-  {
-    ShimBt_instreamStatusRespSend();
-  }
-
   if (LogAndStream_checkSdInSlot())
   {
     Board_sd2Mcu();
@@ -595,7 +591,15 @@ void LogAndStream_setupUndock(void)
         LogAndStream_setSdInfoSyncDelayed(1);
       }
     }
-    ShimSens_startLoggingIfUndockStartEnabled();
+    undockStartQueued = ShimSens_startLoggingIfUndockStartEnabled();
+  }
+
+  /* An undock start sends the in-stream status once logging has started.
+   * Decided here, after sdlog.cfg is read back above, because that can change
+   * whether leaving the dock starts logging */
+  if (!undockStartQueued)
+  {
+    ShimBt_instreamStatusRespSend();
   }
 }
 

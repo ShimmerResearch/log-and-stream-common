@@ -3,9 +3,10 @@
  *
  * The event channel: input edges recorded with their own timestamps,
  * independent of the sampling rate, in an event file beside each data file
- * (docs/SHIMMER3_EVENT_CHANNEL.md). Two inputs: the user button, recorded
- * while buttonEventMarkerEnable is set, and a TTL input, recorded while
- * ttlInputEnable is set. The TTL input's edges are latched by a timer capture,
+ * (docs/SHIMMER3_EVENT_CHANNEL.md). Two inputs: the user button, recorded in
+ * the button modes of configuration byte 232 that say so
+ * (ShimConfig_doesButtonRecordPresses), and a TTL input, recorded while
+ * byte 232 bit 5 is set (ShimConfig_isTtlInputEnabled). The TTL input's edges are latched by a timer capture,
  * which is armed only for a logging session (Board_evtTtlArm).
  *
  * Interrupt handlers only queue an edge with its time. Everything else runs in

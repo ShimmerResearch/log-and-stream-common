@@ -3,8 +3,8 @@
 The event channel records input edges with their own timestamps, independent of
 the sampling rate, in an event file beside each data file. It has two inputs:
 
-- **The user button.** With event markers on, every press and release is
-  recorded, and a double press starts and stops logging.
+- **The user button.** In the button modes that record presses, every press
+  and release is recorded, and a double press starts and stops logging.
 - **A TTL input.** It is captured in hardware by a timer, for sync pulses from
   stimulus equipment such as a PsychoPy or E-Prime PC.
 
@@ -20,37 +20,50 @@ The code:
 
 ## 1. Turning it on
 
-| Input | Configuration byte 218 ([CONFIGURATION_INFOMEM](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.2) | `sdlog.cfg` | SD header byte 17, a copy of byte 218 |
-|---|---|---|---|
-| Button markers | bit 1, `buttonEventMarkerEnable` | `button_event_marker_enable` | `SDH_BUTTON_EVENT_MARKER` (0x02) |
-| TTL input | bit 5, `ttlInputEnable` | `ttl_input_enable` | `SDH_TTL_INPUT` (0x20) |
+Both inputs are set in configuration byte 232
+([CONFIGURATION_INFOMEM](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.3). Its button
+mode also says what a press does to logging:
 
-Both are off by default. With both off, nothing is written and no `events/`
-directory is created; the button still starts and stops logging with a single
-press, as it always has (§2.3). With either one on, a logging session gets an
-event file, and its header says which inputs it records.
+| Button mode | A press | Recorded |
+|---|---|---|
+| 0 legacy, 1 disabled, 2 single press | As CONFIGURATION_INFOMEM §8.3 says | No |
+| 3 double press | A double press starts and stops logging (§2.3) | No |
+| 4 double press, presses recorded | A double press starts and stops logging | Every press and release |
+| 5 presses recorded | Never starts or stops logging | Every press and release |
 
-`userButtonEnable` (byte 217 bit 5) still decides whether the button may start
-and stop logging at all. With markers on and `userButtonEnable` off, presses are
-recorded and the button leaves logging alone.
+The TTL input is bit 5 of the same byte, whatever the button mode.
 
-> **`userButtonEnable` off also starts logging on undock.** With it off (and
-> `singleTouchStart` off), the unit starts logging whenever it leaves the dock
-> with a card in the slot (`ShimSens_startLoggingIfUndockStartEnabled()`). On a
-> Shimmer3R, unplugging USB-C counts as leaving the dock. So turning the button
-> off does not stop a unit logging, and nothing in the event channel changes
-> that.
+| Where | Button | TTL input |
+|---|---|---|
+| Configuration byte 232 | Bits 0-2, the button mode | Bit 5 |
+| `sdlog.cfg` | `button_mode` | `ttl_input_enable` |
+| SD header byte 225 | A copy of byte 232, as the firmware acted on it | The same |
 
-On a Shimmer3R SR48-6-0 board, both bits are cleared at validation:
+Both are off by default. With neither on, nothing is written and no `events/`
+directory is created. With either on, a logging session gets an event file, and
+its header says which inputs it records.
 
-- **The button.** That board's button is wired to BOOT0, whose interrupt is used
+The log triggers in bits 3-4 of the same byte are separate. With logging off,
+no session opens, so recorded presses reach no file.
+
+> **Turning the button off is button mode 1, not `userButtonEnable`.**
+> `userButtonEnable` (byte 217 bit 5) applies only in button mode 0, and there,
+> clearing it also makes the unit start logging whenever it leaves the dock
+> with a card in the slot (`ShimSens_startLoggingIfUndockStartEnabled()`); on a
+> Shimmer3R, unplugging USB-C counts as leaving the dock. Button mode 1 or 5
+> with log triggers 0 turns the button's start and stop off without that.
+
+On a Shimmer3R SR48-6-0 board, validation takes both inputs out:
+
+- **The button.** Press recording is taken out, button mode 4 becoming 3 and 5
+  becoming 1: that board's button is wired to BOOT0, whose interrupt is used
   for dock detection, so there are no button edges to record.
-- **The TTL input.** Its expansion pins are routed differently, and PE9 has not
-  been checked on it.
+- **The TTL input.** Bit 5 is cleared: its expansion pins are routed
+  differently, and PE9 has not been checked on it.
 
-> **A host that rewrites byte 218 must keep bits 1 and 5.** Read the byte,
-> change the bits you mean to, and write it back. The TTL input is bit 5, not
-> bit 2, because older hosts write bit 2 (CONFIGURATION_INFOMEM §8.2).
+> **A host that writes the whole configuration must keep byte 232.** Read it,
+> change it only if you mean to, and write it back. The Java driver's full
+> configuration write puts 0 there.
 
 ## 2. The user button
 
@@ -88,10 +101,11 @@ ignored edge if that went the missing way, and otherwise at the new edge's time.
 
 ### 2.3 Starting and stopping logging
 
-| Markers | Gesture | Rule |
+| Button mode | Gesture | Rule |
 |---|---|---|
-| off | single press | A release more than 0.5 s after the previous release. A press of 5 s or more does nothing |
-| on | double press | Two presses of at most 300 ms each, released at most 400 ms apart. A third quick press starts a new pair. Single presses are markers only, so a marker cannot stop a recording |
+| 2, and 0 with `userButtonEnable` set | single press | A release more than 0.5 s after the previous release. A press of 5 s or more does nothing |
+| 3 and 4 | double press | Two presses of at most 300 ms each, released at most 400 ms apart. A third quick press starts a new pair. A single press does nothing in mode 3 and is a marker only in mode 4, so a marker cannot stop a recording |
+| 1 and 5, and 0 with `userButtonEnable` clear | none | A press never starts or stops logging |
 
 Either way, nothing happens while the device is being configured, or while SD
 sync is in the middle of an exchange over Bluetooth.
@@ -139,10 +153,11 @@ rounded to 30.5 µs in the file.
 
 ### 3.3 When it is armed
 
-Only during a logging session with `ttlInputEnable` set. Capture is armed when
-the data file opens and disarmed when logging stops. An edge between the data
-file opening and the event file opening waits with the button's records. There
-is no capture outside a session, and so no waking on a TTL edge.
+Only during a logging session with the TTL input on (byte 232 bit 5, §1).
+Capture is armed when the data file opens and disarmed when logging stops. An
+edge between the data file opening and the event file opening waits with the
+button's records. There is no capture outside a session, and so no waking on a
+TTL edge.
 
 - **Shimmer3.** Timer_A0 is shared with SD sync, which uses CCR1. The timer
   runs while either one uses it (`TA0_start()` / `TA0_stop()`); it used to be

@@ -5,7 +5,8 @@
  * The event file follows the data file's lifecycle but never delays it: its
  * open, split and sync wait for TASK_EVENT_CHANNEL. Pinned here, against a fake
  * FatFs that keeps every file in memory:
- * - nothing is written unless buttonEventMarkerEnable is set;
+ * - nothing is written unless configuration byte 232's button mode records
+ *   presses;
  * - the file opens beside the data file, under events/, only when the task runs,
  *   and starts with the gesture that started logging and the state at the open;
  * - a heartbeat is written at the one-minute sync only after 60 s of nothing;
@@ -201,6 +202,29 @@ uint8_t Board_evtTtlLevel(void)
   return ttlPin;
 }
 
+/* The real accessors' bodies, over the stub config: shimmer_config.c is not
+ * host-buildable, so the byte 232 module is linked in on its own */
+uint8_t ShimConfig_doesPressToggleLogging(void)
+{
+  gConfigBytes *cfg = ShimConfig_getStoredConfig();
+  return ShimBtnLogMode_doesPressToggleLogging(cfg->buttonLogMode, cfg->userButtonEnable);
+}
+
+uint8_t ShimConfig_isDoublePress(void)
+{
+  return ShimBtnLogMode_isDoublePress(ShimConfig_getStoredConfig()->buttonLogMode);
+}
+
+uint8_t ShimConfig_doesButtonRecordPresses(void)
+{
+  return ShimBtnLogMode_recordsPresses(ShimConfig_getStoredConfig()->buttonLogMode);
+}
+
+uint8_t ShimConfig_isTtlInputEnabled(void)
+{
+  return ShimBtnLogMode_isTtlInputEnabled(ShimConfig_getStoredConfig()->buttonLogMode);
+}
+
 /* ---- helpers ------------------------------------------------------------- */
 
 #define DIR_SESSION "DefaultTrial_1793350800/Shimmer_A1B2-004"
@@ -227,7 +251,10 @@ static void reset(uint8_t markers)
   ttlArmCalls = 0;
   ttlPin = 0;
   strcpy(dataFileName, "data/" DIR_SESSION "/000");
-  ShimConfig_getStoredConfig()->buttonEventMarkerEnable = markers;
+  /* Markers on is button mode 4: a double press starts and stops logging, and
+   * every press is recorded */
+  ShimConfig_getStoredConfig()->buttonLogMode
+      = markers ? BTN_MODE_DOUBLE_RECORDED : BTN_MODE_LEGACY;
   ShimBtn_init();
   ShimEvt_init();
 }
@@ -486,7 +513,7 @@ static void test_ttl_session(void)
 
   testCase("TTL only: armed for the session, edges recorded, button left out");
   reset(0);
-  ShimConfig_getStoredConfig()->ttlInputEnable = 1;
+  ShimConfig_getStoredConfig()->buttonLogMode |= BTN_LOG_MODE_TTL_INPUT;
   expectFalse("not armed before the session", ttlArmed);
   ShimEvt_onSessionStart(rtc(1000));
   expectTrue("armed at the data file's start", ttlArmed);
@@ -532,7 +559,7 @@ static void test_ttl_lost_edge(void)
 
   testCase("TTL: an edge the timer overwrote is marked where it was lost");
   reset(0);
-  ShimConfig_getStoredConfig()->ttlInputEnable = 1;
+  ShimConfig_getStoredConfig()->buttonLogMode |= BTN_LOG_MODE_TTL_INPUT;
   ShimEvt_onSessionStart(rtc(1000));
   hostStub_setTick(1010);
   ShimEvt_process();
@@ -564,7 +591,7 @@ static void test_ttl_flood_is_throttled(void)
 
   testCase("TTL: a flood disarms the input for a second, then it is re-armed");
   reset(0);
-  ShimConfig_getStoredConfig()->ttlInputEnable = 1;
+  ShimConfig_getStoredConfig()->buttonLogMode |= BTN_LOG_MODE_TTL_INPUT;
   ShimEvt_onSessionStart(rtc(1000));
   hostStub_setTick(1010);
   ShimEvt_process();
@@ -605,23 +632,21 @@ static void test_ttl_flood_is_throttled(void)
   ShimEvt_onSessionStop();
 }
 
-static void test_config_bits_in_byte_218(void)
+static void test_ttl_enable_in_byte_232(void)
 {
   gConfigBytes *cfg = ShimConfig_getStoredConfig();
 
-  testCase("the enables sit in byte 218 where the SD header flags say");
-  cfg->rawBytes[NV_SD_TRIAL_CONFIG1] = 0;
-  cfg->buttonEventMarkerEnable = 1;
-  expectU("markers", cfg->rawBytes[NV_SD_TRIAL_CONFIG1], SDH_BUTTON_EVENT_MARKER);
-  cfg->buttonEventMarkerEnable = 0;
-  cfg->ttlInputEnable = 1;
-  expectU("TTL", cfg->rawBytes[NV_SD_TRIAL_CONFIG1], SDH_TTL_INPUT);
-  expectU("TTL is bit 5", SDH_TTL_INPUT, 0x20);
-  /* Older hosts' SET_TRIAL_CONFIG writes bits 2 and 3: the Java driver
-   * always sets bit 2 (docs/SHIMMER3_CONFIGURATION_INFOMEM.md 8.2) */
-  cfg->rawBytes[NV_SD_TRIAL_CONFIG1] = 0x0C;
-  expectU("bits 2 and 3 enable nothing",
-      cfg->ttlInputEnable | cfg->buttonEventMarkerEnable, 0);
+  testCase("the TTL enable is byte 232 bit 5, whatever the button does");
+  cfg->buttonLogMode = 0x20;
+  expectTrue("legacy button, TTL on", ShimConfig_isTtlInputEnabled());
+  expectFalse("presses not recorded", ShimConfig_doesButtonRecordPresses());
+  cfg->buttonLogMode = 0xA0;
+  expectFalse("bit 7 set turns it off too", ShimConfig_isTtlInputEnabled());
+  cfg->buttonLogMode = 0;
+  /* Older hosts' SET_TRIAL_CONFIG writes byte 218 as it likes - the Java
+   * driver always sets bit 2 (docs/SHIMMER3_CONFIGURATION_INFOMEM.md 8.2) */
+  cfg->rawBytes[NV_SD_TRIAL_CONFIG1] = 0xFF;
+  expectFalse("byte 218 enables nothing", ShimConfig_isTtlInputEnabled());
   cfg->rawBytes[NV_SD_TRIAL_CONFIG1] = 0;
 }
 
@@ -629,7 +654,7 @@ int main(void)
 {
   hostTestSilenceUnused();
 
-  test_config_bits_in_byte_218();
+  test_ttl_enable_in_byte_232();
   test_nothing_without_the_config_bit();
   test_session();
   test_old_presses_are_not_written();

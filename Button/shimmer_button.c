@@ -19,11 +19,6 @@ void ShimBtn_init(void)
   ShimBtnGesture_init(&gesture);
 }
 
-static uint8_t isMarkerMode(void)
-{
-  return ShimConfig_getStoredConfig()->buttonEventMarkerEnable;
-}
-
 /* Not while the device is being configured, nor while SD sync is mid-way
  * through an exchange */
 static uint8_t isActionAllowed(void)
@@ -38,7 +33,7 @@ static void toggleLogging(void)
   shimmerStatus.docked = shimmerStatus.docked ? 0 : 1;
   LogAndStream_dockedStateChange();
 #else
-  if (ShimConfig_getStoredConfig()->userButtonEnable)
+  if (ShimConfig_doesPressToggleLogging())
   {
     //toggles sensing and refresh BT timers (for the centre)
     if (shimmerStatus.sdLogging == 0)
@@ -53,15 +48,19 @@ static void toggleLogging(void)
 #endif
 }
 
-static void applyResult(const ShimBtnGestureResult *res, uint8_t markerMode)
+/* Configuration byte 232 decides both whether presses are recorded and which
+ * gesture starts and stops logging (Configuration/shimmer_button_log_mode.h) */
+static void applyResult(const ShimBtnGestureResult *res)
 {
   uint8_t i;
+  uint8_t record = ShimConfig_doesButtonRecordPresses();
+
   for (i = 0; i < res->numEdges; i++)
   {
     /* Written only here, in the main loop, so the LEDs follow the debounced
      * level rather than every bounce */
     shimmerStatus.buttonPressed = res->edge[i].level;
-    if (markerMode)
+    if (record)
     {
       ShimEvt_recordButtonEdge(res->edge[i].ts, res->edge[i].level,
           res->edge[i].synthesized ? EVT_FLAG_SYNTHESIZED : 0U);
@@ -77,10 +76,9 @@ static void applyResult(const ShimBtnGestureResult *res, uint8_t markerMode)
 void ShimBtn_processEdge(uint64_t ts, uint8_t isPress)
 {
   ShimBtnGestureResult res;
-  uint8_t markerMode = isMarkerMode();
 
-  ShimBtnGesture_edge(&gesture, ts, isPress, markerMode, &res);
-  applyResult(&res, markerMode);
+  ShimBtnGesture_edge(&gesture, ts, isPress, ShimConfig_isDoublePress(), &res);
+  applyResult(&res);
 }
 
 uint8_t ShimBtn_isRecheckPending(void)
@@ -91,15 +89,13 @@ uint8_t ShimBtn_isRecheckPending(void)
 void ShimBtn_recheckIfDue(uint64_t now)
 {
   ShimBtnGestureResult res;
-  uint8_t markerMode;
 
   if (!ShimBtnGesture_isRecheckDue(&gesture, now))
   {
     return;
   }
-  markerMode = isMarkerMode();
-  ShimBtnGesture_recheck(&gesture, Board_isBtnPressed(), markerMode, &res);
-  applyResult(&res, markerMode);
+  ShimBtnGesture_recheck(&gesture, Board_isBtnPressed(), ShimConfig_isDoublePress(), &res);
+  applyResult(&res);
 }
 
 uint8_t ShimBtn_isPressed(void)
