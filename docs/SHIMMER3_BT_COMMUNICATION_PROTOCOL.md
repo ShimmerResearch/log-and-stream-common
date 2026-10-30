@@ -1308,8 +1308,8 @@ changed for a reason the host did not cause:
 |---|---|
 | Sensing started | `TASK_STARTSENSING` — `TaskList/shimmer_taskList.c:128-131` |
 | Sensing stopped | `TASK_STOPSENSING` — `TaskList/shimmer_taskList.c:132-135` |
-| Docked | `LogAndStream_setupDock` — `log_and_stream_common.c:514` |
-| Undocked | `LogAndStream_setupUndock` — `log_and_stream_common.c:530-534` |
+| Docked | `LogAndStream_setupDock` — `log_and_stream_common.c:538` |
+| Undocked | `LogAndStream_setupUndock` — `log_and_stream_common.c:592-595` |
 
 The two sensing triggers go through
 `ShimBt_instreamStatusRespSendIfNotBtCmd`, which **suppresses the push when the
@@ -1323,9 +1323,11 @@ low-battery auto-stop.
 > six start/stop handlers (`:918-935, 946-963`).
 
 The dock and undock pushes call `ShimBt_instreamStatusRespSend` **directly**, so
-they are not suppressed. Undock only pushes when the user button is enabled or no
-usable card is present; otherwise the push is deferred to the logging start that
-follows.
+they are not suppressed. Undock pushes unless leaving the dock queued a logging
+start, in which case the push is deferred to that start. The decision is made
+after sdlog.cfg has been read back from the card, since the file can change
+whether leaving the dock starts logging (CONFIGURATION_INFOMEM §8.3), so the
+push arrives after that read rather than at the moment of undocking.
 
 **Normative rules for hosts.**
 
@@ -1364,8 +1366,10 @@ answer with a bare ACK.
 > They queue `ShimTask_setStartStreamingIfReady()`,
 > `ShimTask_setStartLoggingIfReady()` or
 > `ShimTask_setStartStreamingAndLoggingIfReady()` — the *IfReady* is load-bearing.
-> A start that cannot proceed (no card, bad file, docked, already sensing) is
-> ACKed and then quietly does nothing. **Confirm with the status bits**: bit 4
+> A start that cannot proceed (no card, bad file, docked, already sensing, or
+> logging turned off by configuration byte 232 — CONFIGURATION_INFOMEM §8.3) is
+> ACKed and then quietly does nothing; `START_SDBT_COMMAND` then starts streaming
+> alone. **Confirm with the status bits**: bit 4
 > for streaming, bit 3 for logging, bit 1 for sensing overall
 > ([§5.3](#53-the-status-bytes)). Because a command-initiated change suppresses
 > the unsolicited push, the host must poll `GET_STATUS_COMMAND` rather than wait
@@ -3300,8 +3304,8 @@ starts the stream, zero stops it. It is accepted while sensing.
 
 - **It belongs to the connection.** It is cleared on connect, on disconnect and
   by `FEATURE_NONE`, so a host opts in again after every reconnection.
-- **It does not enable an input.** The inputs are the ones enabled in
-  configuration byte 218, bits 1 and 5
+- **It does not enable an input.** The inputs are the ones configuration byte
+  232 enables: button mode 4 or 5 for the button, bit 5 for the TTL input
   ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §1).
   `GET_EVENT_CHANNEL_STATUS_COMMAND` says which they are.
 - **It arms the TTL input.** While a host is opted in, an enabled TTL input is

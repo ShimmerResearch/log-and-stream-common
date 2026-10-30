@@ -133,7 +133,9 @@
 #define NV_MAC_ADDRESS                      (128 + 96) //6bytes
 #define NV_SD_CONFIG_DELAY_FLAG             (128 + 102)
 #define NV_BT_SET_PIN                       (128 + 103)
-//#define NV_TEMP_PRES_CALIBRATION            (128 + 104) //+22 bytes, till 128+125
+/* Button and logging mode, Configuration/shimmer_button_log_mode.h. Firmware
+ * from 2017 reserved 232-253 for pressure calibration but never wrote it */
+#define NV_BUTTON_LOG_MODE                  (128 + 104)
 
 #define NV_CENTER                           (128 + 128 + 0)
 #define NV_NODE0                            (128 + 128 + 6)
@@ -391,18 +393,14 @@ typedef union
 
     //SDTrialConfig1
     uint8_t lowBatteryAutoStop : 1;
-    /* Record every button edge as an event marker; a double press then
-     * starts and stops logging (Events/shimmer_events.h) */
-    uint8_t buttonEventMarkerEnable : 1;
+    uint8_t unusedIdx218Bit1   : 1;
     /* Bits 2 and 3 are written by older hosts' SET_TRIAL_CONFIG: the Java
      * driver always sets bit 2, and Java and C# put expansion power in bit 3.
      * Keep them unused (docs/SHIMMER3_CONFIGURATION_INFOMEM.md section 8.2) */
     uint8_t unusedIdx218Bit2 : 1;
     uint8_t unusedIdx218Bit3 : 1;
     uint8_t tcxo             : 1;
-    /* Record the TTL input's edges, captured by a timer, in the same event
-     * file (Events/shimmer_events.h) */
-    uint8_t ttlInputEnable   : 1;
+    uint8_t unusedIdx218Bit5 : 1;
     uint8_t unusedIdx218Bit6 : 1;
     uint8_t singleTouchStart : 1;
 
@@ -425,7 +423,11 @@ typedef union
     uint8_t unusedIdx230Bit7 : 1;
 
     uint8_t btSetPin;
-    uint8_t unusedIdx232;
+    /* What the user button does, what else starts logging, and whether the
+     * TTL input is recorded. Read it through
+     * ShimConfig_doesPressToggleLogging() and the other queries beside it,
+     * never directly: they apply its validity rule */
+    uint8_t buttonLogMode;
     uint8_t unusedIdx233;
     uint8_t unusedIdx234;
     uint8_t unusedIdx235;
@@ -520,6 +522,13 @@ uint8_t ShimConfig_configByteMagRateGet(void);
 void ShimConfig_configByteAltMagRateSet(uint8_t value);
 uint8_t ShimConfig_configByteAltMagRateGet(void);
 uint8_t ShimConfig_checkAndCorrectConfig(void);
+uint8_t ShimConfig_doesPressToggleLogging(void);
+uint8_t ShimConfig_doesUndockStartLogging(void);
+uint8_t ShimConfig_isLoggingDisabled(void);
+uint8_t ShimConfig_isButtonDisabled(void);
+uint8_t ShimConfig_isDoublePress(void);
+uint8_t ShimConfig_doesButtonRecordPresses(void);
+uint8_t ShimConfig_isTtlInputEnabled(void);
 void ShimConfig_setExgConfigForTestSignal(void);
 void ShimConfig_setExgConfigForEcg(void);
 float ShimConfig_freqDiv(float samplingRate);

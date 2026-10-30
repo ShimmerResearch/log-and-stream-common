@@ -652,7 +652,7 @@ static void ttlArm(uint8_t enable)
  * to the stream and the input is enabled */
 static void ttlUpdateArming(void)
 {
-  uint8_t want = ShimConfig_getStoredConfig()->ttlInputEnable
+  uint8_t want = ShimConfig_isTtlInputEnabled()
       && ((evtFile.sessionActive && !evtFile.error && (evtFile.enables & EVT_ENABLE_TTL))
           || btLink.on);
 
@@ -745,8 +745,6 @@ void ShimEvt_process(void)
 void ShimEvt_onSessionStart(uint64_t fileOpenTs)
 {
 #if USE_FATFS
-  gConfigBytes *cfg = ShimConfig_getStoredConfig();
-
   evtFile.sessionActive = 0;
   evtFile.isOpen = 0;
   evtFile.splitPending = 0;
@@ -754,8 +752,9 @@ void ShimEvt_onSessionStart(uint64_t fileOpenTs)
   evtFile.error = 0;
   evtFile.seq = 0;
   evtFile.dropped = 0;
-  evtFile.enables = (uint8_t) ((cfg->buttonEventMarkerEnable ? EVT_ENABLE_BUTTON : 0U)
-      | (cfg->ttlInputEnable ? EVT_ENABLE_TTL : 0U));
+  evtFile.enables
+      = (uint8_t) ((ShimConfig_doesButtonRecordPresses() ? EVT_ENABLE_BUTTON : 0U)
+          | (ShimConfig_isTtlInputEnabled() ? EVT_ENABLE_TTL : 0U));
   if (evtFile.enables == 0U)
   {
     prerollCount = 0;
@@ -865,10 +864,8 @@ static void putLe16(uint8_t *out, uint16_t v)
 
 uint8_t ShimEvt_buildStatus(uint8_t *out)
 {
-  gConfigBytes *cfg = ShimConfig_getStoredConfig();
-
-  out[0] = (uint8_t) ((cfg->buttonEventMarkerEnable ? EVT_ENABLE_BUTTON : 0U)
-      | (cfg->ttlInputEnable ? EVT_ENABLE_TTL : 0U));
+  out[0] = (uint8_t) ((ShimConfig_doesButtonRecordPresses() ? EVT_ENABLE_BUTTON : 0U)
+      | (ShimConfig_isTtlInputEnabled() ? EVT_ENABLE_TTL : 0U));
   /* The opt-in as asked for: the task may not have applied it yet */
   out[1] = (uint8_t) ((btStreamWanted ? 0x01U : 0U)
       | (evtFile.isOpen ? 0x02U : 0U) | (evtFile.error ? 0x04U : 0U)

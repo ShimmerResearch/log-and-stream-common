@@ -22,8 +22,11 @@ status counters, then opts out and checks that nothing more arrives.
                    with test_sd_transfer.py on Shimmer3R. Every record received
                    while logging should be in the file at exactly the same time.
 
-Enable the inputs first: configuration byte 218, bit 1 for button markers and
-bit 5 for the TTL input. Opting in enables neither. Exits 1 if a check fails.
+Enable the inputs first, in configuration byte 232: button mode 4 or 5 (bits
+0-2) for the button, bit 5 for the TTL input. 0x24, say, is a double press to
+start and stop logging, every press recorded, and the TTL input on. Write it
+on its own with SET_INFOMEM, 8C 01 E8 00 24, while nothing is being sensed.
+Opting in enables neither. Exits 1 if a check fails.
 
 "Late" is how long a frame took to arrive, measured against the quickest frame
 of the run, since the device's clock and the PC's share no zero.
@@ -286,8 +289,8 @@ def run(args):
         bt.close_port()
         return 1
     if not status["enables"] & 3:
-        print("WARNING: neither input is enabled (configuration byte 218 bits 1 and 5), "
-              "so only the initial state will arrive.")
+        print("WARNING: neither input is enabled (configuration byte 232: button mode 4 "
+              "or 5, bit 5), so only the initial state will arrive.")
     if flag(status, "stream on"):
         # Opting in again would change nothing, so no initial state would come
         problems.append("the stream was on before opting in: the reset on connect did not happen")

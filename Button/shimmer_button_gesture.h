@@ -17,8 +17,9 @@
  * Two ways a press can start or stop logging:
  * - Single press, the button's original behaviour: a release more than 0.5 s
  *   after the previous release, unless the press lasted 5 s or more.
- * - Double press, used when presses are recorded as event markers so that a
- *   marker cannot stop a recording: two presses of at most 300 ms each,
+ * - Double press, configuration byte 232's button modes 3 and 4. Mode 4 also
+ *   records every press as an event marker, and the double press is what keeps
+ *   a marker from stopping a recording: two presses of at most 300 ms each,
  *   released at most 400 ms apart.
  */
 
