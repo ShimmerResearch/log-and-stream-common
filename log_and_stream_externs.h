@@ -40,10 +40,23 @@ extern void SampleTimerStop(void);
 
 extern void saveBtError(uint8_t btError);
 extern void resetLatestBtError(void);
+
+/* Timer_A0 is shared by SD sync (CCR1) and the TTL input capture (CCR4):
+ * it runs while either uses it (5xx_HAL/hal_TA0.c) */
+#define TA0_USER_SD_SYNC 0x01U
+#define TA0_USER_TTL     0x02U
+extern void TA0_start(uint8_t user);
+extern void TA0_stop(uint8_t user);
+/* TA0IV_TACCR4, from TIMER0_A1_ISR. Returns 1 if the MCU should wake. */
+extern uint8_t TA0_captureIsr(void);
 #endif //SHIMMER3
 
 extern void Board_setExpansionBrdPower(uint8_t state);
 extern uint8_t Board_isBtnPressed(void);
+/* The TTL input (Events/shimmer_events.h): arm or disarm its timer capture,
+ * and read its level now */
+extern void Board_evtTtlArm(uint8_t enable);
+extern uint8_t Board_evtTtlLevel(void);
 extern void Board_sd2Pc(void);
 extern void Board_sd2Mcu(void);
 extern void Board_dockDetectN(uint8_t state);

@@ -924,6 +924,12 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
   }
 #endif
 
+  if (storedConfig.ttlInputEnable && !ShimBrd_isTtlInputSupported())
+  {
+    storedConfig.ttlInputEnable = 0;
+    settingCorrected = 1;
+  }
+
   if (ShimBrd_areADS1292RClockLinesTied() && !(storedConfig.exgADS1292rRegsCh1.config2 & 0x08))
   {
     /* Amend configuration byte 2 of ADS chip 1 to have bit 3 set to 1.

@@ -185,6 +185,22 @@ uint8_t ShimTask_NORM_set(TaskId_t task_id)
   return 0;
 }
 
+/* The TTL input's timer capture */
+static uint8_t ttlArmed;
+static uint32_t ttlArmCalls;
+static uint8_t ttlPin;
+
+void Board_evtTtlArm(uint8_t enable)
+{
+  ttlArmed = enable;
+  ttlArmCalls++;
+}
+
+uint8_t Board_evtTtlLevel(void)
+{
+  return ttlPin;
+}
+
 /* ---- helpers ------------------------------------------------------------- */
 
 #define DIR_SESSION "DefaultTrial_1793350800/Shimmer_A1B2-004"
@@ -207,10 +223,21 @@ static void reset(uint8_t markers)
   cfgFilLent = 0;
   cfgFilLends = 0;
   pinPressed = 0;
+  ttlArmed = 0;
+  ttlArmCalls = 0;
+  ttlPin = 0;
   strcpy(dataFileName, "data/" DIR_SESSION "/000");
   ShimConfig_getStoredConfig()->buttonEventMarkerEnable = markers;
   ShimBtn_init();
   ShimEvt_init();
+}
+
+/* A TTL edge the platform has timestamped from its capture */
+static void ttlAt(uint32_t atMs, uint8_t level, uint8_t flags)
+{
+  hostStub_setTick(atMs + 1U);
+  ttlPin = level;
+  (void) ShimEvt_isrPushTtlEdge(level, rtc(atMs), flags);
 }
 
 /* An edge at atMs, then the task */
@@ -452,6 +479,132 @@ static void test_ring_overflow_is_counted(void)
   ShimEvt_onSessionStop();
 }
 
+static void test_ttl_session(void)
+{
+  FakeFile *f;
+  const uint8_t *r;
+
+  testCase("TTL only: armed for the session, edges recorded, button left out");
+  reset(0);
+  ShimConfig_getStoredConfig()->ttlInputEnable = 1;
+  expectFalse("not armed before the session", ttlArmed);
+  ShimEvt_onSessionStart(rtc(1000));
+  expectTrue("armed at the data file's start", ttlArmed);
+
+  /* An edge before the event file opens waits for it */
+  ttlAt(1005, 1, EVT_FLAG_HW_CAPTURE);
+  hostStub_setTick(1010);
+  ShimEvt_process();
+  f = findFile("events/" DIR_SESSION "/000");
+  expectTrue("file", f != 0);
+  if (f == 0)
+  {
+    return;
+  }
+  expectU("enables", f->data[37], EVT_ENABLE_TTL);
+  expectU("initial state, then the edge", recordCount(f), 2);
+  expectU("initial state low", REC_STATE(rec(f, 0)), 0);
+
+  r = rec(f, 1);
+  expectU("edge type", REC_TYPE(r), EVT_TYPE_EDGE);
+  expectU("channel", REC_CHANNEL(r), EVT_CHANNEL_TTL);
+  expectU("timer-latched", REC_FLAGS(r), EVT_FLAG_HW_CAPTURE);
+  expectU("high", REC_STATE(r), EVT_STATE_TTL);
+  expectU("at the captured time", REC_TS(r), rtc(1005));
+
+  ttlAt(1015, 0, EVT_FLAG_HW_CAPTURE | EVT_FLAG_LATE);
+  edgeAt(2000, 1); /* markers off: not recorded */
+  edgeAt(2100, 0);
+  expectU("falling edge only", recordCount(f), 3);
+  r = rec(f, 2);
+  expectU("low", REC_STATE(r), 0);
+  expectU("late flag kept", REC_FLAGS(r), EVT_FLAG_HW_CAPTURE | EVT_FLAG_LATE);
+
+  ShimEvt_onSessionStop();
+  expectFalse("disarmed at the close", ttlArmed);
+  expectU("final", REC_FLAGS(rec(f, recordCount(f) - 1U)), EVT_FLAG_FINAL);
+}
+
+static void test_ttl_lost_edge(void)
+{
+  FakeFile *f;
+  const uint8_t *r;
+
+  testCase("TTL: an edge the timer overwrote is marked where it was lost");
+  reset(0);
+  ShimConfig_getStoredConfig()->ttlInputEnable = 1;
+  ShimEvt_onSessionStart(rtc(1000));
+  hostStub_setTick(1010);
+  ShimEvt_process();
+  ttlAt(2000, 1, EVT_FLAG_HW_CAPTURE);
+  ttlAt(2001, 1, EVT_FLAG_HW_CAPTURE | EVT_RAW_EDGES_LOST);
+  hostStub_setTick(2010);
+  ShimEvt_process();
+  f = findFile("events/" DIR_SESSION "/000");
+  expectTrue("file", f != 0);
+  if (f != 0)
+  {
+    expectU("initial, edge, overflow, edge", recordCount(f), 4);
+    r = rec(f, 2);
+    expectU("overflow record", REC_TYPE(r), EVT_TYPE_OVERFLOW);
+    expectU("on the TTL channel", REC_CHANNEL(r), EVT_CHANNEL_TTL);
+    expectU("counted", REC_DROPPED(r), 1);
+    r = rec(f, 3);
+    expectU("the edge after it", REC_TYPE(r), EVT_TYPE_EDGE);
+    expectU("lost bit not written", REC_FLAGS(r), EVT_FLAG_HW_CAPTURE);
+  }
+  ShimEvt_onSessionStop();
+}
+
+static void test_ttl_flood_is_throttled(void)
+{
+  FakeFile *f;
+  const uint8_t *r;
+  uint32_t i, n;
+
+  testCase("TTL: a flood disarms the input for a second, then it is re-armed");
+  reset(0);
+  ShimConfig_getStoredConfig()->ttlInputEnable = 1;
+  ShimEvt_onSessionStart(rtc(1000));
+  hostStub_setTick(1010);
+  ShimEvt_process();
+
+  /* More edges than one tick allows, drained as they come */
+  for (i = 0; i <= EVT_TTL_MAX_EDGES_PER_TICK; i++)
+  {
+    ttlAt(2000U + i, (uint8_t) ((i & 1U) == 0U), EVT_FLAG_HW_CAPTURE);
+    ShimEvt_process();
+  }
+  expectFalse("disarmed", ttlArmed);
+
+  for (i = 0; i < EVT_TTL_THROTTLE_TICKS - 1U; i++)
+  {
+    (void) ShimEvt_tick();
+  }
+  ShimEvt_process();
+  expectFalse("still disarmed before the second is up", ttlArmed);
+
+  ttlPin = 1;
+  (void) ShimEvt_tick();
+  hostStub_setTick(3100);
+  ShimEvt_process();
+  expectTrue("re-armed", ttlArmed);
+
+  f = findFile("events/" DIR_SESSION "/000");
+  expectTrue("file", f != 0);
+  if (f != 0)
+  {
+    n = recordCount(f);
+    expectU("initial, the edges allowed, an overflow", n,
+        1U + EVT_TTL_MAX_EDGES_PER_TICK + 1U);
+    r = rec(f, n - 1U);
+    expectU("overflow record", REC_TYPE(r), EVT_TYPE_OVERFLOW);
+    expectU("level read at the re-arm", REC_STATE(r), EVT_STATE_TTL);
+    expectU("counted", REC_DROPPED(r), 1);
+  }
+  ShimEvt_onSessionStop();
+}
+
 int main(void)
 {
   hostTestSilenceUnused();
@@ -461,6 +614,9 @@ int main(void)
   test_old_presses_are_not_written();
   test_card_error_stops_the_event_file();
   test_ring_overflow_is_counted();
+  test_ttl_session();
+  test_ttl_lost_edge();
+  test_ttl_flood_is_throttled();
 
   return hostTestReport("test_events");
 }

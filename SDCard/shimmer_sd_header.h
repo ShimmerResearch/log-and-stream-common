@@ -164,6 +164,7 @@
 #define SDH_BATT_CRITICAL_CUTOFF 0x01
 #endif
 #define SDH_BUTTON_EVENT_MARKER 0x02
+#define SDH_TTL_INPUT           0x04
 #define SDH_TCXO                0x10
 #if defined(SHIMMER3)
 #define SDH_SINGLETOUCH 0x80

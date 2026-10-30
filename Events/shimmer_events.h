@@ -3,8 +3,10 @@
  *
  * The event channel: input edges recorded with their own timestamps,
  * independent of the sampling rate, in an event file beside each data file
- * (docs/SHIMMER3_EVENT_CHANNEL.md). The input today is the user button, whose
- * edges are recorded while buttonEventMarkerEnable is set.
+ * (docs/SHIMMER3_EVENT_CHANNEL.md). Two inputs: the user button, recorded
+ * while buttonEventMarkerEnable is set, and a TTL input, recorded while
+ * ttlInputEnable is set. The TTL input's edges are latched by a timer capture,
+ * which is armed only for a logging session (Board_evtTtlArm).
  *
  * Interrupt handlers only queue an edge with its time. Everything else runs in
  * the main loop, in TASK_EVENT_CHANNEL, the lowest-priority task. The event
@@ -23,27 +25,40 @@
 
 /* Edges an interrupt can queue before the main loop takes them. Divides 256,
  * so the free-running ring indexes stay correct across their wrap. */
-#define EVT_RING_LEN        16U
+#define EVT_RING_LEN               16U
 /* Records kept while no event file is open: the gesture that started logging,
  * and anything between the data file opening and the event file opening */
-#define EVT_PREROLL_LEN     8U
+#define EVT_PREROLL_LEN            8U
 /* How long before the data file opened a kept record may be and still go into
  * the event file: long enough for the double press that started logging */
-#define EVT_PREROLL_TICKS   65536UL /* 2 s */
+#define EVT_PREROLL_TICKS          65536UL /* 2 s */
 /* At the data file's one-minute sync, a heartbeat is written if nothing else
  * has been for this long, so a file that stops growing has stopped recording */
-#define EVT_HEARTBEAT_TICKS 1966080UL /* 60 s */
+#define EVT_HEARTBEAT_TICKS        1966080UL /* 60 s */
 /* "events/" in place of the data file's "data/": two bytes longer than the
  * data file's name buffer */
-#define EVT_PATH_LEN        72U
+#define EVT_PATH_LEN               72U
+/* TTL flood control: more edges than this in one 100 ms tick - a chattering or
+ * mis-wired input - and the capture interrupt is switched off for
+ * EVT_TTL_THROTTLE_TICKS, so it cannot starve everything else */
+#define EVT_TTL_MAX_EDGES_PER_TICK 32U
+#define EVT_TTL_THROTTLE_TICKS     10U /* 1 s */
+/* Passed in with a TTL edge, never written to the file: the timer overwrote at
+ * least one edge before this one */
+#define EVT_RAW_EDGES_LOST         0x40U
 
 void ShimEvt_init(void);
 
 /* Interrupt context. Queue a user button edge, timestamped now. Returns 1 if
  * the MCU needs waking to process it. */
 uint8_t ShimEvt_isrPushButtonEdge(uint8_t isPress);
+/* Interrupt context, from the platform's timer capture. Queue a TTL input edge
+ * the platform has already timestamped from its capture register. flags:
+ * EVT_FLAG_HW_CAPTURE, EVT_FLAG_LATE, EVT_RAW_EDGES_LOST. Returns 1 if the MCU
+ * needs waking to process it. */
+uint8_t ShimEvt_isrPushTtlEdge(uint8_t level, uint64_t ts, uint8_t flags);
 /* Interrupt context, from the 100 ms blink tick. Returns 1 if the MCU needs
- * waking for a debounce recheck. */
+ * waking for a debounce recheck or to re-arm a throttled TTL input. */
 uint8_t ShimEvt_tick(void);
 
 /* TASK_EVENT_CHANNEL */

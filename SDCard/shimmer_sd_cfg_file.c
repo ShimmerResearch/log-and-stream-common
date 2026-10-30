@@ -108,6 +108,7 @@ static int cfg_key_is(const char *line, const char *key)
 
 #define CFG_KEY_USER_BUTTON_ENABLE         "user_button_enable"
 #define CFG_KEY_BUTTON_EVENT_MARKER_ENABLE "button_event_marker_enable"
+#define CFG_KEY_TTL_INPUT_ENABLE           "ttl_input_enable"
 #define CFG_KEY_RTC_ERROR_ENABLE           "rtc_error_enable"
 #define CFG_KEY_SD_ERROR_ENABLE            "sd_error_enable"
 #define CFG_KEY_IAMMASTER                  "iammaster"
@@ -302,6 +303,7 @@ void ShimSdCfgFile_generate(void)
       CFG_WRITE_INT(&cfgFile, CFG_KEY_USER_BUTTON_ENABLE, storedConfig->userButtonEnable);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_BUTTON_EVENT_MARKER_ENABLE,
           storedConfig->buttonEventMarkerEnable);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_TTL_INPUT_ENABLE, storedConfig->ttlInputEnable);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_RTC_ERROR_ENABLE, storedConfig->rtcErrorEnable);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_SD_ERROR_ENABLE, storedConfig->sdErrorEnable);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_IAMMASTER, storedConfig->masterEnable);
@@ -702,6 +704,10 @@ void ShimSdCfgFile_parse(void)
       else if (cfg_key_is(buffer, CFG_KEY_USER_BUTTON_ENABLE))
       {
         storedConfigPtr->userButtonEnable = (atoi(equals) == 0) ? 0 : 1;
+      }
+      else if (cfg_key_is(buffer, CFG_KEY_TTL_INPUT_ENABLE))
+      {
+        storedConfigPtr->ttlInputEnable = (atoi(equals) == 0) ? 0 : 1;
       }
       else if (cfg_key_is(buffer, CFG_KEY_BUTTON_EVENT_MARKER_ENABLE))
       {

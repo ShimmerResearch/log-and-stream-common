@@ -1,37 +1,48 @@
 # Shimmer3 / Shimmer3R event channel
 
 The event channel records input edges with their own timestamps, independent of
-the sampling rate, in an event file beside each data file. The input today is
-the user button: with event markers on, every press and release is recorded,
-and a double press starts and stops logging. A timer-captured TTL input and
-streaming the events over Bluetooth are planned; the file format already has
-room for both (§3.2).
+the sampling rate, in an event file beside each data file. It has two inputs:
 
-Code: `Events/` (`shimmer_events.c`, `shimmer_event_record.c`) and `Button/`
-(`shimmer_button.c`, `shimmer_button_gesture.c`).
+- **The user button.** With event markers on, every press and release is
+  recorded, and a double press starts and stops logging.
+- **A TTL input.** It is captured in hardware by a timer, for sync pulses from
+  stimulus equipment such as a PsychoPy or E-Prime PC.
+
+Streaming the events over Bluetooth is planned, and the file format already has
+room for it.
+
+The code:
+
+- `Events/`: `shimmer_events.c` and `shimmer_event_record.c`;
+- `Button/`: `shimmer_button.c` and `shimmer_button_gesture.c`;
+- the TTL capture on each platform: `5xx_HAL/hal_TA0.c` on Shimmer3 and
+  `Shimmer_Driver/hal_EventCapture.c` on Shimmer3R.
 
 ## 1. Turning it on
 
-| Where | Name |
-|---|---|
-| Configuration byte 218, bit 1 | `buttonEventMarkerEnable` ([CONFIGURATION_INFOMEM](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.2) |
-| `sdlog.cfg` | `button_event_marker_enable` |
-| SD header byte 17 | `SDH_BUTTON_EVENT_MARKER` (0x02), a copy of byte 218 |
+| Input | Configuration byte 218 ([CONFIGURATION_INFOMEM](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.2) | `sdlog.cfg` | SD header byte 17, a copy of byte 218 |
+|---|---|---|---|
+| Button markers | bit 1, `buttonEventMarkerEnable` | `button_event_marker_enable` | `SDH_BUTTON_EVENT_MARKER` (0x02) |
+| TTL input | bit 2, `ttlInputEnable` | `ttl_input_enable` | `SDH_TTL_INPUT` (0x04) |
 
-It is off by default. With it off, nothing is written and no `events/`
-directory is created. The button still starts and stops logging with a single
-press, as it always has (§2.3).
+Both are off by default. With both off, nothing is written and no `events/`
+directory is created; the button still starts and stops logging with a single
+press, as it always has (§2.3). With either one on, a logging session gets an
+event file, and its header says which inputs it records.
 
 `userButtonEnable` (byte 217 bit 5) still decides whether the button may start
 and stop logging at all. With markers on and `userButtonEnable` off, presses are
 recorded and logging is left alone.
 
-On a Shimmer3R SR48-6-0 board the bit is cleared at validation: that board's
-button is wired to BOOT0, whose interrupt is used for dock detection, so there
-are no button edges to record.
+On a Shimmer3R SR48-6-0 board, both bits are cleared at validation:
 
-> **A host that rewrites byte 218 must keep bit 1.** Read the byte, change the
-> bits you mean to, and write it back.
+- **The button.** That board's button is wired to BOOT0, whose interrupt is used
+  for dock detection, so there are no button edges to record.
+- **The TTL input.** Its expansion pins are routed differently, and PE9 has not
+  been checked on it.
+
+> **A host that rewrites byte 218 must keep bits 1 and 2.** Read the byte,
+> change the bits you mean to, and write it back.
 
 ## 2. The user button
 
@@ -82,9 +93,73 @@ sync is in the middle of an exchange over Bluetooth.
 > 25 ms still counts, but its action waits for the recheck, up to about
 > 0.1 s.
 
-## 3. The event file
+## 3. The TTL input
 
-### 3.1 Where
+### 3.1 Pins
+
+| | Pin | Captured by | Count rate | Shortest pulse |
+|---|---|---|---|---|
+| Shimmer3 | P1.5 (`GPIO_EXTERNAL_RADIO_DD`), TA0.CCI4A | Timer_A0 CCR4, both edges, synchronised to ACLK | 32768 Hz | about 61 µs: two timer periods |
+| Shimmer3R | PE9 (`GPIO_EXTERNAL`), TIM1_CH1 (AF1) | TIM1: rising edges on CC1 and falling on CC2, both from TI1, filtered over 8 samples of its 48 MHz clock | 1 MHz | about 0.2 µs |
+
+The input is pulled down while armed, so an unconnected input reads low. On
+Shimmer3 the pull works with P1.5 given to the timer: the F5437A port diagram
+enables the resistor from `P1REN` and the pin direction only.
+
+> **These are MCU pins, at the board's logic level.** A 5 V TTL output must be
+> level-shifted or divided down before it reaches them, unless the expansion
+> board in use already does that. Which expansion boards bring P1.5 or PE9 to a
+> connector has not been checked.
+
+### 3.2 Timing
+
+The timer latches the time of the edge in hardware. Its interrupt reads the
+capture, works out how long ago it was, and subtracts that from the RTC, so the
+interrupt's own latency does not enter the time. TTL records carry
+`EVT_FLAG_HW_CAPTURE`.
+
+- **Shimmer3.** Timer_A0 and the RTC both count ACLK, so the capture's age in
+  timer counts is its age in RTC ticks, exactly; the result is good to a tick.
+- **Shimmer3R.** TIM1 counts the 1 MHz clock divided down from the MSI
+  oscillator, which is not locked to the 32 kHz crystal. The age is rounded to
+  RTC ticks, and the MSI's error of about 1% applies only to the age:
+  microseconds normally. TIM1 is 16-bit, so a capture read more than 32.768 ms
+  after it happened is flagged `EVT_FLAG_LATE`; past 65.5 ms its age wraps.
+
+Times are stored in RTC ticks either way (§4.4), so Shimmer3R's 1 µs capture is
+rounded to 30.5 µs in the file.
+
+### 3.3 When it is armed
+
+Only during a logging session with `ttlInputEnable` set. Capture is armed when
+the data file opens and disarmed when logging stops. An edge between the data
+file opening and the event file opening waits with the button's records. There
+is no capture outside a session, and so no waking on a TTL edge.
+
+- **Shimmer3.** Timer_A0 is shared with SD sync, which uses CCR1. The timer
+  runs while either one uses it (`TA0_start()` / `TA0_stop()`); it used to be
+  started and stopped by SD sync alone.
+- **Shimmer3R.** TIM1's clock is on only while armed. PE9 then goes back to a
+  plain input ([SHIMMER3R_PERIPHERAL_ALLOCATION.md](SHIMMER3R_PERIPHERAL_ALLOCATION.md) §4).
+
+### 3.4 Lost edges and floods
+
+- **An edge the timer overwrote.** The timer captured again before its interrupt
+  read the first capture. At the next edge's time, an overflow record (type
+  0x04, TTL channel) marks the loss, and the dropped count goes up by one.
+  - Shimmer3 has one capture register for both edges and infers each edge's
+    direction from the one before; after a loss it takes the level from the
+    input.
+  - Shimmer3R knows each edge's direction from the channel that took it.
+- **A flood.** More than 32 edges in one 100 ms tick - a chattering or
+  mis-wired input - and the capture interrupt is switched off for a second, so
+  it cannot starve everything else. On re-arming, an overflow record gives the
+  input's level then, and the dropped count goes up by one. So the input records
+  at most 320 edges a second, which is 160 pulses.
+
+## 4. The event file
+
+### 4.1 Where
 
 ```
 /
@@ -95,7 +170,7 @@ sync is in the middle of an exchange over Bluetooth.
 `events/X` belongs with `data/X`: the same experiment directory, session
 directory and file number, with no extension. The event file splits when the
 data file does. Its header also carries the data file's initial timestamp
-(§3.2), so a copied or renamed file can still be paired.
+(§4.2), so a copied or renamed file can still be paired.
 
 Every tool that reads a card today looks only under `data/`, so the event files
 are invisible to them. Consensys imports a card unchanged. On Shimmer3R the SD
@@ -105,7 +180,7 @@ file transfer can list, read and delete them
 The longest event file path is 53 characters, within Shimmer3's 64-character
 long-name limit ([SD_CARD_FORMAT](SHIMMER3_SD_CARD_FORMAT.md) §1.4).
 
-### 3.2 Layout
+### 4.2 Layout
 
 A 64-byte header, then 16-byte records, all little-endian. Both are multiples of
 16, so no record straddles a 512-byte sector.
@@ -138,15 +213,15 @@ Record:
 
 | Offset | Size | Field |
 |---:|---:|---|
-| 0 | 1 | Type: 0x01 edge, 0x02 initial state, 0x03 heartbeat, 0x04 overflow (reserved). 0x10 and up are reserved |
-| 1 | 1 | Flags: bit 0 time latched by a timer, bit 1 synthesized, bit 2 late, bit 3 state stale, bit 7 final |
+| 0 | 1 | Type: 0x01 edge, 0x02 initial state, 0x03 heartbeat, 0x04 overflow (edges were lost just before this point, §3.4). 0x10 and up are reserved |
+| 1 | 1 | Flags: bit 0 time latched by a timer, bit 1 synthesized, bit 2 late (a TTL capture read more than 32.768 ms after it happened), bit 3 state stale (reserved), bit 7 final. Bit 6 is never written |
 | 2 | 2 | Sequence number. Continues across a split |
 | 4 | 8 | Time, in RTC ticks at 32768 Hz |
 | 12 | 1 | Channel: 0 button, 1 TTL, 0xFF none |
 | 13 | 1 | State of every input after this record: bit 0 button, bit 1 TTL |
 | 14 | 2 | Edges lost so far this session, stopping at 0xFFFF |
 
-### 3.3 What is written when
+### 4.3 What is written when
 
 The event file follows the data file but never delays it. Its open, split and
 one-minute sync wait for `TASK_EVENT_CHANNEL`, the lowest-priority task; only
@@ -159,7 +234,8 @@ the close at the end of a session is done at once.
     that started logging;
   - an initial-state record at the data file's open time;
   - anything recorded between the data file opening and now.
-- **During the session.** Each debounced edge is written as it is processed.
+- **During the session.** Each debounced button edge and each TTL edge is
+  written as it is processed.
 - **One-minute sync.** At the data file's one-minute sync, a heartbeat is
   written if nothing else has been for 60 s, then the file is synced. A file
   that stops growing has stopped recording.
@@ -172,11 +248,15 @@ the close at the end of a session is done at once.
 - **Errors.** A failed open or write stops the event file for the rest of the
   session. The data file is never affected.
 
-Edges are lost only when the 16-entry ring is full when an interrupt comes, or
-when more than 8 records arrive before the event file opens. Both are counted in
-every later record's dropped field.
+Edges are lost in four ways, and every one is counted in each later record's
+dropped field:
 
-### 3.4 Timing
+- the 16-entry ring is full when an interrupt comes;
+- more than 8 records arrive before the event file opens;
+- for the TTL input, the timer overwrites a capture;
+- for the TTL input, a flood (§3.4).
+
+### 4.4 Timing
 
 Times are RTC ticks, 1/32768 s (about 30.5 µs), the same timeline as the data
 file's samples: pair a record with the data file by subtracting the header's
@@ -186,23 +266,36 @@ file-open time, or compare it directly with an unwrapped sample time
 A button edge's time is the RTC reading in its interrupt, so it includes that
 interrupt's latency: microseconds normally, longer if another interrupt or a
 masked section holds it off. That is far below anything a press can resolve.
-Button records leave the timer-latched flag clear; it is for the TTL input.
+Button records leave the timer-latched flag clear. TTL records set it: their
+time is the edge's own, latched by the timer (§3.2).
 
-### 3.5 Memory
+### 4.5 Memory
 
 The event file uses `sdlog.cfg`'s file object (`ShimSdCfgFile_lendFil()`) for
 the length of a session: Shimmer3 has no RAM for another, and `sdlog.cfg` is
 never read or written while logging. While it is lent, `ShimSdCfgFile_parse()`
-and `ShimSdCfgFile_generate()` leave the card alone. The rest costs 449 bytes
-on Shimmer3, from the link map: the ring 160, the 8 kept records 128, the file
-state and path 112, the button's gesture state 44, and the indexes 5.
+and `ShimSdCfgFile_generate()` leave the card alone.
 
-## 4. Worked example
+The rest costs 490 bytes on Shimmer3, from the link map:
 
-A Shimmer3R on v1.01.025 logging for 2.5 minutes, started and stopped by a
-double press, with one marker press. The two 10 ms TTL pulses show how the TTL
-input's records will look; the firmware records only the button so far. 336
-bytes: the header and 17 records.
+| Item | Bytes |
+|---|---:|
+| The ring | 192 |
+| The 8 kept records | 128 |
+| The file state and path | 114 |
+| The button's gesture state | 44 |
+| The indexes and TTL state | 10 |
+| The shared Timer_A0's user mask and the next edge's direction | 2 |
+
+## 5. Worked example
+
+A Shimmer3R on v1.01.025 with both inputs on, logging for 2.5 minutes:
+
+- started and stopped by a double press;
+- one marker press;
+- two 10 ms pulses on the TTL input.
+
+336 bytes: the header and 17 records.
 
 ```
  # | type  | flags | ch  | state | t from open (s) |
@@ -266,10 +359,10 @@ this and checks it: whole records, sequence numbers without gaps, times that
 never go backwards, a final record, and with `--data` that it pairs with the
 data file it was recorded beside.
 
-## 5. Not yet
+## 6. Not yet
 
-- **TTL input.** Timer input capture: P1.5 on TA0.CCI4A on Shimmer3, PE9 on
-  TIM1_CH1 on Shimmer3R. Its records will set the timer-latched flag.
+- **Which expansion boards bring the TTL input to a connector**, and at what
+  level they can be driven (§3.1).
 - **Streaming the events over Bluetooth.** An opt-in in-stream frame; hosts do
   not handle an unknown in-stream response today, so it cannot be sent unasked.
 - **Host parsers.** Consensys, the APIs and the web SDK do not read event files

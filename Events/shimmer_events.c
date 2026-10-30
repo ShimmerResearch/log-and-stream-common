@@ -33,7 +33,9 @@
 typedef struct
 {
   uint64_t ts;
-  uint8_t isPress;
+  uint8_t channel;
+  uint8_t level;
+  uint8_t flags;
 } ShimEvtRaw;
 
 /* One producer at a time - interrupt handlers do not nest on Shimmer3, and the
@@ -44,10 +46,18 @@ static volatile uint8_t ringHead;   /* interrupt */
 static volatile uint8_t ringTail;   /* main loop */
 static volatile uint16_t ringDrops; /* interrupt; taken by the main loop */
 
+/* TTL flood control: counted by the capture interrupt, reset and counted down
+ * by the blink tick */
+static volatile uint8_t ttlEdgesThisTick;
+static volatile uint8_t ttlThrottled;
+static volatile uint8_t ttlThrottleTicks;
+
 /* Everything below is main loop only. Records kept while no event file is
  * open, oldest first. */
 static ShimEvtRecord preroll[EVT_PREROLL_LEN];
 static uint8_t prerollCount;
+static uint8_t ttlArmed;
+static uint8_t ttlLevel;
 
 static struct
 {
@@ -59,6 +69,7 @@ static struct
   uint8_t syncPending;
   uint8_t error;
   uint8_t filLent;
+  uint8_t enables; /* EVT_ENABLE_*, from the configuration at session start */
   uint16_t seq;
   uint16_t dropped;
   uint64_t openTs;
@@ -75,18 +86,25 @@ void ShimEvt_init(void)
   ringHead = 0;
   ringTail = 0;
   ringDrops = 0;
+  ttlEdgesThisTick = 0;
+  ttlThrottled = 0;
+  ttlThrottleTicks = 0;
   prerollCount = 0;
+  ttlArmed = 0;
+  ttlLevel = 0;
   memset(&evtFile, 0, sizeof(evtFile));
 }
 
-uint8_t ShimEvt_isrPushButtonEdge(uint8_t isPress)
+static uint8_t isrPush(uint8_t channel, uint8_t level, uint8_t flags, uint64_t ts)
 {
   uint8_t head = ringHead;
 
   if ((uint8_t) (head - ringTail) < EVT_RING_LEN)
   {
-    ring[head % EVT_RING_LEN].ts = RTC_get64();
-    ring[head % EVT_RING_LEN].isPress = isPress ? 1U : 0U;
+    ring[head % EVT_RING_LEN].ts = ts;
+    ring[head % EVT_RING_LEN].channel = channel;
+    ring[head % EVT_RING_LEN].level = level ? 1U : 0U;
+    ring[head % EVT_RING_LEN].flags = flags;
     ringHead = (uint8_t) (head + 1U);
   }
   else if (ringDrops < 0xFFFFU)
@@ -96,13 +114,42 @@ uint8_t ShimEvt_isrPushButtonEdge(uint8_t isPress)
   return ShimTask_set(TASK_EVENT_CHANNEL);
 }
 
+uint8_t ShimEvt_isrPushButtonEdge(uint8_t isPress)
+{
+  return isrPush(EVT_CHANNEL_BUTTON, isPress, 0U, RTC_get64());
+}
+
+uint8_t ShimEvt_isrPushTtlEdge(uint8_t level, uint64_t ts, uint8_t flags)
+{
+  if (++ttlEdgesThisTick > EVT_TTL_MAX_EDGES_PER_TICK)
+  {
+    /* The blink tick counts this down and the main loop re-arms the input */
+    Board_evtTtlArm(0);
+    ttlThrottled = 1;
+    ttlThrottleTicks = EVT_TTL_THROTTLE_TICKS;
+    return 0;
+  }
+  return isrPush(EVT_CHANNEL_TTL, level, flags, ts);
+}
+
 uint8_t ShimEvt_tick(void)
 {
+  uint8_t wake = 0;
+
+  ttlEdgesThisTick = 0;
+  if (ttlThrottleTicks != 0U)
+  {
+    ttlThrottleTicks--;
+    if (ttlThrottleTicks == 0U)
+    {
+      wake |= ShimTask_set(TASK_EVENT_CHANNEL);
+    }
+  }
   if (ShimBtn_isRecheckPending())
   {
-    return ShimTask_set(TASK_EVENT_CHANNEL);
+    wake |= ShimTask_set(TASK_EVENT_CHANNEL);
   }
-  return 0;
+  return wake;
 }
 
 static void addDropped(uint16_t count)
@@ -113,7 +160,8 @@ static void addDropped(uint16_t count)
 
 static uint8_t currentState(void)
 {
-  return ShimBtn_isPressed() ? EVT_STATE_BUTTON : 0U;
+  return (uint8_t) ((ShimBtn_isPressed() ? EVT_STATE_BUTTON : 0U)
+      | (ttlLevel ? EVT_STATE_TTL : 0U));
 }
 
 static uint8_t channelStateBit(uint8_t channel)
@@ -286,7 +334,7 @@ static void openFile(const ShimEvtRecord *next)
   hdr.fwInternal = FW_VERSION_PATCH;
   hdr.firstSeq = evtFile.seq;
   hdr.openReason = evtFile.openReason;
-  hdr.enables = EVT_ENABLE_BUTTON;
+  hdr.enables = evtFile.enables;
   ShimEvtRec_encodeHeader(&hdr, buf);
   if (f_write(evtFile.fil, buf, EVT_FILE_HEADER_LEN, &bw) != FR_OK || bw != EVT_FILE_HEADER_LEN)
   {
@@ -412,6 +460,73 @@ void ShimEvt_recordButtonEdge(uint64_t ts, uint8_t level, uint8_t flags)
   emit(&rec);
 }
 
+static void recordTtl(uint8_t type, uint8_t flags, uint64_t ts, uint8_t level)
+{
+  ShimEvtRecord rec;
+
+  rec.type = type;
+  rec.flags = flags;
+  rec.seq = 0;
+  rec.ts = ts;
+  rec.channel = EVT_CHANNEL_TTL;
+  rec.state = (uint8_t) ((ShimBtn_isPressed() ? EVT_STATE_BUTTON : 0U)
+      | (level ? EVT_STATE_TTL : 0U));
+  rec.dropped = 0;
+  emit(&rec);
+}
+
+static void processTtlEdge(uint64_t ts, uint8_t level, uint8_t flags)
+{
+  if (flags & EVT_RAW_EDGES_LOST)
+  {
+    /* The timer overwrote an edge before reading this one: say so where it
+     * happened, at the level last known */
+    addDropped(1);
+    recordTtl(EVT_TYPE_OVERFLOW, 0U, ts, ttlLevel);
+  }
+  ttlLevel = level;
+  recordTtl(EVT_TYPE_EDGE, (uint8_t) (flags & (uint8_t) ~EVT_RAW_EDGES_LOST), ts, level);
+}
+
+/* After a throttle second, take the input back: what it did in that second is
+ * lost, so an overflow record marks the gap and gives its level now */
+static void ttlRearmIfDue(void)
+{
+  if (!ttlThrottled || ttlThrottleTicks != 0U)
+  {
+    return;
+  }
+  ttlThrottled = 0;
+  if (!ttlArmed)
+  {
+    return;
+  }
+  addDropped(1);
+  ttlLevel = Board_evtTtlLevel();
+  recordTtl(EVT_TYPE_OVERFLOW, 0U, RTC_get64(), ttlLevel);
+  Board_evtTtlArm(1);
+}
+
+static void ttlArm(uint8_t enable)
+{
+  if (enable)
+  {
+    ttlThrottled = 0;
+    ttlThrottleTicks = 0;
+    ttlLevel = Board_evtTtlLevel();
+    ttlArmed = 1;
+    Board_evtTtlArm(1);
+  }
+  else if (ttlArmed)
+  {
+    /* ttlLevel stays as last seen, for the records still to be written */
+    ttlArmed = 0;
+    ttlThrottled = 0;
+    ttlThrottleTicks = 0;
+    Board_evtTtlArm(0);
+  }
+}
+
 void ShimEvt_process(void)
 {
   uint16_t drops;
@@ -421,10 +536,19 @@ void ShimEvt_process(void)
   {
     uint8_t i = (uint8_t) (ringTail % EVT_RING_LEN);
     uint64_t ts = ring[i].ts;
-    uint8_t isPress = ring[i].isPress;
+    uint8_t channel = ring[i].channel;
+    uint8_t level = ring[i].level;
+    uint8_t flags = ring[i].flags;
 
     ringTail = (uint8_t) (ringTail + 1U);
-    ShimBtn_processEdge(ts, isPress);
+    if (channel == EVT_CHANNEL_TTL)
+    {
+      processTtlEdge(ts, level, flags);
+    }
+    else
+    {
+      ShimBtn_processEdge(ts, level);
+    }
   }
 
   {
@@ -438,6 +562,7 @@ void ShimEvt_process(void)
     addDropped(drops);
   }
 
+  ttlRearmIfDue();
   ShimBtn_recheckIfDue(RTC_get64());
 
 #if USE_FATFS
@@ -448,6 +573,8 @@ void ShimEvt_process(void)
 void ShimEvt_onSessionStart(uint64_t fileOpenTs)
 {
 #if USE_FATFS
+  gConfigBytes *cfg = ShimConfig_getStoredConfig();
+
   evtFile.sessionActive = 0;
   evtFile.isOpen = 0;
   evtFile.splitPending = 0;
@@ -455,7 +582,9 @@ void ShimEvt_onSessionStart(uint64_t fileOpenTs)
   evtFile.error = 0;
   evtFile.seq = 0;
   evtFile.dropped = 0;
-  if (!ShimConfig_getStoredConfig()->buttonEventMarkerEnable)
+  evtFile.enables = (uint8_t) ((cfg->buttonEventMarkerEnable ? EVT_ENABLE_BUTTON : 0U)
+      | (cfg->ttlInputEnable ? EVT_ENABLE_TTL : 0U));
+  if (evtFile.enables == 0U)
   {
     prerollCount = 0;
     return;
@@ -472,6 +601,9 @@ void ShimEvt_onSessionStart(uint64_t fileOpenTs)
   evtFile.openPending = 1;
   evtFile.openReason = EVT_OPEN_SESSION_START;
   evtFile.openTs = fileOpenTs;
+  /* Armed now, so an edge from the data file's first moment is captured; its
+   * record waits with the button's for the file to open */
+  ttlArm((evtFile.enables & EVT_ENABLE_TTL) != 0U);
   (void) ShimTask_set(TASK_EVENT_CHANNEL);
 #else
   (void) fileOpenTs;
@@ -514,7 +646,9 @@ void ShimEvt_onSessionStop(void)
     return;
   }
 
-  /* Edges still queued, and an open or split still waiting for the task */
+  /* No TTL edges after this; then the ones still queued, and an open or split
+   * still waiting for the task */
+  ttlArm(0);
   ShimEvt_process();
 
 #if USE_FATFS
@@ -535,6 +669,7 @@ void ShimEvt_onSessionStop(void)
   evtFile.splitPending = 0;
   evtFile.syncPending = 0;
   prerollCount = 0;
+  ttlLevel = 0;
 }
 
 uint8_t ShimEvt_isFileError(void)
