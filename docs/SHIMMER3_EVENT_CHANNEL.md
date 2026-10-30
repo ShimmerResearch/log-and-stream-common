@@ -22,7 +22,7 @@ The code:
 | Input | Configuration byte 218 ([CONFIGURATION_INFOMEM](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.2) | `sdlog.cfg` | SD header byte 17, a copy of byte 218 |
 |---|---|---|---|
 | Button markers | bit 1, `buttonEventMarkerEnable` | `button_event_marker_enable` | `SDH_BUTTON_EVENT_MARKER` (0x02) |
-| TTL input | bit 2, `ttlInputEnable` | `ttl_input_enable` | `SDH_TTL_INPUT` (0x04) |
+| TTL input | bit 5, `ttlInputEnable` | `ttl_input_enable` | `SDH_TTL_INPUT` (0x20) |
 
 Both are off by default. With both off, nothing is written and no `events/`
 directory is created; the button still starts and stops logging with a single
@@ -31,7 +31,14 @@ event file, and its header says which inputs it records.
 
 `userButtonEnable` (byte 217 bit 5) still decides whether the button may start
 and stop logging at all. With markers on and `userButtonEnable` off, presses are
-recorded and logging is left alone.
+recorded and the button leaves logging alone.
+
+> **`userButtonEnable` off also starts logging on undock.** With it off (and
+> `singleTouchStart` off), the unit starts logging whenever it leaves the dock
+> with a card in the slot (`ShimSens_startLoggingIfUndockStartEnabled()`). On a
+> Shimmer3R, unplugging USB-C counts as leaving the dock. So turning the button
+> off does not stop a unit logging, and nothing in the event channel changes
+> that.
 
 On a Shimmer3R SR48-6-0 board, both bits are cleared at validation:
 
@@ -40,8 +47,9 @@ On a Shimmer3R SR48-6-0 board, both bits are cleared at validation:
 - **The TTL input.** Its expansion pins are routed differently, and PE9 has not
   been checked on it.
 
-> **A host that rewrites byte 218 must keep bits 1 and 2.** Read the byte,
-> change the bits you mean to, and write it back.
+> **A host that rewrites byte 218 must keep bits 1 and 5.** Read the byte,
+> change the bits you mean to, and write it back. The TTL input is bit 5, not
+> bit 2, because older hosts write bit 2 (CONFIGURATION_INFOMEM §8.2).
 
 ## 2. The user button
 

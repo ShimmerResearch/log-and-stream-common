@@ -394,12 +394,15 @@ typedef union
     /* Record every button edge as an event marker; a double press then
      * starts and stops logging (Events/shimmer_events.h) */
     uint8_t buttonEventMarkerEnable : 1;
+    /* Bits 2 and 3 are written by older hosts' SET_TRIAL_CONFIG: the Java
+     * driver always sets bit 2, and Java and C# put expansion power in bit 3.
+     * Keep them unused (docs/SHIMMER3_CONFIGURATION_INFOMEM.md section 8.2) */
+    uint8_t unusedIdx218Bit2 : 1;
+    uint8_t unusedIdx218Bit3 : 1;
+    uint8_t tcxo             : 1;
     /* Record the TTL input's edges, captured by a timer, in the same event
      * file (Events/shimmer_events.h) */
     uint8_t ttlInputEnable   : 1;
-    uint8_t unusedIdx218Bit3 : 1;
-    uint8_t tcxo             : 1;
-    uint8_t unusedIdx218Bit5 : 1;
     uint8_t unusedIdx218Bit6 : 1;
     uint8_t singleTouchStart : 1;
 
