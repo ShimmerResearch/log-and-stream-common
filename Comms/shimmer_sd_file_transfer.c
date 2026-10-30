@@ -280,8 +280,28 @@ static uint8_t sdFtCopyPathArg(const uint8_t *src, uint8_t pathLen, char *dst)
   return 1;
 }
 
+/* 1 if p is something under the directory root (given in lower case),
+ * ignoring case */
+static uint8_t sdFtIsUnderRoot(const char *p, const char *root)
+{
+  while (*root != '\0')
+  {
+    char c = *p++;
+    if (c >= 'A' && c <= 'Z')
+    {
+      c = (char) (c - 'A' + 'a');
+    }
+    if (c != *root++)
+    {
+      return 0;
+    }
+  }
+  return (p[0] == '/' && p[1] != '\0');
+}
+
 /* Deletion is restricted to content strictly under the data/ logging
- * directory so a host bug can never take out sdlog.cfg or /Calibration */
+ * directory and the events/ directory beside it, so a host bug can never take
+ * out sdlog.cfg or /Calibration */
 static uint8_t sdFtIsDeletablePath(const char *path)
 {
   const char *p = path;
@@ -289,9 +309,7 @@ static uint8_t sdFtIsDeletablePath(const char *path)
   {
     p++;
   }
-  if (!((p[0] == 'd' || p[0] == 'D') && (p[1] == 'a' || p[1] == 'A')
-          && (p[2] == 't' || p[2] == 'T') && (p[3] == 'a' || p[3] == 'A')
-          && p[4] == '/' && p[5] != '\0'))
+  if (!sdFtIsUnderRoot(p, "data") && !sdFtIsUnderRoot(p, "events"))
   {
     return 0;
   }
