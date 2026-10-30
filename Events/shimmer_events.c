@@ -12,8 +12,14 @@
 #include "log_and_stream_includes.h"
 /* DEVICE_VER, FW_IDENTIFIER and the version, for the file header - included
  * directly, as SDCard/shimmer_sd_header.c does */
+#include "Comms/shimmer_bt_reply.h"
+#include "Comms/shimmer_bt_uart.h"
 #include "shimmer_definitions.h"
 #include "version.h"
+
+#if EVT_BT_FRAME_TYPE != INSTREAM_CMD_RESPONSE || EVT_BT_FRAME_SUBTYPE != EVENT_RECORD_RESPONSE
+#error "Events/shimmer_event_record.h and Comms/shimmer_bt_uart.h disagree on the event frame's opcodes"
+#endif
 
 #if defined(__MSP430__)
 #define EVT_IRQ_SAVE()                            \
@@ -52,12 +58,28 @@ static volatile uint8_t ttlEdgesThisTick;
 static volatile uint8_t ttlThrottled;
 static volatile uint8_t ttlThrottleTicks;
 
+/* Bluetooth: what the host asked for (any context), and a frame waiting for
+ * TX space (set by the task, cleared by the TX-complete interrupt) */
+static volatile uint8_t btStreamWanted;
+static volatile uint8_t btWaitingForTxSpace;
+
 /* Everything below is main loop only. Records kept while no event file is
  * open, oldest first. */
 static ShimEvtRecord preroll[EVT_PREROLL_LEN];
 static uint8_t prerollCount;
 static uint8_t ttlArmed;
 static uint8_t ttlLevel;
+
+/* The link's own state, from the opt-in until it ends */
+static struct
+{
+  uint8_t on;
+  uint8_t count; /* records in queue, oldest first */
+  uint16_t seq;
+  uint16_t dropped;    /* edges lost, as in the event file */
+  uint16_t framesLost; /* records the queue had no room for */
+  ShimEvtRecord queue[EVT_BT_QUEUE_LEN];
+} btLink;
 
 static struct
 {
@@ -89,10 +111,28 @@ void ShimEvt_init(void)
   ttlEdgesThisTick = 0;
   ttlThrottled = 0;
   ttlThrottleTicks = 0;
+  btStreamWanted = 0;
+  btWaitingForTxSpace = 0;
   prerollCount = 0;
   ttlArmed = 0;
   ttlLevel = 0;
+  memset(&btLink, 0, sizeof(btLink));
   memset(&evtFile, 0, sizeof(evtFile));
+}
+
+void ShimEvt_setBtStream(uint8_t enable)
+{
+  btStreamWanted = enable ? 1U : 0U;
+  (void) ShimTask_set(TASK_EVENT_CHANNEL);
+}
+
+void ShimEvt_btTxSpaceAvailable(void)
+{
+  if (btWaitingForTxSpace)
+  {
+    btWaitingForTxSpace = 0;
+    (void) ShimTask_set(TASK_EVENT_CHANNEL);
+  }
 }
 
 static uint8_t isrPush(uint8_t channel, uint8_t level, uint8_t flags, uint64_t ts)
@@ -152,10 +192,16 @@ uint8_t ShimEvt_tick(void)
   return wake;
 }
 
+static uint16_t addSaturating(uint16_t a, uint16_t b)
+{
+  uint32_t total = (uint32_t) a + b;
+  return (total > 0xFFFFUL) ? 0xFFFFU : (uint16_t) total;
+}
+
 static void addDropped(uint16_t count)
 {
-  uint32_t total = (uint32_t) evtFile.dropped + count;
-  evtFile.dropped = (total > 0xFFFFUL) ? 0xFFFFU : (uint16_t) total;
+  evtFile.dropped = addSaturating(evtFile.dropped, count);
+  btLink.dropped = addSaturating(btLink.dropped, count);
 }
 
 static uint8_t currentState(void)
@@ -428,8 +474,83 @@ static void fileService(void)
 }
 #endif /* USE_FATFS */
 
+/* A copy for the host, with the link's own sequence number: a gap in it is a
+ * record the link lost, while the dropped count is edges lost before any
+ * record was made */
+static void btQueue(const ShimEvtRecord *rec)
+{
+  uint16_t seq;
+
+  if (!btLink.on || !shimmerStatus.btConnected)
+  {
+    return;
+  }
+  seq = btLink.seq++;
+  if (btLink.count == EVT_BT_QUEUE_LEN)
+  {
+    btLink.framesLost = addSaturating(btLink.framesLost, 1U);
+    return;
+  }
+  btLink.queue[btLink.count] = *rec;
+  btLink.queue[btLink.count].seq = seq;
+  btLink.queue[btLink.count].dropped = btLink.dropped;
+  btLink.count++;
+}
+
+static void btFlush(void)
+{
+  uint8_t frame[EVT_BT_FRAME_LEN];
+  uint16_t crc;
+  uint8_t sent = 0;
+
+  while (btLink.count != 0U)
+  {
+    if (!btLink.on || !shimmerStatus.btConnected)
+    {
+      btLink.count = 0;
+      return;
+    }
+    if (sent == EVT_BT_FRAMES_PER_PASS)
+    {
+      /* The rest on the next pass, after any data packet waiting */
+      (void) ShimTask_set(TASK_EVENT_CHANNEL);
+      return;
+    }
+
+    /* A held command reply goes first, and the room kept for replies stays
+     * free (Comms/shimmer_bt_reply.h). The flag is set before the check, so a
+     * TX-complete between the two still brings the task back. */
+    btWaitingForTxSpace = 1;
+    if (gBtReplyPendingLen != 0U
+        || ShimBt_getSpaceInBtTxBuf()
+            < (uint16_t) (EVT_BT_FRAME_LEN + BT_TX_REPLY_RESERVE + 1U))
+    {
+      return;
+    }
+
+    ShimEvtRec_encodeBtFrame(&btLink.queue[0], frame);
+    crc = (uint16_t) platform_crcData16(frame, EVT_BT_FRAME_CRC_OFFSET);
+    frame[EVT_BT_FRAME_CRC_OFFSET] = (uint8_t) crc;
+    frame[EVT_BT_FRAME_CRC_OFFSET + 1U] = (uint8_t) (crc >> 8);
+    /* Written as a command reply is: SHIMMER_CMD, not SENSOR_DATA, since on
+     * Shimmer3's RN4678 paths data is held back to be grouped, which would
+     * strand an event while nothing streams. Not ShimBt_writeToTxBufAndSend()
+     * directly: on Shimmer3 that is a function pointer declared in RN4X.h. */
+    if (ShimBt_writeReplyToTxBuf(frame, EVT_BT_FRAME_LEN))
+    {
+      return;
+    }
+    btWaitingForTxSpace = 0;
+
+    btLink.count--;
+    memmove(&btLink.queue[0], &btLink.queue[1], sizeof(btLink.queue[0]) * btLink.count);
+    sent++;
+  }
+}
+
 static void emit(ShimEvtRecord *rec)
 {
+  btQueue(rec);
 #if USE_FATFS
   if (evtFile.sessionActive && !evtFile.openPending)
   {
@@ -527,9 +648,59 @@ static void ttlArm(uint8_t enable)
   }
 }
 
+/* Armed while a session records the TTL input, or while a host has opted in
+ * to the stream and the input is enabled */
+static void ttlUpdateArming(void)
+{
+  uint8_t want = ShimConfig_getStoredConfig()->ttlInputEnable
+      && ((evtFile.sessionActive && !evtFile.error && (evtFile.enables & EVT_ENABLE_TTL))
+          || btLink.on);
+
+  if (want && !ttlArmed)
+  {
+    ttlArm(1);
+  }
+  else if (!want && ttlArmed)
+  {
+    ttlArm(0);
+    if (!evtFile.sessionActive)
+    {
+      ttlLevel = 0;
+    }
+  }
+}
+
+/* The host's opt-in, applied in the task: a fresh link, sequence from 0, and
+ * the inputs' state as its first record so the host need not wait for an edge */
+static void btApplyWanted(void)
+{
+  uint8_t want = btStreamWanted;
+  ShimEvtRecord rec;
+
+  if (want == btLink.on)
+  {
+    return;
+  }
+  memset(&btLink, 0, sizeof(btLink));
+  btLink.on = want;
+  btWaitingForTxSpace = 0;
+  ttlUpdateArming();
+  if (want)
+  {
+    memset(&rec, 0, sizeof(rec));
+    rec.type = EVT_TYPE_INITIAL_STATE;
+    rec.ts = RTC_get64();
+    rec.channel = EVT_CHANNEL_NONE;
+    rec.state = currentState();
+    btQueue(&rec);
+  }
+}
+
 void ShimEvt_process(void)
 {
   uint16_t drops;
+
+  btApplyWanted();
 
   /* Edges first, so the file work below sees every record before it */
   while (ringTail != ringHead)
@@ -568,6 +739,7 @@ void ShimEvt_process(void)
 #if USE_FATFS
   fileService();
 #endif
+  btFlush();
 }
 
 void ShimEvt_onSessionStart(uint64_t fileOpenTs)
@@ -603,7 +775,7 @@ void ShimEvt_onSessionStart(uint64_t fileOpenTs)
   evtFile.openTs = fileOpenTs;
   /* Armed now, so an edge from the data file's first moment is captured; its
    * record waits with the button's for the file to open */
-  ttlArm((evtFile.enables & EVT_ENABLE_TTL) != 0U);
+  ttlUpdateArming();
   (void) ShimTask_set(TASK_EVENT_CHANNEL);
 #else
   (void) fileOpenTs;
@@ -646,9 +818,13 @@ void ShimEvt_onSessionStop(void)
     return;
   }
 
-  /* No TTL edges after this; then the ones still queued, and an open or split
-   * still waiting for the task */
-  ttlArm(0);
+  /* No TTL edges for the file after this, unless a host is still taking them;
+   * then the ones still queued, and an open or split still waiting for the
+   * task */
+  if (!btLink.on)
+  {
+    ttlArm(0);
+  }
   ShimEvt_process();
 
 #if USE_FATFS
@@ -669,10 +845,37 @@ void ShimEvt_onSessionStop(void)
   evtFile.splitPending = 0;
   evtFile.syncPending = 0;
   prerollCount = 0;
-  ttlLevel = 0;
+  if (!ttlArmed)
+  {
+    ttlLevel = 0;
+  }
+  ttlUpdateArming();
 }
 
 uint8_t ShimEvt_isFileError(void)
 {
   return evtFile.error;
+}
+
+static void putLe16(uint8_t *out, uint16_t v)
+{
+  out[0] = (uint8_t) v;
+  out[1] = (uint8_t) (v >> 8);
+}
+
+uint8_t ShimEvt_buildStatus(uint8_t *out)
+{
+  gConfigBytes *cfg = ShimConfig_getStoredConfig();
+
+  out[0] = (uint8_t) ((cfg->buttonEventMarkerEnable ? EVT_ENABLE_BUTTON : 0U)
+      | (cfg->ttlInputEnable ? EVT_ENABLE_TTL : 0U));
+  /* The opt-in as asked for: the task may not have applied it yet */
+  out[1] = (uint8_t) ((btStreamWanted ? 0x01U : 0U)
+      | (evtFile.isOpen ? 0x02U : 0U) | (evtFile.error ? 0x04U : 0U)
+      | (ttlArmed ? 0x08U : 0U) | (ttlThrottled ? 0x10U : 0U));
+  out[2] = currentState();
+  putLe16(&out[3], btLink.seq);
+  putLe16(&out[5], evtFile.dropped);
+  putLe16(&out[7], btLink.framesLost);
+  return EVT_STATUS_LEN;
 }

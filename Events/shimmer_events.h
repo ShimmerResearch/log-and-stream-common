@@ -46,6 +46,20 @@
 /* Passed in with a TTL edge, never written to the file: the timer overwrote at
  * least one edge before this one */
 #define EVT_RAW_EDGES_LOST         0x40U
+/* Records waiting for room in the Bluetooth TX ring, and frames sent per pass
+ * of the task. A record that finds the queue full is lost to the link only -
+ * the event file still has it - and the gap shows in the frames' sequence
+ * numbers. Shimmer3's TX ring is 256 bytes and shared with the data stream, so
+ * one frame at a time there, and RAM keeps its queue to a double press. */
+#if defined(SHIMMER3)
+#define EVT_BT_QUEUE_LEN       4U
+#define EVT_BT_FRAMES_PER_PASS 1U
+#else
+#define EVT_BT_QUEUE_LEN       8U
+#define EVT_BT_FRAMES_PER_PASS 8U
+#endif
+/* GET_EVENT_CHANNEL_STATUS_COMMAND's response payload, after the opcode */
+#define EVT_STATUS_LEN 9U
 
 void ShimEvt_init(void);
 
@@ -76,5 +90,16 @@ void ShimEvt_onSessionStop(void);
 /* 1 once the event file has failed this session. The data file is never
  * affected. */
 uint8_t ShimEvt_isFileError(void);
+
+/* SET_FEATURE / FEATURE_EVENT_STREAM, and its reset on connect, disconnect and
+ * FEATURE_NONE. Any context: the task applies it. While on, every record is
+ * also sent to the host, and the inputs that are enabled are armed even when
+ * nothing is being logged. */
+void ShimEvt_setBtStream(uint8_t enable);
+/* Interrupt context, from ShimBt_TxCpltCallback: room may have been made for
+ * a waiting frame */
+void ShimEvt_btTxSpaceAvailable(void);
+/* GET_EVENT_CHANNEL_STATUS_COMMAND: writes EVT_STATUS_LEN bytes, returns it */
+uint8_t ShimEvt_buildStatus(uint8_t *out);
 
 #endif /* SHIMMER_EVENTS_H_ */

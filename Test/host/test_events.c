@@ -12,7 +12,10 @@
  * - at a split the old file ends with a final record, the new one carries on
  *   the sequence, and an edge from before the split stays in the old file;
  * - the close writes a final record and gives sdlog.cfg its file object back;
- * - a card error stops the event file and nothing else.
+ * - a card error stops the event file and nothing else;
+ * - a connected host that opts in gets every record over Bluetooth, logging or
+ *   not, behind any held command reply and the TX room kept for replies, and
+ *   a frame the link could not queue shows as a gap in the link's sequence.
  *
  * Built against the stub platform as Shimmer3R. Run by
  * .github/workflows/host-tests.yml.
@@ -28,6 +31,9 @@
 
 #include "host_stubs.h"
 #include "log_and_stream_includes.h"
+
+#include "Comms/shimmer_bt_reply.h"
+#include "Comms/shimmer_bt_uart.h"
 
 /* ---- fake FatFs ---------------------------------------------------------- */
 
@@ -179,9 +185,14 @@ uint8_t Board_isBtnPressed(void)
   return pinPressed;
 }
 
+static uint8_t evtTaskSet;
+
 uint8_t ShimTask_NORM_set(TaskId_t task_id)
 {
-  (void) task_id;
+  if (task_id == TASK_EVENT_CHANNEL)
+  {
+    evtTaskSet = 1;
+  }
   return 0;
 }
 
@@ -199,6 +210,41 @@ void Board_evtTtlArm(uint8_t enable)
 uint8_t Board_evtTtlLevel(void)
 {
   return ttlPin;
+}
+
+/* The Bluetooth TX ring: frames sent, room left, and a held reply */
+#define FAKE_BT_FRAMES 16U
+uint16_t gBtReplyPendingLen;
+static uint8_t btFrames[FAKE_BT_FRAMES][EVT_BT_FRAME_LEN];
+static uint8_t btFrameCount;
+static uint16_t btTxSpace;
+
+uint16_t ShimBt_getSpaceInBtTxBuf(void)
+{
+  return btTxSpace;
+}
+
+/* Frames go out the way command replies do, as SHIMMER_CMD */
+uint8_t ShimBt_writeReplyToTxBuf(uint8_t *buf, uint16_t len)
+{
+  if (len != EVT_BT_FRAME_LEN || btFrameCount == FAKE_BT_FRAMES || btTxSpace < len)
+  {
+    return 1;
+  }
+  memcpy(btFrames[btFrameCount++], buf, len);
+  btTxSpace = (uint16_t) (btTxSpace - len);
+  return 0;
+}
+
+uint32_t platform_crcData16(uint8_t *buf, uint16_t len)
+{
+  /* Any function of the bytes will do: the real CRC has its own suite */
+  uint32_t sum = 0x1D0FU;
+  while (len--)
+  {
+    sum = (sum * 31U) + *buf++;
+  }
+  return sum & 0xFFFFU;
 }
 
 /* ---- helpers ------------------------------------------------------------- */
@@ -226,6 +272,11 @@ static void reset(uint8_t markers)
   ttlArmed = 0;
   ttlArmCalls = 0;
   ttlPin = 0;
+  gBtReplyPendingLen = 0;
+  memset(btFrames, 0, sizeof(btFrames));
+  btFrameCount = 0;
+  btTxSpace = 4096U;
+  evtTaskSet = 0;
   strcpy(dataFileName, "data/" DIR_SESSION "/000");
   ShimConfig_getStoredConfig()->buttonEventMarkerEnable = markers;
   ShimBtn_init();
@@ -276,6 +327,28 @@ static const uint8_t *rec(const FakeFile *f, uint32_t i)
 #define REC_CHANNEL(r) ((r)[12])
 #define REC_STATE(r)   ((r)[13])
 #define REC_DROPPED(r) le(&(r)[14], 2)
+
+/* A frame sent to the host: its record, after checking what wraps it */
+static const uint8_t *frameRec(uint8_t i)
+{
+  const uint8_t *fr = btFrames[i];
+  uint16_t crc = (uint16_t) platform_crcData16((uint8_t *) fr, EVT_BT_FRAME_CRC_OFFSET);
+
+  expectX("in-stream response", fr[0], INSTREAM_CMD_RESPONSE);
+  expectX("event record", fr[1], EVENT_RECORD_RESPONSE);
+  expectU("record length", fr[2], EVT_RECORD_LEN);
+  expectU("CRC", le(&fr[EVT_BT_FRAME_CRC_OFFSET], 2), crc);
+  return &fr[EVT_BT_FRAME_HEAD_LEN];
+}
+
+/* Connected, opted in, and the opt-in applied */
+static void btOptIn(uint32_t atMs)
+{
+  shimmerStatus.btConnected = 1;
+  hostStub_setTick(atMs);
+  ShimEvt_setBtStream(1);
+  ShimEvt_process();
+}
 
 /* ---- tests --------------------------------------------------------------- */
 
@@ -605,6 +678,202 @@ static void test_ttl_flood_is_throttled(void)
   ShimEvt_onSessionStop();
 }
 
+static void test_bt_stream_without_a_session(void)
+{
+  const uint8_t *r;
+
+  testCase("Bluetooth: an opted-in host gets the state, then every edge, with "
+           "no session");
+  reset(1);
+  ShimConfig_getStoredConfig()->ttlInputEnable = 1;
+  ttlPin = 1;
+  btOptIn(500);
+  expectTrue("TTL armed for the host", ttlArmed);
+  expectU("a frame", btFrameCount, 1);
+  r = frameRec(0);
+  expectU("initial state first", REC_TYPE(r), EVT_TYPE_INITIAL_STATE);
+  expectU("seq 0", REC_SEQ(r), 0);
+  expectU("TTL high at the opt-in", REC_STATE(r), EVT_STATE_TTL);
+  expectU("at the opt-in", REC_TS(r), rtc(500));
+
+  edgeAt(1000, 1);
+  edgeAt(1100, 0);
+  ttlAt(1200, 0, EVT_FLAG_HW_CAPTURE);
+  ShimEvt_process();
+  expectU("press, release, TTL", btFrameCount, 4);
+  r = frameRec(1);
+  expectU("press", REC_TYPE(r), EVT_TYPE_EDGE);
+  expectU("press channel", REC_CHANNEL(r), EVT_CHANNEL_BUTTON);
+  expectU("press state", REC_STATE(r), EVT_STATE_BUTTON | EVT_STATE_TTL);
+  expectU("press seq", REC_SEQ(r), 1);
+  expectU("press time", REC_TS(r), rtc(1000));
+  r = frameRec(3);
+  expectU("TTL channel", REC_CHANNEL(r), EVT_CHANNEL_TTL);
+  expectU("TTL fell", REC_STATE(r), 0);
+  expectU("TTL timer-latched", REC_FLAGS(r), EVT_FLAG_HW_CAPTURE);
+  expectU("TTL seq", REC_SEQ(r), 3);
+  expectU("no file", fileCount, 0);
+
+  ShimEvt_setBtStream(0);
+  ShimEvt_process();
+  expectFalse("disarmed when the host opts out", ttlArmed);
+  edgeAt(2000, 1);
+  expectU("nothing after the opt-out", btFrameCount, 4);
+}
+
+static void test_bt_stream_needs_both(void)
+{
+  testCase(
+      "Bluetooth: nothing is sent without both a connection and the opt-in");
+  reset(1);
+  shimmerStatus.btConnected = 1;
+  edgeAt(1000, 1);
+  edgeAt(1100, 0);
+  expectU("connected, not opted in", btFrameCount, 0);
+
+  reset(1);
+  ShimEvt_setBtStream(1);
+  hostStub_setTick(500);
+  ShimEvt_process();
+  edgeAt(1000, 1);
+  edgeAt(1100, 0);
+  expectU("opted in, not connected", btFrameCount, 0);
+}
+
+static void test_bt_waits_for_tx_space(void)
+{
+  const uint8_t *r;
+
+  testCase("Bluetooth: frames wait for TX room and a held reply, then go");
+  reset(1);
+  btOptIn(500);
+  expectU("initial state", btFrameCount, 1);
+
+  /* Room for a frame, but not with the replies' reserve kept free */
+  btTxSpace = (uint16_t) (EVT_BT_FRAME_LEN + BT_TX_REPLY_RESERVE);
+  edgeAt(1000, 1);
+  expectU("held while the reserve would be used", btFrameCount, 1);
+
+  btTxSpace = 4096U;
+  gBtReplyPendingLen = 5;
+  evtTaskSet = 0;
+  ShimEvt_btTxSpaceAvailable();
+  expectTrue("TX-complete brings the task back", evtTaskSet);
+  ShimEvt_process();
+  expectU("held behind a command reply", btFrameCount, 1);
+
+  gBtReplyPendingLen = 0;
+  evtTaskSet = 0;
+  ShimEvt_btTxSpaceAvailable();
+  expectTrue("and again", evtTaskSet);
+  ShimEvt_process();
+  expectU("sent", btFrameCount, 2);
+  r = frameRec(1);
+  expectU("the press", REC_TYPE(r), EVT_TYPE_EDGE);
+  expectU("at its own time", REC_TS(r), rtc(1000));
+
+  evtTaskSet = 0;
+  ShimEvt_btTxSpaceAvailable();
+  expectFalse("nothing waiting, no wake", evtTaskSet);
+}
+
+static void test_bt_queue_overflow(void)
+{
+  uint32_t i;
+  uint8_t buf[EVT_STATUS_LEN];
+  const uint8_t *r;
+
+  testCase(
+      "Bluetooth: a full queue loses frames to the link only, as a seq gap");
+  reset(0);
+  ShimConfig_getStoredConfig()->ttlInputEnable = 1;
+  btOptIn(500);
+  ShimEvt_onSessionStart(rtc(1000));
+  hostStub_setTick(1010);
+  ShimEvt_process();
+
+  /* The TX ring is full: the queue takes what it can, the rest are lost */
+  btTxSpace = 0;
+  for (i = 0; i < EVT_BT_QUEUE_LEN + 2U; i++)
+  {
+    ttlAt(2000U + i, (uint8_t) ((i & 1U) == 0U), EVT_FLAG_HW_CAPTURE);
+  }
+  ShimEvt_process();
+  expectU("only the initial state sent", btFrameCount, 1);
+
+  btTxSpace = 4096U;
+  ShimEvt_btTxSpaceAvailable();
+  ShimEvt_process();
+  expectU("the queue sent", btFrameCount, 1U + EVT_BT_QUEUE_LEN);
+  r = frameRec((uint8_t) EVT_BT_QUEUE_LEN);
+  expectU("last queued seq", REC_SEQ(r), EVT_BT_QUEUE_LEN);
+
+  ttlAt(3000, 1, EVT_FLAG_HW_CAPTURE);
+  ShimEvt_process();
+  r = frameRec((uint8_t) (EVT_BT_QUEUE_LEN + 1U));
+  expectU("seq after the gap", REC_SEQ(r), EVT_BT_QUEUE_LEN + 3U);
+
+  (void) ShimEvt_buildStatus(buf);
+  expectU("frames lost", le(&buf[7], 2), 2);
+  expectU("next seq", le(&buf[3], 2), EVT_BT_QUEUE_LEN + 4U);
+  expectU("nothing dropped from the file", le(&buf[5], 2), 0);
+  expectU("every edge in the file", recordCount(&files[0]), 1U + EVT_BT_QUEUE_LEN + 3U);
+
+  /* A session ending leaves the host's TTL input armed */
+  ShimEvt_onSessionStop();
+  expectTrue("still armed for the host", ttlArmed);
+}
+
+static void test_bt_reset_on_reconnect(void)
+{
+  const uint8_t *r;
+
+  testCase("Bluetooth: a new opt-in starts a fresh link, seq from 0");
+  reset(1);
+  btOptIn(500);
+  edgeAt(1000, 1);
+  edgeAt(1100, 0);
+  expectU("three frames", btFrameCount, 3);
+
+  /* Disconnect: the queue is dropped, then the reset on connect and a new
+   * opt-in */
+  shimmerStatus.btConnected = 0;
+  edgeAt(1500, 1);
+  ShimEvt_setBtStream(0);
+  ShimEvt_process();
+  btOptIn(2000);
+  expectU("one more", btFrameCount, 4);
+  r = frameRec(3);
+  expectU("initial state", REC_TYPE(r), EVT_TYPE_INITIAL_STATE);
+  expectU("seq from 0", REC_SEQ(r), 0);
+  expectU("pressed", REC_STATE(r), EVT_STATE_BUTTON);
+}
+
+static void test_bt_status(void)
+{
+  uint8_t buf[EVT_STATUS_LEN + 1U];
+
+  testCase("Bluetooth: status says what is enabled, armed and open");
+  reset(1);
+  ShimConfig_getStoredConfig()->ttlInputEnable = 1;
+  memset(buf, 0xAA, sizeof(buf));
+  expectU("length", ShimEvt_buildStatus(buf), EVT_STATUS_LEN);
+  expectX("enables", buf[0], EVT_ENABLE_BUTTON | EVT_ENABLE_TTL);
+  expectX("nothing on", buf[1], 0);
+  expectX("left alone after", buf[EVT_STATUS_LEN], 0xAA);
+
+  ttlPin = 1;
+  btOptIn(500);
+  ShimEvt_onSessionStart(rtc(1000));
+  hostStub_setTick(1010);
+  ShimEvt_process();
+  (void) ShimEvt_buildStatus(buf);
+  expectX("streaming, file open, TTL armed", buf[1], 0x01 | 0x02 | 0x08);
+  expectX("state", buf[2], EVT_STATE_TTL);
+  expectU("seq", le(&buf[3], 2), 1);
+  ShimEvt_onSessionStop();
+}
+
 int main(void)
 {
   hostTestSilenceUnused();
@@ -617,6 +886,12 @@ int main(void)
   test_ttl_session();
   test_ttl_lost_edge();
   test_ttl_flood_is_throttled();
+  test_bt_stream_without_a_session();
+  test_bt_stream_needs_both();
+  test_bt_waits_for_tx_space();
+  test_bt_queue_overflow();
+  test_bt_reset_on_reconnect();
+  test_bt_status();
 
   return hostTestReport("test_events");
 }

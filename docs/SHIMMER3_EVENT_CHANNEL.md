@@ -8,8 +8,7 @@ the sampling rate, in an event file beside each data file. It has two inputs:
 - **A TTL input.** It is captured in hardware by a timer, for sync pulses from
   stimulus equipment such as a PsychoPy or E-Prime PC.
 
-Streaming the events over Bluetooth is planned, and the file format already has
-room for it.
+A host connected over Bluetooth can also opt in to take the records live (§6).
 
 The code:
 
@@ -131,10 +130,15 @@ rounded to 30.5 µs in the file.
 
 ### 3.3 When it is armed
 
-Only during a logging session with `ttlInputEnable` set. Capture is armed when
-the data file opens and disarmed when logging stops. An edge between the data
-file opening and the event file opening waits with the button's records. There
-is no capture outside a session, and so no waking on a TTL edge.
+Only while `ttlInputEnable` is set and something takes the edges:
+
+- **A logging session.** Capture is armed when the data file opens and disarmed
+  when logging stops. An edge between the data file opening and the event file
+  opening waits with the button's records.
+- **A Bluetooth host that has opted in (§6).** Capture is armed from the opt-in
+  until the host opts out or disconnects, logging or not.
+
+Otherwise there is no capture, and so no waking on a TTL edge.
 
 - **Shimmer3.** Timer_A0 is shared with SD sync, which uses CCR1. The timer
   runs while either one uses it (`TA0_start()` / `TA0_stop()`); it used to be
@@ -276,16 +280,19 @@ the length of a session: Shimmer3 has no RAM for another, and `sdlog.cfg` is
 never read or written while logging. While it is lent, `ShimSdCfgFile_parse()`
 and `ShimSdCfgFile_generate()` leave the card alone.
 
-The rest costs 490 bytes on Shimmer3, from the link map:
+The rest costs 564 bytes on Shimmer3, from the link map:
 
 | Item | Bytes |
 |---|---:|
 | The ring | 192 |
 | The 8 kept records | 128 |
 | The file state and path | 114 |
+| The Bluetooth link: 4 queued records and its counters (§6) | 72 |
 | The button's gesture state | 44 |
-| The indexes and TTL state | 10 |
+| The indexes, TTL state and the Bluetooth opt-in flags | 12 |
 | The shared Timer_A0's user mask and the next edge's direction | 2 |
+
+That leaves 298 bytes of Shimmer3's RAM unallocated.
 
 ## 5. Worked example
 
@@ -359,11 +366,43 @@ this and checks it: whole records, sequence numbers without gaps, times that
 never go backwards, a final record, and with `--data` that it pairs with the
 data file it was recorded beside.
 
-## 6. Not yet
+## 6. Over Bluetooth
+
+A connected host can take the records as they are made. The protocol is in
+[BT_COMMUNICATION_PROTOCOL](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) §7.15; in
+short:
+
+- **Opt in.** `SET_FEATURE` (0xB7) with feature 3, `FEATURE_EVENT_STREAM`. The
+  opt-in lasts for the connection, and is cleared on connect, on disconnect and
+  by `FEATURE_NONE`. Firmware without the event channel NACKs it.
+- **Each record goes in its own frame.** The frame is
+  `[0x8A][0xBB][0x10][record][CRC-16]`, 21 bytes, with no ACK. The record has
+  the file's layout (§4.2).
+- **The first frame is an initial-state record** at the opt-in time. Then every
+  edge and overflow record follows, logging or not. Heartbeats and the file's
+  own initial-state and final records stay in the file.
+- **The link numbers its own records.** The sequence number starts at 0 at the
+  opt-in, and the dropped count covers only the time since then.
+- **Status.** `GET_EVENT_CHANNEL_STATUS_COMMAND` (0xB9) answers with the inputs
+  enabled, whether the stream is on, whether a file is open or has failed,
+  whether the TTL input is armed or throttled, each input's state, and the
+  link's counters.
+
+Opting in arms an enabled TTL input (§3.3). It does not enable an input: the
+configuration still decides which ones are recorded (§1).
+
+The link has its own small queue: 4 records on Shimmer3, 8 on Shimmer3R. A
+frame waits for room in the Bluetooth transmit ring rather than take the room
+kept for command replies. A record that finds the queue full is lost to the
+link only: the event file still has it, and the link's sequence numbers show
+the gap. Frames can arrive after data packets sampled later than their edges,
+so order events by their time.
+
+## 7. Not yet
 
 - **Which expansion boards bring the TTL input to a connector**, and at what
   level they can be driven (§3.1).
-- **Streaming the events over Bluetooth.** An opt-in in-stream frame; hosts do
-  not handle an unknown in-stream response today, so it cannot be sent unasked.
 - **Host parsers.** Consensys, the APIs and the web SDK do not read event files
-  yet.
+  or take the Bluetooth stream yet.
+- **Bench testing.** The event file, the TTL capture and the Bluetooth stream
+  have been tested on the host only.

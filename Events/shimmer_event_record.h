@@ -79,7 +79,20 @@ typedef struct
   uint16_t dropped;
 } ShimEvtRecord;
 
+/* A record over Bluetooth, to a host that opted in: [INSTREAM_CMD_RESPONSE]
+ * [EVENT_RECORD_RESPONSE][record length][record][CRC-16 of all before it, LE].
+ * No ACK prefix and no session CRC: the frame carries its own, like the SD
+ * file transfer frames. The length byte lets a host step over a longer record
+ * from later firmware. */
+#define EVT_BT_FRAME_TYPE       0x8AU /* INSTREAM_CMD_RESPONSE */
+#define EVT_BT_FRAME_SUBTYPE    0xBBU /* EVENT_RECORD_RESPONSE */
+#define EVT_BT_FRAME_HEAD_LEN   3U
+#define EVT_BT_FRAME_CRC_OFFSET (EVT_BT_FRAME_HEAD_LEN + EVT_RECORD_LEN)
+#define EVT_BT_FRAME_LEN        (EVT_BT_FRAME_CRC_OFFSET + 2U)
+
 void ShimEvtRec_encodeHeader(const ShimEvtHeader *hdr, uint8_t *out);
 void ShimEvtRec_encodeRecord(const ShimEvtRecord *rec, uint8_t *out);
+/* All but the CRC: EVT_BT_FRAME_CRC_OFFSET bytes */
+void ShimEvtRec_encodeBtFrame(const ShimEvtRecord *rec, uint8_t *out);
 
 #endif /* SHIMMER_EVENT_RECORD_H_ */

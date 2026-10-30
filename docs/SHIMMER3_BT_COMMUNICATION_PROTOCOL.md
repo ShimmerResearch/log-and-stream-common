@@ -732,6 +732,7 @@ not a data packet" from the first byte after the ACK. The wrapped responses are:
 | unsolicited status push | `[ACK?][0x8A][0x71][status…]` |
 | `SD_FILE_DATA_RESPONSE` 0xC5 | `[0x8A][0xC5]…` — **no ACK** |
 | `SD_FILE_STATUS_RESPONSE` 0xC6 | `[0x8A][0xC6]…` — **no ACK** |
+| `EVENT_RECORD_RESPONSE` 0xBB | `[0x8A][0xBB][0x10][record][crc16]` — **no ACK**, only to a host that opted in ([§7.15](#715-event-channel)) |
 
 Note that `DATA_PACKET` is `0x00` and every response opcode is non-zero, so the
 first byte after an ACK already distinguishes the two; the `0x8A` wrapper exists
@@ -803,9 +804,9 @@ There is no way to make the setting sticky.
   [SHIMMER3_STREAMING_DATA_FORMAT.md §2](SHIMMER3_STREAMING_DATA_FORMAT.md#2-packet-layout-and-timestamp)).
 
 It is **not** applied to data-rate test packets, and the SD file-transfer data
-and status frames carry their own unconditional CRC-16 instead — see
-[§7.12](#712-control-and-test) and
-[§7.13](#713-sd-file-transfer-shimmer3r).
+and status frames and the event channel's record frames carry their own
+unconditional CRC-16 instead — see [§7.12](#712-control-and-test),
+[§7.13](#713-sd-file-transfer-shimmer3r) and [§7.15](#715-event-channel).
 
 **Algorithm.** A CRC-16 seeded with `CRC_INIT` = `0xB0CA`, computed over the
 whole frame before the CRC bytes, with **an odd-length payload padded by one
@@ -998,6 +999,9 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `0xB5` | `DUMMY_COMMAND` | CTRL | 0 |  |  | both |  |  |  | FW_ONLY |
 | `0xB6` | `RESET_BT_ERROR_COUNTS` | CTRL | 0 |  |  | both |  |  |  | FW_ONLY |
 | `0xB7` | `SET_FEATURE` | SET | 2 |  |  | both |  |  |  |  |
+| `0xB9` | `GET_EVENT_CHANNEL_STATUS_COMMAND` | GET | 0 | `EVENT_CHANNEL_STATUS_RESPONSE` | 9 | both |  |  |  | FW_ONLY, SDK_MISSING |
+| `0xBA` | `EVENT_CHANNEL_STATUS_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY, SDK_MISSING |
+| `0xBB` | `EVENT_RECORD_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY, SDK_MISSING |
 | `0xFE` | `NACK_COMMAND_PROCESSED` | ACK | 0 |  |  | both |  |  |  | FW_ONLY |
 | `0xFF` | `ACK_COMMAND_PROCESSED` | ACK | 1 |  |  | both |  |  |  | permitted while SD syncing |
 
@@ -1424,6 +1428,7 @@ is looking at.
 [0x00] [ts u24] [channel data ...] [crc ...]     data packet
 [0xFF] [rspOpcode] [payload ...]   [crc ...]     command response
 [0xFF] [0x8A] [0x71] [status ...]  [crc ...]     unsolicited status push
+       [0x8A] [0xBB] [0x10] [record] [crc16]     event record (§7.15)
 ```
 
 The packet layout, the 3-byte timestamp and its 512-second wrap at 32768 Hz, and
@@ -1476,7 +1481,10 @@ should time out on the link, not on a single reply under load.
 
 The SD file transfer's data frames follow the same rule as data packets
 ([§7.13](#713-sd-file-transfer-shimmer3r)). Its status frames wait while a reply
-is held, so they cannot overtake it. SD sync packets are sent as before,
+is held, so they cannot overtake it. Event record frames
+([§7.15](#715-event-channel)) do both: they leave the reserve free and wait
+behind a held reply. Each carries its own timestamp, so one may arrive after
+data packets sampled later than its edge. SD sync packets are sent as before,
 because they carry the time at which they were stamped and must not go out late
 ([SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md)).
 
@@ -2858,9 +2866,10 @@ Send `[0xA4][0x00]` to stop. A disconnect also stops it
 
 | `feature` | Name | Platforms | Effect |
 |---|---|---|---|
-| `0` | `FEATURE_NONE` | both | Disarms a pending reboot-on-disconnect; on Shimmer3 also disables the RN4678 error LEDs. `value` ignored. Earlier firmware left an armed reboot armed, so on Shimmer3R this had no effect |
+| `0` | `FEATURE_NONE` | both | Disarms a pending reboot-on-disconnect and stops the event stream; on Shimmer3 also disables the RN4678 error LEDs. `value` ignored. Earlier firmware left an armed reboot armed, so on Shimmer3R this had no effect |
 | `1` | `FEATURE_RN4678_ERROR_LEDS` | Shimmer3 only | Enables/disables the RN4678 error LEDs per `value`; silently ignored if the fitted module is not an RN4678 |
 | `2` | `FEATURE_REBOOT_ON_DISCONNECT` | both | Arms (`value` non-zero) or disarms a one-shot soft reboot that fires when the host disconnects |
+| `3` | `FEATURE_EVENT_STREAM` | both | Starts (`value` non-zero) or stops sending event channel records to this host ([§7.15](#715-event-channel)). Firmware without the event channel NACKs it |
 
 > `Comms/shimmer_bt_uart.c:1587-1624`; the enum at
 > `Comms/shimmer_bt_uart.h:288-298`. On Shimmer3R, `feature = 1` reaches the
@@ -3277,6 +3286,125 @@ for the flag.
 normally need either — sync is a device-to-device exchange, and a host's only
 involvement is enabling or disabling it in the configuration.
 
+### 7.15 Event channel
+
+The event channel records the user button's and the TTL input's edges with their
+own timestamps, in an event file beside each data file
+([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md)). A host can also take
+the records live. It opts in for the connection, and every record is then sent
+to it as well as written to the file.
+
+**Opting in.** `SET_FEATURE` with `FEATURE_EVENT_STREAM`,
+`[0xB7][0x03][value]` ([§7.12](#712-control-and-test)): a non-zero `value`
+starts the stream, zero stops it. It is accepted while sensing.
+
+- **It belongs to the connection.** It is cleared on connect, on disconnect and
+  by `FEATURE_NONE`, so a host opts in again after every reconnection.
+- **It does not enable an input.** The inputs are the ones enabled in
+  configuration byte 218, bits 1 and 2
+  ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §1).
+  `GET_EVENT_CHANNEL_STATUS_COMMAND` says which they are.
+- **It arms the TTL input.** While a host is opted in, an enabled TTL input is
+  armed whether or not anything is being logged, so a host that only streams
+  still gets its edges. Button edges are recorded whenever markers are on.
+
+**Support.** Firmware without the event channel NACKs feature 3, since it is an
+unknown feature id ([§5.2](#52-the-three-nack-preconditions)). Firmware older
+than `SET_FEATURE` itself sends nothing at all. Neither answers
+`GET_EVENT_CHANNEL_STATUS_COMMAND`, an unknown byte to them. No release has the
+event channel yet ([Appendix A](#appendix-a-firmware-version-gates)).
+
+> **Never parse these frames without opting in.** Released host parsers treat
+> an `0x8A` subtype they do not know as a desync, which is why the firmware
+> sends nothing unasked.
+
+**Record frame** — `EVENT_RECORD_RESPONSE` (0xBB), 21 bytes:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | `0x8A` `INSTREAM_CMD_RESPONSE` |
+| 1 | 1 | `0xBB` |
+| 2 | 1 | Record length, 16 |
+| 3..18 | 16 | The record, laid out as in the event file ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §4.2) |
+| 19..20 | 2 | CRC-16, `uint16_le`, over bytes 0..18 |
+
+These frames are framed like the SD file transfer's (§7.13):
+
+- **No leading ACK.**
+- **An unconditional CRC.** It is computed the same way as the session CRC
+  (seed `0xB0CA`, an odd length padded with one `0x00`, §3.3), whatever
+  `SET_CRC_COMMAND` has selected, and the session CRC is not added.
+- **A length.** Take the record length from byte 2, and skip any record bytes
+  beyond the 16 you know.
+
+> `ShimEvtRec_encodeBtFrame`, `Events/shimmer_event_record.c`; the CRC and the
+> send in `btFlush`, `Events/shimmer_events.c`.
+
+The record differs from the file's in two fields:
+
+- **Sequence number.** It is the link's own: 0 at the opt-in, one more for each
+  record. A gap is records the link lost because its queue was full. The event
+  file still has them.
+- **Dropped.** It counts the edges lost since the opt-in, not since the session
+  started.
+
+**Which records.** The first frame after an opt-in is an initial-state record
+(type `0x02`, channel `0xFF`) at the opt-in time, with each input's state then.
+After that, every edge (`0x01`) and overflow (`0x04`) record is sent. The
+file's own initial-state, heartbeat and final records describe the file, so
+they are not sent.
+
+**Time.** A record's time is in RTC ticks, on the same clock as the data
+packets: its low 24 bits line up with a packet's 3-byte timestamp
+([SHIMMER3_STREAMING_DATA_FORMAT.md §2.1](SHIMMER3_STREAMING_DATA_FORMAT.md#21-the-timestamp)).
+
+**Pacing.**
+
+- **A frame never delays a reply.** A record is queued for the link when it is
+  made and sent from `TASK_EVENT_CHANNEL`, the lowest-priority task. A frame
+  goes into the transmit ring only if `BT_TX_REPLY_RESERVE` stays free and no
+  reply is held ([§6.3](#63-interleaving)). Otherwise it waits for the ring's
+  next transmit-complete.
+- **The queue is small.** It holds 4 records on Shimmer3, where the transmit
+  ring is 256 bytes and shared with the data, and 8 on Shimmer3R. Each pass of
+  the task sends at most 1 frame on Shimmer3 and 8 on Shimmer3R.
+- **Frames can arrive out of step with the data.** A frame can arrive after
+  data packets sampled later than its edge. Order events by their time, not by
+  arrival.
+- **On Shimmer3 they go out as command responses, not as data.** The RN4678
+  paths hold data back to group it, which would strand an event while nothing
+  streams.
+
+**Example.** The marker press from the event file's worked example
+([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §5), as the link's
+second record:
+
+```
+8A BB 10  01 00 01 00 33 53 18 37 72 35 00 00 00 01 00 00  09 20
+          type flags seq   time 0x357237185333     ch st dropped  CRC 0x2009
+```
+
+`Test/host/test_event_record.c` pins the encoder and CRC to these bytes.
+
+#### `GET_EVENT_CHANNEL_STATUS_COMMAND` (0xB9)
+
+- **Request:** `[0xB9]`
+- **Response:** `[ACK][0xBA][status × 9]`
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | Inputs enabled in the configuration: bit 0 button markers, bit 1 TTL |
+| 1 | 1 | Bit 0: the event stream is on for this connection. Bit 1: an event file is open. Bit 2: the event file was stopped by an error, this session or the last. Bit 3: the TTL input is armed. Bit 4: the TTL input is switched off for a second after a flood |
+| 2 | 1 | Each input's state now: bit 0 button, bit 1 TTL |
+| 3..4 | 2 | `uint16_le`: the link's next sequence number |
+| 5..6 | 2 | `uint16_le`: edges lost this session, the event file's dropped count |
+| 7..8 | 2 | `uint16_le`: records the link lost since the opt-in, because its queue was full |
+
+Bit 0 of byte 1 is the opt-in as asked for. The task applies it moments later,
+so the sequence number may still be the previous link's.
+
+> `ShimEvt_buildStatus`, `Events/shimmer_events.c`.
+
 ## 8. Connection session workflow
 
 ### 8.1 What a connect and a disconnect reset
@@ -3293,6 +3421,7 @@ re-establish them every time the link comes up.
 | — | Data-rate test | Stopped (`:2611`) |
 | — | SD file transfer | Dropped silently (`:2614`) |
 | — | Transmit ring | Cleared (`:2616`) |
+| Event stream opt-in | Event stream opt-in | Off, and its queue dropped (`ShimEvt_setBtStream(0)`; [§7.15](#715-event-channel)). Reset on connect too, so a link the firmware never saw drop does not carry it over |
 
 The two columns are the two branches of `ShimBt_handleBtRfCommStateChange`
 (`Comms/shimmer_bt_uart.c:2547-2653`), which each platform calls when its
@@ -3629,6 +3758,7 @@ exist nowhere else, which are exactly the ones added after the extraction.
 | Calibration | GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND (sensor-agnostic pressure coefficients) | — | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.006`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit a5151db, 2024-07-08)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 707d1387, 2024-07-01) |
 | Calibration | alternative accel / alternative mag calibration commands | — | `SET_ALT_ACCEL_CALIBRATION_COMMAND` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.013`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit 6459f66, 2024-12-12)<br>Shimmer3R: `LogAndStream_Shimmer3R_v1.00.005` (introducing commit 15947690, 2024-11-28) |
 | SD transfer | SD file transfer over Bluetooth (Shimmer3R) | — | `SD_FILE_READ_COMMAND` | shared module: `LogAndStream_Shimmer3R_v1.01.009` (introducing commit 71d283f, 2026-08-18) |
+| Event channel | `FEATURE_EVENT_STREAM`, `GET_EVENT_CHANNEL_STATUS_COMMAND` and the event record frame | — | `GET_EVENT_CHANNEL_STATUS_COMMAND` | _not yet released_ |
 | InfoMem | configuration setup bytes 4-6 at InfoMem 130-132 | — | `NV_CONFIG_SETUP_BYTE4` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 00425d6, 2015-03-30)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | InfoMem | the Bluetooth PIN byte at InfoMem 231 | — | `NV_BT_SET_PIN` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, `LogAndStream_v0.9.0` (introducing commit 87ff27c, 2017-08-18)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | Commands | RESET_BT_ERROR_COUNTS | — | `RESET_BT_ERROR_COUNTS` | shared module: `LogAndStream_Shimmer3R_v1.00.049`, `LogAndStream_Shimmer3_v1.00.015` (introducing commit 039dbbd, 2025-11-27) |
@@ -3779,6 +3909,11 @@ them.
   the push, and whether two pushes can be queued back to back (dock immediately
   followed by a logging stop, say), are not derivable from source. **Needs bench
   observation.**
+- **The event stream ([§7.15](#715-event-channel)) has not been run against a
+  host or on hardware.** Its framing, pacing and resets are from source and the
+  host tests. How late a frame arrives while a fast stream fills the transmit
+  ring, on Shimmer3 above all, where the queue is 4 and the ring 256 bytes, is
+  not derivable from source. **Needs bench observation.**
 - **The Shimmer3R two-byte status over BLE.** The second byte is compiled in
   under `#if defined(SHIMMER3R)` and carries `usbPluggedIn`. That it survives BLE
   fragmentation intact — i.e. that no host stack truncates a 4- or 5-byte

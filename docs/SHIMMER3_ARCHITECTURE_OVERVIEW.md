@@ -91,7 +91,7 @@ and the task list.
 | `Calibration/` | Calibration blob and per-sensor blocks | [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) |
 | `Comms/` | Bluetooth, dock UART, SD file transfer | [protocol](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md), [dock](SHIMMER3_DOCK_PROTOCOL.md) |
 | `Configuration/` | The 512-byte configuration image | [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) |
-| `Events/` | Button and TTL input edges queued from their interrupts; the event file beside each data file | [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) |
+| `Events/` | Button and TTL input edges queued from their interrupts; the event file beside each data file, and the records sent to a host that opts in over Bluetooth | [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) |
 | `EEPROM/` | CAT24C16 map, branding, radio settings | [SHIMMER3_EEPROM_MEMORY_MAP.md](SHIMMER3_EEPROM_MEMORY_MAP.md) |
 | `GSR/` | GSR range control | [SHIMMER3_GSR_AUTORANGE.md](SHIMMER3_GSR_AUTORANGE.md) |
 | `LEDs/` | Status indication | [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) |
@@ -211,7 +211,7 @@ uint32_t taskList;   // one bit per task
 | 23 | `TASK_SD_FILE_TRANSFER` | S3R |
 | 24 | `TASK_LED_PHASE_SYNC` | both; queued once a second ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1) |
 | 25 | `TASK_BT_REPLY_RETRY` | both; queued only while a command reply is held because the Bluetooth TX ring is full, and re-arms itself until the reply is out ([SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) §6.3) |
-| 26 | `TASK_EVENT_CHANNEL` | both; queued by every button and TTL edge, by the blink tick while a bounced edge awaits its recheck or a throttled TTL input is due back, and by the data file's start, split and one-minute sync. Last, because edges carry their own times and the event file must never delay the data file ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md)) |
+| 26 | `TASK_EVENT_CHANNEL` | both; queued by every button and TTL edge, by the blink tick while a bounced edge awaits its recheck or a throttled TTL input is due back, by the data file's start, split and one-minute sync, and by a Bluetooth opt-in and each transmit-complete while a record waits for room. Last, because edges carry their own times and the event file must never delay the data file ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md)) |
 
 > **Bit 25 polls on purpose.** While a reply is held, `TASK_BT_REPLY_RETRY`
 > re-arms itself each time it runs, so the main loop does not sleep until the

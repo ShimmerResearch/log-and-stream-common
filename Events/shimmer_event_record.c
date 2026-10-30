@@ -52,3 +52,11 @@ void ShimEvtRec_encodeRecord(const ShimEvtRecord *rec, uint8_t *out)
   out[13] = rec->state;
   putLe(&out[14], rec->dropped, 2U);
 }
+
+void ShimEvtRec_encodeBtFrame(const ShimEvtRecord *rec, uint8_t *out)
+{
+  out[0] = EVT_BT_FRAME_TYPE;
+  out[1] = EVT_BT_FRAME_SUBTYPE;
+  out[2] = EVT_RECORD_LEN;
+  ShimEvtRec_encodeRecord(rec, &out[EVT_BT_FRAME_HEAD_LEN]);
+}

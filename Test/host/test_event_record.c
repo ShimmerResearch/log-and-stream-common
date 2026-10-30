@@ -6,7 +6,9 @@
  * parser written from the document agree to the byte.
  *
  * shimmer_event_record.c includes nothing but the C library, so this needs no
- * stubs. Run by .github/workflows/host-tests.yml.
+ * stubs. The Bluetooth frame's CRC comes from CRC/shimmer_swCrc.c, which is
+ * what platform_crcData16() runs on both platforms. Run by
+ * .github/workflows/host-tests.yml.
  *
  * WHY THE GUARD BELOW - do not remove it. Both consuming firmware projects add
  * this repository as a source-path root with no exclusions, so every .c file
@@ -17,6 +19,7 @@
 
 #include "host_test.h"
 
+#include "CRC/shimmer_swCrc.h"
 #include "Events/shimmer_event_record.h"
 
 static void expectBytes(const char *what, const uint8_t *got, const uint8_t *want, uint16_t len)
@@ -146,6 +149,56 @@ static void test_header_fields_land_where_documented(void)
   expectX("open reason at 36", out[36], EVT_OPEN_SPLIT);
 }
 
+static void test_bt_frame_layout(void)
+{
+  ShimEvtRecord rec;
+  uint8_t out[EVT_BT_FRAME_LEN];
+  uint8_t bare[EVT_RECORD_LEN];
+
+  testCase("Bluetooth frame: 0x8A 0xBB, record length, record, then the CRC");
+  memset(&rec, 0, sizeof(rec));
+  rec.type = EVT_TYPE_EDGE;
+  rec.seq = 0x0102;
+  rec.ts = 0x0000357237122000ULL;
+  rec.channel = EVT_CHANNEL_TTL;
+  memset(out, 0xAA, sizeof(out));
+  ShimEvtRec_encodeBtFrame(&rec, out);
+  ShimEvtRec_encodeRecord(&rec, bare);
+  expectU("frame length", EVT_BT_FRAME_LEN, 21);
+  expectX("in-stream response", out[0], 0x8A);
+  expectX("event record subtype", out[1], 0xBB);
+  expectU("record length", out[2], EVT_RECORD_LEN);
+  expectBytes("record as in the file", &out[3], bare, EVT_RECORD_LEN);
+  expectU("CRC at", EVT_BT_FRAME_CRC_OFFSET, 19);
+  expectX("CRC left for the caller", out[EVT_BT_FRAME_CRC_OFFSET], 0xAA);
+}
+
+static void test_bt_frame_matches_the_documented_example(void)
+{
+  ShimEvtRecord rec;
+  uint8_t out[EVT_BT_FRAME_LEN];
+  uint16_t crc;
+  /* SHIMMER3_BT_COMMUNICATION_PROTOCOL.md section 7.15: the worked example's
+   * marker press, as the link's second record */
+  static const uint8_t frame[EVT_BT_FRAME_LEN]
+      = { 0x8A, 0xBB, 0x10, 0x01, 0x00, 0x01, 0x00, 0x33, 0x53, 0x18, 0x37,
+          0x72, 0x35, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x09, 0x20 };
+
+  testCase("Bluetooth frame matches the documented example");
+  rec.type = EVT_TYPE_EDGE;
+  rec.flags = 0;
+  rec.seq = 1;
+  rec.ts = 0x0000357237185333ULL;
+  rec.channel = EVT_CHANNEL_BUTTON;
+  rec.state = EVT_STATE_BUTTON;
+  rec.dropped = 0;
+  ShimEvtRec_encodeBtFrame(&rec, out);
+  crc = ShimSwCrc_calc16(out, EVT_BT_FRAME_CRC_OFFSET);
+  out[EVT_BT_FRAME_CRC_OFFSET] = (uint8_t) crc;
+  out[EVT_BT_FRAME_CRC_OFFSET + 1U] = (uint8_t) (crc >> 8);
+  expectBytes("frame", out, frame, EVT_BT_FRAME_LEN);
+}
+
 static void test_records_match_the_documented_example(void)
 {
   ShimEvtRecord rec;
@@ -208,6 +261,8 @@ int main(void)
   test_header_fields_land_where_documented();
   test_records_match_the_documented_example();
   test_dropped_is_little_endian();
+  test_bt_frame_layout();
+  test_bt_frame_matches_the_documented_example();
 
   return hostTestReport("test_event_record");
 }
