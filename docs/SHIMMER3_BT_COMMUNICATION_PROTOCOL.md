@@ -3385,6 +3385,9 @@ second record:
 ```
 
 `Test/host/test_event_record.c` pins the encoder and CRC to these bytes.
+`Extras/python_scripts/Bluetooth commands/test_event_stream.py` is a host that
+opts in, decodes the frames and checks them on the bench
+([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §6).
 
 #### `GET_EVENT_CHANNEL_STATUS_COMMAND` (0xB9)
 

@@ -398,6 +398,19 @@ link only: the event file still has it, and the link's sequence numbers show
 the gap. Frames can arrive after data packets sampled later than their edges,
 so order events by their time.
 
+`Extras/python_scripts/Bluetooth commands/test_event_stream.py` is a bench
+test for the stream:
+
+- **A run.** It opts in and prints each record as it arrives, checking every
+  frame's CRC, the link's sequence numbers and the status counters. It then
+  opts out and checks that nothing more arrives.
+- **`--stream`.** Streams sensor data at the same time, and reports how late
+  frames ran.
+- **`--reconnect-check`.** Drops the link while opted in, reconnects without
+  opting in, and checks that nothing arrives.
+- **`--compare`.** Matches a saved run against the event file written
+  meanwhile, record for record.
+
 ## 7. Not yet
 
 - **Which expansion boards bring the TTL input to a connector**, and at what

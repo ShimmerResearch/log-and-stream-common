@@ -26,6 +26,13 @@ OPEN_REASONS = {1: "session start", 2: "split"}
 HW_ID_SHIMMER3R = 10
 
 
+def decode_record(blob, off=0):
+    """One record, laid out as in the file and in a Bluetooth event frame."""
+    rtype, flags, seq, ts, channel, state, dropped = struct.unpack_from(RECORD_FMT, blob, off)
+    return dict(type=rtype, flags=flags, seq=seq, ts=ts, channel=channel, state=state,
+                dropped=dropped)
+
+
 def parse(blob):
     """Returns (header dict, list of record dicts). Raises ValueError if the
     file is not an event file."""
@@ -39,11 +46,8 @@ def parse(blob):
         ("magic", "version", "header_len", "record_len", "hw_id", "file_open_ts",
          "rwc_offset", "config_time", "fw_id", "fw_major", "fw_minor", "fw_internal",
          "first_seq", "open_reason", "enables"), fields))
-    records = []
-    for off in range(header_len, len(blob) - record_len + 1, record_len):
-        rtype, flags, seq, ts, channel, state, dropped = struct.unpack_from(RECORD_FMT, blob, off)
-        records.append(dict(type=rtype, flags=flags, seq=seq, ts=ts, channel=channel,
-                            state=state, dropped=dropped))
+    records = [decode_record(blob, off)
+               for off in range(header_len, len(blob) - record_len + 1, record_len)]
     header["trailing_bytes"] = (len(blob) - header_len) % record_len
     return header, records
 
