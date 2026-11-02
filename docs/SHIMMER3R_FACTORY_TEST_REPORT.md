@@ -248,15 +248,20 @@ are visual checks. See
 > `Shimmer_Driver/hal_FactoryTest.c`. That is newer than the platform revision
 > pinned at the top of this document.
 
-The SD card block names the card before its read/write test:
+The SD card block names the card before its read/write test. As captured
+from a Shimmer3R with an Integral 16 GB card:
 
 ```
 SD Card:
- - Manufacturer: Integral, Manufacture Date=2026-04
- - Model: matches Integral UltimaPro 8GB INMSDH8G10-90U1
- - CID: MID=0x27, OID=PH, PNM=SD08G, PRV=6.0, PSN=0x7208D4BB, Size=7.28GB
+ - Manufacturer: Integral, Manufacture Date=2025-09
+ - Model: matches Integral UltimaPro 16GB INMSDH16G10-90U1
+ - CID: MID=0x6F, OID=0x0303, PNM=SDABC, PRV=1.0, PSN=0xAA001102, Size=14.56GB
  - S3R_TEST_0013 - PASS: MCU read/write test
 ```
+
+That card's MID, `0x6F`, is in no public list, and its OID bytes are
+unprintable, so the OID prints in hex. The Manufacturer line names the brand
+only because the firmware's table recognises the card.
 
 Each line is a report write of its own and stays under 100 characters, so the
 truncation of §2.1 cannot cut or join them.
