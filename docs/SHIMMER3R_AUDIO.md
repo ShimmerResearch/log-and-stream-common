@@ -36,8 +36,10 @@ recorder is queued. `TASK_AUDIO` then:
 3. powers the microphone and starts capture.
 
 The first 256 ms of capture are dropped while the microphone starts and the
-filters settle, so the first audio sample is about 0.3 s after the data file's
-first sample. Each file's header says exactly when.
+filters settle. On the bench the first audio sample was 0.48 s after the data
+file's initial timestamp, which is 0.85 s after its first sample: the data file's
+packet ring holds samples taken before the file opened. Each file's header says
+exactly when.
 
 Logging stopping, by any route, stops capture at once. Everything captured is
 written and the file closed, before a dock can hand the card to a host. A
@@ -112,9 +114,11 @@ little-endian.
   removed card. Its samples are good up to the file's length, but its RIFF sizes
   and summary are not. Take the sample count from the file size: (size − 512) / 2.
 - **Timing.** The Shimmer clock is the same 32768 Hz count the data file's
-  timestamps use. The audio clock runs from the 16 MHz crystal and drifts
-  against it, by about −23 ppm on the bench unit, which is about 80 ms an hour.
-  So place sample *n* of an *N*-sample file at
+  timestamps use. The audio clock runs from the 16 MHz crystal, so the two drift
+  apart by however far that unit's 32 kHz crystal is off: −23 ppm on one bench
+  unit, +56 ppm on another whose factory test puts its 32 kHz crystal 55.5 ppm
+  slow. That is up to about 200 ms an hour. So place sample *n* of an *N*-sample
+  file at
   `first + n × (last − first) / (N − 1)`. Do not use n / 16000 s from `first`.
 - **Gaps.** Sample *n* is always 1/16000 s of capture after sample *n − 1*. If
   the card ever fell further behind than the 8 s capture ring, the samples it
@@ -136,8 +140,8 @@ little-endian.
   `TASK_AUDIO`. Nothing is copied at interrupt level.
 - The interrupt is at priority 2 and the ADF's at 7, both below the RTC
   sampling interrupt at 1, so recording never delays a sensor sample.
-- On the bench, 1024 Hz logging with the recorder running lost no samples, and
-  its stamp timing matched the firmware without audio.
+- On the bench, 1024 Hz logging with raw audio recording lost no samples, and
+  no sample stamp was more than one tick late.
 
 **Sharing the main loop:**
 - `TASK_AUDIO` is the lowest-priority task. Each pass writes 2 KB at a time,
@@ -158,8 +162,8 @@ and every unsolicited status push
 | 2 | Fault: this session's audio failed or was degraded; cleared when the next session starts |
 
 The firmware pushes a status frame whenever either bit changes. A connected host
-sees recording start about 0.3 s after logging does, and sees it stop and any
-fault, without polling. Firmware before DEV-99 sends zero in these bits, so gate
+sees recording start within a second of logging starting, and sees it stop and
+any fault, without polling. Firmware before DEV-99 sends zero in these bits, so gate
 them on the firmware version.
 
 **`GET_AUDIO_STATUS_COMMAND`** (`0xBC`) is answered with `AUDIO_STATUS_RESPONSE`
@@ -208,6 +212,9 @@ rather than restarting the ADF under the recording
 - The fingerprint modes 1 and 2, and their `.AFP` file (DEV-99 step 5).
 - Gain presets. Byte 233 bits 2-3 are reserved for them.
 - An LED cue while raw audio records.
+- Whether to mask the ADF's saturation flag. On the bench it fired 263 times in
+  the first 10 s of a recording and never after, so it looks like a start-up
+  transient rather than clipping.
 
 **Hosts:**
 - Byte 233 in the host APIs' configuration models.
