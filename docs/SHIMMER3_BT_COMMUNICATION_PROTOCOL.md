@@ -2880,6 +2880,14 @@ Send `[0xA4][0x00]` to stop. A disconnect also stops it
 > final `else` and is **NACKed**, because the RN4678 branch is inside
 > `#if defined(SHIMMER3)`.
 
+> ⚠️ **Older firmware does not NACK it: it runs it.** `SET_FEATURE` came with
+> the shared module (df58877, 2026-01-29): `LogAndStream_Shimmer3R_v1.00.052`
+> and `LogAndStream_Shimmer3_v1.00.017`. Firmware before those drops the
+> unknown 0xB7 byte without answering and takes each byte after it as a command
+> of its own. `feature = 3` is then `GET_SAMPLING_RATE_COMMAND`, which it ACKs,
+> and `value = 1` is `INQUIRY_COMMAND`. So an ACK from older firmware means
+> nothing: gate `SET_FEATURE` on the firmware version before sending it.
+
 `FEATURE_REBOOT_ON_DISCONNECT` exists so that a host can apply settings the
 firmware only reads at boot — principally the EEPROM branding record's
 advertising names ([§7.10](#710-daughter-card)) — without asking a user to
@@ -3315,11 +3323,18 @@ starts the stream, zero stops it. It is accepted while sensing.
 
 **Support.** Firmware without the event channel NACKs feature 3, since it is an
 unknown feature id ([§5.2](#52-the-three-nack-preconditions)). Firmware older
-than `SET_FEATURE` itself sends nothing at all. Neither answers
-`GET_EVENT_CHANNEL_STATUS_COMMAND`, an unknown byte to them. No release has the
-event channel yet ([Appendix A](#appendix-a-firmware-version-gates)), and the
-builds that do have it report the previous release's version, so a host tells
-by opting out, `[0xB7][0x03][0x00]`, and seeing whether it is acknowledged.
+than `SET_FEATURE` itself does not: it runs feature 3 as
+`GET_SAMPLING_RATE_COMMAND` and ACKs it ([§7.12](#712-control-and-test)).
+Neither answers `GET_EVENT_CHANNEL_STATUS_COMMAND`, an unknown byte to them.
+No release has the event channel yet
+([Appendix A](#appendix-a-firmware-version-gates)), and the builds that do have
+it report the previous release's version. So a host tells in two steps:
+
+1. The firmware version is `LogAndStream_Shimmer3R_v1.00.052` or
+   `LogAndStream_Shimmer3_v1.00.017` or later, so it has `SET_FEATURE`.
+   Otherwise there is no event channel, and nothing is sent.
+2. An opt-out, `[0xB7][0x03][0x00]`, is ACKed. It changes nothing, since a
+   connection starts opted out.
 
 Of the hosts in [§9](#9-host-side-implementations), the web SDK's
 `Shimmer3RClient` opts in, decodes the frames and asks for the status, and so
@@ -3768,7 +3783,7 @@ exist nowhere else, which are exactly the ones added after the extraction.
 | InfoMem | the MPL/9-DoF fusion calibration block | `isSupportedMpl`<br>_no version threshold (hardware-keyed or unconditional)_ | `NV_MPL_GYRO_CALIBRATION` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 00425d6, 2015-03-30)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | InfoMem | derived-channel bytes 3..7 at InfoMem 118-122 (8 bytes total, not 3) | `isSupportedEightByteDerivedSensors`<br>LogAndStream 0.7.1 | `NV_DERIVED_CHANNELS_3` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit d97bbd6, 2017-05-24)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | SD header | the expansion-board id in the SD file header | `isSupportedExpansionBrdIdInSdHeader`<br>LogAndStream 0.6.13 | — | _no firmware symbol identified_ |
-| Commands | SET_FEATURE (runtime feature toggles) | — | `SET_FEATURE` | Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 52bb8f0e, 2024-03-27) |
+| Commands | SET_FEATURE (runtime feature toggles) | — | `SET_FEATURE` | shared module: `LogAndStream_Shimmer3R_v1.00.052`, `LogAndStream_Shimmer3_v1.00.017` (introducing commit df58877, 2026-01-29). The earlier Shimmer3R match, 52bb8f0e, is the USB stack's `USB_REQ_SET_FEATURE` |
 | Commands | SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE | — | `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.001`, `LogAndStream_Shimmer3_v0.15.004` (introducing commit 25ae95d, 2023-02-17)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | Commands | SET_CRC_COMMAND (response CRC modes) | — | `SET_CRC_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 392f693, 2015-03-30)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | Calibration | GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND (sensor-agnostic pressure coefficients) | — | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.006`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit a5151db, 2024-07-08)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 707d1387, 2024-07-01) |
