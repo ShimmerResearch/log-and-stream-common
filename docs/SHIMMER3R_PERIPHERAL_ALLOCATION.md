@@ -68,11 +68,19 @@ From the `Core/Src` initialisers:
 | SDMMC | `hsd1` | SD card |
 | UART | `huart1`, `huart3` (`huart6` initialised, used only under `SHIMMER4_SDK`) | `huart1` dock (115200), `huart3` Bluetooth; no debug UART |
 | TIM | `htim2`, `htim3`, `htim6`, `htim7` (`htim1` declared but never initialised) | Sampling, timeouts, PWM |
-| GPDMA | multiple | SPI and SDMMC transfers |
+| GPDMA | multiple | SPI and SDMMC transfers; channel 11 carries the microphone (ADF1) into a circular ring of linked-list nodes, one interrupt per block (DEV-99) |
 | CRC | — | **Removed (DEV-1003).** Was configured (poly `0x1021`, init `0xB0CA`) but never called; all checksums run the shared software CRC by design. See `SHIMMER3_ARCHITECTURE_OVERVIEW` for the measurements, and for the conditions that would justify bringing it back |
 | RNG | `hrng` | Initialised, no consumer |
 | IWDG | `hiwdg` | Independent watchdog |
-| MDF | `hmdf1` | Microphone (PDM) |
+| ADF (MDF block) | `AdfHandle0` (ADF1) | Microphone (PDM). Owned by `Shimmer_Driver/hal_Audio.c`, which serves the factory test and audio recording, one at a time (DEV-99) |
+
+> **The microphone's interrupts sit below the sampling interrupt.** The RTC wake-up
+> that drives sampling is at priority 1. GPDMA1 channel 11 (one per captured block,
+> which only stamps it) is at 2, and ADF1 (error flags, counted only) at 7, both
+> set in the `.ioc` and checked by `scripts/check_cubemx_guards.sh`. Before DEV-99
+> they were 1 and 0, and an audio prototype that copied 4 KB per interrupt at
+> priority 1 delayed sample stamps by up to 0.95 ms and lost single samples at
+> 1024 Hz.
 
 > **The MCU ADCs are not the sensor ADC.** `hadc1`, `hadc2` and `hadc4` measure
 > MCU-internal quantities — reference, core voltage, battery pin, die
