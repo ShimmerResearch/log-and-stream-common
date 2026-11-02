@@ -64,7 +64,7 @@ INCLUDES := -I . \
 # nothing but the C library.
 STANDALONE_SUITES := test_swcrc test_packet_ring test_util test_sd_pressure_id \
                      test_leds_phase test_event_record test_button_gesture \
-                     test_button_log_mode
+                     test_button_log_mode test_audio_mode
 
 # Suites built once per SD write-buffer count. That count is a compile-time
 # constant because the buffers are a fixed array, so covering more than one
@@ -109,6 +109,8 @@ SRC_test_events      := test_events.c $(REPO)/Events/shimmer_events.c \
                         $(REPO)/Configuration/shimmer_button_log_mode.c
 SRC_test_button_log_mode := test_button_log_mode.c \
                         $(REPO)/Configuration/shimmer_button_log_mode.c
+SRC_test_audio_mode := test_audio_mode.c \
+                        $(REPO)/Configuration/shimmer_audio_mode.c
 SRC_test_sd_data_file := test_sd_data_file.c \
                         $(REPO)/SDCard/shimmer_sd_data_file.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c \
@@ -140,6 +142,7 @@ INC_test_leds_phase  := -I . -I $(REPO)
 INC_test_event_record := -I . -I $(REPO)
 INC_test_button_gesture := -I . -I $(REPO)
 INC_test_button_log_mode := -I . -I $(REPO)
+INC_test_audio_mode := -I . -I $(REPO)
 
 ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) \
               $(DUAL_PLATFORM_SUITES) $(SD_WRBUF_SUITES)
@@ -324,6 +327,7 @@ DUAL_COMPILE_MODULES := \
   Comms/shimmer_bt_reply.c \
   Events/shimmer_event_record.c \
   Configuration/shimmer_button_log_mode.c \
+  Configuration/shimmer_audio_mode.c \
   LEDs/shimmer_leds_phase.c \
   Platform/platform_api.c \
   RTC/shimmer_rtc.c \

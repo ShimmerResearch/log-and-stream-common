@@ -136,6 +136,8 @@
 /* Button and logging mode, Configuration/shimmer_button_log_mode.h. Firmware
  * from 2017 reserved 232-253 for pressure calibration but never wrote it */
 #define NV_BUTTON_LOG_MODE                  (128 + 104)
+/* Audio recording mode, Configuration/shimmer_audio_mode.h (DEV-99) */
+#define NV_AUDIO_MODE                       (128 + 105)
 
 #define NV_CENTER                           (128 + 128 + 0)
 #define NV_NODE0                            (128 + 128 + 6)
@@ -428,7 +430,7 @@ typedef union
      * ShimConfig_doesPressToggleLogging() and the other queries beside it,
      * never directly: they apply its validity rule */
     uint8_t buttonLogMode;
-    uint8_t unusedIdx233;
+    uint8_t audioMode;
     uint8_t unusedIdx234;
     uint8_t unusedIdx235;
     uint8_t unusedIdx236;

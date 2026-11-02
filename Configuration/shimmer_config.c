@@ -809,7 +809,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
 {
   uint8_t settingCorrected = 0;
   uint8_t i = 0;
-  uint8_t buttonLogMode, userButtonEnable;
+  uint8_t buttonLogMode, userButtonEnable, audioMode;
 
   if (storedConfig.chEnGsr
 #if defined(SHIMMER3)
@@ -919,6 +919,17 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
   if (buttonLogMode != storedConfig.buttonLogMode)
   {
     storedConfig.buttonLogMode = buttonLogMode;
+    settingCorrected = 1;
+  }
+
+  /* Byte 233 likewise keeps only an audio mode this unit records
+   * (docs/SHIMMER3_CONFIGURATION_INFOMEM.md 8.5) */
+  audioMode = ShimBrd_isMicrophoneSupported() ?
+      ShimAudioMode_correct(storedConfig.audioMode) :
+      0;
+  if (audioMode != storedConfig.audioMode)
+  {
+    storedConfig.audioMode = audioMode;
     settingCorrected = 1;
   }
 
@@ -1344,9 +1355,10 @@ void ShimConfig_createBlankConfigBytes(void)
   /* 0, not 0xFF: the sdlog.cfg parse starts from here and sets its fields
    * one key at a time */
   storedConfig.buttonLogMode = 0;
+  storedConfig.audioMode = 0;
 
   /* Reset unused bytes */
-  memset(&storedConfig.rawBytes[NV_BUTTON_LOG_MODE + 1], 0xFF, 23);
+  memset(&storedConfig.rawBytes[NV_AUDIO_MODE + 1], 0xFF, 22);
 
   /* Reset node addresses */
   memset(&storedConfig.rawBytes[NV_CENTER], 0xFF, 128);

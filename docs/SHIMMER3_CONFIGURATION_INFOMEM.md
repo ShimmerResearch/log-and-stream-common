@@ -217,7 +217,7 @@ generations give a byte different meanings both are shown.
 | 230 | bit 7 `unusedIdx230Bit7`; bit 6 `unusedIdx230Bit6`; bit 5 `unusedIdx230Bit5`; bit 4 `unusedIdx230Bit4`; bit 3 `unusedIdx230Bit3`; bit 2 `unusedIdx230Bit2`; bit 1 `unusedIdx230Bit1`; bit 0 `flagWriteCfgToSd` | `NV_SD_CONFIG_DELAY_FLAG` | `idxSDConfigDelayFlag` | `idxSDConfigDelayFlag` | both |  |
 | 231 | `btSetPin` (uint8_t) | `NV_BT_SET_PIN` | `idxBtFactoryReset` | `idxBtFactoryReset` | both |  |
 | 232 | `buttonLogMode` (uint8_t) | `NV_BUTTON_LOG_MODE` |  |  | both | button, logging and TTL input (§8.3) |
-| 233 | `unusedIdx233` (uint8_t) |  |  |  | both | reserved |
+| 233 | `audioMode` (uint8_t) | `NV_AUDIO_MODE` |  |  | both | audio recording, Shimmer3R (§8.5) |
 | 234 | `unusedIdx234` (uint8_t) |  |  |  | both | reserved |
 | 235 | `unusedIdx235` (uint8_t) |  |  |  | both | reserved |
 | 236 | `unusedIdx236` (uint8_t) |  |  |  | both | reserved |
@@ -564,6 +564,7 @@ Three things matter when writing configuration bytes directly:
 | 230 | `flagWriteCfgToSd` | Bit 0 only |
 | 231 | `btSetPin` | Legacy |
 | 232 | `buttonLogMode` | What the button does and what else starts logging, see §8.3 |
+| 233 | `audioMode` | What a Shimmer3R records from its microphone while logging, see §8.5 |
 
 > **Three multi-byte fields here are big-endian, while the sampling rate at
 > bytes 0-1 is little-endian.** `configTime`, `experimentLengthEstimatedInSec`
@@ -703,6 +704,42 @@ Each also stands with bit 5 set, `0x20` added, which turns the TTL input on.
 finding none at index 0, resets the name to the default. A name is therefore
 never empty; an all-`0xFF` field yields `Shimmer_<mac4>`.
 
+### 8.5 Audio recording, byte 233
+
+A Shimmer3R can record from its microphone while it logs to SD (DEV-99). Byte
+233 says whether it does and what it keeps. `Configuration/shimmer_audio_mode.h`
+has the rule, and `Test/host/test_audio_mode.c` checks it on all 256 values.
+
+| Bits | Field | Values |
+|---:|---|---|
+| 0-1 | Mode | **0** off. **1** the audio fingerprint only. **2** the fingerprint and the raw 16 kHz audio. **3** the raw audio only |
+| 2-3 | Gain preset | **0** the calibrated default. 1-3 are reserved for presets, should field use need them |
+| 4-6 | — | Unused, and cleared |
+| 7 | — | Must be 0 |
+
+- **Anything the firmware cannot act on reads as 0.** That covers bit 7 set
+  (erased memory is `0xFF`), a reserved gain preset, and a mode this firmware
+  does not record yet. `ShimConfig_checkAndCorrectConfig` writes the corrected
+  value back (§10.3), so a host that writes a mode and reads it back learns
+  whether this unit records it.
+- **Which modes are built.** The firmware lists them in `AUDIO_MODES_BUILT`.
+  So far only 0 (off) is built: the recorder is being added in steps, and until
+  it lands every write reads back as 0.
+- **Shimmer3 has no microphone.** The byte is always 0 there (§10.4).
+- **0 is what a host that does not know the byte leaves there.** The Java
+  driver builds a full configuration write from zeros, so it writes 0, and
+  hosts that start from the bytes they read keep the byte as it was.
+  `ShimConfig_createBlankConfigBytes` sets it to 0.
+- **Raw audio records speech.** Hosts should ask for confirmation before
+  setting mode 2 or 3. Everyone near the device needs to know it is recording.
+- **Setting it.** Over Bluetooth, write the one byte with `SET_INFOMEM_COMMAND`:
+  `0x8C 0x01 0xE9 0x00 <value>`. Like every configuration write, this is
+  refused while sensing. On the card, sdlog.cfg carries the mode as
+  `audio_mode` on Shimmer3R (SD_CARD_FORMAT §5.3). The gain preset has no key
+  until a preset is built.
+- **Recorded.** On Shimmer3R the SD header carries the corrected value at
+  offset 226 (SD_CARD_FORMAT §3.1).
+
 ## 9. Sync node table
 
 Bytes **256-381**, `NV_NUM_BYTES_SYNC_CENTER_NODE_ADDRS = 126` bytes: twenty-one
@@ -804,6 +841,7 @@ image being written back on that account alone.
 | `btIntervalSecs` | If `syncEnable`, anything below 54 (`SYNC_INT_C`) becomes 54 |
 | `magRange` (S3) | Forced to 0 unless the wide-range accel is an LSM303DLHC |
 | `buttonLogMode` | Anything the firmware cannot act on becomes 0, and bit 6 is cleared (§8.3) |
+| `audioMode` | Anything the firmware cannot act on becomes 0 (bit 7 set, a reserved gain preset, a mode not built yet), and bits 4-6 are cleared (§8.5) |
 | `userButtonEnable` | While `buttonLogMode`'s button mode is not 0, held at the mode's nearest equivalent (§8.3) |
 
 ### 10.4 Capability gates
@@ -814,6 +852,7 @@ image being written back on that account alone.
 | `singleTouchStart` | Forced to 0 where `IS_SUPPORTED_SINGLE_TOUCH` is false, and where `buttonLogMode` leaves no press that can start logging (§8.3). Where supported, setting it also forces `userButtonEnable` and `syncEnable` on — single-touch needs both |
 | `buttonLogMode` | On a Shimmer3R SR48-6-0 board, whose button drives BOOT0 and is used for dock detection, press recording is taken out: button mode 4 becomes 3 and 5 becomes 1 |
 | `buttonLogMode` bit 5 | The TTL input, forced to 0 where `ShimBrd_isTtlInputSupported()` is false: a Shimmer3R SR48-6-0 board |
+| `audioMode` | Forced to 0 where `ShimBrd_isMicrophoneSupported()` is false: every Shimmer3 |
 | `exgADS1292rRegsCh1.config2` bit 3 | Forced to 1 where the ADS1292R clock lines are tied |
 | `btPinSetup` | Always forced to 0 — the Bluetooth driver no longer needs it |
 | `unusedIdx4Bit6` (byte 4 bit 6) | Shimmer3R: forced to 0. Until DEV-99 it was `chEnMicrophone`. Setting it started the microphone at each log start but stored and sent no audio, and it added one to the channel count in the inquiry response and in SD header byte 314 (`SDH_NUM_ENABLED_CHANNELS`) with no matching channel ID, so a host that sized packets from that count misread every packet. Audio recording is configured separately (DEV-99). On Shimmer3 the bit is unused and not touched |
@@ -1150,6 +1189,7 @@ in a written file.
 | 121 | `NV_DERIVED_CHANNELS_6` | 220 | `SDH_DERIVED_CHANNELS_6` |
 | 122 | `NV_DERIVED_CHANNELS_7` | 221 | `SDH_DERIVED_CHANNELS_7` |
 | 232 | `NV_BUTTON_LOG_MODE` | 225 | `SDH_BUTTON_LOG_MODE` (the value as corrected, §8.3) |
+| 233 | `NV_AUDIO_MODE` | 226 | `SDH_AUDIO_MODE` (the value as corrected, §8.5). Shimmer3R only |
 
 > Note the reordering: the two ExG banks are contiguous in both layouts but the
 > derived-channel bytes are split 40-42 / 217-221 in the header against

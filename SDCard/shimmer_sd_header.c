@@ -156,6 +156,11 @@ void ShimSdHead_config2SdHead(void)
   /* As the firmware acts on it. A header from firmware before this field has
    * 0xFF here, which reads as legacy by the same rule */
   sdHeadText[SDH_BUTTON_LOG_MODE] = ShimBtnLogMode_correct(configBytes->buttonLogMode);
+#if defined(SHIMMER3R)
+  /* What the unit records alongside this file (an audio/ companion tree,
+   * DEV-99). 0xFF from firmware before this field reads as off */
+  sdHeadText[SDH_AUDIO_MODE] = ShimAudioMode_correct(configBytes->audioMode);
+#endif
   sdHeadText[SDH_BROADCAST_INTERVAL] = configBytes->rawBytes[NV_SD_BT_INTERVAL];
 
 #if defined(SHIMMER3)

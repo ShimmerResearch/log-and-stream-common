@@ -313,6 +313,16 @@ uint8_t ShimBrd_isBoardSr48_6_0(void)
       && ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0);
 }
 
+/* A PDM microphone on ADF1: every Shimmer3R board, no Shimmer3 (DEV-99) */
+uint8_t ShimBrd_isMicrophoneSupported(void)
+{
+#if defined(SHIMMER3R)
+  return 1;
+#else
+  return 0;
+#endif
+}
+
 /* The TTL input: P1.5 on Shimmer3, PE9 on Shimmer3R. Not on SR48-6-0, whose
  * expansion pins are routed differently and where PE9 has not been checked. */
 uint8_t ShimBrd_isTtlInputSupported(void)
