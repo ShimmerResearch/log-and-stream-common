@@ -200,10 +200,25 @@ directory and file number, with no extension. The event file splits when the
 data file does. Its header also carries the data file's initial timestamp
 (§4.2), so a copied or renamed file can still be paired.
 
-Every tool that reads a card today looks only under `data/`, so the event files
-are invisible to them. Consensys imports a card unchanged. On Shimmer3R the SD
-file transfer can list, read and delete them
-([SD_FILE_TRANSFER](SHIMMER3R_SD_FILE_TRANSFER.md) §6).
+The event file is the first **companion file**, and any other kind of file
+written beside a data file follows the same rule:
+
+- The companion of `data/X/NNN` is `<kind>/X/NNN`, with an extension where the
+  kind needs one (`<kind>/X/NNN.EXT`).
+- It splits when the data file splits.
+- It says which data file it belongs with in a header, not in its name, using
+  the same identifying fields as the event file's (§4.2): the hardware ID, the
+  data file's initial timestamp, the config time and the firmware version.
+
+One host routine can then pair any companion file with its data file. A new kind
+also adds its root to the SD file transfer's deletable roots
+(`sdFtDeletableRoots`, [SD_FILE_TRANSFER](SHIMMER3R_SD_FILE_TRANSFER.md) §6).
+
+Consensys reads a card only under `data/`, so it imports one unchanged and never
+sees the event files. Its Clear SD deletes the data files it found and leaves
+`events/` on the card. On Shimmer3R the SD file transfer can list, read and
+delete event files, so a host that reads the card over Bluetooth can take them
+with their session.
 
 The longest event file path is 53 characters, within Shimmer3's 64-character
 long-name limit ([SD_CARD_FORMAT](SHIMMER3_SD_CARD_FORMAT.md) §1.4).
