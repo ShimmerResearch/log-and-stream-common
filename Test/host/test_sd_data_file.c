@@ -394,6 +394,27 @@ void ShimEvt_onSessionStop(void)
 {
 }
 
+#if defined(SHIMMER3R)
+/* And so does the audio file (Audio/shimmer_audio.h) */
+void ShimAudio_onSessionStart(uint64_t dataFileTs)
+{
+  (void) dataFileTs;
+}
+
+void ShimAudio_onFileSplit(uint64_t dataFileTs)
+{
+  (void) dataFileTs;
+}
+
+void ShimAudio_onSyncTick(void)
+{
+}
+
+void ShimAudio_onSessionStop(void)
+{
+}
+#endif
+
 /* With SD sync on, every buffer starts with a 9-byte head: the sync offset the
  * writer takes from ShimSdSync_myTimeDiffPtrGet() and then resets. Each head
  * here carries its own number, so read-back can tell them apart. */

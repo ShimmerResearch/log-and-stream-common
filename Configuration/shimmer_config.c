@@ -1273,6 +1273,12 @@ uint8_t ShimConfig_isTtlInputEnabled(void)
   return ShimBtnLogMode_isTtlInputEnabled(storedConfig.buttonLogMode);
 }
 
+uint8_t ShimConfig_audioMode(void)
+{
+  return ShimBrd_isMicrophoneSupported() ? ShimAudioMode_mode(storedConfig.audioMode) :
+                                           AUDIO_MODE_OFF;
+}
+
 uint8_t ShimConfig_isGSREnabled(void)
 {
   return storedConfig.chEnGsr;

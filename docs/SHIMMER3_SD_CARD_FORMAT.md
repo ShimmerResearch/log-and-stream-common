@@ -91,6 +91,11 @@ A card in service holds up to five things:
         └── <shimmerName>-<NNN>/
             ├── 000                     events for data/.../000
             └── ...
+└── audio/                             Shimmer3R, when byte 233 records audio (§1.6)
+    └── <experimentId>_<configTime>/    the same names as under data/
+        └── <shimmerName>-<NNN>/
+            ├── 000.WAV                 audio for data/.../000
+            └── ...
 ```
 
 The `Calibration` directory is matched case-insensitively in the sense that the
@@ -175,6 +180,15 @@ Its longest path is 53 characters.
 
 Nothing that reads `data/` sees these files, which is why they are not beside
 the data files.
+
+### 1.6 Audio files
+
+On a Shimmer3R whose configuration byte 233 records raw audio, each data file
+gets an audio file of the same number under `audio/`, with `.WAV` added. It is a
+16 kHz mono 16-bit PCM WAV whose 512-byte header pairs it with its data file
+and puts its first and last samples on the Shimmer clock. It splits when the
+data file does. See [SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md). Raw audio is about
+115 MB an hour.
 
 ## 2. Data file structure
 

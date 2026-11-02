@@ -271,7 +271,9 @@ one-minute sync wait for `TASK_EVENT_CHANNEL`, the lowest-priority task; only
 the close at the end of a session is done at once.
 
 - **Session start.** When the data file opens (`ShimSdDataFile_fileInit()`),
-  the event file is only queued. The task then writes:
+  the event file is only queued. The data file reports its start, split, sync
+  and stop to every companion file through `SDCard/shimmer_sd_companion.h`;
+  on Shimmer3R that includes the audio file ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md)). The task then writes:
   - the header;
   - kept records from at most 2 s before the data file opened - the gesture
     that started logging;

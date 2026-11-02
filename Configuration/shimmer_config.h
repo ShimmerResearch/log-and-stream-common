@@ -531,6 +531,8 @@ uint8_t ShimConfig_isButtonDisabled(void);
 uint8_t ShimConfig_isDoublePress(void);
 uint8_t ShimConfig_doesButtonRecordPresses(void);
 uint8_t ShimConfig_isTtlInputEnabled(void);
+/* Configuration byte 233's mode, corrected (Configuration/shimmer_audio_mode.h) */
+uint8_t ShimConfig_audioMode(void);
 void ShimConfig_setExgConfigForTestSignal(void);
 void ShimConfig_setExgConfigForEcg(void);
 float ShimConfig_freqDiv(float samplingRate);

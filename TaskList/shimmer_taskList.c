@@ -225,6 +225,11 @@ void ShimTask_NORM_manage(void)
       case TASK_EVENT_CHANNEL:
         ShimEvt_process();
         break;
+#if defined(SHIMMER3R)
+      case TASK_AUDIO:
+        ShimAudio_process();
+        break;
+#endif
 
       case TASK_BT_TURN_ON_AFTER_BOOT:
         InitialiseBtAfterBoot();

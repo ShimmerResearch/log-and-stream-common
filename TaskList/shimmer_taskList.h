@@ -142,6 +142,14 @@ typedef enum TaskId_Tag
    * so waiting costs nothing, and the event file must never delay the data
    * file. */
   TASK_EVENT_CHANNEL = (0x00000001UL << 26U),
+#if defined(SHIMMER3R)
+  /* Audio recording's file work (Audio/shimmer_audio.h): moving the capture
+   * ring to the card, opening and splitting its files. Set by the capture's
+   * DMA interrupt every 128 ms. Last: the ring holds 8 s, so audio can wait
+   * behind everything, and the escape hatch in the platform's main loop
+   * writes one block regardless if the ring ever passes half full. */
+  TASK_AUDIO = (0x00000001UL << 27U),
+#endif
 } TaskId_t;
 //return the task id of the current task
 
