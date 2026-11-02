@@ -494,7 +494,9 @@ void ShimLeds_blinkSetUprLoggingIdle(void)
 
 void ShimLeds_blinkSetLwrState(void)
 {
-  if (shimmerStatus.buttonPressed)
+  /* A disabled button gives no feedback either, so a press does not look as if
+   * it did something */
+  if (shimmerStatus.buttonPressed && !ShimConfig_isButtonDisabled())
   {
     //keep lower green LED on when user button pressed
     ShimLeds_blinkSetLwrBtnPress();
@@ -503,8 +505,9 @@ void ShimLeds_blinkSetLwrState(void)
   {
     ShimLeds_blinkSetLwrRedOn();
   }
+  /* With logging off, a missing card is how the unit is meant to be */
   else if (!shimmerStatus.docked && (shimmerStatus.sdBadFile || !shimmerStatus.sdInserted)
-      && ShimConfig_getStoredConfig()->sdErrorEnable)
+      && ShimConfig_getStoredConfig()->sdErrorEnable && !ShimConfig_isLoggingDisabled())
   {
     ShimLeds_blinkSetLwrErrorSdCard();
   }

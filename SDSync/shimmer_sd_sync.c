@@ -933,9 +933,11 @@ void ShimSdSync_startBtForSync(void)
 void ShimSdSync_CommTimerStart(void)
 {
 #if defined(SHIMMER3)
-  TA0CTL = TASSEL_1 + MC_2 + TACLR; //ACLK, continuous mode, clear TAR
-  TA0CCTL1 = CCIE;
+  /* ACLK, continuous mode. Shared with the TTL input capture, so it may
+   * already be running: CCR1 is set from where it is now. */
+  TA0_start(TA0_USER_SD_SYNC);
   TA0CCR1 = GetTA0() + 16384;
+  TA0CCTL1 = CCIE;
 #elif defined(SHIMMER3R)
   RTC_setupAndStartSdSyncAlarm();
 #endif
@@ -945,9 +947,10 @@ void ShimSdSync_CommTimerStart(void)
 inline void ShimSdSync_CommTimerStop(void)
 {
 #if defined(SHIMMER3)
-  TA0CTL = MC_0; //StopTb0()
   //rcommStatus=0;
   TA0CCTL1 &= ~CCIE;
+  /* Stops it only if the TTL input capture is not using it */
+  TA0_stop(TA0_USER_SD_SYNC);
 #elif defined(SHIMMER3R)
   RTC_stopSdSyncAlarm();
 #endif
@@ -1013,9 +1016,13 @@ __interrupt void TIMER0_A1_ISR(void)
     case 4:
       break; //TA0CCR2 not used
     case 6:
-      break; //Reserved
-    case 8:
-      break; //Reserved
+      break; //TA0CCR3 not used
+    case 8:  //TA0CCR4: the TTL input capture (5xx_HAL/hal_TA0.c)
+      if (TA0_captureIsr())
+      {
+        __bic_SR_register_on_exit(LPM3_bits);
+      }
+      break;
     case 10:
       break; //Reserved
     case 12:

@@ -278,6 +278,14 @@ Entry attribute flags:
 `ShimSdFileTransfer_stagePath` serves both stat and delete, so both share the
 96-byte path limit.
 
+Delete is limited to paths under `data/` and the companion roots beside it, in
+any case and with no `..` (`sdFtIsDeletablePath`), so a host bug cannot remove
+`sdlog.cfg` or the calibration file. The roots are the table
+`sdFtDeletableRoots`. Its one companion root today is `events/`, which holds
+the event files; a companion file sits at its data file's path under its own
+root ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §4.1). Listing and
+reading are not limited.
+
 ## 7. Host retrieval flow
 
 1. Check the firmware version supports the commands.

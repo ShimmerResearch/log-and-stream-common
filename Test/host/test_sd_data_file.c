@@ -375,6 +375,25 @@ uint8_t ShimSdHead_sdHeadTextGet(uint8_t *buf, uint16_t offset, uint16_t length)
   return 1;
 }
 
+/* The event file follows the data file's lifecycle; it has its own suite */
+void ShimEvt_onSessionStart(uint64_t fileOpenTs)
+{
+  (void) fileOpenTs;
+}
+
+void ShimEvt_onFileSplit(uint64_t fileOpenTs)
+{
+  (void) fileOpenTs;
+}
+
+void ShimEvt_onSyncTick(void)
+{
+}
+
+void ShimEvt_onSessionStop(void)
+{
+}
+
 /* With SD sync on, every buffer starts with a 9-byte head: the sync offset the
  * writer takes from ShimSdSync_myTimeDiffPtrGet() and then resets. Each head
  * here carries its own number, so read-back can tell them apart. */

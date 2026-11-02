@@ -313,6 +313,17 @@ uint8_t ShimBrd_isBoardSr48_6_0(void)
       && ShimBrd_isBoardSrNumber(EXP_BRD_GSR_UNIFIED, 6, 0);
 }
 
+/* The TTL input: P1.5 on Shimmer3, PE9 on Shimmer3R. Not on SR48-6-0, whose
+ * expansion pins are routed differently and where PE9 has not been checked. */
+uint8_t ShimBrd_isTtlInputSupported(void)
+{
+#if defined(SHIMMER3R)
+  return !ShimBrd_isBoardSr48_6_0();
+#else
+  return 1;
+#endif
+}
+
 uint8_t ShimBrd_isI2cOnPPGControlledByAdcChip(void)
 {
   return ShimBrd_isDaughterCardIdSet()

@@ -205,6 +205,8 @@ void ShimBt_resetBtResponseVars(void)
   sendNack = 0;
   getCmdWaitingResponse = 0;
   useAckPrefixForInstreamResponses = 1;
+  /* The event stream is for the host that asked for it, on this connection */
+  ShimEvt_setBtStream(0);
 
 #if defined(SHIMMER4_SDK)
   i2cvBattBtRsp = 0;
@@ -761,6 +763,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
           case GET_ALT_MAG_CALIBRATION_COMMAND:
           case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
+          case GET_EVENT_CHANNEL_STATUS_COMMAND:
           case RESET_BT_ERROR_COUNTS:
 #if defined(SHIMMER3R)
           case SD_TRANSFER_ABORT_COMMAND:
@@ -1016,6 +1019,7 @@ void ShimBt_processCmd(void)
       case GET_ALT_ACCEL_SAMPLING_RATE_COMMAND:
       case GET_ALT_MAG_CALIBRATION_COMMAND:
       case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
+      case GET_EVENT_CHANNEL_STATUS_COMMAND:
       {
         getCmdWaitingResponse = gAction;
         break;
@@ -1720,6 +1724,7 @@ void ShimBt_processCmd(void)
            * back. Disarming through FEATURE_REBOOT_ON_DISCONNECT with a zero
            * value still works; this makes the blanket form work too. */
           ShimBt_setRebootOnDisconnect(0);
+          ShimEvt_setBtStream(0);
 #if defined(SHIMMER3)
           RN4678_setErrorLedsEnabled(0);
 #endif
@@ -1727,6 +1732,10 @@ void ShimBt_processCmd(void)
         else if (args[0] == FEATURE_REBOOT_ON_DISCONNECT)
         {
           ShimBt_setRebootOnDisconnect(args[1]);
+        }
+        else if (args[0] == FEATURE_EVENT_STREAM)
+        {
+          ShimEvt_setBtStream(args[1]);
         }
 #if defined(SHIMMER3)
         else if (args[0] == FEATURE_RN4678_ERROR_LEDS)
@@ -2435,6 +2444,12 @@ void ShimBt_sendRsp(void)
         *(resPacket + packet_length++) = ShimConfig_configByteAltMagRateGet();
         break;
       }
+      case GET_EVENT_CHANNEL_STATUS_COMMAND:
+      {
+        *(resPacket + packet_length++) = EVENT_CHANNEL_STATUS_RESPONSE;
+        packet_length += ShimEvt_buildStatus(resPacket + packet_length);
+        break;
+      }
       case GET_EXG_REGS_COMMAND:
       {
         *(resPacket + packet_length++) = EXG_REGS_RESPONSE;
@@ -2698,6 +2713,9 @@ void ShimBt_handleBtRfCommStateChange(uint8_t isConnected)
   if (isConnected)
   { //BT is connected
     ShimBt_resetBtRxVariablesOnConnect();
+    /* Also on connect, in case the last disconnect was never seen: a host
+     * that has not opted in must never receive an event frame */
+    ShimEvt_setBtStream(0);
 #if defined(SHIMMER3)
     //Reset BT errors upon new connections
     resetLatestBtError();
@@ -2970,6 +2988,8 @@ void ShimBt_TxCpltCallback(void)
    * ShimTask_set() is ISR-safe; the transfer itself runs in task context. */
   ShimSdFileTransfer_txSpaceAvailableEvent();
 #endif
+  /* Likewise an event frame waiting for room */
+  ShimEvt_btTxSpaceAvailable();
 
 #if defined(SHIMMER3)
   /* On SHIMMER3R the next transfer is triggered by the firmware once the BT

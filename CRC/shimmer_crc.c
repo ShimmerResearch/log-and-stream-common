@@ -112,7 +112,8 @@ uint8_t testCrcDriver(void)
   }
 
   /* platform_crcData16() is a separate weak hook from platform_crcData(), used
-   * by SD file transfer for frames longer than a uint8_t length can express.
+   * by SD file transfer for frames longer than a uint8_t length can express,
+   * and by the event channel's Bluetooth frames.
    * It is not overridden on any platform, so it needs vectors of its own - the
    * cases above exercise platform_crcData() only and would not catch a
    * regression here. */
