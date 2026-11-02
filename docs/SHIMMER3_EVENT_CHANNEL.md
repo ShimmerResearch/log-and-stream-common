@@ -454,7 +454,10 @@ test for the stream:
 
 - **Which expansion boards bring the TTL input to a connector**, and at what
   level they can be driven (§3.1).
-- **Host parsers.** Consensys, the APIs and the web SDK do not read event files
-  or take the Bluetooth stream yet.
+- **Hosts other than the web SDK.** The web SDK reads and writes byte 232 with
+  the firmware's own checks, reads event files from either platform, and takes
+  the Bluetooth stream from a Shimmer3R; the Shimmer Capture web app uses it.
+  Consensys and the Java and C# APIs do none of these yet, and the Java driver's
+  full configuration write still puts 0 in byte 232 (§1).
 - **Bench testing.** The event file, the TTL capture and the Bluetooth stream
   have been tested on the host only.

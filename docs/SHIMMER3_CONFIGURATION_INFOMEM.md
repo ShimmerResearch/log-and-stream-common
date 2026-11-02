@@ -1213,7 +1213,7 @@ file-creation time:
 
 - ~~Bytes 232-255~~ — resolved. Shimmer3 firmware from 2016 and 2017 reserved
   a 22-byte pressure-calibration block here (`NV_TEMP_PRES_CALIBRATION`, at 231
-  and then at 232), but no code ever wrote it, and no host layout maps anything
+  and then at 232), but no code ever wrote it, and no host layout mapped anything
   past byte 231. Byte 232 now holds the button, logging and TTL input settings (§8.3).
   `ShimConfig_createBlankConfigBytes` blanks 233-255 to `0xFF`, and the struct
   names them `unusedIdx233` through `unusedIdx255`.

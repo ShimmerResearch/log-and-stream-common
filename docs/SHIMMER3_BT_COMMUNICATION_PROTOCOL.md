@@ -999,9 +999,9 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `0xB5` | `DUMMY_COMMAND` | CTRL | 0 |  |  | both |  |  |  | FW_ONLY |
 | `0xB6` | `RESET_BT_ERROR_COUNTS` | CTRL | 0 |  |  | both |  |  |  | FW_ONLY |
 | `0xB7` | `SET_FEATURE` | SET | 2 |  |  | both |  |  |  |  |
-| `0xB9` | `GET_EVENT_CHANNEL_STATUS_COMMAND` | GET | 0 | `EVENT_CHANNEL_STATUS_RESPONSE` | 9 | both |  |  |  | FW_ONLY, SDK_MISSING |
-| `0xBA` | `EVENT_CHANNEL_STATUS_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY, SDK_MISSING |
-| `0xBB` | `EVENT_RECORD_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY, SDK_MISSING |
+| `0xB9` | `GET_EVENT_CHANNEL_STATUS_COMMAND` | GET | 0 | `EVENT_CHANNEL_STATUS_RESPONSE` | 9 | both |  |  |  | FW_ONLY |
+| `0xBA` | `EVENT_CHANNEL_STATUS_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
+| `0xBB` | `EVENT_RECORD_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
 | `0xFE` | `NACK_COMMAND_PROCESSED` | ACK | 0 |  |  | both |  |  |  | FW_ONLY |
 | `0xFF` | `ACK_COMMAND_PROCESSED` | ACK | 1 |  |  | both |  |  |  | permitted while SD syncing |
 
@@ -3310,13 +3310,22 @@ starts the stream, zero stops it. It is accepted while sensing.
   `GET_EVENT_CHANNEL_STATUS_COMMAND` says which they are.
 - **It arms the TTL input.** While a host is opted in, an enabled TTL input is
   armed whether or not anything is being logged, so a host that only streams
-  still gets its edges. Button edges are recorded whenever markers are on.
+  still gets its edges. Button edges need no arming: in button modes 4 and 5
+  they are recorded whether or not anything is being logged.
 
 **Support.** Firmware without the event channel NACKs feature 3, since it is an
 unknown feature id ([§5.2](#52-the-three-nack-preconditions)). Firmware older
 than `SET_FEATURE` itself sends nothing at all. Neither answers
 `GET_EVENT_CHANNEL_STATUS_COMMAND`, an unknown byte to them. No release has the
-event channel yet ([Appendix A](#appendix-a-firmware-version-gates)).
+event channel yet ([Appendix A](#appendix-a-firmware-version-gates)), and the
+builds that do have it report the previous release's version, so a host tells
+by opting out, `[0xB7][0x03][0x00]`, and seeing whether it is acknowledged.
+
+Of the hosts in [§9](#9-host-side-implementations), the web SDK's
+`Shimmer3RClient` opts in, decodes the frames and asks for the status, and so
+does this repository's bench script
+([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §6). The Java and C#
+hosts do not yet.
 
 > **Never parse these frames without opting in.** Released host parsers treat
 > an `0x8A` subtype they do not know as a desync, which is why the firmware
@@ -3916,9 +3925,10 @@ them.
   the push, and whether two pushes can be queued back to back (dock immediately
   followed by a logging stop, say), are not derivable from source. **Needs bench
   observation.**
-- **The event stream ([§7.15](#715-event-channel)) has not been run against a
-  host or on hardware.** Its framing, pacing and resets are from source and the
-  host tests. How late a frame arrives while a fast stream fills the transmit
+- **The event stream ([§7.15](#715-event-channel)) has not been run on
+  hardware.** Its framing, pacing and resets are from source and the host tests,
+  and the hosts that take it have been run only against simulated firmware.
+  How late a frame arrives while a fast stream fills the transmit
   ring, on Shimmer3 above all, where the queue is 4 and the ring 256 bytes, is
   not derivable from source. **Needs bench observation.**
 - **The Shimmer3R two-byte status over BLE.** The second byte is compiled in
