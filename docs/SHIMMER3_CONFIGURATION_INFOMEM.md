@@ -164,7 +164,7 @@ generations give a byte different meanings both are shown.
 | 0–1 | `samplingRateTicks` (uint16_t) | `NV_SAMPLING_RATE` | `idxShimmerSamplingRate` | `idxSamplingRate` | both |  |
 | 2 | `bufferSize` (uint8_t) | `NV_BUFFER_SIZE` | `idxBufferSize` | `idxBufferSize` | both |  |
 | 3 | **S3:** bit 7 `chEnLnAccel`; bit 6 `chEnGyro`; bit 5 `chEnMag`; bit 4 `chEnExg1_24Bit`; bit 3 `chEnExg2_24Bit`; bit 2 `chEnGsr`; bit 1 `chEnExtADC7`; bit 0 `chEnExtADC6`<br>**S3R:** bit 7 `chEnLnAccel`; bit 6 `chEnGyro`; bit 5 `chEnMag`; bit 4 `chEnExg1_24Bit`; bit 3 `chEnExg2_24Bit`; bit 2 `chEnGsr`; bit 1 `chEnExtADC0`; bit 0 `chEnExtADC1` | `NV_SENSORS0` | `idxSensors0` | `idxSensors0` | differs |  |
-| 4 | **S3:** bit 7 `chEnBridgeAmp`; bit 6 `unusedIdx4Bit6`; bit 5 `chEnVBattery`; bit 4 `chEnWrAccel`; bit 3 `chEnExtADC15`; bit 2 `chEnIntADC1`; bit 1 `chEnIntADC12`; bit 0 `chEnIntADC13`<br>**S3R:** bit 7 `chEnBridgeAmp`; bit 6 `chEnMicrophone`; bit 5 `chEnVBattery`; bit 4 `chEnWrAccel`; bit 3 `chEnExtADC2`; bit 2 `chEnIntADC3`; bit 1 `chEnIntADC0`; bit 0 `chEnIntADC1` | `NV_SENSORS1` | `idxSensors1` | `idxSensors1` | differs |  |
+| 4 | **S3:** bit 7 `chEnBridgeAmp`; bit 6 `unusedIdx4Bit6`; bit 5 `chEnVBattery`; bit 4 `chEnWrAccel`; bit 3 `chEnExtADC15`; bit 2 `chEnIntADC1`; bit 1 `chEnIntADC12`; bit 0 `chEnIntADC13`<br>**S3R:** bit 7 `chEnBridgeAmp`; bit 6 `unusedIdx4Bit6` (was `chEnMicrophone`, cleared since DEV-99: §10.4); bit 5 `chEnVBattery`; bit 4 `chEnWrAccel`; bit 3 `chEnExtADC2`; bit 2 `chEnIntADC3`; bit 1 `chEnIntADC0`; bit 0 `chEnIntADC1` | `NV_SENSORS1` | `idxSensors1` | `idxSensors1` | differs |  |
 | 5 | **S3:** bit 7 `chEnIntADC14`; bit 6 `chEnAltAccel`; bit 5 `chEnAltMag`; bit 4 `chEnExg1_16Bit`; bit 3 `chEnExg2_16Bit`; bit 2 `chEnPressureAndTemperature`; bit 1 `chEnMPU9x50temp`; bit 0 `unusedIdx5Bit0`<br>**S3R:** bit 7 `chEnIntADC2`; bit 6 `chEnAltAccel`; bit 5 `chEnAltMag`; bit 4 `chEnExg1_16Bit`; bit 3 `chEnExg2_16Bit`; bit 2 `chEnPressureAndTemperature`; bit 1 `unusedIdx5Bit1`; bit 0 `unusedIdx5Bit0` | `NV_SENSORS2` | `idxSensors2` | `idxSensors2` | differs |  |
 | 6 | bits 7-4 `wrAccelRate`; bits 3-2 `wrAccelRange`; bit 1 `wrAccelLpModeLsb`; bit 0 `wrAccelHrMode` | `NV_CONFIG_SETUP_BYTE0` | `idxConfigSetupByte0` | `idxConfigSetupByte0` | both |  |
 | 7 | `gyroRate` (uint8_t) | `NV_CONFIG_SETUP_BYTE1` | `idxConfigSetupByte1` |  | both |  |
@@ -714,6 +714,7 @@ image being written back on that account alone.
 | `singleTouchStart` | Forced to 0 where `IS_SUPPORTED_SINGLE_TOUCH` is false. Where supported, setting it also forces `userButtonEnable` and `syncEnable` on — single-touch needs both |
 | `exgADS1292rRegsCh1.config2` bit 3 | Forced to 1 where the ADS1292R clock lines are tied |
 | `btPinSetup` | Always forced to 0 — the Bluetooth driver no longer needs it |
+| `unusedIdx4Bit6` (byte 4 bit 6) | Shimmer3R: forced to 0. Until DEV-99 it was `chEnMicrophone`. Setting it started the microphone at each log start but stored and sent no audio, and it added one to the channel count in the inquiry response and in SD header byte 314 (`SDH_NUM_ENABLED_CHANNELS`) with no matching channel ID, so a host that sized packets from that count misread every packet. Audio recording is configured separately (DEV-99). On Shimmer3 the bit is unused and not touched |
 
 ### 10.5 MAC address
 

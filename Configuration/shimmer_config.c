@@ -1063,6 +1063,17 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
   }
 #endif //SHIMMER3R
 
+#if defined(SHIMMER3R)
+  /* Byte 4 bit 6 was chEnMicrophone. It sent no data but added a channel to the count
+   * in the inquiry response and the SD header, so a host sizing packets from that count
+   * misread every packet. Cleared, as on Shimmer3 where the bit is unused (§10.4). */
+  if (storedConfig.unusedIdx4Bit6)
+  {
+    storedConfig.unusedIdx4Bit6 = 0;
+    settingCorrected = 1;
+  }
+#endif
+
   uint8_t *macIdBytesPtr = ShimBt_macIdBytesPtrGet();
   for (i = 0; i < 6; i++)
   {
@@ -1165,13 +1176,6 @@ void ShimConfig_checkBtModeFromConfig(void)
     }
   }
 }
-
-#if defined(SHIMMER3R)
-uint8_t ShimConfig_isMicrophoneEnabled(void)
-{
-  return storedConfig.chEnMicrophone;
-}
-#endif
 
 uint8_t ShimConfig_isGSREnabled(void)
 {

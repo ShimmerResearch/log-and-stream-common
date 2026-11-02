@@ -468,6 +468,13 @@ list the `INQUIRY_RESPONSE` reports, copied from `sensing.cc`.
 **This makes a Shimmer3R data file self-describing.** A parser can slice the
 sample records using the header alone.
 
+> **Before DEV-99, byte 314 could be one too large.** With InfoMem byte 4 bit 6
+> (`chEnMicrophone`) set, the count included the microphone, which had no bytes in
+> the records. The list from byte 315 is copied from the firmware's channel table
+> for that count, so it ended in one extra entry that was not a channel: whatever
+> byte followed the real IDs. Files from such a unit need that last entry dropped.
+> The firmware now clears the bit ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.4).
+
 > **Shimmer3 files are not self-describing.** Those offsets do not exist in the
 > 256-byte header, so channel order must be reconstructed from the sensor
 > enable bitmaps at offsets 3-7 plus the fixed per-bus ordering rules in

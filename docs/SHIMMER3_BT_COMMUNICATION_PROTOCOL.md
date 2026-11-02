@@ -1540,6 +1540,13 @@ A host must therefore know the generation *before* it can find
 `GET_DEVICE_VERSION_COMMAND` ([§7.2](#72-version-information)). Read the version
 first, then inquire.
 
+> **Shimmer3R before DEV-99: one bogus channel with InfoMem byte 4 bit 6 set.** That
+> bit (`chEnMicrophone`) added one to `numberOfChannels` without adding the
+> microphone to the packet, and the IDs are copied from the firmware's channel table
+> for that count, so the list ended in one entry that was not a channel and the
+> packet size worked out from it was one channel too long. The firmware now clears
+> the bit ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.4).
+
 **Normative rules for hosts.**
 
 1. Re-issue `INQUIRY_COMMAND` after **every** configuration write that could

@@ -250,19 +250,6 @@ void ShimSens_startSensing(void)
     I2C_startSensing();
     SPI_startSensing();
 
-#if defined(SHIMMER3R)
-    if (ShimConfig_isMicrophoneEnabled())
-    {
-      //TODO remove IF when fully switched from eval board to BGA variant
-#ifdef S3R_NUCLEO
-      MX_MDF1_Init();
-#else
-      MX_ADF1_Init();
-      micStartSensing();
-#endif
-    }
-#endif
-
 #if defined(SHIMMER3)
     SampleTimerStart();
 #else
@@ -453,11 +440,6 @@ void ShimSens_stopPeripherals(void)
 
 #if defined(SHIMMER3R)
   Board_enableSensingPower(SENSE_PWR_SENSING, 0);
-
-  if (ShimConfig_isMicrophoneEnabled())
-  {
-    micStopSensing();
-  }
 #endif
 
   if (ShimConfig_isExpansionBoardPwrEnabled())
@@ -493,14 +475,6 @@ void ShimSens_gatherData(void)
   {
     SPI_pollSensors();
   }
-
-#if defined(SHIMMER3R)
-  //TODO come back to when support is added
-  //if (isMicrophoneEnabled())
-  //{
-  //  micStartSensing();
-  //}
-#endif
 
 #if defined(SHIMMER4_SDK)
   //HAL_Delay(500);
@@ -807,11 +781,7 @@ static void ShimSens_flushRingToSd(void)
 
 uint8_t ShimSens_getNumEnabledChannels(void)
 {
-  return sensing.nbrMcuAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans
-#if defined(SHIMMER3R)
-      + ShimConfig_isMicrophoneEnabled()
-#endif
-      ;
+  return sensing.nbrMcuAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans;
 }
 
 void ShimSens_startLoggingIfUndockStartEnabled(void)

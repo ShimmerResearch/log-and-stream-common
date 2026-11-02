@@ -222,9 +222,9 @@ typedef union
     uint8_t chEnVBattery : 1;
 #if defined(SHIMMER4_SDK)
     uint8_t chEnPpgApp : 1;
-#elif defined(SHIMMER3R)
-    uint8_t chEnMicrophone : 1;
 #else
+    /* S3R: chEnMicrophone until DEV-99. It never carried data, only an extra count in
+     * the inquiry response and the SD header; the firmware now clears it (§10.4). */
     uint8_t unusedIdx4Bit6 : 1;
 #endif
     uint8_t chEnBridgeAmp : 1; //S3 = IntADC13 & IntADC14, S3R = IntADC1 & IntADC2
@@ -517,9 +517,6 @@ void ShimConfig_setExgConfigForTestSignal(void);
 void ShimConfig_setExgConfigForEcg(void);
 float ShimConfig_freqDiv(float samplingRate);
 void ShimConfig_checkBtModeFromConfig(void);
-#if defined(SHIMMER3R)
-uint8_t ShimConfig_isMicrophoneEnabled(void);
-#endif
 uint8_t ShimConfig_isGSREnabled(void);
 uint8_t ShimConfig_isExpansionBoardPwrEnabled(void);
 void ShimConfig_loadSensorConfigAndCalib(void);
