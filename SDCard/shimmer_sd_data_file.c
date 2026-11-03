@@ -200,13 +200,23 @@ static uint8_t ShimSdDataFile_countSessions(void)
   }
   return 1;
 }
+
+/* The roots companion files sit under, each at its data file's path
+ * (docs/SHIMMER3_EVENT_CHANNEL.md 4.1). A new kind of companion file is one
+ * more entry here, as it is in the SD file transfer's sdFtDeletableRoots. */
+static const char *const sdCompanionRoots[] = {
+  "events", /* Events/shimmer_events.c */
+};
+/* Room for a root of up to this many characters in place of "data" */
+#define SD_COMPANION_ROOT_MAX 8U
 #endif
 
 uint8_t ShimSdDataFile_setBasedir(void)
 {
 #if USE_FATFS
-  /* expDirName with "events" in place of "data" */
-  char eventsExpDirName[sizeof(expDirName) + 2];
+  /* expDirName with a companion root in place of "data" */
+  char companionExpDirName[sizeof(expDirName) - 4U + SD_COMPANION_ROOT_MAX];
+  uint8_t i;
 
   file_status = f_opendir(&dir, "/data");
   if (file_status)
@@ -268,20 +278,26 @@ uint8_t ShimSdDataFile_setBasedir(void)
   ShimSd_setFileTimestamp((char *) expDirName);
 #endif
 
-  /* A session's companion files sit at the same path under their own root:
-   * its event files under events/ (Events/shimmer_events.c). A host that
-   * deletes only data/ leaves them behind, and a number still used there is
-   * not reused, or the new session's event files would be written in among
-   * the old ones. Nothing there is a reason to fail: the data files are what
-   * matter. */
-  strcpy(eventsExpDirName, "events");
-  strcat(eventsExpDirName, (char *) expDirName + 4); //past "data"
-  if (f_opendir(&dir, eventsExpDirName) == FR_OK)
+  /* A session's companion files sit at the same path under their own root,
+   * its event files under events/. A host that deletes only data/ leaves them
+   * behind, and a number still used there is not reused, or the new
+   * session's companion files would be written in among the old ones.
+   * Nothing there is a reason to fail: the data files are what matter. */
+  for (i = 0; i < sizeof(sdCompanionRoots) / sizeof(sdCompanionRoots[0]); i++)
   {
-    (void) ShimSdDataFile_countSessions();
+    if (strlen(sdCompanionRoots[i]) > SD_COMPANION_ROOT_MAX)
+    {
+      continue;
+    }
+    strcpy(companionExpDirName, sdCompanionRoots[i]);
+    strcat(companionExpDirName, (char *) expDirName + 4); //past "data"
+    if (f_opendir(&dir, companionExpDirName) == FR_OK)
+    {
+      (void) ShimSdDataFile_countSessions();
 #if _FATFS != FATFS_V_0_08B
-    (void) f_closedir(&dir);
+      (void) f_closedir(&dir);
 #endif
+    }
   }
 
   //at this point, we have the id string and the counter, so we can make a directory name

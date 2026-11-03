@@ -221,8 +221,8 @@ data file does. Its header also carries the data file's initial timestamp
 (§4.2), so a copied or renamed file can still be paired.
 
 A new session's number is one past the highest this Shimmer has used under
-either `data/<experiment>/` or `events/<experiment>/`
-(`ShimSdDataFile_setBasedir()`). A host that deletes only `data/`, as
+`data/<experiment>/` or under the same path in any companion root, which today
+is `events/<experiment>/` (`ShimSdDataFile_setBasedir()`). A host that deletes only `data/`, as
 Consensys' Clear SD does, leaves the event files behind, and a number counted
 from `data/` alone would come round again and put the next session's event
 files in among them.
@@ -238,8 +238,10 @@ written beside a data file follows the same rule:
   data file's initial timestamp, the config time and the firmware version.
 
 One host routine can then pair any companion file with its data file. A new kind
-also adds its root to the SD file transfer's deletable roots
-(`sdFtDeletableRoots`, [SD_FILE_TRANSFER](SHIMMER3R_SD_FILE_TRANSFER.md) §6).
+also adds its root, of at most 8 characters, to two tables: the SD file
+transfer's deletable roots (`sdFtDeletableRoots`,
+[SD_FILE_TRANSFER](SHIMMER3R_SD_FILE_TRANSFER.md) §6), and the roots the session
+number is counted under (`sdCompanionRoots`, `SDCard/shimmer_sd_data_file.c`).
 
 Consensys reads a card only under `data/`, so it imports one unchanged and never
 sees the event files. Its Clear SD deletes the data files it found and leaves
