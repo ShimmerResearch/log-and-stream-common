@@ -50,6 +50,7 @@ static void test_constants(void)
   expectX("gain shift", AUDIO_MODE_GAIN_SHIFT, 2);
   expectX("must-be-0 bit", AUDIO_MODE_INVALID, 0x80);
   expectX("off is always built", AUDIO_MODES_BUILT & 1U, 1);
+  expectX("every mode is built, from DEV-99 step 5", AUDIO_MODES_BUILT, 0x0F);
 }
 
 static void test_correct_every_value(void)

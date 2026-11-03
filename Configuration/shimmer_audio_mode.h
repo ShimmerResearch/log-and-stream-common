@@ -45,8 +45,10 @@
 #define AUDIO_GAIN_DEFAULT         0U
 
 /* The modes this firmware records, one bit per AUDIO_MODE_*. Raw audio from
- * DEV-99 step 4; the fingerprint modes come with step 5. */
-#define AUDIO_MODES_BUILT          ((1U << AUDIO_MODE_OFF) | (1U << AUDIO_MODE_RAW))
+ * DEV-99 step 4, the fingerprint modes from step 5. */
+#define AUDIO_MODES_BUILT                                  \
+  ((1U << AUDIO_MODE_OFF) | (1U << AUDIO_MODE_FINGERPRINT) \
+      | (1U << AUDIO_MODE_FINGERPRINT_RAW) | (1U << AUDIO_MODE_RAW))
 
 /* The byte this firmware would act on: raw itself when it is valid and its
  * mode is built, and 0 otherwise. Bits 4-6 are cleared. */

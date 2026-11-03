@@ -161,6 +161,118 @@ static void test_open_header(void)
   expectU("no sample bytes", get32(h + 508), 0);
 }
 
+static void test_fp_header(void)
+{
+  uint8_t h[AUDIO_FP_FILE_HEADER_LEN];
+  uint8_t wav[AUDIO_FILE_HEADER_LEN];
+  ShimAudioFileInfo i = sample();
+  ShimAudioFpSummary fp;
+  unsigned k;
+  unsigned nonZero = 0;
+
+  memset(&fp, 0, sizeof(fp));
+  fp.chunks = 899;
+  fp.lastChunkTicks = 0x00003569E1D20000ULL;
+  fp.records = 1234567UL;
+  fp.chunksSkipped = 7;
+  i.mode = 1;
+  ShimAudioFile_packFpHeader(h, &i, &fp);
+  ShimAudioFile_packHeader(wav, &i);
+
+  testCase("the fingerprint file's own fields");
+  expectU("magic", memcmp(h, "SAFP", 4), 0);
+  expectU("chunk header bytes", get16(h + 4), 16);
+  expectU("record bytes", get16(h + 6), 4);
+  expectU("chunk samples", get32(h + 8), 80000);
+  expectU("chunk hop samples", get32(h + 12), 64000);
+  expectU("frame hop samples", get16(h + 16), 256);
+  expectU("sample rate", get16(h + 18), 16000);
+  expectU("header length", AUDIO_FP_FILE_HEADER_LEN, 512);
+
+  testCase("bytes 44-95 are the WAV's identity, byte for byte");
+  expectU("identity matches the WAV header's", memcmp(h + 44, wav + 44, 52), 0);
+  expectU("mode", h[50], 1);
+  expectX("first chunk ticks at 80", get64(h + 80), 0x00003569D5D30000ULL);
+
+  testCase("the closing summary sits at its documented offsets");
+  expectU("closed", h[96], 1);
+  expectU("fault", h[97], 4);
+  expectU("chunks", get32(h + 100), 899);
+  expectX("last chunk ticks", get64(h + 104), 0x00003569E1D20000ULL);
+  expectU("records", get32(h + 112), 1234567UL);
+  expectU("escape drains", get16(h + 116), 3);
+  expectU("write errors", get16(h + 118), 5);
+  expectU("ADF error events", get32(h + 120), 700);
+  expectU("ADF saturation", get32(h + 124), 650);
+  expectU("ADF overflow", get32(h + 128), 1);
+  expectU("chunks skipped", get32(h + 132), 7);
+
+  testCase("everything else is zero, the WAV's sample counts included");
+  for (k = 20; k < 44; k++)
+  {
+    nonZero += h[k] != 0;
+  }
+  expectU("bytes 20-43", nonZero, 0);
+  expectU("reserved at 54", get16(h + 54), 0);
+  expectU("reserved at 98", get16(h + 98), 0);
+  nonZero = 0;
+  for (k = 136; k < AUDIO_FP_FILE_HEADER_LEN; k++)
+  {
+    nonZero += h[k] != 0;
+  }
+  expectU("bytes 136-511", nonZero, 0);
+}
+
+static void test_fp_chunk_header(void)
+{
+  uint8_t c[AUDIO_FP_CHUNK_HEADER_LEN];
+
+  testCase("a chunk header");
+  ShimAudioFile_packFpChunkHeader(c, 0x01020304UL, 0x00003569D5D30000ULL, 4695);
+  expectX("mark, \"CH\" on the card", get16(c), 0x4843);
+  expectU("bytes as stored", c[0] == 'C' && c[1] == 'H', 1);
+  expectU("records", get16(c + 2), 4695);
+  expectX("chunk", get32(c + 4), 0x01020304UL);
+  expectX("start ticks", get64(c + 8), 0x00003569D5D30000ULL);
+  expectU("length", AUDIO_FP_CHUNK_HEADER_LEN, 16);
+}
+
+/* audfprint's hash, as audio_fingerprint.h af_hash builds it */
+static uint32_t audfprintHash(uint8_t f1, uint8_t f2, uint8_t dt)
+{
+  return ((uint32_t) (f1 & 0x7FU) << 25)
+      | (((uint32_t) ((int) f2 - (int) f1) & 0x3FU) << 19) | dt;
+}
+
+static void test_fp_record(void)
+{
+  uint8_t r[AUDIO_FP_RECORD_LEN];
+  uint32_t v;
+
+  testCase("a record packs the landmark");
+  expectU("packs", ShimAudioFile_packFpRecord(r, 312, 200, 180, 62), 1);
+  v = get32(r);
+  expectU("t1, bits 0-8", v & 0x1FFU, 312);
+  expectU("dt, bits 9-14", (v >> 9) & 0x3FU, 62);
+  expectU("df, bits 15-20", (v >> 15) & 0x3FU, (uint32_t) (180 - 200) & 0x3FU);
+  expectU("f1 & 127, bits 21-27", (v >> 21) & 0x7FU, 200U & 0x7FU);
+  expectU("bits 28-31 zero", v >> 28, 0);
+
+  testCase("the record gives back audfprint's hash");
+  expectX("hash", ((v >> 21) << 25) | (((v >> 15) & 0x3FU) << 19) | ((v >> 9) & 0x3FU),
+      audfprintHash(200, 180, 62));
+  expectU("a rising pair packs", ShimAudioFile_packFpRecord(r, 0, 3, 40, 2), 1);
+  v = get32(r);
+  expectX("its hash", ((v >> 21) << 25) | (((v >> 15) & 0x3FU) << 19) | ((v >> 9) & 0x3FU),
+      audfprintHash(3, 40, 2));
+
+  testCase("what does not fit is refused and nothing written");
+  memset(r, 0xA5, sizeof(r));
+  expectU("t1 512", ShimAudioFile_packFpRecord(r, 512, 1, 2, 3), 0);
+  expectU("dt 64", ShimAudioFile_packFpRecord(r, 1, 1, 2, 64), 0);
+  expectX("untouched", get32(r), 0xA5A5A5A5UL);
+}
+
 int main(void)
 {
   printf("shimmer_audio_file host tests\n\n");
@@ -169,6 +281,9 @@ int main(void)
   test_wav_parts();
   test_shim_fields();
   test_open_header();
+  test_fp_header();
+  test_fp_chunk_header();
+  test_fp_record();
 
   return hostTestReport("shimmer_audio_file");
 }

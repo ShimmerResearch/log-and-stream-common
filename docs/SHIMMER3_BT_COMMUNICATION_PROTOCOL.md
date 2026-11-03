@@ -1002,7 +1002,7 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `0xB9` | `GET_EVENT_CHANNEL_STATUS_COMMAND` | GET | 0 | `EVENT_CHANNEL_STATUS_RESPONSE` | 9 | both |  |  |  | FW_ONLY |
 | `0xBA` | `EVENT_CHANNEL_STATUS_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
 | `0xBB` | `EVENT_RECORD_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
-| `0xBC` | `GET_AUDIO_STATUS_COMMAND` | GET | 0 | `AUDIO_STATUS_RESPONSE` | 24 | S3R |  |  |  | FW_ONLY |
+| `0xBC` | `GET_AUDIO_STATUS_COMMAND` | GET | 0 | `AUDIO_STATUS_RESPONSE` | 32 | S3R |  |  |  | FW_ONLY |
 | `0xBD` | `AUDIO_STATUS_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
 | `0xFE` | `NACK_COMMAND_PROCESSED` | ACK | 0 |  |  | both |  |  |  | FW_ONLY |
 | `0xFF` | `ACK_COMMAND_PROCESSED` | ACK | 1 |  |  | both |  |  |  | permitted while SD syncing |

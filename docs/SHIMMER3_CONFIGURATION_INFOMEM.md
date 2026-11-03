@@ -723,8 +723,8 @@ has the rule, and `Test/host/test_audio_mode.c` checks it on all 256 values.
   value back (§10.3), so a host that writes a mode and reads it back learns
   whether this unit records it.
 - **Which modes are built.** The firmware lists them in `AUDIO_MODES_BUILT`.
-  So far 0 (off) and 3 (raw audio). 1 and 2 come with the fingerprint, and
-  until then read back as 0. The recording itself is in
+  All four are, from DEV-99's fingerprint step on; firmware with raw audio only
+  built 0 and 3, and read 1 and 2 back as 0. The recording itself is in
   [SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md).
 - **Shimmer3 has no microphone.** The byte is always 0 there (§10.4).
 - **0 is what a host that does not know the byte leaves there.** The Java

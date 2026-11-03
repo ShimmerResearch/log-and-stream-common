@@ -200,8 +200,9 @@ while an SD log records audio (configuration byte 233,
 [SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md)). While audio records, the ADF, its
 PLL3 kernel clock and GPDMA run continuously, with an interrupt every 128 ms.
 All of that runs through Sleep. A Stop mode would halt the capture, which is one
-more reason the firmware does not use one. The current it costs is not measured
-yet.
+more reason the firmware does not use one. In the fingerprint modes the CPU also
+analyses the audio, about 0.9 s of work every 4 s at 48 MHz, and the main loop
+does not idle while it does. The current it costs is not measured yet.
 
 ## 5. Low-battery protection
 

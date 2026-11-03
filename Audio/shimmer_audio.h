@@ -22,7 +22,7 @@
 #define AUDIO_STATUS_FAULT     0x04U
 
 /* AUDIO_STATUS_RESPONSE's payload length, after the opcode */
-#define AUDIO_STATUS_LEN       24U
+#define AUDIO_STATUS_LEN       32U
 
 /* AUDIO_STATUS_RESPONSE byte 2. OFF: not configured, or not logging.
  * STARTING: logging has started and the file and the mic are coming up.
@@ -37,12 +37,15 @@
 /* AUDIO_STATUS_RESPONSE byte 3, the session's first fault. OPEN: a directory
  * or file could not be made. CAPTURE: the microphone would not start. WRITE:
  * a write to the card failed. OVERRUN: the card fell further behind than the
- * ring holds, and the gap was written as silence. */
+ * ring holds, and the gap was written as silence. FP_BEHIND: the fingerprint
+ * fell further behind than the ring holds, and skipped chunks. OVERRUN and
+ * FP_BEHIND are degradations: recording carries on. */
 #define AUDIO_FAULT_NONE       0U
 #define AUDIO_FAULT_OPEN       1U
 #define AUDIO_FAULT_CAPTURE    2U
 #define AUDIO_FAULT_WRITE      3U
 #define AUDIO_FAULT_OVERRUN    4U
+#define AUDIO_FAULT_FP_BEHIND  5U
 
 #if defined(SHIMMER3R)
 void ShimAudio_onSessionStart(uint64_t dataFileTs);
