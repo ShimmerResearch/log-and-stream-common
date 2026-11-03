@@ -127,8 +127,11 @@ directory already exists, and `f_mkdir` fails.
 
 The counter is chosen by scanning the experiment directory for existing
 directories whose name matches this device's name, taking the highest suffix
-found and adding one. So each time logging starts, a **new** session directory
-appears; nothing is ever appended to an existing one.
+found and adding one. The same experiment directory under `events/` is scanned
+too, because a host that deletes only `data/` leaves a session's event files
+there ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md) §4.1). So each time logging
+starts, a **new** session directory appears, and its event files never land
+among an old session's; nothing is ever appended to an existing one.
 
 > **The scan compares with `strncmp(fname, shimmerName, strlen(fname) - 4)`** —
 > the length is taken from the *directory entry*, not from the device name.
@@ -695,7 +698,10 @@ the read back unchanged.
 
 `ShimSdCfgFile_generate` only runs when the device is **not docked**, a card is
 present, and the card is not marked bad — and only when
-`ShimConfig_areConfigBytesValid()` passes.
+`ShimConfig_areConfigBytesValid()` passes. Nor does it run during a logging
+session, while the event file holds the file object
+([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md) §4.5): it then returns 0, and its
+callers leave `flagWriteCfgToSd` set, so the write is done at the next sync.
 
 `ShimSdCfgFile_parse` starts by calling `ShimConfig_createBlankConfigBytes()`,
 so **the file is authoritative, not a patch**. Any setting absent from the file

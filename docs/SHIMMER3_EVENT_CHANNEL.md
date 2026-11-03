@@ -174,9 +174,13 @@ edges:
   when logging stops. An edge between the data file opening and the event file
   opening waits with the button's records.
 - **A Bluetooth host that has opted in (§6).** Capture is armed from the opt-in
-  until the host opts out or disconnects, logging or not.
+  until the host opts out or disconnects, logging or not. A configuration write
+  that sets or clears bit 5 meanwhile arms or disarms it at once
+  (`ShimEvt_onConfigChanged()`, from `ShimConfig_checkAndCorrectConfig()`).
 
-Otherwise there is no capture, and so no waking on a TTL edge.
+Otherwise there is no capture, and so no waking on a TTL edge. Disarmed, the
+input has no pull and floats, so its level is read only once arming has pulled
+it down.
 
 - **Shimmer3.** Timer_A0 is shared with SD sync, which uses CCR1. The timer
   runs while either one uses it (`TA0_start()` / `TA0_stop()`); it used to be
@@ -195,9 +199,11 @@ Otherwise there is no capture, and so no waking on a TTL edge.
   - Shimmer3R knows each edge's direction from the channel that took it.
 - **A flood.** More than 32 edges in one 100 ms tick - a chattering or
   mis-wired input - and the capture interrupt is switched off for a second, so
-  it cannot starve everything else. On re-arming, an overflow record gives the
-  input's level then, and the dropped count goes up by one. So the input records
-  at most 320 edges a second, which is 160 pulses.
+  it cannot starve everything else (`Board_evtTtlPause()`). Only the interrupt
+  is switched off: the pin keeps its pull-down, and the main loop re-arms the
+  input. On re-arming, an overflow record gives the input's level then, and the
+  dropped count goes up by one. So the input records at most 320 edges a
+  second, which is 160 pulses.
 
 ## 4. The event file
 
@@ -213,6 +219,13 @@ Otherwise there is no capture, and so no waking on a TTL edge.
 directory and file number, with no extension. The event file splits when the
 data file does. Its header also carries the data file's initial timestamp
 (§4.2), so a copied or renamed file can still be paired.
+
+A new session's number is one past the highest this Shimmer has used under
+either `data/<experiment>/` or `events/<experiment>/`
+(`ShimSdDataFile_setBasedir()`). A host that deletes only `data/`, as
+Consensys' Clear SD does, leaves the event files behind, and a number counted
+from `data/` alone would come round again and put the next session's event
+files in among them.
 
 The event file is the first **companion file**, and any other kind of file
 written beside a data file follows the same rule:
@@ -300,8 +313,10 @@ the close at the end of a session is done at once.
   flag, at the split time. The new file opens with reason 2, carries on the
   sequence numbers, and starts with an initial-state record. An edge from before
   the split that is still queued when the split happens goes in the old file.
-- **Stop.** A final record, then the file is closed. A file with no final
-  record was cut short, for example by a flat battery.
+- **Stop.** A final record, then the file is closed. That includes a Shimmer3
+  that stops because it was docked: logging stops before the card is handed to
+  the dock. A file with no final record was cut short, for example by a flat
+  battery.
 - **Errors.** A failed open or write stops the event file for the rest of the
   session. The data file is never affected.
 
@@ -309,7 +324,9 @@ Edges are lost in four ways, and every one is counted in each later record's
 dropped field:
 
 - the 16-entry ring is full when an interrupt comes;
-- more than 8 records arrive before the event file opens;
+- more than 8 records arrive before the event file opens. This one is lost to
+  the file only, so it is not counted on the Bluetooth link (§6), which was
+  sent each record as it was made;
 - for the TTL input, the timer overwrites a capture;
 - for the TTL input, a flood (§3.4).
 
@@ -326,14 +343,28 @@ masked section holds it off. That is far below anything a press can resolve.
 Button records leave the timer-latched flag clear. TTL records set it: their
 time is the edge's own, latched by the timer (§3.2).
 
+**Records are in the order they were processed, not always in time order.** An
+edge or overflow record can be a little earlier than the record before it:
+
+- a button edge the debounce put back (synthesized) takes the time of the edge
+  it stands for, found up to about 0.1 s later (§2.2);
+- a TTL edge takes the time its timer latched, and is read when its interrupt
+  runs: up to 65.5 ms later on Shimmer3R, and an overflow record takes that
+  edge's time too.
+
+Every other record is later than everything before it. Sort by time where order
+matters.
+
 ### 4.5 Memory
 
 The event file uses `sdlog.cfg`'s file object (`ShimSdCfgFile_lendFil()`) for
 the length of a session: Shimmer3 has no RAM for another, and `sdlog.cfg` is
 never read or written while logging. While it is lent, `ShimSdCfgFile_parse()`
-and `ShimSdCfgFile_generate()` leave the card alone.
+and `ShimSdCfgFile_generate()` leave the card alone, and `generate()` returns 0
+so that a waiting write stays waiting rather than being taken as done.
 
-The rest costs 564 bytes on Shimmer3, from the link map:
+The rest costs 565 bytes on Shimmer3: 564 from the link map, and one byte added
+since for the configuration-write flag (§3.3).
 
 | Item | Bytes |
 |---|---:|
@@ -342,10 +373,10 @@ The rest costs 564 bytes on Shimmer3, from the link map:
 | The file state and path | 114 |
 | The Bluetooth link: 4 queued records and its counters (§6) | 72 |
 | The button's gesture state | 44 |
-| The indexes, TTL state and the Bluetooth opt-in flags | 12 |
+| The indexes, TTL state, the configuration-write flag and the Bluetooth opt-in flags | 13 |
 | The shared Timer_A0's user mask and the next edge's direction | 2 |
 
-That leaves 298 bytes of Shimmer3's RAM unallocated.
+That leaves 297 bytes of Shimmer3's RAM unallocated.
 
 ## 5. Worked example
 
@@ -415,9 +446,10 @@ records:  type flags seq    time (u64)                ch st dropped
 
 `Test/host/test_event_record.c` pins the encoder to these bytes.
 `Extras/python_scripts/Shimmer_common/shimmer_event_file.py` prints a file like
-this and checks it: whole records, sequence numbers without gaps, times that
-never go backwards, a final record, and with `--data` that it pairs with the
-data file it was recorded beside.
+this and checks it: whole records, sequence numbers without gaps, times that go
+backwards only where §4.4 allows (an edge or overflow record, by at most 2 s),
+a final record, and with `--data` that it pairs with the data file it was
+recorded beside.
 
 ## 6. Over Bluetooth
 
@@ -435,7 +467,9 @@ short:
   edge and overflow record follows, logging or not. Heartbeats and the file's
   own initial-state and final records stay in the file.
 - **The link numbers its own records.** The sequence number starts at 0 at the
-  opt-in, and the dropped count covers only the time since then.
+  opt-in, and the dropped count covers only the time since then and only edges
+  lost before a record was made. A record the event file could not keep before
+  it opened (§4.3) still reached the host, so it is not counted here.
 - **Status.** `GET_EVENT_CHANNEL_STATUS_COMMAND` (0xB9) answers with the inputs
   enabled, whether the stream is on, whether a file is open or has failed,
   whether the TTL input is armed or throttled, each input's state, and the

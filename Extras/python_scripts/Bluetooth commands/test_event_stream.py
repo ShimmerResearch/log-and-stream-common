@@ -114,6 +114,7 @@ class Link:
 
     def __init__(self):
         self.received = []  # (seconds after the opt-in, record)
+        self.latest_ts = None  # the latest record time so far
         self.lost = 0
         self.problems = []
         self.warnings = []
@@ -131,8 +132,14 @@ class Link:
                 self.lost += lost
                 self.warnings.append(f"seq {expected} to {(rec['seq'] - 1) & 0xFFFF}: "
                                      f"{lost} record(s) lost by the link")
-            if rec["ts"] < prev["ts"]:
-                self.warnings.append(f"seq {rec['seq']}: time goes backwards")
+            # By the event file's rule: only an edge or overflow record may be
+            # put back, and only a little (docs/SHIMMER3_EVENT_CHANNEL.md 4.4)
+            back = self.latest_ts - rec["ts"]
+            if back > 0 and (rec["type"] not in shimmer_event_file.BACKWARDS_TYPES
+                             or back > shimmer_event_file.MAX_BACKWARDS_TICKS):
+                self.warnings.append(f"seq {rec['seq']}: time goes back "
+                                     f"{back / TICKS_PER_S:.6f} s")
+        self.latest_ts = rec["ts"] if self.latest_ts is None else max(self.latest_ts, rec["ts"])
         self.received.append((arrived_s, rec))
 
     def lateness_ms(self):

@@ -54,8 +54,11 @@ extern uint8_t TA0_captureIsr(void);
 extern void Board_setExpansionBrdPower(uint8_t state);
 extern uint8_t Board_isBtnPressed(void);
 /* The TTL input (Events/shimmer_events.h): arm or disarm its timer capture,
- * and read its level now */
+ * and read its level now. Arming pulls the input down; disarmed, it floats. */
 extern void Board_evtTtlArm(uint8_t enable);
+/* Interrupt context, from the flood throttle: stop taking edges until the next
+ * Board_evtTtlArm(1), changing nothing but the capture interrupt's enable */
+extern void Board_evtTtlPause(void);
 extern uint8_t Board_evtTtlLevel(void);
 extern void Board_sd2Pc(void);
 extern void Board_sd2Mcu(void);

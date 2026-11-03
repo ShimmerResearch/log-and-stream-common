@@ -191,8 +191,10 @@ void ShimTask_NORM_manage(void)
         {
           shimmerStatus.configuring = 1;
           ShimConfig_readRam();
-          ShimSdCfgFile_generate();
-          ShimConfig_setFlagWriteCfgToSd(0, 1);
+          if (ShimSdCfgFile_generate())
+          {
+            ShimConfig_setFlagWriteCfgToSd(0, 1);
+          }
           shimmerStatus.configuring = 0;
         }
         break;

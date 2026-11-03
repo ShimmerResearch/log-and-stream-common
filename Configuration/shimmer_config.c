@@ -1116,6 +1116,11 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
     }
   }
 
+  /* Every configuration write comes through here. Byte 232 may have turned
+   * the TTL input on or off while a host takes the event stream, so the event
+   * channel re-arms it to match. */
+  ShimEvt_onConfigChanged();
+
   return settingCorrected;
 }
 
@@ -1292,8 +1297,10 @@ void ShimConfig_loadSensorConfigAndCalib(void)
     }
     if (ShimConfig_getFlagWriteCfgToSd())
     { //info > sdcard
-      ShimSdCfgFile_generate();
-      ShimConfig_setFlagWriteCfgToSd(0, 1);
+      if (ShimSdCfgFile_generate())
+      {
+        ShimConfig_setFlagWriteCfgToSd(0, 1);
+      }
       if (!ShimSdDataFile_isFileStatusOk())
       {
         shimmerStatus.sdlogReady = 0;

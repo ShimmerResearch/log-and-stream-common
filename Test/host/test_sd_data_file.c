@@ -292,10 +292,32 @@ FRESULT f_sync(FIL *fp)
   return FR_OK;
 }
 
+/* The session folders already on the card, for the session number: under the
+ * experiment directory (data/test_0 here) and under its event-file twin
+ * (events/test_0). Null lists nothing; a null events list is no such folder.
+ * Every other directory lists nothing. */
+static const char *const *dataSessions;
+static const char *const *eventSessions;
+static const char *const *listing;
+static uint32_t listingAt;
+
 FRESULT f_opendir(DIR *dp, const TCHAR *path)
 {
-  (void) path;
   memset(dp, 0, sizeof(*dp));
+  listing = 0;
+  listingAt = 0;
+  if (strcmp(path, "events/test_0") == 0)
+  {
+    if (eventSessions == 0)
+    {
+      return FR_NO_PATH;
+    }
+    listing = eventSessions;
+  }
+  else if (strcmp(path, "data/test_0") == 0)
+  {
+    listing = dataSessions;
+  }
   return FR_OK;
 }
 
@@ -305,11 +327,16 @@ FRESULT f_closedir(DIR *dp)
   return FR_OK;
 }
 
-/* An empty experiment directory: the first entry ends the listing. */
+/* One folder per call; an empty name ends the listing */
 FRESULT f_readdir(DIR *dp, FILINFO *fno)
 {
   (void) dp;
   memset(fno, 0, sizeof(*fno));
+  if (listing != 0 && listing[listingAt] != 0)
+  {
+    strncpy(fno->fname, listing[listingAt++], sizeof(fno->fname) - 1U);
+    fno->fattrib = AM_DIR;
+  }
   return FR_OK;
 }
 
@@ -949,6 +976,44 @@ static void test_freed_buffer_resumes_the_drain(void)
   session_stop(&s);
 }
 
+/* A host that deletes data/ alone leaves a session's event files behind under
+ * events/. Its number must not come round again, or the next session's event
+ * files land among the old ones. */
+static void test_session_number_skips_event_folders(void)
+{
+  static const char *const data[] = { "host-001", "other-009", 0 };
+  static const char *const events[] = { "host-001", "host-004", 0 };
+  static const char *const eventsOnly[] = { "host-002", 0 };
+  Session s;
+
+  testCase("a session number still used under events/ is not reused");
+  rng = 29;
+
+  dataSessions = data;
+  eventSessions = 0;
+  session_start(&s, 0, 0);
+  expectStr("no events folder: one past data/",
+      ShimSdDataFile_getDataFileName(), "data/test_0/host-002/000");
+  session_stop(&s);
+
+  eventSessions = events;
+  session_start(&s, 0, 0);
+  expectStr("one past the highest under either",
+      ShimSdDataFile_getDataFileName(), "data/test_0/host-005/000");
+  session_stop(&s);
+
+  /* Consensys' Clear SD: data/ emptied, events/ left */
+  dataSessions = 0;
+  eventSessions = eventsOnly;
+  session_start(&s, 0, 0);
+  expectStr("data/ empty: one past events/", ShimSdDataFile_getDataFileName(),
+      "data/test_0/host-003/000");
+  session_stop(&s);
+
+  dataSessions = 0;
+  eventSessions = 0;
+}
+
 int main(void)
 {
   printf("SD writer (Shimmer3R), NUM_SDWRBUF = %u, record %u B\n\n",
@@ -965,6 +1030,7 @@ int main(void)
   test_sync_heads_survive_batching();
   test_sync_heads_survive_short_writes();
   test_freed_buffer_resumes_the_drain();
+  test_session_number_skips_event_folders();
 
   card_reset();
   return hostTestReport("sd_data_file");

@@ -78,8 +78,10 @@ void LogAndStream_syncConfigAndCalibOnSd(void)
   if (ShimConfig_getFlagWriteCfgToSd())
   { //info > sdcard
     ShimConfig_readRam();
-    ShimSdCfgFile_generate();
-    ShimConfig_setFlagWriteCfgToSd(0, 1);
+    if (ShimSdCfgFile_generate())
+    {
+      ShimConfig_setFlagWriteCfgToSd(0, 1);
+    }
   }
   else
   {
