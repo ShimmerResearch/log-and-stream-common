@@ -387,6 +387,24 @@ uint8_t ShimBrd_isBmp581PresentPerSrNumber(void)
           || ShimBrd_isBoardSrNumberGte(EXP_BRD_BR_AMP_UNIFIED, 4, 2)));
 }
 
+uint8_t ShimBrd_isIm68d121PresentPerSrNumber(void)
+{
+  /* The Infineon IM68D121JV01 microphone replaces the ST MP23DB01HP on the
+   * ".3" Shimmer3R boards (docs/SHIMMER3_BOARD_REVISIONS.md):
+   *   SR31-11-3, SR38-4-3, SR47-8-3, SR48-8-3, SR49-4-3
+   * Both are PDM parts on the same pins, but the IM68D121 is 15 dB more
+   * sensitive (-26 against -41 dBFS at 94 dB SPL), so the audio recorder sets
+   * its gain by this (docs/SHIMMER3R_AUDIO.md §4). Unlike the BMP581, SR48 has
+   * no rev-7 build with the new part, so every line is a plain >= x.3. An
+   * unprogrammed card reads as the MP23DB01HP. */
+  return (ShimBrd_isHwId(HW_ID_SHIMMER3R)
+      && (ShimBrd_isBoardSrNumberGte(SHIMMER3_IMU, 11, 3)
+          || ShimBrd_isBoardSrNumberGte(EXP_BRD_PROTO3_DELUXE, 4, 3)
+          || ShimBrd_isBoardSrNumberGte(EXP_BRD_EXG_UNIFIED, 8, 3)
+          || ShimBrd_isBoardSrNumberGte(EXP_BRD_GSR_UNIFIED, 8, 3)
+          || ShimBrd_isBoardSrNumberGte(EXP_BRD_BR_AMP_UNIFIED, 4, 3)));
+}
+
 uint8_t ShimBrd_isHwId(uint8_t hwIdToCheck)
 {
   return hwId == hwIdToCheck;

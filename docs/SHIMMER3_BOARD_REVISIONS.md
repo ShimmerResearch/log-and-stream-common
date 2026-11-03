@@ -59,7 +59,7 @@ minors. Base board IDs never change; the revision signifies the variant.
 | --- | --- | --- |
 | BMP581 replaces BMP390 | SR31-11-2, SR38-4-2, SR47-8-2, SR48-8-2, SR49-4-2, plus dev build SR48-7-2 | `ShimBrd_isBmp581PresentPerSrNumber()` (log-and-stream-common PR #111) |
 | HSE (16 MHz) load-cap fix 6.8 → 15 pF | SR31-11-2, SR38-4-2, SR47-8-2, SR48-8-2, SR49-4-2 — **not** SR48-7-2 (dev build predates the cap change) | `hseCapFixFitted()` in shimmer3r-firmware `hal_FactoryTest.c`; picks the S3R_TEST_0028 pass limit (±35 ppm fixed / ±100 ppm pre-fix) |
-| IM68D121JV01 replaces MP23DB01HP microphone | SR31-11-3, SR38-4-3, SR47-8-3, SR48-8-3, SR49-4-3 | none yet (both mics are PDM, same interface) |
+| IM68D121JV01 replaces MP23DB01HP microphone | SR31-11-3, SR38-4-3, SR47-8-3, SR48-8-3, SR49-4-3 | `ShimBrd_isIm68d121PresentPerSrNumber()`; sets the audio recorder's gain, as the two mics are 15 dB apart in sensitivity ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §4) |
 | LIS3MDL + ADXL371 no longer placed | `.1` minors (SR31-11-1 keeps ADXL371; see tables) | `ShimBrd_isLis3mdlPresent()` / `ShimBrd_isAdxl371Present()` |
 
 Notes:

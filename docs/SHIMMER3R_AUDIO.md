@@ -227,8 +227,39 @@ A record is one landmark, a u32:
 **Capture settings:**
 - The ADF filters the 1.536 MHz PDM stream with a sinc5 at decimation 24 and a
   reshape filter at 4, giving exactly 16 kHz, then a high-pass filter.
-- Gain is SCALE +6 for now. The calibrated default is still to be measured
-  against a sound level.
+- The gain (SCALE) depends on the microphone fitted, since the two parts are
+  15 dB apart in sensitivity: code 6 (+18.1 dB) for the MP23DB01HP, and code 1
+  (+3.5 dB) for the IM68D121JV01 on the ".3" boards
+  (`ShimBrd_isIm68d121PresentPerSrNumber()`,
+  [SHIMMER3_BOARD_REVISIONS.md](SHIMMER3_BOARD_REVISIONS.md)). The WAV header
+  records the code used (§3.1, offset 92).
+
+**What the gain gives.** The figures below are worked out from the datasheets
+and RM0456, not measured against a sound level:
+- **The chain:** a full-scale PDM stream gives 24^5 out of the sinc5. SCALE
+  follows, then the reshape filter (about +9.3 dB), then the 24-bit output, of
+  which the WAV keeps the top 16 bits. At code 6 the WAV runs 26.9 dB above the
+  microphone's own dBFS.
+- **What clips first:** the reshape filter's input, limited to 22 bits. It
+  saturates at about −2.7 dBFS in the WAV, so loud sound flattens a little below
+  full scale.
+
+| | MP23DB01HP, code 6 | IM68D121JV01, code 1 |
+|---|---|---|
+| Sensitivity (94 dB SPL, 1 kHz) | −41 dBFS (performance mode) | −26 dBFS |
+| A 94 dB SPL tone in the WAV | −14.1 dBFS peak | −13.7 dBFS peak |
+| Clips at | 105 dB SPL | 105 dB SPL |
+| Microphone self-noise in the WAV | −82 dBFS(A), 19 dB above 16-bit quantisation | −85 dBFS(A), 16 dB above |
+
+- **The bench recordings fit this.** On MP23DB01HP boards a quiet room came out
+  at −60 to −67 dBFS RMS, which this puts at 44-51 dB SPL. A soundtrack played
+  loud at 30 cm came out at 67-77 dB SPL, with peaks at 92.
+- **The PDM clock must stay at 1.536 MHz or above.** The MP23DB01HP's
+  performance mode starts at 1.5 MHz; below it, its low-power mode is 17 dB
+  more sensitive.
+- **At code 6 the IM68D121JV01 would clip at 90 dB SPL,** which a raised voice
+  near the unit can reach. That is why the gain follows the board.
+- **An unprogrammed daughter card reads as the MP23DB01HP.**
 
 **How samples reach the card:**
 - GPDMA1 channel 11 writes the samples straight into an 8 s ring, through a
@@ -368,6 +399,8 @@ rather than restarting the ADF under the recording
 ## Not yet
 
 **Firmware:**
+- The gain checked against a sound level (§4 is worked out, not measured), and
+  any recording at all on an IM68D121JV01 board.
 - Gain presets. Byte 233 bits 2-3 are reserved for them.
 - An LED cue while raw audio records.
 - Whether to mask the ADF's saturation flag. In bench recordings it fired 260
