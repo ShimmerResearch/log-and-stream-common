@@ -141,7 +141,10 @@ little-endian.
 - **Gaps.** Sample *n* is always 1/16000 s of capture after sample *n − 1*. If
   the card ever fell further behind than the 8 s capture ring, the samples it
   missed are written as silence and counted at offset 112, so the count never
-  slips.
+  slips. On the bench, a card made to take nothing for 12 s left 65,536 samples
+  (4.1 s) of silence at exactly the samples the ring lost. Every sample after
+  them kept its index, and the escape hatch (§4) then caught up in about 140
+  writes.
 
 ### 3.2 The fingerprint file
 
@@ -300,7 +303,20 @@ them on the firmware version.
 | 28 | 4 | Fingerprint chunks skipped this session |
 
 Faults 4 and 5 are degradations, not stops: recording carries on, and the fault
-bit says the WAV has silence in it or the fingerprint has gaps.
+bit says the WAV has silence in it or the fingerprint has gaps. The other faults
+stop the recording: the files are closed with the fault in their headers, the
+recording bit clears and the fault bit sets, and logging carries on. A file
+closed by a failed write ends at its last whole write, and its last-sample clock
+is that sample's. The fault bit stays set after the log stops, until the next
+session starts.
+
+Each fault has been forced on the bench, with logging at 1024 Hz losing nothing:
+
+| Fault | How it was forced | What followed |
+|---|---|---|
+| 4 | The WAV took nothing for 12 s | Fault bit set when the ring overran; recording on, seconds paused, 65,536 silence samples |
+| 5 | The analysis did nothing for 12 s | Fault bit set at the next chunk; 3 chunks skipped, numbering and hashes of the rest still right |
+| 3 | A WAV write failed at 20 s | State 4, recording bit clear and fault bit set within a second; both files closed at 20 s |
 
 ## 6. Power and sleep
 
