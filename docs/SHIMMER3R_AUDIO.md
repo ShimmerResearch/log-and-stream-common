@@ -70,7 +70,9 @@ audio/<experimentId>_<configTime>/<shimmerName>-<NNN>/<NNN>.AFP   modes 1 and 2
 ```
 
 `audio/X/NNN.WAV` and `audio/X/NNN.AFP` belong with `data/X/NNN`: the same experiment directory,
-session directory and file number. This is the companion-file rule the event
+session directory and file number. Like the data tree, each audio file and each
+directory the recorder makes is dated with the unit's RTC: a file when it closes,
+a directory when it is made. This is the companion-file rule the event
 channel's `events/` tree uses
 ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §4.1). Each header also
 carries the data file's initial timestamp, so a copied or renamed file can
@@ -105,7 +107,7 @@ little-endian.
 | 50 | 1 | Mode, as recorded |
 | 51 | 1 | Why it opened: 0 the session's first file, 1 after a split |
 | 52 | 2 | File number `NNN` |
-| 56 | 8 | The data file's initial timestamp |
+| 56 | 8 | The data file's initial timestamp, all 64 bits. The data file's own header keeps the low 40 ([SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md), bytes 251-255), so pair on those |
 | 64 | 4 | Config time |
 | 68 | 6 | Firmware ID, major, minor, internal (u16, u16, u8, u8) |
 | 74 | 6 | Bluetooth MAC |
@@ -327,12 +329,13 @@ rather than restarting the ADF under the recording
 ## Not yet
 
 **Firmware:**
-- Whether the fingerprint file stores hashes, as now, or spectral peaks (§3.2).
 - Gain presets. Byte 233 bits 2-3 are reserved for them.
 - An LED cue while raw audio records.
-- Whether to mask the ADF's saturation flag. In two bench recordings it fired
-  263 and 278 times in the first 11 s and never after, so it looks like a
-  start-up transient rather than clipping.
+- Whether to mask the ADF's saturation flag. In bench recordings it fired 260
+  to 280 times in the first 11 s and never after, a start-up transient. It
+  counts real overload too: nine taps on a bare board's SD card cage, which
+  drove the WAV to full scale, took one recording's count to 2,106. So it is
+  worth keeping, if only as a count.
 
 **Hosts:**
 - Byte 233 in the host APIs' configuration models.

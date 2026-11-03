@@ -55,7 +55,8 @@ static inline void ShimSdCompanion_onSessionStop(void)
  * The event file still builds its own path the same way
  * (Events/shimmer_events.c); it can move to this once DEV-971 has merged. */
 uint8_t ShimSdCompanion_path(const char *root, const char *ext, char *out, uint16_t len);
-/* Creates each directory along path, not its last element. 0 on a failure. */
+/* Creates each directory along path, not its last element, dating each one it
+ * creates with the RTC. 0 on a failure. */
 uint8_t ShimSdCompanion_makeDirs(char *path);
 #endif
 

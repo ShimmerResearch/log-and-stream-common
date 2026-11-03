@@ -43,6 +43,12 @@ uint8_t ShimSdCompanion_makeDirs(char *path)
   {
     *slash = '\0';
     res = f_mkdir(path);
+    if (res == FR_OK)
+    {
+      /* FatFs dates nothing itself (get_fattime() is 0): stamp it with the
+       * RTC, as the data tree's directories are */
+      (void) ShimSd_setFileTimestamp(path);
+    }
     *slash = '/';
     if (res != FR_OK && res != FR_EXIST)
     {
