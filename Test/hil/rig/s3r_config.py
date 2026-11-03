@@ -1,7 +1,7 @@
 """Build and read Shimmer3R configurations in the 512-byte InfoMem image.
 
-Only the fields the release matrix varies: sampling rate, sensor enables and
-the ranges of the kinematic sensors. Everything else in the image - trial
+Only the fields the release matrix varies: sampling rate, sensor enables, the
+ranges of the kinematic sensors and the audio mode. Everything else in the image - trial
 config, names, calibration blocks - is carried through from what the unit
 already holds. Byte and bit positions are those of
 docs/SHIMMER3_CONFIGURATION_INFOMEM.md §2-§4, Shimmer3R column.
@@ -100,6 +100,18 @@ class S3rConfig:
     def gyro_range(self, code: int):
         self.b[8] = (self.b[8] & 0xFC) | (code & 0x3)
         self.b[130] = (self.b[130] & 0xFB) | (((code >> 2) & 1) << 2)
+
+    # --- audio ---------------------------------------------------------------
+
+    @property
+    def audio_mode(self) -> int:                # byte 233 (§8.5): bits 0-1 mode, bits 2-7 zero
+        return self.b[233]
+
+    @audio_mode.setter
+    def audio_mode(self, mode: int):
+        # The whole byte: gain preset 0 (the default) and bit 7 clear, so a
+        # mode the firmware records reads back exactly as written.
+        self.b[233] = mode & 0x03
 
     # --- ODRs, for checking the firmware's correction ------------------------
 

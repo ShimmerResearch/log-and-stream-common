@@ -33,6 +33,8 @@ SET_CRC = 0x8B
 START_STREAMING, STOP_STREAMING = 0x07, 0x20
 START_LOGGING, STOP_LOGGING = 0x92, 0x93
 START_SDBT, STOP_SDBT = 0x70, 0x97
+# Shimmer3R audio (docs/SHIMMER3R_AUDIO.md §5): the reply is 32 bytes.
+GET_AUDIO_STATUS, AUDIO_STATUS_RSP, AUDIO_STATUS_LEN = 0xBC, 0xBD, 32
 
 # Configuration over Bluetooth, the way a host writes it (§7.5, §7.6, §7.8).
 GET_INFOMEM, INFOMEM_RSP, SET_INFOMEM = 0x8E, 0x8D, 0x8C
@@ -59,6 +61,8 @@ WRITE_ACK_S = 3.0               # a write's ACK follows the flash erase and writ
 
 STATUS_DOCKED, STATUS_SENSING, STATUS_LOGGING, STATUS_STREAMING = 0x01, 0x02, 0x08, 0x10
 STATUS_SD_INSERTED, STATUS_SD_BAD_FILE = 0x20, 0x40
+# Status byte 1, Shimmer3R: bit 0 usbPluggedIn, then the audio bits (SHIMMER3R_AUDIO §5).
+STATUS1_AUDIO_RECORDING, STATUS1_AUDIO_FAULT = 0x02, 0x04
 
 HW_SHIMMER3, HW_SHIMMER3R = 3, 10
 # Shimmer3R LogAndStream sends two status bytes from v1.00.024, one before it
@@ -119,6 +123,7 @@ class StreamStats:
     resyncs: int = 0            # bytes skipped to find a packet boundary
     status_pushes: int = 0
     pushed: list = field(default_factory=list)  # status byte 0 of each in-stream status frame, in order
+    pushes: list = field(default_factory=list)  # (seconds after the start, all status bytes) of each
     acks: int = 0               # bare ACKs mid-stream: commands sent with actions=
     events: list = field(default_factory=list)  # (label, packets so far, seconds) per action sent
     first_ts: int | None = None
@@ -282,7 +287,11 @@ class BtLink:
         return self._nstatus
 
     def status(self, timeout_s: float = 3.0) -> int:
-        """Status byte 0 (byte 1, Shimmer3R's usbPluggedIn, is read and dropped).
+        """Status byte 0. status_bytes() has Shimmer3R's byte 1 as well."""
+        return self.status_bytes(timeout_s)[0]
+
+    def status_bytes(self, timeout_s: float = 3.0) -> bytes:
+        """Every status byte this unit sends: one, or two on Shimmer3R (§5.3).
 
         The reply is found by its frame, ACK 0x8A 0x71, rather than assumed to
         be the next byte: after a stop at a high rate a stale data packet can
@@ -302,8 +311,13 @@ class BtLink:
             if i >= 0 and len(buf) >= i + 3 + n:
                 time.sleep(0.05)
                 self.ser.reset_input_buffer()     # its CRC, if a mode is on
-                return buf[i + 3]
+                return bytes(buf[i + 3:i + 3 + n])
         raise BtError(f"no status reply within {timeout_s:.0f} s (got {bytes(buf[:24]).hex()})")
+
+    def audio_status(self) -> bytes:
+        """GET_AUDIO_STATUS_COMMAND's 32-byte reply (SHIMMER3R_AUDIO §5); rig/s3r_audio.py reads it."""
+        self.command(GET_AUDIO_STATUS, rsp=AUDIO_STATUS_RSP)
+        return self._read(AUDIO_STATUS_LEN)
 
     def inquiry(self) -> Inquiry:
         self.command(INQUIRY, rsp=INQUIRY_RSP)
@@ -543,6 +557,7 @@ class BtLink:
                         else:
                             st.status_pushes += 1
                             st.pushed.append(buf[3])
+                            st.pushes.append((round(now - t0, 3), bytes(buf[3:push_len - crc_n])))
                         del buf[:push_len]
                     elif buf[0] == ACK and stop_t is None and len(buf) >= 2:
                         # A bare ACK at a frame boundary while streaming: the
