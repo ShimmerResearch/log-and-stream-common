@@ -1473,7 +1473,11 @@ undock; or both together) and Bluetooth CRC mode. Two of them are five-minute
 logs. Each row is its own item, `release.<row>`:
 
 - **Configuration.** The rate, sensor bits and ranges are written as raw
-  InfoMem and must read back exactly. Every enabled sensor's ODR must then
+  InfoMem and must read back exactly. So must "logging starts only by command"
+  (`userButtonEnable` on, byte 232 0): the rows start and stop logging over
+  Bluetooth, and a unit set to log on every undock would already be logging,
+  and recording audio, before the link is up. The unit's own setting comes back
+  with its InfoMem after the matrix. Every enabled sensor's ODR must then
   cover the packet rate, because the firmware raises it (§10.6 of the InfoMem
   document); a part already at its ceiling is accepted there. Sensors the board
   does not have are left out (`rig/s3r_boards.py`).

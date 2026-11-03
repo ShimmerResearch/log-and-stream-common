@@ -113,6 +113,19 @@ class S3rConfig:
         # mode the firmware records reads back exactly as written.
         self.b[233] = mode & 0x03
 
+    # --- how logging starts --------------------------------------------------
+
+    def start_by_command_only(self):
+        """No undock start (§8.3): userButtonEnable on (byte 217 bit 5) and byte
+        232 in its legacy mode 0. With userButtonEnable off, or byte 232's undock
+        trigger set, every undock starts logging, before a host can connect."""
+        self.b[217] |= 0x20
+        self.b[232] = 0
+
+    @property
+    def starts_by_command_only(self) -> bool:
+        return bool(self.b[217] & 0x20) and self.b[232] == 0
+
     # --- ODRs, for checking the firmware's correction ------------------------
 
     def odrs_hz(self) -> dict[str, float]:

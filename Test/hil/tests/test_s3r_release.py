@@ -2,7 +2,8 @@
 
 Each row is one report item, release.<id>. For every row:
 
-1. Configure over USB: rate, sensor set and ranges written as raw InfoMem.
+1. Configure over USB: rate, sensor set, ranges and audio mode written as raw
+   InfoMem, with logging set to start only by command (no undock start).
    Read back, the image must hold exactly that - and every enabled sensor's
    ODR must cover the packet rate, because the firmware is meant to raise it
    (INFOMEM §10.6). A host that wrote only the bitmap and rate, as many do,
@@ -97,9 +98,15 @@ def _configure(unit, row) -> tuple[S3rConfig, set[str]]:
         cfg.gyro_range = row["gyro_range"]
         cfg.wr_accel_range = row["wr_accel_range"]
         cfg.audio_mode = row.get("audio", 0)    # always written: a unit can hold a mode from before
+        # The rows start and stop logging over Bluetooth. A unit set to log on
+        # undock would be logging, and recording audio, before the link is up.
+        cfg.start_by_command_only()
         d.write_infomem(cfg.bytes())
         back = S3rConfig(d.read_infomem())
     problems = []
+    if not back.starts_by_command_only:
+        problems.append(f"bytes 217 and 232 read back {back.b[217]:#04x} {back.b[232]:#04x}: "
+                        "an undock may start logging")
     if back.divider != cfg.divider:
         problems.append(f"divider read back {back.divider}, wrote {cfg.divider}")
     if back.enabled() != want:
@@ -244,6 +251,8 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
             s3r_usb.wait_cdc_gone(unit.usb_serial, 15)
             with bt.BtLink(port) as link:
                 inq = link.inquiry()
+                if link.status() & bt.STATUS_LOGGING:
+                    probs.append("logging had started before the row's own start (an undock start?)")
                 if row["mode"] == "log":
                     link.simple(bt.START_LOGGING)
                     link.wait_status(bt.STATUS_LOGGING, True, 10)
