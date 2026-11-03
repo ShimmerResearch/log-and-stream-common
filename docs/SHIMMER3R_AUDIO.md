@@ -263,8 +263,9 @@ A record is one landmark, a u32:
 - If analysis ever falls so far behind that the ring would overwrite audio a
   chunk still needs, that chunk is skipped and the next starts half a ring
   behind the capture. Skipped chunks are counted, and the first sets fault 5.
-- The tables the analysis needs take about 70 ms to build, so the firmware
-  builds them at boot, before anything samples.
+- The tables the analysis need take 68.9 ms to build (3,308,553 cycles at
+  48 MHz, measured on the bench), so the firmware builds them at boot, before
+  anything samples.
 - The analysis keeps a spectrogram of the chunk in RAM, which could be turned
   back into speech. It is never logged, stored or sent; only the hashes leave.
 
@@ -332,7 +333,29 @@ Each fault has been forced on the bench, with logging at 1024 Hz losing nothing:
 ([SHIMMER3_POWER_MANAGEMENT.md](SHIMMER3_POWER_MANAGEMENT.md) §1). Stop modes
 would halt capture, and the firmware does not use them.
 
-**Not measured yet:** the current cost.
+**What it costs.** Measured on a Shimmer3R (an ExG board, 47-7-1) powered at 3.7 V
+on its battery connector by a power profiler. It was logging at 128 Hz (LN accel,
+gyro, mag, VBatt), undocked, with Bluetooth on but not connected. Each figure is
+the mean of 2 minutes:
+
+| Logging with | Current | Added by audio |
+|---|---:|---:|
+| No audio (mode 0) | 22.1 mA | |
+| The fingerprint (mode 1) | 24.0 mA | +1.8 mA (+8%) |
+| Raw audio (mode 3) | 26.4 mA | +4.3 mA (+19%) |
+| Both (mode 2) | 26.8 mA | +4.7 mA (+21%) |
+
+From the differences:
+- the capture (the microphone, the ADF and its clock, GPDMA and the 128 ms
+  interrupts) costs about 1.4 mA;
+- the fingerprint's analysis costs about 0.4 mA;
+- raw audio's card writes cost about 2.9 mA.
+
+The write cost depends on the card. The fingerprint's 4 s cycle shows in the
+current, and the 4 s averages varied by about 0.2 mA within each run. For
+comparison, the same unit undocked and not logging drew 20.0 mA. A raw-audio
+build wrote zeros in place of the room, the same number of bytes, so the card
+saw the same writes.
 
 ## 7. The factory microphone test
 
