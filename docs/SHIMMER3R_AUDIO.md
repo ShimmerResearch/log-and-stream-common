@@ -148,11 +148,9 @@ phone app uses, so the device's hashes can be matched against hashes the app or
 a PC makes from the same sound. The audio is analysed in chunks of 5 s, one
 every 4 s, each on its own, as the app does. Chunk *k* is the session's audio
 samples *k* × 64000 to *k* × 64000 + 79999, counted from the session's first
-sample: in mode 2, the same samples as the WAVs, joined in order.
-
-> **The record layout is provisional.** The device stores the hashes, which is
-> what the bench recorder did. If it should store the spectral peaks instead,
-> the records change and the format version with them.
+sample: in mode 2, the same samples as the WAVs, joined in order. The device
+stores the hashes, not the spectral peaks they are made from, so a host matches
+them as they are.
 
 A 512-byte header, then the chunks, each a 16-byte chunk header followed by its
 records. All fields are little-endian.
