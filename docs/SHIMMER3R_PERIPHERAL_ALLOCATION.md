@@ -90,7 +90,7 @@ so they appear in no `MX_*_Init` and in no `.ioc`:
 
 | Timer | Owner | When |
 |---|---|---|
-| `TIM1` | The TTL input: `PE9` as `TIM1_CH1`, rising edges on CC1 and falling on CC2, both from TI1, at 1 MHz (`Shimmer_Driver/hal_EventCapture.c`, [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md)) | Only during a logging session with `ttlInputEnable` set |
+| `TIM1` | The TTL input: `PE9` as `TIM1_CH1`, rising edges on CC1 and falling on CC2, both from TI1, at 1 MHz (`Shimmer_Driver/hal_EventCapture.c`, [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md)) | Only while `ttlInputEnable` is set and a logging session or an opted-in Bluetooth host takes the edges (SHIMMER3_EVENT_CHANNEL.md §3.3) |
 | `TIM16`, `TIM17` | The factory test's LSE measurement (`Shimmer_Driver/hal_FactoryTest.c`) | Only during that test |
 
 `htim1` is not declared anywhere; its one appearance is a commented-out
@@ -199,7 +199,7 @@ input or output. Pins not listed are unassigned.
 | PE6 | GPIO out | CS_LIS3MDL | |
 | PE7 | GPIO | LSM6DSV_INT1 | EXTI |
 | PE8 | GPIO | BT_HOST_WAKE | |
-| PE9 | GPIO / TIM1_CH1 | GPIO_EXTERNAL | header pin; shares EXTI line 9 with `PA9`; `TIM1_CH1` (AF1) while the TTL input is armed |
+| PE9 | GPIO / TIM1_CH1 | GPIO_EXTERNAL | pin 10 of the external (dock) connector; shares EXTI line 9 with `PA9`; `TIM1_CH1` (AF1) while the TTL input is armed |
 | PE10 | EXTI10 | LIS2MDL_DRDY | |
 | PE11 | EXTI11 | BMP390_INT | |
 | PE12 | GPIO out | SW_SENSE_IO | |

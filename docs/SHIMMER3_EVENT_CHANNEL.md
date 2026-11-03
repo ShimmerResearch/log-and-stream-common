@@ -128,10 +128,24 @@ The input is pulled down while armed, so an unconnected input reads low. On
 Shimmer3 the pull works with P1.5 given to the timer: the F5437A port diagram
 enables the resistor from `P1REN` and the pin direction only.
 
+On both, the input is pin 10 of the 18-way external connector, the one the
+unit docks with: `GPIO_EXTERNAL_RADIO_DD` on Shimmer3 and `GPIO_EXTERNAL` on
+Shimmer3R (Tables 2-1 and 2-1R of the *Shimmer3 Developer Reference*). The two
+connectors are the same part, so it is the same contact. Getting a signal to
+it:
+
+- **Shimmer3 JTAG Developer Board.** Brings P1.5 out on its J5 header, pin 2.
+- **External Expansion Board.** Its user button is wired to pin 10, and its
+  wire table gives the pin no pad of its own, so an outside signal has to be
+  wired to the button's pads. Whether the button switches the pin to ground or
+  to the supply has not been checked, so neither has whether a press makes a
+  TTL edge against the pull-down. Its documentation covers Shimmer3 only.
+- **Shimmer3R.** No board's documentation says it brings PE9 out.
+- **Docks.** What the docks connect to pin 10 has not been checked. A dock that
+  drives the pin would make edges whenever capture is armed while docked.
+
 > **These are MCU pins, at the board's logic level.** A 5 V TTL output must be
-> level-shifted or divided down before it reaches them, unless the expansion
-> board in use already does that. Which expansion boards bring P1.5 or PE9 to a
-> connector has not been checked.
+> level-shifted or divided down before it reaches pin 10.
 
 ### 3.2 Timing
 
@@ -452,8 +466,9 @@ test for the stream:
 
 ## 7. Not yet
 
-- **Which expansion boards bring the TTL input to a connector**, and at what
-  level they can be driven (§3.1).
+- **Getting a signal to the TTL input.** No board is documented as bringing
+  PE9 out on a Shimmer3R, and what the docks connect to pin 10 and how the
+  External Expansion Board's button drives it have not been checked (§3.1).
 - **Hosts other than the web SDK.** The web SDK reads and writes byte 232 with
   the firmware's own checks, reads event files from either platform, and takes
   the Bluetooth stream from a Shimmer3R; the Shimmer Capture web app uses it.
