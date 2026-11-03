@@ -153,15 +153,18 @@ stores the hashes, not the spectral peaks they are made from, so a host matches
 them as they are.
 
 A 512-byte header, then the chunks, each a 16-byte chunk header followed by its
-records. All fields are little-endian.
+records. All fields are little-endian. Bytes 4-15 say where the chunks start
+and how big their headers and records are, so a reader that only wants the
+hashes can skip the rest of the header.
 
 | Offset | Size | Field |
 |---:|---:|---|
 | 0 | 4 | `SAFP` |
-| 4 | 4 | Chunk header bytes (u16), 16; record bytes (u16), 4 |
-| 8 | 8 | Chunk samples (u32), 80000; chunk hop (u32), 64000 |
-| 16 | 4 | Frame hop (u16), 256 samples; sample rate (u16), 16000 |
-| 20 | 24 | Zero |
+| 4 | 4 | Version of the chunk and record layout (u16), 1; header bytes (u16), 512 |
+| 8 | 4 | Sample rate (u16), 16000; frame hop (u16), 256 samples |
+| 12 | 4 | Chunk header bytes (u16), 16; record bytes (u16), 4 |
+| 16 | 8 | Chunk samples (u32), 80000; chunk hop (u32), 64000 |
+| 24 | 20 | Zero |
 | 44 | 52 | `SAUD` and the identity fields, laid out as in the WAV's header (§3.1), except: |
 | 80 | 8 | **Shimmer clock of the file's first chunk** |
 | 96 | 1 | **Closed**: 1 when the file closed normally |

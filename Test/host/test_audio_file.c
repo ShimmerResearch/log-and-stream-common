@@ -181,12 +181,14 @@ static void test_fp_header(void)
 
   testCase("the fingerprint file's own fields");
   expectU("magic", memcmp(h, "SAFP", 4), 0);
-  expectU("chunk header bytes", get16(h + 4), 16);
-  expectU("record bytes", get16(h + 6), 4);
-  expectU("chunk samples", get32(h + 8), 80000);
-  expectU("chunk hop samples", get32(h + 12), 64000);
-  expectU("frame hop samples", get16(h + 16), 256);
-  expectU("sample rate", get16(h + 18), 16000);
+  expectU("version", get16(h + 4), 1);
+  expectU("file header bytes", get16(h + 6), 512);
+  expectU("sample rate", get16(h + 8), 16000);
+  expectU("frame hop samples", get16(h + 10), 256);
+  expectU("chunk header bytes", get16(h + 12), 16);
+  expectU("record bytes", get16(h + 14), 4);
+  expectU("chunk samples", get32(h + 16), 80000);
+  expectU("chunk hop samples", get32(h + 20), 64000);
   expectU("header length", AUDIO_FP_FILE_HEADER_LEN, 512);
 
   testCase("bytes 44-95 are the WAV's identity, byte for byte");
@@ -208,11 +210,11 @@ static void test_fp_header(void)
   expectU("chunks skipped", get32(h + 132), 7);
 
   testCase("everything else is zero, the WAV's sample counts included");
-  for (k = 20; k < 44; k++)
+  for (k = 24; k < 44; k++)
   {
     nonZero += h[k] != 0;
   }
-  expectU("bytes 20-43", nonZero, 0);
+  expectU("bytes 24-43", nonZero, 0);
   expectU("reserved at 54", get16(h + 54), 0);
   expectU("reserved at 98", get16(h + 98), 0);
   nonZero = 0;

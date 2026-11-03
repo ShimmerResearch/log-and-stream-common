@@ -29,10 +29,11 @@
  *
  * The fingerprint file (.AFP):
  *    0  "SAFP"
- *    4  u16 chunk header bytes 16, u16 record bytes 4
- *    8  u32 chunk samples 80000, u32 chunk hop samples 64000
- *   16  u16 frame hop samples 256, u16 sample rate 16000
- *   20  zero to 43
+ *    4  u16 version 1, u16 file header bytes 512
+ *    8  u16 sample rate 16000, u16 frame hop samples 256
+ *   12  u16 chunk header bytes 16, u16 record bytes 4
+ *   16  u32 chunk samples 80000, u32 chunk hop samples 64000
+ *   24  zero to 43
  *   44  "SAUD" and the identity, as the WAV's to 95; 80 is the first chunk's
  *       Shimmer clock
  *       the closing summary:
@@ -144,12 +145,14 @@ void ShimAudioFile_packFpHeader(uint8_t *out, const ShimAudioFileInfo *info, con
   memset(out, 0, AUDIO_FP_FILE_HEADER_LEN);
 
   memcpy(out, "SAFP", 4);
-  put16(out + 4, AUDIO_FP_CHUNK_HEADER_LEN);
-  put16(out + 6, AUDIO_FP_RECORD_LEN);
-  put32(out + 8, AUDIO_FP_CHUNK_SAMPLES);
-  put32(out + 12, AUDIO_FP_CHUNK_HOP_SAMPLES);
-  put16(out + 16, AUDIO_FP_FRAME_HOP_SAMPLES);
-  put16(out + 18, AUDIO_FILE_RATE_HZ);
+  put16(out + 4, AUDIO_FP_FORMAT_VERSION);
+  put16(out + 6, AUDIO_FP_FILE_HEADER_LEN);
+  put16(out + 8, AUDIO_FILE_RATE_HZ);
+  put16(out + 10, AUDIO_FP_FRAME_HOP_SAMPLES);
+  put16(out + 12, AUDIO_FP_CHUNK_HEADER_LEN);
+  put16(out + 14, AUDIO_FP_RECORD_LEN);
+  put32(out + 16, AUDIO_FP_CHUNK_SAMPLES);
+  put32(out + 20, AUDIO_FP_CHUNK_HOP_SAMPLES);
   packIdentity(out, info);
 
   packSessionSummary(out, info);

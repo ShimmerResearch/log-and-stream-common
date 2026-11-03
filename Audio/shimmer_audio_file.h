@@ -78,10 +78,16 @@ void ShimAudioFile_packHeader(uint8_t *out, const ShimAudioFileInfo *info);
  * applies too, except samples, lastSampleTicks and silenceSamples, which are
  * the WAV's.
  *
+ * Bytes 4-15 give the version, the header's length and the chunk header and
+ * record sizes, so a reader can find the chunks without knowing the rest of
+ * the header: the first chunk starts at the header's length.
+ *
  * A record is one landmark: bits 0-8 t1, the frame (16 ms) within its chunk;
  * 9-14 dt; 15-20 (f2 - f1) & 63; 21-27 f1 & 127; 28-31 zero. That is the
  * audfprint hash (f1 << 25 | df << 19 | dt) and when it occurred.
  */
+/* The version of the chunk and record layout. Byte 48 is the identity's. */
+#define AUDIO_FP_FORMAT_VERSION    1U
 #define AUDIO_FP_FILE_HEADER_LEN   512U
 #define AUDIO_FP_CHUNK_HEADER_LEN  16U
 #define AUDIO_FP_RECORD_LEN        4U
