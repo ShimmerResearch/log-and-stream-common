@@ -8,6 +8,8 @@
 #ifndef SDCARD_SHIMMER_SD_CFG_FILE_H_
 #define SDCARD_SHIMMER_SD_CFG_FILE_H_
 
+#include <stdint.h>
+
 #include "ff.h"
 
 void ShimSdCfgFile_init(void);
