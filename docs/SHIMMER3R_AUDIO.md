@@ -36,10 +36,10 @@ recorder is queued. `TASK_AUDIO` then:
 3. powers the microphone and starts capture.
 
 The first 256 ms of capture are dropped while the microphone starts and the
-filters settle. On the bench the first audio sample was 0.48 s after the data
-file's initial timestamp, which is 0.85 s after its first sample: the data file's
-packet ring holds samples taken before the file opened. Each file's header says
-exactly when.
+filters settle. In two bench runs the first audio sample came 0.36 and 0.48 s
+after the data file's initial timestamp, which is 0.73 and 0.85 s after its first
+sample: the data file's packet ring holds samples taken before the file opened.
+Each file's header says exactly when.
 
 Logging stopping, by any route, stops capture at once. Everything captured is
 written and the file closed, before a dock can hand the card to a host. A
@@ -49,6 +49,11 @@ status (§5). It never stops logging.
 
 The audio file splits when the data file does, at its hourly split, into the
 next file of the same number. Its one-minute sync syncs the audio file too.
+Nothing is lost or repeated at a split: the new file's first sample is one
+sample period after the old file's last. The two files do not change over at the
+same instant, though. On the bench the audio changed over about 0.11 s of
+capture earlier than the data file, so match samples to records by their
+Shimmer clock times, not by which file they are in.
 
 ## 2. Files
 
@@ -140,8 +145,9 @@ little-endian.
   `TASK_AUDIO`. Nothing is copied at interrupt level.
 - The interrupt is at priority 2 and the ADF's at 7, both below the RTC
   sampling interrupt at 1, so recording never delays a sensor sample.
-- On the bench, 1024 Hz logging with raw audio recording lost no samples, and
-  no sample stamp was more than one tick late.
+- On the bench, 70 minutes of 1024 Hz logging with raw audio recording lost no
+  samples. One sample stamp in 4.3 million was more than one tick late, by 4
+  ticks (122 µs).
 
 **Sharing the main loop:**
 - `TASK_AUDIO` is the lowest-priority task. Each pass writes 2 KB at a time,
@@ -212,9 +218,9 @@ rather than restarting the ADF under the recording
 - The fingerprint modes 1 and 2, and their `.AFP` file (DEV-99 step 5).
 - Gain presets. Byte 233 bits 2-3 are reserved for them.
 - An LED cue while raw audio records.
-- Whether to mask the ADF's saturation flag. On the bench it fired 263 times in
-  the first 10 s of a recording and never after, so it looks like a start-up
-  transient rather than clipping.
+- Whether to mask the ADF's saturation flag. In two bench recordings it fired
+  263 and 278 times in the first 11 s and never after, so it looks like a
+  start-up transient rather than clipping.
 
 **Hosts:**
 - Byte 233 in the host APIs' configuration models.
