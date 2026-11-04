@@ -190,13 +190,14 @@ void ShimSdCfgFile_returnFil(void)
   cfgFileLent = 0;
 }
 
-void ShimSdCfgFile_generate(void)
+uint8_t ShimSdCfgFile_generate(void)
 {
   /* Never while the event file has the file object: that is a logging session,
-   * and sdlog.cfg is only written outside one */
+   * and sdlog.cfg is only written outside one. Said, so that a caller keeps
+   * the write pending rather than taking it as done. */
   if (cfgFileLent)
   {
-    return;
+    return 0;
   }
 
   if (!shimmerStatus.docked && LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile)
@@ -420,6 +421,7 @@ void ShimSdCfgFile_generate(void)
       Board_setSdPower(0);
     }
   }
+  return 1;
 }
 
 void ShimSdCfgFile_parse(void)

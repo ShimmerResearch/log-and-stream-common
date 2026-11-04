@@ -6,8 +6,9 @@
  * (docs/SHIMMER3_EVENT_CHANNEL.md). Two inputs: the user button, recorded in
  * the button modes of configuration byte 232 that say so
  * (ShimConfig_doesButtonRecordPresses), and a TTL input, recorded while
- * byte 232 bit 5 is set (ShimConfig_isTtlInputEnabled). The TTL input's edges are latched by a timer capture,
- * which is armed only for a logging session (Board_evtTtlArm).
+ * byte 232 bit 5 is set (ShimConfig_isTtlInputEnabled). The TTL input's edges
+ * are latched by a timer capture, armed only while a logging session records
+ * them or a Bluetooth host has opted in to the stream (Board_evtTtlArm).
  *
  * Interrupt handlers only queue an edge with its time. Everything else runs in
  * the main loop, in TASK_EVENT_CHANNEL, the lowest-priority task. The event
@@ -79,8 +80,13 @@ uint8_t ShimEvt_tick(void);
 /* TASK_EVENT_CHANNEL */
 void ShimEvt_process(void);
 
-/* From the button module, for each debounced edge while markers are on */
+/* From the button module, for each debounced edge while the button mode
+ * records presses */
 void ShimEvt_recordButtonEdge(uint64_t ts, uint8_t level, uint8_t flags);
+
+/* After any configuration write (ShimConfig_checkAndCorrectConfig): byte 232
+ * may have turned the TTL input on or off. Any context; the task applies it. */
+void ShimEvt_onConfigChanged(void);
 
 /* From the data file's lifecycle (SDCard/shimmer_sd_data_file.c) */
 void ShimEvt_onSessionStart(uint64_t fileOpenTs);

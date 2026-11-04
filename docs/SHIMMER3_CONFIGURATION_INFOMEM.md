@@ -685,10 +685,12 @@ Each also stands with bit 5 set, `0x20` added, which turns the TTL input on.
   logging and leaving the dock does. Firmware without this byte, or a host that
   writes byte 217 back with 0 in byte 232, then falls back to behaviour that
   never adds an undock start.
-- **Single touch needs a press that can start logging.** The correction clears
-  `singleTouchStart` unless the button mode is 0, or is one that starts
-  logging (2, 3 or 4) with logging on.
-  Single touch still suppresses the undock start.
+- **Single touch needs a press that can start logging.** In a build with
+  `IS_SUPPORTED_SINGLE_TOUCH`, the correction clears `singleTouchStart` unless
+  the button mode is 0, or is one that starts logging (2, 3 or 4) with logging
+  on. Single touch still suppresses the undock start. No LogAndStream release
+  is built with it, so each clears `singleTouchStart` whatever this byte holds
+  (§10.4), and a host should not expect the bit to read back.
 - **Setting it.** Over Bluetooth, write the one byte with `SET_INFOMEM_COMMAND`:
   `0x8C 0x01 0xE8 0x00 <value>`. Like every configuration write, this is
   refused while sensing. A host writing the whole image should keep this byte

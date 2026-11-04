@@ -958,7 +958,9 @@ inline void ShimSdSync_CommTimerStop(void)
 }
 
 #if defined(SHIMMER3)
-inline uint16_t GetTA0(void)
+/* Not inline: the TTL input capture (5xx_HAL/hal_TA0.c) calls it too, and an
+ * inline definition here is not emitted for another file to link to */
+uint16_t GetTA0(void)
 {
   register uint16_t t0, t1;
   uint8_t ie;

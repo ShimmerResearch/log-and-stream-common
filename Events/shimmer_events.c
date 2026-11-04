@@ -62,6 +62,9 @@ static volatile uint8_t ttlThrottleTicks;
  * TX space (set by the task, cleared by the TX-complete interrupt) */
 static volatile uint8_t btStreamWanted;
 static volatile uint8_t btWaitingForTxSpace;
+/* A configuration write may have turned the TTL input on or off (any
+ * context; taken by the task) */
+static volatile uint8_t configChanged;
 
 /* Everything below is main loop only. Records kept while no event file is
  * open, oldest first. */
@@ -113,6 +116,7 @@ void ShimEvt_init(void)
   ttlThrottleTicks = 0;
   btStreamWanted = 0;
   btWaitingForTxSpace = 0;
+  configChanged = 0;
   prerollCount = 0;
   ttlArmed = 0;
   ttlLevel = 0;
@@ -163,8 +167,10 @@ uint8_t ShimEvt_isrPushTtlEdge(uint8_t level, uint64_t ts, uint8_t flags)
 {
   if (++ttlEdgesThisTick > EVT_TTL_MAX_EDGES_PER_TICK)
   {
-    /* The blink tick counts this down and the main loop re-arms the input */
-    Board_evtTtlArm(0);
+    /* Only the interrupt stops here: the pin keeps its pull-down, and the
+     * timer and pin set-up are left to the main loop, which re-arms the input
+     * once the blink tick has counted this down */
+    Board_evtTtlPause();
     ttlThrottled = 1;
     ttlThrottleTicks = EVT_TTL_THROTTLE_TICKS;
     return 0;
@@ -237,7 +243,9 @@ static void keep(const ShimEvtRecord *rec)
     prerollCount--;
     if (evtFile.sessionActive)
     {
-      addDropped(1);
+      /* Lost to the file only: a host taking the stream was sent it when it
+       * was made */
+      evtFile.dropped = addSaturating(evtFile.dropped, 1U);
     }
   }
   preroll[prerollCount++] = *rec;
@@ -613,6 +621,8 @@ static void processTtlEdge(uint64_t ts, uint8_t level, uint8_t flags)
  * lost, so an overflow record marks the gap and gives its level now */
 static void ttlRearmIfDue(void)
 {
+  uint64_t now;
+
   if (!ttlThrottled || ttlThrottleTicks != 0U)
   {
     return;
@@ -622,10 +632,12 @@ static void ttlRearmIfDue(void)
   {
     return;
   }
+  /* The time first, so an edge the re-armed capture takes is later than it */
+  now = RTC_get64();
   addDropped(1);
-  ttlLevel = Board_evtTtlLevel();
-  recordTtl(EVT_TYPE_OVERFLOW, 0U, RTC_get64(), ttlLevel);
   Board_evtTtlArm(1);
+  ttlLevel = Board_evtTtlLevel();
+  recordTtl(EVT_TYPE_OVERFLOW, 0U, now, ttlLevel);
 }
 
 static void ttlArm(uint8_t enable)
@@ -634,9 +646,11 @@ static void ttlArm(uint8_t enable)
   {
     ttlThrottled = 0;
     ttlThrottleTicks = 0;
-    ttlLevel = Board_evtTtlLevel();
     ttlArmed = 1;
+    /* Armed before the level is read: arming is what pulls the input down,
+     * and an unconnected input reads as anything until then */
     Board_evtTtlArm(1);
+    ttlLevel = Board_evtTtlLevel();
   }
   else if (ttlArmed)
   {
@@ -649,7 +663,8 @@ static void ttlArm(uint8_t enable)
 }
 
 /* Armed while a session records the TTL input, or while a host has opted in
- * to the stream and the input is enabled */
+ * to the stream and the input is enabled. Checked whenever one of those
+ * changes, a configuration write included (ShimEvt_onConfigChanged). */
 static void ttlUpdateArming(void)
 {
   uint8_t want = ShimConfig_isTtlInputEnabled()
@@ -701,6 +716,11 @@ void ShimEvt_process(void)
   uint16_t drops;
 
   btApplyWanted();
+  if (configChanged)
+  {
+    configChanged = 0;
+    ttlUpdateArming();
+  }
 
   /* Edges first, so the file work below sees every record before it */
   while (ringTail != ringHead)
@@ -800,6 +820,12 @@ void ShimEvt_onFileSplit(uint64_t fileOpenTs)
   (void) ShimTask_set(TASK_EVENT_CHANNEL);
 }
 
+void ShimEvt_onConfigChanged(void)
+{
+  configChanged = 1;
+  (void) ShimTask_set(TASK_EVENT_CHANNEL);
+}
+
 void ShimEvt_onSyncTick(void)
 {
   if (!evtFile.sessionActive)
@@ -827,7 +853,9 @@ void ShimEvt_onSessionStop(void)
   ShimEvt_process();
 
 #if USE_FATFS
-  if (evtFile.isOpen && isCardWritable())
+  /* Docked too: a Shimmer3 that docks stops logging here, before setupDock
+   * gives the card to the dock, and the close below writes to it anyway */
+  if (evtFile.isOpen)
   {
     putStateRecord(EVT_TYPE_HEARTBEAT, EVT_FLAG_FINAL, RTC_get64(), currentState());
   }

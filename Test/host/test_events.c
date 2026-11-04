@@ -16,7 +16,12 @@
  * - a card error stops the event file and nothing else;
  * - a connected host that opts in gets every record over Bluetooth, logging or
  *   not, behind any held command reply and the TX room kept for replies, and
- *   a frame the link could not queue shows as a gap in the link's sequence.
+ *   a frame the link could not queue shows as a gap in the link's sequence;
+ * - the TTL input follows a configuration write at once, its level is read
+ *   only once arming has pulled it down, and a flood pauses its interrupt
+ *   without disarming it;
+ * - a record the event file could not keep before it opened is counted as
+ *   lost in the file, not on the link that was sent it.
  *
  * Built against the stub platform as Shimmer3R. Run by
  * .github/workflows/host-tests.yml.
@@ -197,20 +202,29 @@ uint8_t ShimTask_NORM_set(TaskId_t task_id)
   return 0;
 }
 
-/* The TTL input's timer capture */
+/* The TTL input's timer capture. Arming pulls the input down; disarmed it
+ * floats, and here an unconnected input then reads high, so a level read
+ * before arming is caught. */
 static uint8_t ttlArmed;
+static uint8_t ttlPaused;
 static uint32_t ttlArmCalls;
 static uint8_t ttlPin;
 
 void Board_evtTtlArm(uint8_t enable)
 {
   ttlArmed = enable;
+  ttlPaused = 0;
   ttlArmCalls++;
+}
+
+void Board_evtTtlPause(void)
+{
+  ttlPaused = 1;
 }
 
 uint8_t Board_evtTtlLevel(void)
 {
-  return ttlPin;
+  return ttlArmed ? ttlPin : 1U;
 }
 
 /* The Bluetooth TX ring: frames sent, room left, and a held reply */
@@ -294,6 +308,7 @@ static void reset(uint8_t markers)
   cfgFilLends = 0;
   pinPressed = 0;
   ttlArmed = 0;
+  ttlPaused = 0;
   ttlArmCalls = 0;
   ttlPin = 0;
   gBtReplyPendingLen = 0;
@@ -662,7 +677,7 @@ static void test_ttl_flood_is_throttled(void)
   const uint8_t *r;
   uint32_t i, n;
 
-  testCase("TTL: a flood disarms the input for a second, then it is re-armed");
+  testCase("TTL: a flood pauses the input for a second, then it is re-armed");
   reset(0);
   ShimConfig_getStoredConfig()->buttonLogMode |= BTN_LOG_MODE_TTL_INPUT;
   ShimEvt_onSessionStart(rtc(1000));
@@ -675,20 +690,22 @@ static void test_ttl_flood_is_throttled(void)
     ttlAt(2000U + i, (uint8_t) ((i & 1U) == 0U), EVT_FLAG_HW_CAPTURE);
     ShimEvt_process();
   }
-  expectFalse("disarmed", ttlArmed);
+  expectTrue("paused", ttlPaused);
+  expectTrue("not disarmed: the pin keeps its pull-down", ttlArmed);
 
   for (i = 0; i < EVT_TTL_THROTTLE_TICKS - 1U; i++)
   {
     (void) ShimEvt_tick();
   }
   ShimEvt_process();
-  expectFalse("still disarmed before the second is up", ttlArmed);
+  expectTrue("still paused before the second is up", ttlPaused);
 
   ttlPin = 1;
   (void) ShimEvt_tick();
   hostStub_setTick(3100);
   ShimEvt_process();
-  expectTrue("re-armed", ttlArmed);
+  expectFalse("re-armed", ttlPaused);
+  expectTrue("armed", ttlArmed);
 
   f = findFile("events/" DIR_SESSION "/000");
   expectTrue("file", f != 0);
@@ -901,6 +918,89 @@ static void test_bt_status(void)
   ShimEvt_onSessionStop();
 }
 
+static void test_ttl_follows_a_config_write(void)
+{
+  const uint8_t *r;
+
+  testCase("TTL: a configuration write while a host is opted in arms or "
+           "disarms it");
+  reset(1);
+  btOptIn(500);
+  expectFalse("off in byte 232: not armed", ttlArmed);
+
+  ShimConfig_getStoredConfig()->buttonLogMode |= BTN_LOG_MODE_TTL_INPUT;
+  evtTaskSet = 0;
+  ShimEvt_onConfigChanged();
+  expectTrue("the write asks for the task", evtTaskSet);
+  hostStub_setTick(600);
+  ShimEvt_process();
+  expectTrue("armed once the bit is set", ttlArmed);
+
+  ttlAt(1000, 1, EVT_FLAG_HW_CAPTURE);
+  ShimEvt_process();
+  expectU("the edge reaches the host", btFrameCount, 2);
+  r = frameRec(1);
+  expectU("on the TTL channel", REC_CHANNEL(r), EVT_CHANNEL_TTL);
+
+  ShimConfig_getStoredConfig()->buttonLogMode &= (uint8_t) ~BTN_LOG_MODE_TTL_INPUT;
+  ShimEvt_onConfigChanged();
+  ShimEvt_process();
+  expectFalse("disarmed once it is cleared", ttlArmed);
+}
+
+static void test_ttl_level_read_once_pulled_down(void)
+{
+  const uint8_t *r;
+
+  testCase("TTL: the level is read once arming has pulled the input down");
+  reset(0);
+  ShimConfig_getStoredConfig()->buttonLogMode |= BTN_LOG_MODE_TTL_INPUT;
+  /* Nothing connected: low once pulled down, anything before */
+  ttlPin = 0;
+  btOptIn(500);
+  expectTrue("armed for the host", ttlArmed);
+  r = frameRec(0);
+  expectU("initial state", REC_TYPE(r), EVT_TYPE_INITIAL_STATE);
+  expectU("TTL low, as pulled down", REC_STATE(r), 0);
+}
+
+static void test_kept_record_lost_to_the_file_only(void)
+{
+  uint8_t buf[EVT_STATUS_LEN];
+  uint32_t i;
+  const uint8_t *r;
+  FakeFile *f;
+
+  testCase("a record pushed out before the event file opens is lost to the "
+           "file, not the link");
+  reset(0);
+  ShimConfig_getStoredConfig()->buttonLogMode |= BTN_LOG_MODE_TTL_INPUT;
+  btOptIn(500);
+  ShimEvt_onSessionStart(rtc(1000));
+
+  /* One more than the event file can keep before it opens */
+  for (i = 0; i <= EVT_PREROLL_LEN; i++)
+  {
+    ttlAt(1001U + i, (uint8_t) ((i & 1U) == 0U), EVT_FLAG_HW_CAPTURE);
+  }
+  hostStub_setTick(1020);
+  ShimEvt_process();
+  ttlAt(3000, 1, EVT_FLAG_HW_CAPTURE);
+  ShimEvt_process();
+
+  f = findFile("events/" DIR_SESSION "/000");
+  expectTrue("file", f != 0);
+  if (f != 0)
+  {
+    expectU("the file counts it", REC_DROPPED(rec(f, recordCount(f) - 1U)), 1);
+  }
+  r = frameRec((uint8_t) (btFrameCount - 1U));
+  expectU("the link does not", REC_DROPPED(r), 0);
+  (void) ShimEvt_buildStatus(buf);
+  expectU("status: lost this session", le(&buf[5], 2), 1);
+  ShimEvt_onSessionStop();
+}
+
 static void test_ttl_enable_in_byte_232(void)
 {
   gConfigBytes *cfg = ShimConfig_getStoredConfig();
@@ -938,6 +1038,9 @@ int main(void)
   test_bt_queue_overflow();
   test_bt_reset_on_reconnect();
   test_bt_status();
+  test_ttl_follows_a_config_write();
+  test_ttl_level_read_once_pulled_down();
+  test_kept_record_lost_to_the_file_only();
 
   return hostTestReport("test_events");
 }

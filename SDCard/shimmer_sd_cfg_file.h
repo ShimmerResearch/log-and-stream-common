@@ -8,10 +8,14 @@
 #ifndef SDCARD_SHIMMER_SD_CFG_FILE_H_
 #define SDCARD_SHIMMER_SD_CFG_FILE_H_
 
+#include <stdint.h>
+
 #include "ff.h"
 
 void ShimSdCfgFile_init(void);
-void ShimSdCfgFile_generate(void);
+/* Returns 0 if sdlog.cfg was left alone because the file object is lent, and
+ * the write is still to do; 1 otherwise */
+uint8_t ShimSdCfgFile_generate(void);
 void ShimSdCfgFile_parse(void);
 void ShimSdCfgFile_readSdConfiguration(void);
 /* The event file borrows sdlog.cfg's file object for a logging session, when

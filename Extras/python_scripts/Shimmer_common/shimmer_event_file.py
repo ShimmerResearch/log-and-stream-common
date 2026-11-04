@@ -5,8 +5,8 @@
 
 Prints the header and every record, then checks the file: the header's magic
 and lengths, a whole number of records, known record types, sequence numbers
-that run on from the header without gaps, times that never go backwards, and
-a final record at the end. With --data it also checks that the event file is
+that run on from the header without gaps, times that go backwards only where
+the firmware can put a record back, and a final record at the end. With --data it also checks that the event file is
 the one recorded beside that data file. Exits 1 if any check fails.
 
 Needs nothing beyond the standard library.
@@ -23,6 +23,13 @@ TYPES = {1: "edge", 2: "init", 3: "hbeat", 4: "overflow"}
 CHANNELS = {0: "btn", 1: "ttl", 0xFF: "-"}
 FLAG_FINAL = 0x80
 OPEN_REASONS = {1: "session start", 2: "split"}
+# Records are in the order the firmware processed them. An edge the debounce
+# put back, or a TTL edge read after its timer latched it (and an overflow
+# record at that edge's time), can be a little earlier than the record before
+# it (docs/SHIMMER3_EVENT_CHANNEL.md section 4.4). Nothing else may go back,
+# and nothing by more than this: Shimmer3's capture timer wraps at 2 s.
+BACKWARDS_TYPES = (1, 4)
+MAX_BACKWARDS_TICKS = 2 * TICKS_PER_S
 HW_ID_SHIMMER3R = 10
 
 
@@ -77,8 +84,11 @@ def check(header, records, data_blob=None):
             problems.append(f"record {i}: seq {r['seq']}, expected {expected_seq}")
         expected_seq = (r["seq"] + 1) & 0xFFFF
         if last_ts is not None and r["ts"] < last_ts:
-            problems.append(f"record {i}: time goes backwards")
-        last_ts = r["ts"]
+            back = last_ts - r["ts"]
+            if r["type"] not in BACKWARDS_TYPES or back > MAX_BACKWARDS_TICKS:
+                problems.append(f"record {i}: time goes back {back / TICKS_PER_S:.6f} s")
+        # Against the latest time so far, not a record that was itself put back
+        last_ts = r["ts"] if last_ts is None else max(last_ts, r["ts"])
     if not records or not (records[-1]["flags"] & FLAG_FINAL):
         problems.append("no final record: the file was not closed cleanly")
     if not any(r["type"] == 2 for r in records):
