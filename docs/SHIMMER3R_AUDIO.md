@@ -82,6 +82,10 @@ still be paired.
   audio files are invisible to Consensys's import and to Clear SD. The SD file
   transfer can list, read and delete them
   ([SHIMMER3R_SD_FILE_TRANSFER.md](SHIMMER3R_SD_FILE_TRANSFER.md) §6).
+- **Session numbers.** Clear SD empties `data/` and leaves `audio/`, so the
+  session number is counted under `audio/` as well as `data/` and `events/`
+  (`sdCompanionRoots`), and a number still in use there is not given to a new
+  session.
 - **Size and card.** Raw audio is 32,000 bytes a second, about 115 MB an hour,
   so a FAT32 file stays well under 4 GB between hourly splits. A 16 GB card holds
   about five days of raw audio and 128 Hz sensor data. The fingerprint is at

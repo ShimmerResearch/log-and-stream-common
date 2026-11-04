@@ -293,11 +293,12 @@ FRESULT f_sync(FIL *fp)
 }
 
 /* The session folders already on the card, for the session number: under the
- * experiment directory (data/test_0 here) and under its event-file twin
- * (events/test_0). Null lists nothing; a null events list is no such folder.
- * Every other directory lists nothing. */
+ * experiment directory (data/test_0 here) and under its companion twins
+ * (events/test_0, audio/test_0). Null lists nothing; a null events or audio
+ * list is no such folder. Every other directory lists nothing. */
 static const char *const *dataSessions;
 static const char *const *eventSessions;
+static const char *const *audioSessions;
 static const char *const *listing;
 static uint32_t listingAt;
 
@@ -313,6 +314,14 @@ FRESULT f_opendir(DIR *dp, const TCHAR *path)
       return FR_NO_PATH;
     }
     listing = eventSessions;
+  }
+  else if (strcmp(path, "audio/test_0") == 0)
+  {
+    if (audioSessions == 0)
+    {
+      return FR_NO_PATH;
+    }
+    listing = audioSessions;
   }
   else if (strcmp(path, "data/test_0") == 0)
   {
@@ -1035,6 +1044,34 @@ static void test_session_number_skips_event_folders(void)
   eventSessions = 0;
 }
 
+/* The same for audio files under audio/, which Clear SD leaves too */
+static void test_session_number_skips_audio_folders(void)
+{
+  static const char *const data[] = { "host-001", 0 };
+  static const char *const events[] = { "host-009", 0 };
+  static const char *const audio[] = { "host-006", "other-020", 0 };
+  Session s;
+
+  testCase("a session number still used under audio/ is not reused");
+  rng = 31;
+
+  dataSessions = data;
+  audioSessions = audio;
+  session_start(&s, 0, 0);
+  expectStr("one past audio/", ShimSdDataFile_getDataFileName(), "data/test_0/host-007/000");
+  session_stop(&s);
+
+  eventSessions = events;
+  session_start(&s, 0, 0);
+  expectStr("one past the highest of all three",
+      ShimSdDataFile_getDataFileName(), "data/test_0/host-010/000");
+  session_stop(&s);
+
+  dataSessions = 0;
+  eventSessions = 0;
+  audioSessions = 0;
+}
+
 int main(void)
 {
   printf("SD writer (Shimmer3R), NUM_SDWRBUF = %u, record %u B\n\n",
@@ -1052,6 +1089,7 @@ int main(void)
   test_sync_heads_survive_short_writes();
   test_freed_buffer_resumes_the_drain();
   test_session_number_skips_event_folders();
+  test_session_number_skips_audio_folders();
 
   card_reset();
   return hostTestReport("sd_data_file");

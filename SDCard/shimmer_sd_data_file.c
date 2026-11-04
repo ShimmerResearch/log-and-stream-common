@@ -206,6 +206,7 @@ static uint8_t ShimSdDataFile_countSessions(void)
  * more entry here, as it is in the SD file transfer's sdFtDeletableRoots. */
 static const char *const sdCompanionRoots[] = {
   "events", /* Events/shimmer_events.c */
+  "audio",  /* Audio/shimmer_audio.h */
 };
 /* Room for a root of up to this many characters in place of "data" */
 #define SD_COMPANION_ROOT_MAX 8U
@@ -279,9 +280,10 @@ uint8_t ShimSdDataFile_setBasedir(void)
 #endif
 
   /* A session's companion files sit at the same path under their own root,
-   * its event files under events/. A host that deletes only data/ leaves them
-   * behind, and a number still used there is not reused, or the new
-   * session's companion files would be written in among the old ones.
+   * its event files under events/ and its audio files under audio/. A host
+   * that deletes only data/ leaves them behind, and a number still used there
+   * is not reused, or the new session's companion files would be written in
+   * among the old ones.
    * Nothing there is a reason to fail: the data files are what matter. */
   for (i = 0; i < sizeof(sdCompanionRoots) / sizeof(sdCompanionRoots[0]); i++)
   {
