@@ -16,7 +16,8 @@ the result bitmask.
 > **Shimmer3R focus.** The shared harness in `Test/shimmer_test.c` builds for
 > both generations, but the test bodies and the `S3R_TEST_*` registry are in
 > the Shimmer3R platform repository. Shimmer3's equivalents were not read for
-> this document.
+> this document, except for the SD card identity lines, which both print
+> (§5.5).
 
 **Source references:**
 
@@ -295,9 +296,9 @@ name (`Manufacturer: SanDisk7.45GB, ...`).
 
 **The Model line** prints `matches <brand> <part>` when the card's MID, OID,
 PNM and nominal capacity equal a row of the table (`sdCardModels` in
-`SDCard/shimmer_sd_card_id.c`).
-Otherwise it prints `not recognised`. Nominal capacity is the smallest power of
-two GB (10^9 bytes) that holds the card, so a 7.95 GB card is 8.
+`SDCard/shimmer_sd_card_id.c`). Otherwise it prints `not recognised`. Nominal
+capacity is the smallest power of two GB (10^9 bytes) that holds the card, so a
+7.95 GB card is 8.
 
 > **The MID is not the brand.** Most microSD brands sell cards made by others,
 > and those cards report the maker's MID or a code that is in no public list.
@@ -320,6 +321,31 @@ A docked unit power-cycles and re-initialises the card before reading it
 (`Board_sd2Mcu`). A unit on USB-C alone reads the CID from the card's last
 initialisation, which is normally at boot. To read a different card, swap it
 with the unit switched off.
+
+**Shimmer3** prints the same three lines, through the same module, in its
+`SD Card:` block. Its SD driver (`shimmer3-firmware`
+`Shimmer_Driver/FatFs/mmc.c`) reads the CID and the card's size each time it
+initialises the card, and the report prints that copy, because a docked
+Shimmer3 cannot reach its card:
+
+- **Undocked**, the lines follow the read/write test, which initialises the
+  card if needed, so they are the current card's:
+  ```
+  SD Card:
+   - PASS: SD card detected
+   - Manufacturer: ..., Manufacture Date=...
+   - Model: ...
+   - CID: ...
+   - PASS: SD card read/write test
+  ```
+- **Docked**, they come before the line saying the test cannot run docked, and
+  they are from the card's last initialisation: at an undocked boot, or at the
+  last undock. A card changed while docked shows the previous card's lines
+  until the unit is undocked.
+- A unit that has not been undocked since it booted docked prints
+  ` - CID: unavailable (not read since boot, undock to read it)`. If the last
+  initialisation, or the read, failed, it prints
+  ` - CID: unavailable (card not initialised)`.
 
 ## 6. Host capture
 
