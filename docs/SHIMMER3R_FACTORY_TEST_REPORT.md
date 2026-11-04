@@ -26,6 +26,7 @@ the result bitmask.
 | Test enums and result strings | `Test/shimmer_test.h` |
 | LED state walkthrough | `Test/shimmer_test_leds_states.c` |
 | Test bodies and ID registry | `shimmer3r-firmware` `Shimmer_Driver/hal_FactoryTest.{h,c}` |
+| SD card identity lines and model table (§5.5) | `SDCard/shimmer_sd_card_id.{h,c}` |
 
 ---
 
@@ -244,9 +245,12 @@ are visual checks. See
 
 ### 5.5 `S3R_TEST_0013` — SD card identity
 
-> Read from `shimmer3r-firmware` #320 (DEV-1398), `sd_card_report_cid()` in
-> `Shimmer_Driver/hal_FactoryTest.c`. That is newer than the platform revision
-> pinned at the top of this document.
+> The lines are formatted in this repository, by `SDCard/shimmer_sd_card_id.c`,
+> from the CID and sector count the platform supplies. Shimmer3R's caller is
+> `sd_card_report_cid()` in `shimmer3r-firmware`
+> `Shimmer_Driver/hal_FactoryTest.c`, newer than the platform revision pinned
+> at the top of this document. The host tests in `Test/host/test_sd_card_id.c`
+> pin the lines printed for every card in the table.
 
 The SD card block names the card before its read/write test. As captured
 from a Shimmer3R with an Integral 16 GB card:
@@ -276,7 +280,7 @@ Association's Physical Layer specification:
 | `PNM` | Product name, 5 characters |
 | `PRV` | Product revision, BCD `n.m` |
 | `PSN` | Product serial number, 32 bits |
-| `Size` | Capacity in GiB, although it prints as `GB` |
+| `Size` | Capacity in GiB to two decimals, although it prints as `GB` |
 
 The CID's manufacture date (MDT) is on the Manufacturer line, as year-month. An
 `OID` or `PNM` with any unprintable byte prints in hex, two digits a byte:
@@ -290,7 +294,8 @@ parsers already read, except that v1.01.025 and earlier ran the size into the
 name (`Manufacturer: SanDisk7.45GB, ...`).
 
 **The Model line** prints `matches <brand> <part>` when the card's MID, OID,
-PNM and nominal capacity equal a row of the firmware's table (`sdCardModels`).
+PNM and nominal capacity equal a row of the table (`sdCardModels` in
+`SDCard/shimmer_sd_card_id.c`).
 Otherwise it prints `not recognised`. Nominal capacity is the smallest power of
 two GB (10^9 bytes) that holds the card, so a 7.95 GB card is 8.
 
