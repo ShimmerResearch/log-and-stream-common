@@ -26,7 +26,9 @@ sys.path.insert(0, str(HERE))
 try:
     import serial  # noqa: F401
     from serial.tools import list_ports  # noqa: F401
+    HAVE_PYSERIAL = True
 except ImportError:
+    HAVE_PYSERIAL = False
     _serial = types.ModuleType("serial")
     _tools = types.ModuleType("serial.tools")
     _lp = types.ModuleType("serial.tools.list_ports")
@@ -2263,8 +2265,11 @@ class S3ReleaseConfigure(unittest.TestCase):
 
 
 def _can_collect():
+    # Not find_spec("serial"): where pyserial is missing, the stand-in above is
+    # in sys.modules with no __spec__, and find_spec raises ValueError for it.
     import importlib.util
-    return all(importlib.util.find_spec(m) for m in ("pytest", "serial", "numpy")) and _toml is not None
+    return (HAVE_PYSERIAL and all(importlib.util.find_spec(m) for m in ("pytest", "numpy"))
+            and _toml is not None)
 
 
 @unittest.skipUnless(_can_collect(), "needs pytest, pyserial, numpy and a TOML reader")
