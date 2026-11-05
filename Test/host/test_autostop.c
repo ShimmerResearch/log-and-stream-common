@@ -148,20 +148,23 @@ static void test_clock_set_mid_log(void)
 
 static void test_clock_wrap(void)
 {
+  /* uint32_t throughout, so the sums wrap where the firmware's do: unsigned
+   * long is 64 bits on Linux and 32 on Windows */
+  const uint32_t start = UINT32_MAX - SECS(30);
   Autostop_t a;
   uint32_t i;
   uint8_t stopped = 0;
 
   testCase("wrap: the low 32 bits rolling over mid-log change nothing");
   ShimAutostop_setLimitMins(&a, 1);
-  ShimAutostop_start(&a, 0xFFFFFFFFUL - SECS(30));
+  ShimAutostop_start(&a, start);
   for (i = 1; i <= 59U; i++)
   {
-    stopped |= ShimAutostop_check(&a, 0xFFFFFFFFUL - SECS(30) + SECS(i));
+    stopped |= ShimAutostop_check(&a, (uint32_t) (start + SECS(i)));
   }
   expectU("59 s across the wrap: not stopped", stopped, 0);
   expectU("60 s across the wrap: stopped",
-      ShimAutostop_check(&a, 0xFFFFFFFFUL - SECS(30) + SECS(60)), 1);
+      ShimAutostop_check(&a, (uint32_t) (start + SECS(60))), 1);
 }
 
 static void test_no_limit(void)
