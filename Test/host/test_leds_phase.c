@@ -8,6 +8,10 @@
  * a tick landed from the middle of its tenth, how a node's reading converts to
  * the centre's, and that every pattern repeats cleanly across the frame wrap.
  *
+ * Then the lock itself, closed loop, against a blink timer that drifts from the
+ * clock as Shimmer3R's does (DEV-1417): every whole-second tick must come once
+ * per second, which the auto-stop and the 1 s patterns depend on.
+ *
  * shimmer_leds_phase.c includes nothing but <stdint.h>, so this needs no stubs.
  * Run by .github/workflows/host-tests.yml.
  *
@@ -179,6 +183,247 @@ static void test_patterns_survive_the_frame_wrap(void)
       LED_PHASE_TENTHS_PER_FRAME % 50U == 0);
 }
 
+static void test_correction(void)
+{
+  LedPhaseCorrection_t c;
+
+  testCase("correction: the tenth to hold and the shift, with a deadband");
+  c = ShimLedsPhase_correction(TICKS_PER_SEC + 1638ULL);
+  expectU("mid-tenth: tenth 10", c.frameTenth, 10);
+  expectU("mid-tenth: no shift", (uint64_t) (uint16_t) c.shiftTicks, 0);
+
+  /* 164 ticks late is inside the deadband, 165 is not. The middle is 1638.4
+   * ticks in, so those are 1803 and 1804 ticks into the tenth. */
+  c = ShimLedsPhase_correction(TICKS_PER_SEC + 1803ULL);
+  expectU("164 ticks late: no shift", (uint64_t) (uint16_t) c.shiftTicks, 0);
+  c = ShimLedsPhase_correction(TICKS_PER_SEC + 1804ULL);
+  expectU("165 ticks late: moved 165 earlier", (uint64_t) (-c.shiftTicks), 165);
+  c = ShimLedsPhase_correction(TICKS_PER_SEC + 1638ULL - 200ULL);
+  expectU("200 ticks early: moved 200 later", (uint64_t) c.shiftTicks, 200);
+
+  /* A tick early enough to fall in the previous tenth is renumbered into it.
+   * This is what turns a fast timer into a second counted twice. */
+  c = ShimLedsPhase_correction(TICKS_PER_SEC - 10ULL);
+  expectU("just before a whole second: tenth 9", c.frameTenth, 9);
+}
+
+static void test_counter_timer_shift(void)
+{
+  LedPhaseTimerShift_t s;
+
+  testCase(
+      "counter timer: a delay lengthens one period, the counter is left alone");
+  s = ShimLedsPhase_counterTimerShift(0, 79, 24);
+  expectU("counter 0, 24 later: counter unchanged", s.counter, 0);
+  expectU("counter 0, 24 later: next period +24", s.periodExtra, 24);
+  s = ShimLedsPhase_counterTimerShift(30, 79, 24);
+  expectU("counter 30, 24 later: counter unchanged", s.counter, 30);
+  expectU("counter 30, 24 later: next period +24", s.periodExtra, 24);
+  s = ShimLedsPhase_counterTimerShift(0, 79, 200);
+  expectU("more than a period: capped at one period", s.periodExtra, 79);
+
+  testCase(
+      "counter timer: earlier steps the counter forward, up to the reload");
+  s = ShimLedsPhase_counterTimerShift(2, 79, -24);
+  expectU("counter 2, 24 earlier: counter 26", s.counter, 26);
+  expectU("counter 2, 24 earlier: period unchanged", s.periodExtra, 0);
+  s = ShimLedsPhase_counterTimerShift(70, 79, -24);
+  expectU("counter 70, 24 earlier: clipped at the reload", s.counter, 79);
+  s = ShimLedsPhase_counterTimerShift(79, 79, -24);
+  expectU("counter on its last count: left alone", s.counter, 79);
+  s = ShimLedsPhase_counterTimerShift(90, 79, -24);
+  expectU("inside a lengthened period: left alone", s.counter, 90);
+  s = ShimLedsPhase_counterTimerShift(5, 79, -32768);
+  expectU("the most negative shift: clipped, no overflow", s.counter, 79);
+  s = ShimLedsPhase_counterTimerShift(5, 79, 0);
+  expectU("no shift: counter unchanged", s.counter, 5);
+  expectU("no shift: period unchanged", s.periodExtra, 0);
+}
+
+/* --- closed loop -------------------------------------------------------------
+ *
+ * The lock against a blink timer that does not run from the RTC's crystal:
+ * Shimmer3R's TIM6, on the MSI (DEV-1417). The model is a counter at 800 Hz,
+ * scaled by the timer's error, reloading after 80 counts with ARR preload, a
+ * tick at each reload, and the sync a short latency after each whole-second
+ * tick, as TASK_LED_PHASE_SYNC runs. What the tick and the sync do mirrors
+ * LogAndStream_blinkTimerCommon(), ShimLeds_phaseSync() and tim.c's
+ * platform_ledTickElapsedRtcTicks(), ledBlinkTimerCallback() and
+ * platform_ledTickShift(), with the decisions made by the two functions under
+ * test above.
+ *
+ * Time is in millionths of an RTC tick, so a timer error of a few ppm is not
+ * lost to rounding. */
+#define TIM_RELOAD         79U
+#define TIM_RTC_TICKS_X100 4096 /* tim.c TIM6_RTC_TICKS_PER_COUNT_X100 */
+#define UTICKS_PER_TICK    1000000ULL
+#define UTICKS_PER_SEC     (TICKS_PER_SEC * UTICKS_PER_TICK)
+
+typedef enum
+{
+  SHIFT_FIXED,  /* ShimLedsPhase_counterTimerShift() */
+  SHIFT_CLIPPED /* what platform_ledTickShift did before DEV-1417 */
+} shift_model_t;
+
+typedef struct
+{
+  uint64_t elapsedUticks; /* RTC time across secsWanted whole-second ticks */
+  unsigned mislabelled;   /* ticks whose tenth disagreed with the clock */
+} lock_run_t;
+
+/* Runs the lock with the timer `ppm` fast (negative: slow) and the sync
+ * `latencyUs` after each whole-second tick. Lets it settle for 10 s, then
+ * measures how much RTC time `secsWanted` whole-second ticks span. */
+static lock_run_t runLock(int32_t ppm, uint32_t latencyUs, shift_model_t model, uint32_t secsWanted)
+{
+  const uint64_t t0 = 1791331217ULL * TICKS_PER_SEC + 11469ULL;
+  const uint64_t countPeriod = (uint64_t) TIM_RTC_TICKS_X100 * UTICKS_PER_TICK
+      / 100ULL * 1000000ULL / (uint64_t) (1000000 + ppm);
+  const uint64_t latency = (uint64_t) latencyUs * UTICKS_PER_SEC / 1000000ULL;
+  uint64_t t = 0, syncAt = 0, firstSecond = 0;
+  uint16_t counter = 0, reloadActive = TIM_RELOAD, reloadPreload = TIM_RELOAD;
+  uint16_t frame = ShimLedsPhase_frameTenth(t0);
+  uint32_t secs = 0;
+  uint8_t syncPending = 0, measuring = 0;
+  lock_run_t run = { 0, 0 };
+
+  for (;;)
+  {
+    uint64_t edge = t + countPeriod;
+
+    if (syncPending && syncAt < edge)
+    {
+      /* ShimLeds_phaseSync() */
+      uint64_t now = t0 + syncAt / UTICKS_PER_TICK;
+      uint16_t elapsed = (uint16_t) (((uint32_t) counter * TIM_RTC_TICKS_X100) / 100U);
+      LedPhaseCorrection_t c = ShimLedsPhase_correction(now - elapsed);
+
+      syncPending = 0;
+      frame = c.frameTenth;
+      if (c.shiftTicks != 0)
+      {
+        /* platform_ledTickShift() */
+        int32_t counts = ((int32_t) c.shiftTicks * 100) / TIM_RTC_TICKS_X100;
+        if (counts == 0)
+        {
+          continue;
+        }
+        if (model == SHIFT_FIXED)
+        {
+          LedPhaseTimerShift_t s
+              = ShimLedsPhase_counterTimerShift(counter, TIM_RELOAD, (int16_t) counts);
+          counter = s.counter;
+          if (s.periodExtra != 0U)
+          {
+            reloadPreload = (uint16_t) (TIM_RELOAD + s.periodExtra);
+          }
+        }
+        else if (counter < TIM_RELOAD)
+        {
+          int32_t cnt = (int32_t) counter - counts;
+          if (cnt < 0)
+          {
+            cnt = 0;
+          }
+          else if (cnt > (int32_t) TIM_RELOAD)
+          {
+            cnt = (int32_t) TIM_RELOAD;
+          }
+          counter = (uint16_t) cnt;
+        }
+      }
+      continue;
+    }
+
+    t = edge;
+    if (counter < reloadActive)
+    {
+      counter++;
+      continue;
+    }
+
+    /* The reload: the preload takes effect, then ledBlinkTimerCallback() */
+    counter = 0;
+    reloadActive = reloadPreload;
+    if (model == SHIFT_FIXED)
+    {
+      reloadPreload = TIM_RELOAD;
+    }
+    frame = (uint16_t) ((frame + 1U) % LED_PHASE_TENTHS_PER_FRAME);
+
+    if (measuring && frame != ShimLedsPhase_frameTenth(t0 + t / UTICKS_PER_TICK))
+    {
+      run.mislabelled++;
+    }
+
+    if (frame % 10U == 0U)
+    {
+      syncPending = 1;
+      syncAt = t + latency;
+
+      if (!measuring && t >= 10ULL * UTICKS_PER_SEC)
+      {
+        measuring = 1;
+        firstSecond = t;
+      }
+      else if (measuring && ++secs == secsWanted)
+      {
+        run.elapsedUticks = t - firstSecond;
+        return run;
+      }
+    }
+  }
+}
+
+static void test_closed_loop_counts_each_second_once(void)
+{
+  static const int32_t ppms[] = { -30000, -3000, 0, 100, 1500, 3000, 30000 };
+  static const uint32_t latenciesUs[] = { 500, 2000, 20000 };
+  unsigned i, j;
+
+  testCase("closed loop: 600 whole-second ticks span 600 s, timer -3% to +3%");
+  for (i = 0; i < sizeof(ppms) / sizeof(ppms[0]); i++)
+  {
+    for (j = 0; j < sizeof(latenciesUs) / sizeof(latenciesUs[0]); j++)
+    {
+      lock_run_t r = runLock(ppms[i], latenciesUs[j], SHIFT_FIXED, 600);
+      char what[80];
+
+      /* Every tick stays in its own tenth, so the first and the last are each
+       * less than a tenth from their whole seconds */
+      snprintf(what, sizeof(what), "%+ld ppm, sync %lu us late: within 100 ms of 600 s",
+          (long) ppms[i], (unsigned long) latenciesUs[j]);
+      expectTrue(what,
+          r.elapsedUticks > 600ULL * UTICKS_PER_SEC - UTICKS_PER_SEC / 10ULL
+              && r.elapsedUticks < 600ULL * UTICKS_PER_SEC + UTICKS_PER_SEC / 10ULL);
+      snprintf(what, sizeof(what), "%+ld ppm, sync %lu us late: no tick in the wrong tenth",
+          (long) ppms[i], (unsigned long) latenciesUs[j]);
+      expectU(what, r.mislabelled, 0);
+    }
+  }
+}
+
+static void test_closed_loop_the_clip_counted_twice(void)
+{
+  lock_run_t r;
+
+  /* What DEV-1417 found on a bench unit: with the sync this soon after the
+   * tick, a timer only 0.15% fast double-counted about one second in 35 */
+  testCase("closed loop: the clipped delay it replaces counted seconds twice");
+  r = runLock(1500, 500, SHIFT_CLIPPED, 600);
+  expectTrue("+0.15%: 600 ticks span under 590 s", r.elapsedUticks < 590ULL * UTICKS_PER_SEC);
+  expectTrue("+0.15%: ticks landed in the wrong tenth", r.mislabelled > 0);
+
+  /* ...and even a crystal-accurate timer slips, given long enough */
+  r = runLock(100, 500, SHIFT_CLIPPED, 3600);
+  expectTrue("+100 ppm: an hour of ticks spans under 3599 s",
+      r.elapsedUticks < 3599ULL * UTICKS_PER_SEC);
+
+  /* A slow timer was always fine: stepping forward has room */
+  r = runLock(-30000, 500, SHIFT_CLIPPED, 600);
+  expectU("-3%: no tick in the wrong tenth", r.mislabelled, 0);
+}
+
 int main(void)
 {
   hostTestSilenceUnused();
@@ -190,6 +435,10 @@ int main(void)
   test_node_and_centre_agree();
   test_patterns();
   test_patterns_survive_the_frame_wrap();
+  test_correction();
+  test_counter_timer_shift();
+  test_closed_loop_counts_each_second_once();
+  test_closed_loop_the_clip_counted_twice();
 
   return hostTestReport("test_leds_phase");
 }

@@ -121,14 +121,23 @@ class DockLink:
 
     def read_reply(self, timeout_s: float | None = None) -> Reply | None:
         """The next frame from the device, or None if nothing starts arriving in
-        time. A frame that starts and is then cut short or fails its CRC raises."""
+        time. A frame that starts and is then cut short or fails its CRC raises.
+
+        The port's timeout is changed, and put back, only for a timeout_s that
+        differs from it. pyserial reconfigures the port at every assignment,
+        which on the Shimmer3R's CDC port sends the unit line-coding and
+        control-line requests; restoring it after every exchange did that each
+        time, and it is the call that failed with WinError 995 inside a host
+        service stall (DEV-1368, s3r_usb.stall_named)."""
         old = self.ser.timeout
-        if timeout_s is not None:
-            self.ser.timeout = timeout_s
-        try:
+        if timeout_s is None or timeout_s == old:
             first = self.ser.read(1)
-        finally:
-            self.ser.timeout = old
+        else:
+            self.ser.timeout = timeout_s
+            try:
+                first = self.ser.read(1)
+            finally:
+                self.ser.timeout = old
         if not first:
             return None
         head = first + self._read_exact(1)

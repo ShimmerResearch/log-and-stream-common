@@ -43,8 +43,11 @@ IMU = {"ln_accel", "gyro", "mag", "vbatt"}
 
 @contextmanager
 def s3r_config(unit, rate_hz, sensors=IMU):
-    port = s3r_usb.wait_cdc(unit.usb_serial, 60)
-    with dock.open_when_ready(port) as d:
+    # Every docked stream takes the unit's USB away until it stops, so the
+    # port and drive are waited for before each dock exchange, and a failure
+    # inside a host service stall says so (DEV-1368).
+    port = s3r_usb.wait_usb_settled(unit.usb_serial, 60)
+    with s3r_usb.stall_named(unit.usb_serial), dock.open_when_ready(port) as d:
         original = d.read_infomem()
         cfg = S3rConfig(original)
         cfg.divider = divider_for(rate_hz)
@@ -53,8 +56,8 @@ def s3r_config(unit, rate_hz, sensors=IMU):
     try:
         yield
     finally:
-        port = s3r_usb.wait_cdc(unit.usb_serial, 120)
-        with dock.open_when_ready(port) as d:
+        port = s3r_usb.wait_usb_settled(unit.usb_serial, 120)
+        with s3r_usb.stall_named(unit.usb_serial), dock.open_when_ready(port) as d:
             d.write_infomem(original)
 
 
@@ -133,8 +136,13 @@ def test_long_log(unit, power, hil_note):
 
 @pytest.mark.hil("soak.dock_cycles", needs=["shimmer3r", "usb", "hub_port"])
 def test_dock_cycles(unit, power, hil_note):
-    """Undock and re-dock DOCK_CYCLES times; USB, the dock protocol and the drive must return."""
-    enum_s, failures = [], []
+    """Undock and re-dock DOCK_CYCLES times; USB, the dock protocol and the drive must return.
+
+    A cycle whose dock exchange failed inside a host service stall
+    (s3r_usb.stall_named) is counted apart and noted, not failed: the stall is
+    the host's, and bench-tools hil/known_issues.md has it (DEV-1368).
+    """
+    enum_s, failures, stalled = [], [], []
     for i in range(DOCK_CYCLES):
         try:
             power.off(unit.hub_port, unit.name)
@@ -144,17 +152,20 @@ def test_dock_cycles(unit, power, hil_note):
             t0 = time.monotonic()
             port = s3r_usb.wait_cdc(unit.usb_serial, 60)
             enum_s.append(time.monotonic() - t0)
-            with dock.open_when_ready(port) as d:
+            with s3r_usb.stall_named(unit.usb_serial), dock.open_when_ready(port) as d:
                 d.version()
             s3r_usb.wait_drive(unit.usb_serial, 60)
+        except s3r_usb.HostServiceStall as e:
+            stalled.append(f"cycle {i + 1}: {str(e)[:200]}")
         except Exception as e:                      # record and carry on: a rate, not a stop
             failures.append(f"cycle {i + 1}: {type(e).__name__}: {str(e)[:120]}")
             power.on(unit.hub_port, unit.name)
             time.sleep(10)
+    in_stalls = f", {len(stalled)} inside a host service stall ({'; '.join(stalled[:3])})" if stalled else ""
     if enum_s:
-        hil_note(f"{DOCK_CYCLES} cycles, {len(failures)} failed; CDC back in median "
+        hil_note(f"{DOCK_CYCLES} cycles, {len(failures)} failed{in_stalls}; CDC back in median "
                  f"{statistics.median(enum_s):.1f} s, max {max(enum_s):.1f} s")
-    assert not failures, f"{len(failures)} of {DOCK_CYCLES} cycles failed: {failures[:5]}"
+    assert not failures, f"{len(failures)} of {DOCK_CYCLES} cycles failed{in_stalls}: {failures[:5]}"
 
 
 # --- Bluetooth reconnect loop -----------------------------------------------------

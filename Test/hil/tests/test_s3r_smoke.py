@@ -65,9 +65,11 @@ def _timing_problems(st, period: int) -> list[str]:
     return out
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def cdc(unit):
-    return s3r_usb.wait_cdc(unit.usb_serial, 30)
+    """The unit's CDC port, waited for afresh by every test: the test before may
+    have streamed docked, which takes the unit's USB away until the stop (DEV-1368)."""
+    return s3r_usb.wait_usb_settled(unit.usb_serial, 60)
 
 
 @pytest.fixture
@@ -191,23 +193,32 @@ def test_bt_stream(btlink, hil_note):
 RESTORE_ATTEMPTS = 3
 
 
-def _restore_infomem(unit, original: bytes, backup: Path, load_error: BaseException | None) -> None:
-    """Write InfoMem back on a dock link opened now, retrying while the USB re-enumerates.
+def _restore_infomem(unit, original: bytes, backup: Path, load_error: BaseException | None, note) -> None:
+    """Write InfoMem back on a dock link opened now, once the unit's USB is back.
 
-    A link opened before the load can be dead by the end of it: on the bench
-    (19 Oct 2026) the first write after a docked throughput run failed with
-    "The device does not recognize the command" on a handle held across it.
+    The load's stop brings the unit's USB back as a fresh enumeration, so each
+    attempt first waits for its port and drive (s3r_usb.wait_usb_settled,
+    DEV-1368). A link opened before the load is dead by the end of it: on the
+    bench (19 Oct 2026) the first write on a handle held across a docked
+    throughput run failed with "The device does not recognize the command".
+    A failed attempt is tried again, because the unit must not keep the load's
+    configuration, but it is noted on the item rather than lost: after the wait
+    it is a fault, not the re-enumeration. One that failed inside a host
+    service stall says so (s3r_usb.stall_named), and since naming it waits the
+    stall out, the next attempt comes after it.
     Runs in a finally block, so a failure names the load's own error and the
     backup to restore from by hand, and is chained from the load's error.
     """
     seen = []
     for _ in range(RESTORE_ATTEMPTS):
         try:
-            port = s3r_usb.wait_cdc(unit.usb_serial, 30)
-            with dock.open_when_ready(port) as d:
+            port = s3r_usb.wait_usb_settled(unit.usb_serial, 90)
+            with s3r_usb.stall_named(unit.usb_serial), dock.open_when_ready(port) as d:
                 d.write_infomem(original)
                 if _masked(d.read_infomem()) != _masked(original):
                     raise dock.DockError("read back differs")
+            if seen:
+                note(f"InfoMem restored at attempt {len(seen) + 1} ({'; '.join(seen)})")
             return
         except (dock.DockError, OSError) as e:   # serial.SerialException and TimeoutError are OSErrors
             seen.append(str(e))
@@ -246,7 +257,7 @@ def test_bt_throughput(rig, unit, cdc, btlink, hil_note):
         error = e
         raise
     finally:
-        _restore_infomem(unit, original, backup, error)
+        _restore_infomem(unit, original, backup, error, hil_note)
     problems = throughput.defects(rate, st, inq)
     assert not problems, "; ".join(problems)
     measured = throughput.figures(rate, st, inq)
@@ -295,7 +306,7 @@ def test_ble_throughput(rig, unit, cdc, hil_note):
         error = e
         raise
     finally:
-        _restore_infomem(unit, original, backup, error)
+        _restore_infomem(unit, original, backup, error, hil_note)
     problems = throughput.defects(rate, st, inq)
     assert not problems, "; ".join(problems)
     measured = throughput.figures(rate, st, inq)
@@ -458,7 +469,7 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
         error = e
         raise
     finally:
-        _restore_infomem(unit, original, backup, error)
+        _restore_infomem(unit, original, backup, error, hil_note)
 
     root = s3r_usb.wait_drive(unit.usb_serial, 90)
     new = sdfile.session_dirs(root) - before
@@ -556,7 +567,7 @@ def test_sd_inquiry_midlog(unit, cdc, power, hil_note):
         error = e
         raise
     finally:
-        _restore_infomem(unit, original, backup, error)
+        _restore_infomem(unit, original, backup, error, hil_note)
 
     root = s3r_usb.wait_drive(unit.usb_serial, 90)
     new = sorted(sdfile.session_dirs(root) - before)      # relative: the drive letter may have changed

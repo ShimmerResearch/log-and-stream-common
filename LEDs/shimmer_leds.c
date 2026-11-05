@@ -112,8 +112,7 @@ void ShimLeds_phaseSync(void)
 #if LED_PHASE_LOCK_TO_RWC
   uint16_t cntBefore, elapsedBefore, elapsedAfter;
   uint64_t now, tickTime;
-  uint16_t wanted;
-  int16_t late;
+  LedPhaseCorrection_t correction;
 
   cntBefore = blinkCntFrame;
   elapsedBefore = platform_ledTickElapsedRtcTicks();
@@ -129,19 +128,18 @@ void ShimLeds_phaseSync(void)
   }
 
   tickTime = now - (uint64_t) (((uint32_t) elapsedBefore + elapsedAfter) / 2U);
-  wanted = ShimLedsPhase_frameTenth(tickTime);
-  late = ShimLedsPhase_ticksPastMidTenth(tickTime);
+  correction = ShimLedsPhase_correction(tickTime);
 
-  if (wanted != cntBefore)
+  if (correction.frameTenth != cntBefore)
   {
     /* A blink tick landing between the check above and this write would be
      * overwritten and lose one tenth. Next second's sync puts it back. */
-    blinkCntFrame = wanted;
+    blinkCntFrame = correction.frameTenth;
   }
 
-  if (late > LED_PHASE_DEADBAND_TICKS || late < -LED_PHASE_DEADBAND_TICKS)
+  if (correction.shiftTicks != 0)
   {
-    platform_ledTickShift((int16_t) -late);
+    platform_ledTickShift(correction.shiftTicks);
   }
 #endif
 }
