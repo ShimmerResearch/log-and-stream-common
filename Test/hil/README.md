@@ -119,7 +119,8 @@ plug and unplug.
 | `rig/msp430_bsl.py` | MSP430 ROM bootloader client (port of Consensys's): erase, write, CRC-verify |
 | `rig/s3_flash.py` | Flashes a Shimmer3 in a Base6 slot, backing up and restoring its InfoMem; restores a unit's InfoMem over the dock after a test |
 | `rig/s3_config.py` | Shimmer3 InfoMem fields the matrix varies, the ODRs a host derives for a rate (Shimmer3 firmware does not raise them), calibration blocks from the dump, and the channel order an inquiry should report |
-| `rig/s3r_config.py` | Shimmer3R InfoMem fields the matrix varies: rate, sensors, ranges, and the ODRs to check |
+| `rig/s3r_config.py` | Shimmer3R InfoMem fields the matrix varies: rate, sensors, ranges, the audio mode, and the ODRs to check |
+| `rig/s3r_audio.py` | A logging session's audio files (`audio/`): paired with the data file, closed cleanly, on the Shimmer clock, and agreeing with the audio status. Deletes the session's WAV once checked |
 | `rig/s3r_boards.py` | Which optional sensors a Shimmer3R board has fitted (ported from Boards/shimmer_boards.c) |
 | `rig/decode.py` | Packets or SD records to per-channel arrays; calibration from a blob, an SD header or InfoMem |
 | `rig/signals.py` | Checks on a resting unit: 1 g, gyro ≈ 0, stuck/staircase/saturated axes, VBatt |

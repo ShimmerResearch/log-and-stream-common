@@ -307,6 +307,7 @@ static uint8_t sdFtIsUnderRoot(const char *p, const char *root)
 static const char *const sdFtDeletableRoots[] = {
   "data",   /* the data files */
   "events", /* their event files, Events/shimmer_events.c */
+  "audio",  /* their audio files, Audio/shimmer_audio.h */
 };
 
 /* Deletion is restricted to content strictly under those roots, so a host bug

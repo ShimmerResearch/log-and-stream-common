@@ -8,6 +8,8 @@
 #ifndef LOG_AND_STREAM_COMMON_LOG_AND_STREAM_INCLUDES_H_
 #define LOG_AND_STREAM_COMMON_LOG_AND_STREAM_INCLUDES_H_
 
+#include "Audio/shimmer_audio.h"
+#include "Audio/shimmer_audio_file.h"
 #include "Battery/shimmer_battery.h"
 #include "Boards/shimmer_boards.h"
 #include "Button/shimmer_button.h"
@@ -18,6 +20,7 @@
 #include "Comms/shimmer_bt_uart.h"
 #include "Comms/shimmer_dock_usart.h"
 #include "Comms/shimmer_sd_file_transfer.h"
+#include "Configuration/shimmer_audio_mode.h"
 #include "Configuration/shimmer_button_log_mode.h"
 #include "Configuration/shimmer_config.h"
 #include "EEPROM/shimmer_eeprom.h"
@@ -29,6 +32,7 @@
 #include "RTC/shimmer_rtc.h"
 #include "SDCard/shimmer_sd.h"
 #include "SDCard/shimmer_sd_cfg_file.h"
+#include "SDCard/shimmer_sd_companion.h"
 #include "SDCard/shimmer_sd_data_file.h"
 #include "SDCard/shimmer_sd_header.h"
 #include "SDCard/shimmer_sd_write_buf.h"

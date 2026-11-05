@@ -91,6 +91,11 @@ A card in service holds up to five things:
         └── <shimmerName>-<NNN>/
             ├── 000                     events for data/.../000
             └── ...
+└── audio/                             Shimmer3R, when byte 233 records audio (§1.6)
+    └── <experimentId>_<configTime>/    the same names as under data/
+        └── <shimmerName>-<NNN>/
+            ├── 000.WAV                 audio for data/.../000
+            └── ...
 ```
 
 The `Calibration` directory is matched case-insensitively in the sense that the
@@ -178,6 +183,19 @@ Its longest path is 53 characters.
 
 Nothing that reads `data/` sees these files, which is why they are not beside
 the data files.
+
+### 1.6 Audio files
+
+On a Shimmer3R whose configuration byte 233 records audio, each data file gets
+audio files of the same number under `audio/`:
+- `.WAV`, in the raw-audio modes 2 and 3: a 16 kHz mono 16-bit PCM WAV whose
+  512-byte header pairs it with its data file and puts its first and last
+  samples on the Shimmer clock. Raw audio is about 115 MB an hour.
+- `.AFP`, in the fingerprint modes 1 and 2: the audio fingerprint's landmark
+  hashes, 5 s of audio every 4 s, each chunk on the Shimmer clock, behind a
+  512-byte header like the WAV's.
+
+They split when the data file does. See [SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md).
 
 ## 2. Data file structure
 
@@ -335,7 +353,8 @@ Appendix A and is not repeated here. What follows is the header's own layout.
 | 222-223 | `SDH_TEMP_PRES_EXTRA_CALIB_BYTES` | 2 | BMP280 only |
 | 224 | `SDH_PRESSURE_SENSOR_ID` | 1 | Fitted pressure sensor and how it was identified — see §3.4. `0xFF` before S3R v1.01.018 / S3 v1.01.006 |
 | 225 | `SDH_BUTTON_LOG_MODE` | 1 | Button, logging and TTL input settings: configuration byte 232 as the firmware acted on it (CONFIGURATION_INFOMEM §8.3). `0xFF` from firmware before the field, which reads as 0 by the same rule |
-| 226-250 | — | 25 | Unused (`0xFF`) |
+| 226 | `SDH_AUDIO_MODE` | 1 | Shimmer3R: what the unit records from its microphone alongside this file. Configuration byte 233 as the firmware acted on it (CONFIGURATION_INFOMEM §8.5). `0xFF` on Shimmer3 and from firmware before the field, which reads as 0 (off) by the same rule |
+| 227-250 | — | 24 | Unused (`0xFF`) |
 | 251 | `SDH_INITIAL_TIMESTAMP_4` | 1 | **Most significant of the 5** |
 | 252-255 | `SDH_INITIAL_TIMESTAMP_0..3` | 4 | Lower 4 bytes, LSB order |
 | **256-276** | `SDH_ALT_ACCEL_CALIBRATION` | 21 | S3R only |
@@ -507,6 +526,13 @@ list the `INQUIRY_RESPONSE` reports, copied from `sensing.cc`.
 
 **This makes a Shimmer3R data file self-describing.** A parser can slice the
 sample records using the header alone.
+
+> **Before DEV-99, byte 314 could be one too large.** With InfoMem byte 4 bit 6
+> (`chEnMicrophone`) set, the count included the microphone, which had no bytes in
+> the records. The list from byte 315 is copied from the firmware's channel table
+> for that count, so it ended in one extra entry that was not a channel: whatever
+> byte followed the real IDs. Files from such a unit need that last entry dropped.
+> The firmware now clears the bit ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.4).
 
 > **Shimmer3 files are not self-describing.** Those offsets do not exist in the
 > 256-byte header, so channel order must be reconstructed from the sensor
@@ -736,6 +762,8 @@ Rates and ranges:
 `mag_alt_rate`, `acc_internal_rate`, `acc_range`, `acc_lpm`, `acc_hrm`,
 `accel_alt_range`, `accel_alt_rate`, `accel_ln_range`, `gyro_range`,
 `gyro_samplingrate`, `gsr_range`, `exp_power`
+
+Shimmer3R only: `audio_mode`. This is configuration byte 233's mode, 0-3 (CONFIGURATION_INFOMEM §8.5). A value outside 0-3 makes the whole byte read as 0, as does a file without the key, so a card written by older firmware turns recording off at the next undock.
 
 Pressure precision — one key per part, so the applicable key depends on the
 fitted sensor:

@@ -136,6 +136,8 @@
 /* Button and logging mode, Configuration/shimmer_button_log_mode.h. Firmware
  * from 2017 reserved 232-253 for pressure calibration but never wrote it */
 #define NV_BUTTON_LOG_MODE                  (128 + 104)
+/* Audio recording mode, Configuration/shimmer_audio_mode.h (DEV-99) */
+#define NV_AUDIO_MODE                       (128 + 105)
 
 #define NV_CENTER                           (128 + 128 + 0)
 #define NV_NODE0                            (128 + 128 + 6)
@@ -224,9 +226,9 @@ typedef union
     uint8_t chEnVBattery : 1;
 #if defined(SHIMMER4_SDK)
     uint8_t chEnPpgApp : 1;
-#elif defined(SHIMMER3R)
-    uint8_t chEnMicrophone : 1;
 #else
+    /* S3R: chEnMicrophone until DEV-99. It never carried data, only an extra count in
+     * the inquiry response and the SD header; the firmware now clears it (§10.4). */
     uint8_t unusedIdx4Bit6 : 1;
 #endif
     uint8_t chEnBridgeAmp : 1; //S3 = IntADC13 & IntADC14, S3R = IntADC1 & IntADC2
@@ -428,7 +430,7 @@ typedef union
      * ShimConfig_doesPressToggleLogging() and the other queries beside it,
      * never directly: they apply its validity rule */
     uint8_t buttonLogMode;
-    uint8_t unusedIdx233;
+    uint8_t audioMode;
     uint8_t unusedIdx234;
     uint8_t unusedIdx235;
     uint8_t unusedIdx236;
@@ -529,13 +531,12 @@ uint8_t ShimConfig_isButtonDisabled(void);
 uint8_t ShimConfig_isDoublePress(void);
 uint8_t ShimConfig_doesButtonRecordPresses(void);
 uint8_t ShimConfig_isTtlInputEnabled(void);
+/* Configuration byte 233's mode, corrected (Configuration/shimmer_audio_mode.h) */
+uint8_t ShimConfig_audioMode(void);
 void ShimConfig_setExgConfigForTestSignal(void);
 void ShimConfig_setExgConfigForEcg(void);
 float ShimConfig_freqDiv(float samplingRate);
 void ShimConfig_checkBtModeFromConfig(void);
-#if defined(SHIMMER3R)
-uint8_t ShimConfig_isMicrophoneEnabled(void);
-#endif
 uint8_t ShimConfig_isGSREnabled(void);
 uint8_t ShimConfig_isExpansionBoardPwrEnabled(void);
 void ShimConfig_loadSensorConfigAndCalib(void);

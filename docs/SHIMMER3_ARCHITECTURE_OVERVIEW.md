@@ -212,6 +212,7 @@ uint32_t taskList;   // one bit per task
 | 24 | `TASK_LED_PHASE_SYNC` | both; queued once a second ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1) |
 | 25 | `TASK_BT_REPLY_RETRY` | both; queued only while a command reply is held because the Bluetooth TX ring is full, and re-arms itself until the reply is out ([SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) §6.3) |
 | 26 | `TASK_EVENT_CHANNEL` | both; queued by every button and TTL edge, by the blink tick while a bounced edge awaits its recheck or a throttled TTL input is due back, by the data file's start, split and one-minute sync, and by a Bluetooth opt-in and each transmit-complete while a record waits for room. Last, because edges carry their own times and the event file must never delay the data file ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md)) |
+| 27 | `TASK_AUDIO` | S3R; queued by the audio capture's DMA interrupt every 128 ms and by the data file's start, split and one-minute sync while audio records, and kept queued while the fingerprint analyses a chunk. Last: the capture ring holds 8 s, and the main loop writes one block ahead of the task list if it ever passes half full ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §4) |
 
 > **Bit 25 polls on purpose.** While a reply is held, `TASK_BT_REPLY_RETRY`
 > re-arms itself each time it runs, so the main loop does not sleep until the

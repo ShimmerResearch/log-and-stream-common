@@ -253,6 +253,9 @@
 #define GET_EVENT_CHANNEL_STATUS_COMMAND              0xB9
 #define EVENT_CHANNEL_STATUS_RESPONSE                 0xBA
 #define EVENT_RECORD_RESPONSE                         0xBB
+/* Audio recording (Audio/shimmer_audio.h, DEV-99). Shimmer3R only. */
+#define GET_AUDIO_STATUS_COMMAND                      0xBC
+#define AUDIO_STATUS_RESPONSE                         0xBD
 
 /* SD-card file transfer over BT. Opcodes are reserved protocol-wide but the
  * commands are currently only served on SHIMMER3R (older FW silently ignores

@@ -809,7 +809,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
 {
   uint8_t settingCorrected = 0;
   uint8_t i = 0;
-  uint8_t buttonLogMode, userButtonEnable;
+  uint8_t buttonLogMode, userButtonEnable, audioMode;
 
   if (storedConfig.chEnGsr
 #if defined(SHIMMER3)
@@ -919,6 +919,17 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
   if (buttonLogMode != storedConfig.buttonLogMode)
   {
     storedConfig.buttonLogMode = buttonLogMode;
+    settingCorrected = 1;
+  }
+
+  /* Byte 233 likewise keeps only an audio mode this unit records
+   * (docs/SHIMMER3_CONFIGURATION_INFOMEM.md 8.5) */
+  audioMode = ShimBrd_isMicrophoneSupported() ?
+      ShimAudioMode_correct(storedConfig.audioMode) :
+      0;
+  if (audioMode != storedConfig.audioMode)
+  {
+    storedConfig.audioMode = audioMode;
     settingCorrected = 1;
   }
 
@@ -1105,6 +1116,17 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
   }
 #endif //SHIMMER3R
 
+#if defined(SHIMMER3R)
+  /* Byte 4 bit 6 was chEnMicrophone. It sent no data but added a channel to the count
+   * in the inquiry response and the SD header, so a host sizing packets from that count
+   * misread every packet. Cleared, as on Shimmer3 where the bit is unused (§10.4). */
+  if (storedConfig.unusedIdx4Bit6)
+  {
+    storedConfig.unusedIdx4Bit6 = 0;
+    settingCorrected = 1;
+  }
+#endif
+
   uint8_t *macIdBytesPtr = ShimBt_macIdBytesPtrGet();
   for (i = 0; i < 6; i++)
   {
@@ -1213,13 +1235,6 @@ void ShimConfig_checkBtModeFromConfig(void)
   }
 }
 
-#if defined(SHIMMER3R)
-uint8_t ShimConfig_isMicrophoneEnabled(void)
-{
-  return storedConfig.chEnMicrophone;
-}
-#endif
-
 uint8_t ShimConfig_doesPressToggleLogging(void)
 {
   return ShimBtnLogMode_doesPressToggleLogging(
@@ -1261,6 +1276,12 @@ uint8_t ShimConfig_doesButtonRecordPresses(void)
 uint8_t ShimConfig_isTtlInputEnabled(void)
 {
   return ShimBtnLogMode_isTtlInputEnabled(storedConfig.buttonLogMode);
+}
+
+uint8_t ShimConfig_audioMode(void)
+{
+  return ShimBrd_isMicrophoneSupported() ? ShimAudioMode_mode(storedConfig.audioMode) :
+                                           AUDIO_MODE_OFF;
 }
 
 uint8_t ShimConfig_isGSREnabled(void)
@@ -1347,9 +1368,10 @@ void ShimConfig_createBlankConfigBytes(void)
   /* 0, not 0xFF: the sdlog.cfg parse starts from here and sets its fields
    * one key at a time */
   storedConfig.buttonLogMode = 0;
+  storedConfig.audioMode = 0;
 
   /* Reset unused bytes */
-  memset(&storedConfig.rawBytes[NV_BUTTON_LOG_MODE + 1], 0xFF, 23);
+  memset(&storedConfig.rawBytes[NV_AUDIO_MODE + 1], 0xFF, 22);
 
   /* Reset node addresses */
   memset(&storedConfig.rawBytes[NV_CENTER], 0xFF, 128);

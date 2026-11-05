@@ -193,6 +193,17 @@ actually powers, and the one case where it powers nothing, are tabulated in
 `Board_enableSensingPower(SENSE_PWR_SENSING, 1)` is called when sensing starts,
 so the sensor supplies are only up while a trial runs.
 
+### 4.4 Microphone (Shimmer3R)
+
+The microphone is powered only while it is in use: during a factory test, and
+while an SD log records audio (configuration byte 233,
+[SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md)). While audio records, the ADF, its
+PLL3 kernel clock and GPDMA run continuously, with an interrupt every 128 ms.
+All of that runs through Sleep. A Stop mode would halt the capture, which is one
+more reason the firmware does not use one. In the fingerprint modes the CPU also
+analyses the audio, about 0.9 s of work every 4 s at 48 MHz, and the main loop
+does not idle while it does. The current it costs is not measured yet.
+
 ## 5. Low-battery protection
 
 Gated on `lowBatteryAutoStop` (byte 218 bit 0), which is **off by default**.
