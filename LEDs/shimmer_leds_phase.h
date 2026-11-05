@@ -44,6 +44,37 @@ int16_t ShimLedsPhase_ticksPastMidTenth(uint64_t ticks);
  * offset SD sync recorded. Flag 0 means the node is ahead of the centre. */
 uint64_t ShimLedsPhase_toCentreTime(uint64_t localTicks, const uint8_t *syncOffset);
 
+/* What the once-a-second sync does with the time the last blink tick fired:
+ * the tenth the frame counter should hold, and how far to move the next tick
+ * in ticks (positive = later). The shift is 0 inside the deadband. */
+typedef struct
+{
+  uint16_t frameTenth;
+  int16_t shiftTicks;
+} LedPhaseCorrection_t;
+
+LedPhaseCorrection_t ShimLedsPhase_correction(uint64_t tickTime);
+
+/* For a blink timer that counts up from 0 and fires as it reloads after
+ * `reload`, as Shimmer3R's TIM6 does. Earlier steps the counter forward.
+ * Later cannot step it back: the sync runs just after a tick, when the counter
+ * is 0 or 1, so there is nothing to step back over. A timer running fast then
+ * outruns the lock, and each time its tick slips into the previous tenth the
+ * sync renumbers it, so one whole-second tick fires twice (DEV-1417). A delay
+ * therefore lengthens the next period instead.
+ *
+ * `counter` is the value to leave in the timer: the caller writes it only if
+ * it differs from the one read, so a delay never writes the counter at all.
+ * `periodExtra` is counts to add to the next period, 0 for none. */
+typedef struct
+{
+  uint16_t counter;
+  uint16_t periodExtra;
+} LedPhaseTimerShift_t;
+
+LedPhaseTimerShift_t
+ShimLedsPhase_counterTimerShift(uint16_t counter, uint16_t reload, int16_t shiftCounts);
+
 /* Pattern helpers. Each replaces a toggle whose phase depended on when the
  * state was entered with a level that depends only on the frame tenth. */
 uint8_t ShimLedsPhase_isOnAlternate200ms(uint16_t frameTenth);
