@@ -18,7 +18,11 @@ two generations' very different LED hardware.
 >   `LEDs/shimmer_leds_phase.{h,c}`, `ShimLeds_phaseSync` and
 >   `ShimLeds_getLedTime` in `LEDs/shimmer_leds.c`, `TaskList/shimmer_taskList.h`
 >   (`TASK_LED_PHASE_SYNC`), `SDSync/shimmer_sd_sync.c`
->   (`ShimSdSync_ledPhaseOffsetPtrGet`).
+>   (`ShimSdSync_ledPhaseOffsetPtrGet`). §2.1's sync decision and its S3R
+>   correction were read from the DEV-1417 change:
+>   `ShimLedsPhase_correction` and `ShimLedsPhase_counterTimerShift` in
+>   `LEDs/shimmer_leds_phase.c`, and `shimmer3r-firmware`'s `Core/Src/tim.c`
+>   (`platform_ledTickShift`, `ledBlinkTimerCallback`).
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5` — the `Board_led*` implementations.
 
@@ -144,10 +148,25 @@ task, which runs `ShimLeds_phaseSync`:
    next tick is moved (`platform_ledTickShift`). Ticks are aimed mid-tenth so
    interrupt latency never pushes one across a boundary.
 
+The sync's decision is `ShimLedsPhase_correction` (`LEDs/shimmer_leds_phase.c`).
+
 | Platform | Blink timer | Correction |
 |---|---|---|
 | S3 | TB0 CCR3 on ACLK, the RTC's own crystal | Exact: CCR3 is moved by whole ticks |
-| S3R | TIM6, 800 Hz from APB1, independent of the LSE | In 1.25 ms steps; the once-a-second correction keeps it within the deadband |
+| S3R | TIM6, 800 Hz from APB1, which runs from the MSI, independent of the LSE | In 1.25 ms steps (`ShimLedsPhase_counterTimerShift`): earlier steps the counter forward; later lengthens the next period through the ARR preload, and the tick interrupt restores it. Holds every tick in its tenth for a timer up to 3% fast or slow |
+
+> **On S3R a delay must not step the counter back.** The sync runs just after
+> the tick, when TIM6's counter is 0 or 1, so a counter step has almost nothing
+> to step back over. Up to DEV-1417 the delay did exactly that, clipped at 0, so
+> a TIM6 running even slightly fast drifted early until its tick fell in the
+> previous tenth. Step 2 then renumbered it into that tenth, and the next tick
+> repeated the whole-second count. Every 50 ms of drift counted a second twice:
+> 0.15% fast doubled about one second in 35. A slow TIM6 was always corrected,
+> because stepping forward has room. The max_exp_len auto-stop counted those
+> seconds, which is why it no longer does
+> ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md),
+> bytes 222-223). `test_leds_phase` runs the lock closed loop against a timer
+> from 3% slow to 3% fast, and against the old clip.
 
 **On an SD-sync node the LEDs follow the centre's clock**, not their own. Once
 `rcFirstOffsetRxed` is set, the offset sync measured

@@ -46,6 +46,7 @@
 
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
+#include "shimmer_autostop.h"
 #include "shimmer_definitions.h"
 
 #if defined(SHIMMER3)
@@ -68,12 +69,14 @@ uint32_t temp_cnt1, temp_cnt2, temp_cnt3, temp_cnt4;
 #endif
 //I2CBatteryTypeDef *sensing_i2c_batt;
 
-volatile uint32_t maxExpLenSecs, currentExpLenSecs;
+static volatile Autostop_t autostop;
 
 void ShimSens_init(void)
 {
   memset((uint8_t *) &sensing, 0, sizeof(sensing));
-  ShimSens_currentExperimentLengthReset();
+  /* Not ShimSens_currentExperimentLengthReset(): that reads the RTC, which may
+   * not be running yet. Every log start restarts the count anyway. */
+  ShimAutostop_start(&autostop, 0);
   ShimSens_maxExperimentLengthSecsSet(0);
   PktRing_init(&sensing.ring, DATA_PACKET);
   ShimSens_resetCurrentCbFlags();
@@ -264,17 +267,17 @@ void ShimSens_startSensing(void)
   //If the conditions are met, start logging to SD card.
   if (sdLogPendingStart)
   {
+    /* Auto-stop first: the blink-timer interrupt checks it as soon as sdLogging
+     * is set, so it must not find it half set up */
+    ShimSens_maxExperimentLengthSecsSet(ShimConfig_experimentLengthMaxInMinutesGet());
+    ShimSens_currentExperimentLengthReset();
+
     shimmerStatus.sdLogging = 1;
     sensing.isFileCreated = 0;
     sensing.newSdFileTsFlag = NEW_SD_FILE_TS_PENDING_UPDATE;
     shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
 
     gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
-
-    //Setup auto-stop if enabled
-    uint16_t maxExpLenMins = ShimConfig_experimentLengthMaxInMinutesGet();
-    ShimSens_maxExperimentLengthSecsSet(maxExpLenMins);
-    ShimSens_currentExperimentLengthReset();
 
 #if TEST_LOG_WITH_USB && defined(SHIMMER3R)
     /* A log started while a stream is already running skips the hand-over
@@ -800,34 +803,30 @@ uint8_t ShimSens_startLoggingIfUndockStartEnabled(void)
   return 0;
 }
 
+/* Called by the blink-timer interrupt once a second. It measures the RTC time
+ * since the previous call rather than counting calls (DEV-1417): see
+ * shimmer_autostop.h. */
 uint8_t ShimSens_checkAutostopLoggingCondition(void)
 {
-  if (shimmerStatus.sdLogging && maxExpLenSecs)
+  if (shimmerStatus.sdLogging && autostop.limitSecs
+      && ShimAutostop_check(&autostop, RTC_get32()))
   {
-    if (currentExpLenSecs < maxExpLenSecs)
-    {
-      currentExpLenSecs++;
-      return 0; //Continue sensing
-    }
-    else
-    {
-      ShimSens_currentExperimentLengthReset();
-      return 1; //Trigger auto-stop
-    }
+    /* Count afresh, so the checks that come before logging has actually
+     * stopped do not trigger it again */
+    ShimSens_currentExperimentLengthReset();
+    return 1; //Trigger auto-stop
   }
   return 0; //No action
 }
 
 void ShimSens_currentExperimentLengthReset(void)
 {
-  currentExpLenSecs = 0;
+  ShimAutostop_start(&autostop, RTC_get32());
 }
 
 void ShimSens_maxExperimentLengthSecsSet(uint16_t maxExpLenMins)
 {
-  /* Widened before the multiply. On MSP430 int is 16 bits, so maxExpLenMins * 60
-   * would be computed in 16 bits and truncate every limit above 1092 minutes. */
-  maxExpLenSecs = (uint32_t) maxExpLenMins * 60U;
+  ShimAutostop_setLimitMins(&autostop, maxExpLenMins);
 }
 
 uint8_t *ShimSens_getDataBuffAtWrIdx(void)

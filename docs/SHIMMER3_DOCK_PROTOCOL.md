@@ -11,7 +11,9 @@ re-encoding: a host that speaks one does not speak the other.
 > commit is a citation, not a claim of currency.
 >
 > - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
->   `Comms/shimmer_dock_usart.{h,c}` in full.
+>   `Comms/shimmer_dock_usart.{h,c}` in full. For §7, `ShimSens_startSensing`
+>   and `ShimSens_stopSensing` in `Sensing/shimmer_sensing.c`, and
+>   `LogAndStream_allowDockComms` in `log_and_stream_common.c`.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5` — the UART and USB CDC transports that
 >   feed `ShimDock_rxCallback`.
@@ -267,14 +269,34 @@ with `CBUF_SIZE` = 27 and `CBUF_PARAM_LEN_MAX` = 21.
 New host code should use the `'$'`-framed protocol of §2. The legacy constants
 are retained for compatibility with older dock firmware.
 
-## 7. Interaction with logging
+## 7. Interaction with sensing and logging
 
 Docking has side effects beyond the protocol:
 
 - `ShimSens_checkStartLoggingConditions` requires **not** docked, so logging
   cannot start while docked.
-- Starting to log calls `DockUart_deinit()`, and on Shimmer3R also
-  `USB_deinit()`, so the MCU takes exclusive ownership of the SD card.
+- **Any sensing takes the wired link away until it stops: a Bluetooth stream
+  as well as a log.**
+  - At the start, `ShimSens_startSensing()` calls `DockUart_deinit()` while
+    docked. On Shimmer3R it also calls `USB_deinit()` while USB-C is plugged
+    in. The MCU then has the SD card to itself.
+  - At the stop, `ShimSens_stopSensing()` brings them back: `DockUart_init()`,
+    and `USB_init()` if the SD peripheral initialised. A unit that streams and
+    logs at once stops sensing only when both have stopped.
+  - A dock or USB-C connection made during a Bluetooth stream is not brought
+    up until the stream ends (`LogAndStream_allowDockComms`).
+  - On either platform, requests over the dock UART go unanswered for the
+    whole time.
+- **On Shimmer3R the whole USB device goes, CDC port and drive together.**
+  - The host sees a removal when sensing starts; Windows logs a surprise
+    removal. At the stop it sees a fresh enumeration.
+  - A host that streams over Bluetooth while the unit is plugged in must
+    reopen the COM port and the drive afterwards.
+  - A handle held across the stream does not work again. On the bench, a
+    write on one failed with "The device does not recognize the command".
+  - The COM port can be back before the drive has mounted. The HIL suite
+    waits for both before its first dock command
+    ([SHIMMER3_TEST_PROCEDURE.md](SHIMMER3_TEST_PROCEDURE.md) §10.4).
 - `ShimCalib_ram2File` is deferred while docked, because the card may be
   presented to the host as mass storage. See
   [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §8.4.

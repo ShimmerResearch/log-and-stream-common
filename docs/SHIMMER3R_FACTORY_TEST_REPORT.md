@@ -16,7 +16,8 @@ the result bitmask.
 > **Shimmer3R focus.** The shared harness in `Test/shimmer_test.c` builds for
 > both generations, but the test bodies and the `S3R_TEST_*` registry are in
 > the Shimmer3R platform repository. Shimmer3's equivalents were not read for
-> this document.
+> this document, except for the SD card identity lines, which both print
+> (§5.5).
 
 **Source references:**
 
@@ -26,6 +27,7 @@ the result bitmask.
 | Test enums and result strings | `Test/shimmer_test.h` |
 | LED state walkthrough | `Test/shimmer_test_leds_states.c` |
 | Test bodies and ID registry | `shimmer3r-firmware` `Shimmer_Driver/hal_FactoryTest.{h,c}` |
+| SD card identity lines and model table (§5.5) | `SDCard/shimmer_sd_card_id.{h,c}` |
 
 ---
 
@@ -242,7 +244,110 @@ colour and each state renders. It bypasses the normal state machine entirely.
 are visual checks. See
 [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §7.
 
-### 5.4 `S3R_TEST_0026` — microphone
+### 5.5 `S3R_TEST_0013` — SD card identity
+
+> The lines are formatted in this repository, by `SDCard/shimmer_sd_card_id.c`,
+> from the CID and sector count the platform supplies. Shimmer3R's caller is
+> `sd_card_report_cid()` in `shimmer3r-firmware`
+> `Shimmer_Driver/hal_FactoryTest.c`, newer than the platform revision pinned
+> at the top of this document. The host tests in `Test/host/test_sd_card_id.c`
+> pin the lines printed for every card in the table.
+
+The SD card block names the card before its read/write test. As captured
+from a Shimmer3R with an Integral 16 GB card:
+
+```
+SD Card:
+ - Manufacturer: Integral, Manufacture Date=2025-09
+ - Model: matches Integral UltimaPro 16GB INMSDH16G10-90U1
+ - CID: MID=0x6F, OID=0x0303, PNM=SDABC, PRV=1.0, PSN=0xAA001102, Size=14.56GB
+ - S3R_TEST_0013 - PASS: MCU read/write test
+```
+
+That card's MID, `0x6F`, is in no public list, and its OID bytes are
+unprintable, so the OID prints in hex. The Manufacturer line names the brand
+only because the firmware's table recognises the card.
+
+Each line is a report write of its own and stays under 100 characters, so the
+truncation of §2.1 cannot cut or join them.
+
+**The CID line** holds the card's CID register, as defined in the SD
+Association's Physical Layer specification:
+
+| Field | Meaning |
+|---|---|
+| `MID` | Manufacturer ID: the SD Association's code for whoever made the card's controller or NAND |
+| `OID` | OEM/application ID, 2 characters |
+| `PNM` | Product name, 5 characters |
+| `PRV` | Product revision, BCD `n.m` |
+| `PSN` | Product serial number, 32 bits |
+| `Size` | Capacity in GiB to two decimals, although it prints as `GB` |
+
+The CID's manufacture date (MDT) is on the Manufacturer line, as year-month. An
+`OID` or `PNM` with any unprintable byte prints in hex, two digits a byte:
+`OID=0x0303`, `PNM=0x5344000000`. The text forms are 2 and 5 characters and the
+hex forms 6 and 12, so a parser can tell them apart.
+
+**The Manufacturer line** names the brand of a card the firmware recognises.
+Otherwise it names the company the MID is assigned to, from a short list, or
+prints `Unknown (0xNN)`. Its shape is the one older firmware printed, which host
+parsers already read, except that v1.01.025 and earlier ran the size into the
+name (`Manufacturer: SanDisk7.45GB, ...`).
+
+**The Model line** prints `matches <brand> <part>` when the card's MID, OID,
+PNM and nominal capacity equal a row of the table (`sdCardModels` in
+`SDCard/shimmer_sd_card_id.c`). Otherwise it prints `not recognised`. Nominal
+capacity is the smallest power of two GB (10^9 bytes) that holds the card, so a
+7.95 GB card is 8.
+
+> **The MID is not the brand.** Most microSD brands sell cards made by others,
+> and those cards report the maker's MID or a code that is in no public list.
+> Their CIDs can also carry placeholder names (`SDABC`, `00000`), impossible
+> dates, and serials that count up from 1. Two cards of one part number, bought
+> together, have carried two different MIDs. So:
+> - "matches" means the ID matches the card recorded for that part, not that the
+>   card is that part. A generic ID, such as Phison `PH`/`SD08G`, fits other
+>   brands' cards too.
+> - To confirm that a unit carries the approved card, compare `MID`, `OID`,
+>   `PNM`, `PRV` and the size with the values recorded for that card, not the
+>   brand text.
+> - `PSN` does not identify an individual card for every model.
+
+If the card failed to initialise (`hsd1.Instance` is NULL), the block prints
+` - CID: unavailable (card not initialised)` instead, with no Manufacturer or
+Model line, rather than decoding a stale CID.
+
+A docked unit power-cycles and re-initialises the card before reading it
+(`Board_sd2Mcu`). A unit on USB-C alone reads the CID from the card's last
+initialisation, which is normally at boot. To read a different card, swap it
+with the unit switched off.
+
+**Shimmer3** prints the same three lines, through the same module, in its
+`SD Card:` block. Its SD driver (`shimmer3-firmware`
+`Shimmer_Driver/FatFs/mmc.c`) reads the CID and the card's size each time it
+initialises the card, and the report prints that copy, because a docked
+Shimmer3 cannot reach its card:
+
+- **Undocked**, the lines follow the read/write test, which initialises the
+  card if needed, so they are the current card's:
+  ```
+  SD Card:
+   - PASS: SD card detected
+   - Manufacturer: ..., Manufacture Date=...
+   - Model: ...
+   - CID: ...
+   - PASS: SD card read/write test
+  ```
+- **Docked**, they come before the line saying the test cannot run docked, and
+  they are from the card's last initialisation: at an undocked boot, or at the
+  last undock. A card changed while docked shows the previous card's lines
+  until the unit is undocked.
+- A unit that has not been undocked since it booted docked prints
+  ` - CID: unavailable (not read since boot, undock to read it)`. If the last
+  initialisation, or the read, failed, it prints
+  ` - CID: unavailable (card not initialised)`.
+
+### 5.6 `S3R_TEST_0026` — microphone
 
 The test runs the PDM microphone through the ADF at decimation 64 and gain −8
 (DEV-1154) for about 0.3 s. It skips the first 64 DMA blocks while the mic
@@ -272,6 +377,8 @@ A host must:
    128-character truncation of §2.1.
 4. Parse `Overall Result` for the mask, and the per-line `S3R_TEST_nnnn` tokens
    for detail.
+5. Match the SD card's identity lines (§5.5) by their prefixes,
+   ` - Manufacturer:`, ` - Model:` and ` - CID:`. They carry no `S3R_TEST_` token.
 
 > **Do not parse by fixed line count or fixed offsets.** Lines are conditional
 > on the model, on rig presence, and on which suite was run.

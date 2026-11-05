@@ -398,7 +398,7 @@ The factory test S3R_TEST_0026 captures through the same driver, at its own
 settings (decimation 64, gain −8). It runs one capture at a time. A factory test
 while a recording owns the microphone reports `FAIL: Microphone busy recording`
 rather than restarting the ADF under the recording
-([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §5.4).
+([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §5.6).
 
 ## Not yet
 
