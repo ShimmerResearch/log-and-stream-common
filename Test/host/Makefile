@@ -63,7 +63,7 @@ INCLUDES := -I . \
 # Suites that need no stub platform at all - the modules under them include
 # nothing but the C library.
 STANDALONE_SUITES := test_swcrc test_packet_ring test_util test_sd_pressure_id \
-                     test_leds_phase test_autostop
+                     test_leds_phase test_sd_card_id test_autostop
 
 # Suites built once per SD write-buffer count. That count is a compile-time
 # constant because the buffers are a fixed array, so covering more than one
@@ -93,6 +93,7 @@ SRC_test_packet_ring := test_packet_ring.c $(REPO)/Sensing/shimmer_packet_ring.c
 SRC_test_util        := test_util.c $(REPO)/Util/shimmer_util.c
 SRC_test_sd_pressure_id := test_sd_pressure_id.c \
                         $(REPO)/SDCard/shimmer_sd_pressure_id.c
+SRC_test_sd_card_id  := test_sd_card_id.c $(REPO)/SDCard/shimmer_sd_card_id.c
 SRC_test_sd_write_buf := test_sd_write_buf.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c
 SRC_test_leds_phase  := test_leds_phase.c $(REPO)/LEDs/shimmer_leds_phase.c
@@ -124,6 +125,7 @@ INC_test_packet_ring := -I $(REPO)
 INC_test_util        := -I . -I $(REPO)
 INC_test_sd_write_buf := -I . -I $(REPO)
 INC_test_sd_pressure_id := -I . -I $(REPO)
+INC_test_sd_card_id  := -I . -I $(REPO)
 INC_test_leds_phase  := -I . -I $(REPO)
 INC_test_autostop    := -I . -I $(REPO)
 
@@ -310,6 +312,7 @@ DUAL_COMPILE_MODULES := \
   LEDs/shimmer_leds_phase.c \
   Platform/platform_api.c \
   RTC/shimmer_rtc.c \
+  SDCard/shimmer_sd_card_id.c \
   SDCard/shimmer_sd_pressure_id.c \
   SDCard/shimmer_sd_write_buf.c \
   Sensing/shimmer_autostop.c \
