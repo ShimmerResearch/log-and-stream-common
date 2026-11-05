@@ -378,7 +378,10 @@ since for the configuration-write flag (§3.3).
 | The indexes, TTL state, the configuration-write flag and the Bluetooth opt-in flags | 13 |
 | The shared Timer_A0's user mask and the next edge's direction | 2 |
 
-That leaves 297 bytes of Shimmer3's RAM unallocated.
+That leaves 268 bytes of Shimmer3's RAM unallocated, measured in a Release
+build once `main` was merged in on 5 Nov 2026. It was 297 before: `main` had
+taken 23 bytes for the SD card identity (DEV-1405) and about 6 for the
+auto-stop's rework (DEV-1417).
 
 ## 5. Worked example
 
