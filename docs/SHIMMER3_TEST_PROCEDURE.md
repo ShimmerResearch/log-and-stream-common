@@ -203,6 +203,8 @@ What the suites cover today:
 | `test_swcrc` | `CRC/shimmer_swCrc.c` | ×1 | The CRC polynomial, against wire-format vectors |
 | `test_crc` | `CRC/shimmer_crc.c` | ×1 | Mode dispatch, CRC placement, corruption detection, and the firmware's own `testCrcDriver()` |
 | `test_packet_ring` | `Sensing/shimmer_packet_ring.c` | ×1 | The sample ring's interleavings, including the DEV-1023 field fault |
+| `test_autostop` | `Sensing/shimmer_autostop.c` | ×1 | The max_exp_len auto-stop: the stop time, and that doubled, missed or drifting checks, a clock set mid-log and the 32-bit clock wrap move it by a second at most (DEV-1417) |
+| `test_leds_phase` | `LEDs/shimmer_leds_phase.c` | ×1 | The LED frame arithmetic, and the phase lock run closed loop against a blink timer 3% slow to 3% fast: each whole-second tick comes once a second (DEV-1417) |
 | `test_util` | `Util/shimmer_util.c` | ×1 | SD directory naming, config-file 64-bit values, config-file sample rate round trip (every divider), BT response lengths, MAC byte order |
 | `test_rtc` | `RTC/shimmer_rtc.c` | ×2 | Every day from 2000 to 2099 round-trips; leap years; date validation |
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
@@ -899,6 +901,7 @@ value. [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md)
 | 5.6.5 | Pull the card mid-log | Clean stop; the file up to that point is readable |
 | 5.6.6 | Start/stop 20 times | No leak, no drift, no stuck state |
 | 5.6.7 | **Talk to a unit that is already logging:** at 5.6.1's channels and rate, send `INQUIRY` every 0.25 s for a minute over Bluetooth | No gaps that 5.6.1's own log does not show |
+| 5.6.8 | Set `max_exp_len` to 10 minutes and log undocked | Logging stops between 600 and 601 s after the file's first sample, by its own timestamps |
 
 Check 5.6.1–5.6.3 in Consensys, not just for file size. **A packet with a zero
 timestamp reads as a 24-bit roll-over worth 512 s** — that is the DEV-1023
@@ -1133,6 +1136,7 @@ case earns a permanent place here.
 | Host constant drift | A host restates a firmware constant and the firmware moves it; the device is fine and every host is wrong | `crosscheck_host_constants.py` for the in-repo host, §6.4 for the rest |
 | BMP581 SR48 window | A plain `>= 7.2` wrongly claims SR48-8-0 and 8-1 | `test_boards` — both layers catch it |
 | DEV-1363 | A host connects to a unit that is already logging, and its `INQUIRY` costs the log 100 ms of samples | `smoke.sd_inquiry_midlog` on Shimmer3R, on the required list — plus §5.6.7 by hand on Shimmer3 |
+| DEV-1417 | A Shimmer3R's `max_exp_len` auto-stop ended a 7-minute log 3% early: the LED phase lock counted seconds twice when TIM6 ran fast | `test_autostop`, `test_leds_phase` (closed loop) — plus §5.6.8 |
 
 **When a fault escapes, add its case here and a test for it in the same PR.** A
 regression list that only grows by hand stops growing.
