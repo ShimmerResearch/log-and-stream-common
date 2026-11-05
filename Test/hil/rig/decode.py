@@ -29,25 +29,45 @@ SIGNED_I16 = {c for t in TRIPLETS.values() for c in t[0]}
 # Shimmer3R the ADXL371's 12-bit value, left-justified (the driver's i12*>); on
 # Shimmer3 the 9-axis chip's own accelerometer, a plain int16.
 BIG_ENDIAN = set(TRIPLETS["alt_accel"][0])
+# A Shimmer3 part whose registers run high byte first streams big-endian
+# (STREAMING_DATA_FORMAT §5.2, §5.5): the gyro on every board, and the BMP's
+# temperature and pressure. So does the mag on an LSM303DLHC board.
+S3_BIG_ENDIAN = {0x0A, 0x0B, 0x0C, 0x1A, 0x1B}
+
+
+def big_endian(channels: list[int], hw: int) -> set[int]:
+    """The channels of this packet layout that are big-endian.
+
+    The packet does not say which mag a Shimmer3 has, but its order does: an
+    LSM303DLHC board lists it X, Z, Y (STREAMING_DATA_FORMAT §4.1), and that
+    part's registers run high byte first.
+    """
+    if hw == HW_SHIMMER3R:
+        return BIG_ENDIAN
+    out = BIG_ENDIAN | S3_BIG_ENDIAN
+    if 0x08 in channels and 0x09 in channels and channels.index(0x09) < channels.index(0x08):
+        out |= set(TRIPLETS["mag"][0])
+    return out
 
 
 def split_channels(rows: list[bytes], channels: list[int], hw: int) -> dict[int, np.ndarray]:
     """rows: channel-data bytes of each sample (no header, timestamp or CRC)."""
     out: dict[int, list[int]] = {c: [] for c in channels}
     widths = [channel_width(c, hw) for c in channels]
+    be = big_endian(channels, hw)
     for r in rows:
         pos = 0
         for c, w in zip(channels, widths):
             chunk = r[pos:pos + w]
             pos += w
-            if w == 2 and c in BIG_ENDIAN:
-                v = struct.unpack(">h", chunk)[0]
+            if w == 2 and c in be:
+                v = struct.unpack(">h" if c in SIGNED_I16 else ">H", chunk)[0]
                 if hw == HW_SHIMMER3R:
                     v >>= 4                      # i12*>: arithmetic shift keeps the sign
             elif w == 2:
                 v = struct.unpack("<h" if c in SIGNED_I16 else "<H", chunk)[0]
             elif w == 3:
-                v = int.from_bytes(chunk, "little")
+                v = int.from_bytes(chunk, "big" if c in be else "little")
             else:
                 v = chunk[0]
             out[c].append(v)

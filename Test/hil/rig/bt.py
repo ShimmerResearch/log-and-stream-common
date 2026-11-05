@@ -34,6 +34,29 @@ START_STREAMING, STOP_STREAMING = 0x07, 0x20
 START_LOGGING, STOP_LOGGING = 0x92, 0x93
 START_SDBT, STOP_SDBT = 0x70, 0x97
 
+# Configuration over Bluetooth, the way a host writes it (§7.5, §7.6, §7.8).
+GET_INFOMEM, INFOMEM_RSP, SET_INFOMEM = 0x8E, 0x8D, 0x8C
+GET_CALIB_DUMP, CALIB_DUMP_RSP, SET_CALIB_DUMP = 0x9A, 0x99, 0x98
+SET_SAMPLING_RATE, GET_SAMPLING_RATE, SAMPLING_RATE_RSP = 0x05, 0x03, 0x04
+SET_SENSORS = 0x08
+INFOMEM_WINDOW = 512            # both commands validate against the 512-byte window (§7.5)
+INFOMEM_CONFIG_BYTES = 384      # the modelled image a host pages: offsets 0, 128 and 256
+PAGE = 128                      # the most one InfoMem or calibration-dump command carries
+CALIB_RAM_MAX = 1024            # SHIMMER_CALIB_RAM_MAX (CALIBRATION §2.4)
+# The per-setting commands (§7.8): name -> (SET, response, GET), one byte each.
+# Every SET clamps out-of-range values silently, so a host reads them back.
+SETTINGS = {
+    "wr_accel_range": (0x09, 0x0A, 0x0B),
+    "wr_accel_rate": (0x40, 0x41, 0x42),
+    "wr_accel_lp_mode": (0x43, 0x44, 0x45),
+    "gyro_range": (0x49, 0x4A, 0x4B),
+    "gyro_rate": (0x4C, 0x4D, 0x4E),
+    "mag_rate": (0x3A, 0x3B, 0x3C),
+    # Shimmer3: the 9-axis chip's accel range. Shimmer3R: the LSM6DSV LN accel (§7.8).
+    "alt_accel_range": (0x4F, 0x50, 0x51),
+}
+WRITE_ACK_S = 3.0               # a write's ACK follows the flash erase and write
+
 STATUS_DOCKED, STATUS_SENSING, STATUS_LOGGING, STATUS_STREAMING = 0x01, 0x02, 0x08, 0x10
 STATUS_SD_INSERTED, STATUS_SD_BAD_FILE = 0x20, 0x40
 
@@ -196,7 +219,7 @@ class BtLink:
         return b
 
     def command(self, op: int, args: bytes = b"", rsp: int | None = None, wrapped: bool = False,
-                attempts: int = 3) -> None:
+                attempts: int = 3, ack_timeout_s: float | None = None) -> None:
         """Send op, consume the ACK and (if rsp) the response opcode. Payload is the caller's to read.
 
         The firmware also pushes status frames of its own, ACK 0x8A 0x71 ...,
@@ -206,11 +229,22 @@ class BtLink:
         response opcode should be. So a query (rsp set, not wrapped) that gets
         ACK 0x8A drains the link and asks again. Only queries are retried: a
         start or stop sent twice is a different command.
+
+        ack_timeout_s waits longer for the ACK, for a write the firmware ACKs
+        only after storing it.
         """
         for attempt in range(attempts if rsp is not None and not wrapped else 1):
             self.ser.reset_input_buffer()
             self.ser.write(bytes([op]) + args)
-            a = self._read(1)[0]
+            if ack_timeout_s is None:
+                a = self._read(1)[0]
+            else:
+                old = self.ser.timeout
+                self.ser.timeout = ack_timeout_s
+                try:
+                    a = self._read(1)[0]
+                finally:
+                    self.ser.timeout = old
             if a == NACK:
                 raise BtError(f"NACK for {op:#04x}")
             if a != ACK:
@@ -284,6 +318,95 @@ class BtLink:
         """GET_ALL_CALIBRATION: 4 x 21 bytes on Shimmer3, 6 x 21 on Shimmer3R (§7.6)."""
         self.command(0x2C, rsp=0x2D)
         return self._read(126 if self.hw == HW_SHIMMER3R else 84)
+
+    # --- configuration -------------------------------------------------------
+
+    def read_infomem(self, offset: int = 0, length: int = INFOMEM_CONFIG_BYTES) -> bytes:
+        """GET_INFOMEM (§7.5), a page of at most 128 bytes at a time.
+
+        The bounds are checked here: the firmware answers a read outside the
+        window with a bare ACK and no response, which a host waiting for one
+        would sit on until it timed out.
+        """
+        _check_window(offset, length)
+        out = bytearray()
+        while len(out) < length:
+            n, at = min(PAGE, length - len(out)), offset + len(out)
+            self.command(GET_INFOMEM, bytes([n]) + at.to_bytes(2, "little"), rsp=INFOMEM_RSP)
+            got = self._read(1)[0]
+            if got != n:
+                raise BtError(f"GET_INFOMEM of {n} bytes at {at}: the response says {got}")
+            out += self._read(n)
+        return bytes(out)
+
+    def write_infomem(self, data: bytes, offset: int = 0) -> None:
+        """SET_INFOMEM (§7.5), in 128-byte pages and ascending, as hosts must.
+
+        Each page is corrected over the whole image and stored before it is
+        ACKed, and a page at offset 0 also copies InfoMem's calibration blocks
+        into the calibration dump under the ranges it sets. So the caller reads
+        back what was stored, and writes calibration blocks that match the
+        ranges (rig/s3_config.py's with_calibration does).
+        """
+        _check_window(offset, len(data))
+        for i in range(0, len(data), PAGE):
+            chunk = data[i:i + PAGE]
+            self.command(SET_INFOMEM, bytes([len(chunk)]) + (offset + i).to_bytes(2, "little") + chunk,
+                         ack_timeout_s=WRITE_ACK_S)
+
+    def read_calib_dump(self) -> bytes:
+        """The whole calibration dump (GET_CALIB_DUMP, §7.6): its first two bytes
+        give its length, excluding themselves (CALIBRATION §2.1)."""
+        def page(at: int, n: int) -> bytes:
+            self.command(GET_CALIB_DUMP, bytes([n]) + at.to_bytes(2, "little"), rsp=CALIB_DUMP_RSP)
+            head = self._read(3)
+            if head[0] != n or int.from_bytes(head[1:3], "little") != at:
+                raise BtError(f"GET_CALIB_DUMP of {n} bytes at {at}: the response echoes {head.hex()}")
+            return self._read(n)
+
+        out = bytearray(page(0, PAGE))
+        total = int.from_bytes(out[:2], "little") + 2
+        if not 10 <= total <= CALIB_RAM_MAX:
+            raise BtError(f"calibration dump declares {total} bytes")
+        while len(out) < total:
+            out += page(len(out), min(PAGE, total - len(out)))
+        return bytes(out[:total])
+
+    def write_calib_dump(self, blob: bytes) -> None:
+        """SET_CALIB_DUMP (§7.6), from offset 0 up: the first page tells the
+        firmware the total, and it commits the dump when the last arrives."""
+        if not 10 <= len(blob) <= CALIB_RAM_MAX or int.from_bytes(blob[:2], "little") + 2 != len(blob):
+            raise BtError(f"not a calibration dump: {len(blob)} bytes, length field "
+                          f"{int.from_bytes(blob[:2], 'little')}")
+        for at in range(0, len(blob), PAGE):
+            chunk = blob[at:at + PAGE]
+            self.command(SET_CALIB_DUMP, bytes([len(chunk)]) + at.to_bytes(2, "little") + chunk,
+                         ack_timeout_s=WRITE_ACK_S)
+
+    def set_sampling_divider(self, ticks: int) -> None:
+        """SET_SAMPLING_RATE: a divider of the 32768 Hz clock, not a frequency (§7.8)."""
+        if not 1 <= ticks <= 0xFFFF:
+            raise BtError(f"sampling divider {ticks} out of range")
+        self.command(SET_SAMPLING_RATE, ticks.to_bytes(2, "little"), ack_timeout_s=WRITE_ACK_S)
+
+    def get_sampling_divider(self) -> int:
+        self.command(GET_SAMPLING_RATE, rsp=SAMPLING_RATE_RSP)
+        return int.from_bytes(self._read(2), "little")
+
+    def set_sensors(self, bitmap: bytes) -> None:
+        """SET_SENSORS: the three enable bytes, InfoMem 3-5 (§7.8)."""
+        if len(bitmap) != 3:
+            raise BtError(f"SET_SENSORS takes 3 bytes, not {len(bitmap)}")
+        self.command(SET_SENSORS, bytes(bitmap), ack_timeout_s=WRITE_ACK_S)
+
+    def set_setting(self, name: str, value: int) -> None:
+        """One of the per-setting SETs (SETTINGS). It clamps silently: read it back."""
+        self.command(SETTINGS[name][0], bytes([value]), ack_timeout_s=WRITE_ACK_S)
+
+    def get_setting(self, name: str) -> int:
+        _, rsp, get = SETTINGS[name]
+        self.command(get, rsp=rsp)
+        return self._read(1)[0]
 
     def wait_status(self, mask: int, want: bool, timeout_s: float = 10.0) -> int:
         end = time.monotonic() + timeout_s
@@ -468,6 +591,11 @@ class BtLink:
                     break
         finally:
             self.ser.timeout = old
+
+
+def _check_window(offset: int, length: int) -> None:
+    if not (0 <= offset and 0 < length and offset + length <= INFOMEM_WINDOW):
+        raise BtError(f"InfoMem {length} bytes at {offset} is outside the {INFOMEM_WINDOW}-byte window")
 
 
 def _plausible_step(d: int, period: int) -> bool:

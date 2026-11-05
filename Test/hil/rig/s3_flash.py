@@ -71,6 +71,37 @@ def flash_slot(base6: Base6, slot: int, image: Path, backup_dir: Path,
     return {**result, "mac": mac, "before": before.text, "after": after.text, "backup": str(backup)}
 
 
+RESTORE_ATTEMPTS = 3
+
+
+def restore_infomem(base6: Base6, original: bytes, stream_error: BaseException | None,
+                    backup=None) -> list[str]:
+    """Write the selected unit's own InfoMem (from offset 0) back over the dock;
+    return what each failed attempt saw.
+
+    Runs in a finally block, so a failure here must not replace the test's
+    own exception: when both fail, the DockError names the test's error and
+    is chained from it.
+    """
+    seen = []
+    for _ in range(RESTORE_ATTEMPTS):
+        try:
+            with dock.open_when_ready(base6.uart_port) as d:
+                d.write_infomem(original, offset=0)
+                if _masked(d.read_infomem(0, len(original))) != _masked(original):
+                    raise dock.DockError("read back differs")
+            return seen
+        except (dock.DockError, OSError) as e:   # serial.SerialException is an OSError
+            seen.append(str(e))
+            time.sleep(1.0)
+    msg = f"could not restore the configuration over the dock: {seen}"
+    if backup is not None:
+        msg += f"; the original is in {backup}"
+    if stream_error is not None:
+        raise dock.DockError(f"{msg} - after the stream itself failed with {stream_error!r}") from stream_error
+    raise dock.DockError(msg)
+
+
 def reset_slot(base6: Base6, slot: int) -> None:
     """Hardware-reset the Shimmer in `slot` through its RST line, into the application."""
     base6.select(slot)

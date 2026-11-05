@@ -37,7 +37,9 @@ and mirrored into the SD-card file header.
 >   `devices/infomem/layout.ts`.
 > - **Auto-stop range (bytes 222-223):** `log-and-stream-common` @ `f573f60`
 >   — `ShimSens_maxExperimentLengthSecsSet()` in `Sensing/shimmer_sensing.c`.
->   Only that claim was checked at this revision.
+>   Only that claim was checked at this revision. How the limit is measured
+>   (§8) was read from the DEV-1417 change: `Sensing/shimmer_autostop.c` and
+>   `ShimSens_checkAutostopLoggingCondition()`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). The **Gen** column says which generation a byte
@@ -559,7 +561,7 @@ Three things matter when writing configuration bytes directly:
 | 218 | `NV_SD_TRIAL_CONFIG1` | Bit flags, see below |
 | 219 | `btIntervalSecs` | Sync broadcast interval. Default 54 |
 | 220-221 | `experimentLengthEstimatedInSec` | **Big-endian** (MSB at 220) |
-| 222-223 | `experimentLengthMaxInMinutes` | **Big-endian** (MSB at 222). 0 = auto-stop disabled; 1-65535 minutes otherwise, on both platforms (Shimmer3 builds of this library before `4c9f3ad` wrapped any value above 1092 to a shorter limit) |
+| 222-223 | `experimentLengthMaxInMinutes` | **Big-endian** (MSB at 222). 0 = auto-stop disabled; 1-65535 minutes otherwise, on both platforms (Shimmer3 builds of this library before `4c9f3ad` wrapped any value above 1092 to a shorter limit). Measured in real-world clock time from the log's start, so logging stops within a second after the limit (see below) |
 | 224-229 | `macAddr` | 6 bytes |
 | 230 | `flagWriteCfgToSd` | Bit 0 only |
 | 231 | `btSetPin` | Legacy |
@@ -569,6 +571,31 @@ Three things matter when writing configuration bytes directly:
 > and `experimentLengthMaxInMinutes` all store most-significant byte first
 > (`ShimConfig_configTimeSet` shifts down from 24). There is no rule to infer;
 > the endianness is per-field.
+
+> **How the auto-stop measures `experimentLengthMaxInMinutes`**
+> (`Sensing/shimmer_autostop.c`). The blink timer checks it once a second while
+> logging. Each check adds the real-world clock time since the previous one
+> (`RTC_get32()`), and the first check at or after the limit stops the log.
+>
+> - **Accuracy:** a log stops within a second after the limit, counted from
+>   the log's start, on both platforms.
+> - **A file reads slightly different from that,** because its first sample
+>   isn't the log's start. On Shimmer3R the first sample comes about 0.4 s
+>   before the file's start stamp, so a 10-minute log spans 600.4-600.6 s. A
+>   Shimmer3 creates the file before it samples, which takes 1-2 s, so its log
+>   spans about 599 s: 599.125 and 598.797 s on one unit (5 Nov 2026), on the
+>   old count and the new.
+> - **A clock set mid-log:** each check adds at most 2 s and never goes
+>   backwards, so a set moves the stop by about a second either way. That
+>   applies to Shimmer3R, whose clock is the calendar that `SET_RWC` moves.
+>   Shimmer3's `RTC_get32()` counts from boot and is never set.
+> - **Before DEV-1417** each check added one second, so the limit was only as
+>   good as the blink timer. On Shimmer3R that timer is off the crystal, and
+>   the LED phase lock could count a second twice (see
+>   [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1).
+>   - 9172 stopped a 7-minute log 3% early.
+>   - 15BC stopped a 10-minute log after 481.4 s, 19.8% early, on v1.01.025.
+>     With this change it stopped at 600.6 and 600.4 s.
 
 ### 8.1 Trial config byte 217
 
@@ -844,6 +871,13 @@ Two limits on relying on it:
 
 Hosts should still derive rather than depend on the correction, so that a device
 running firmware without it is not left in the bad state.
+
+> **Shimmer3 has no such correction.** The ODR rules in
+> `ShimConfig_checkAndCorrectConfig` sit inside `#if defined(SHIMMER3R)`, so a
+> Shimmer3 runs its MPU9x50/ICM-20948 gyro, its LSM303 wide-range accel and its
+> LSM303 magnetometer at whatever ODR is stored. On a Shimmer3, keeping the rule
+> above is entirely the host's job. The HIL release tier derives ODRs this way
+> (`Test/hil/rig/s3_config.py`, TEST_PROCEDURE §10.4).
 
 `ShimSdSync_checkSyncCenterName` also runs here and may adjust the sync
 configuration.

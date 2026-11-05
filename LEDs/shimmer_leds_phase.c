@@ -39,6 +39,47 @@ uint64_t ShimLedsPhase_toCentreTime(uint64_t localTicks, const uint8_t *syncOffs
   return localTicks + magnitude;
 }
 
+LedPhaseCorrection_t ShimLedsPhase_correction(uint64_t tickTime)
+{
+  LedPhaseCorrection_t c;
+  int16_t late = ShimLedsPhase_ticksPastMidTenth(tickTime);
+
+  c.frameTenth = ShimLedsPhase_frameTenth(tickTime);
+  c.shiftTicks = 0;
+  if (late > LED_PHASE_DEADBAND_TICKS || late < -LED_PHASE_DEADBAND_TICKS)
+  {
+    c.shiftTicks = (int16_t) -late;
+  }
+  return c;
+}
+
+LedPhaseTimerShift_t
+ShimLedsPhase_counterTimerShift(uint16_t counter, uint16_t reload, int16_t shiftCounts)
+{
+  LedPhaseTimerShift_t s;
+
+  s.counter = counter;
+  s.periodExtra = 0;
+
+  if (shiftCounts > 0)
+  {
+    /* One extra period at most. The lock never asks for more than half a
+     * tenth, so this only bounds a caller's mistake. */
+    s.periodExtra = ((uint16_t) shiftCounts > reload) ? reload : (uint16_t) shiftCounts;
+  }
+  else if (shiftCounts < 0 && counter < reload)
+  {
+    /* A counter already at the reload value may wrap before the caller's write
+     * lands, and the stale value would then undo the reload. That case is
+     * skipped; the next second's sync applies the shift instead. Negated as
+     * unsigned, which a 16-bit int cannot overflow. */
+    uint16_t room = (uint16_t) (reload - counter);
+    uint16_t step = (uint16_t) (0U - (uint16_t) shiftCounts);
+    s.counter = (uint16_t) (counter + ((step > room) ? room : step));
+  }
+  return s;
+}
+
 uint8_t ShimLedsPhase_isOnAlternate200ms(uint16_t frameTenth)
 {
   return (uint8_t) ((frameTenth >> 1) & 1U);

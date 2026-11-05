@@ -34,10 +34,27 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
         if not cls.shimmer.setup_bluetooth_com_port(com_port, debug_txrx_packets=True):
             exit()
 
+        # The suite resets the configuration and the calibration to defaults and writes its own
+        # values into both, so keep the unit's own to put back at the end.
+        cls.original_config = cls.shimmer.bluetooth_port.read_configuration()
+        cls.original_calib = cls.shimmer.bluetooth_port.read_calibration()
+        if not cls.original_config or not cls.original_calib:
+            print("Could not read the unit's configuration and calibration to restore afterwards, exiting")
+            cls.shimmer.bluetooth_port.close_port()
+            exit()
+
     @classmethod
     def tearDownClass(cls):
-        # cls._connection.destroy()
-        cls.shimmer.bluetooth_port.close_port()
+        # Configuration first: a Bluetooth InfoMem write at offset 0 copies InfoMem's calibration
+        # blocks into the calibration dump (BT_COMMUNICATION_PROTOCOL §7.5), which the dump then
+        # overwrites with the unit's own.
+        port = cls.shimmer.bluetooth_port
+        port.clear_serial_buffer()
+        restored = (port.write_configuration(cls.original_config)
+                    and port.write_calibration(cls.original_calib))
+        print("The unit's configuration and calibration restored" if restored
+              else "FAILED to restore the unit's configuration and calibration")
+        port.close_port()
         print("All done")
 
     def bt_cmd_test_get_common(self, tx_cmd_byte, expected_response_cmd_byte, expected_response_len,
@@ -226,6 +243,31 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
                     "test of setting being changed"))
             else:
                 self.assertTrue(False, "RX byte != TX byte at indexes listed in console")
+
+    def bt_cmd_test_wait_for_nack(self, why, timeout_ms=500):
+        """The firmware refuses the command just sent; `why` says where that is documented."""
+        response = self.shimmer.bluetooth_port.wait_for_response(1, timeout_ms)
+        self.assertTrue(len(response) == 1 and response[0] == shimmer_comms_bluetooth.BtCmds.NACK_COMMAND_PROCESSED,
+                        "Expected a NACK (" + why + "), got " + util_shimmer.byte_array_to_hex_string(response))
+
+    def mag_is_lsm303dlhc(self):
+        """Whether the magnetometer is an LSM303DLHC, from the inquiry's channel list.
+
+        Only an LSM303DLHC board lists the mag X, Z, Y (STREAMING_DATA_FORMAT §4.1); the board
+        revision alone does not say which part is fitted. None when the mag is not enabled, so
+        the list does not show it.
+        """
+        num_inquiry_bytes = 11 if self.shimmer.is_hardware_shimmer3r() else 8
+        response = self.bt_cmd_test_get_common(shimmer_comms_bluetooth.BtCmds.INQUIRY_COMMAND,
+                                               shimmer_comms_bluetooth.BtCmds.INQUIRY_RESPONSE, num_inquiry_bytes)
+        # numberOfChannels, then bufferSize, then the channel IDs (BT_COMMUNICATION_PROTOCOL, inquiry)
+        idx_length_channels = 9 if self.shimmer.is_hardware_shimmer3r() else 6
+        first = idx_length_channels + 2
+        channels = list(response[first:first + response[idx_length_channels]])
+        mag = [c for c in channels if c in (0x07, 0x08, 0x09)]
+        if len(mag) != 3:
+            return None
+        return mag == [0x07, 0x09, 0x08]
 
     def bt_cmd_test_wait_for_ack(self, timeout_ms=500):
         result = self.shimmer.bluetooth_port.wait_for_ack(timeout_ms)
@@ -419,8 +461,9 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
             print("Skipping test, BMP180/BMP280 not present in device")
 
     def test_025_get_alt_mag_sens_adj_vals_response(self):
-        # Shimmer3 utilising ICM-20948 instead of MPU9150/MPU9250 will only respond back with ACK as the ICM-20948
-        # does not support changing the mag range.
+        # Without an MPU-9x50 (a Shimmer3R, or a Shimmer3 with an ICM-20948 in its place) the firmware
+        # NACKs this command (BT_COMMUNICATION_PROTOCOL, NACK table). Earlier firmware sent an ACK
+        # and then a second one.
         print("Test 025 - Get alternative Mag Sens Adj Vals response command:")
 
         if not self.shimmer.is_hardware_version_set():
@@ -431,7 +474,7 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
         if self.shimmer.hw_ver == shimmer_device.SrHwVer.SHIMMER3R.value or self.shimmer.is_icm20948_present():
             self.shimmer.bluetooth_port.send_bluetooth(
                 [shimmer_comms_bluetooth.BtCmds.GET_ALT_MAG_SENS_ADJ_VALS_COMMAND])
-            self.bt_cmd_test_wait_for_ack()
+            self.bt_cmd_test_wait_for_nack("no MPU-9x50 fitted")
         else:
             self.bt_cmd_test_get_common(shimmer_comms_bluetooth.BtCmds.GET_ALT_MAG_SENS_ADJ_VALS_COMMAND,
                                         shimmer_comms_bluetooth.BtCmds.ALT_MAG_SENS_ADJ_VALS_RESPONSE, 3)
@@ -521,7 +564,9 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
         self.test_028_get_status(True)
 
         if self.shimmer.status_is_docked or self.shimmer.status_is_usb_plugged_in:
-            self.assertTrue(False, "Shimmer must be undocked/unplugged for this command to work reliably")
+            # Docked or on USB the card belongs to the dock or the PC, not the MCU. A precondition
+            # of the bench, not a result.
+            self.skipTest("the unit must be undocked and off USB for the card to be the MCU's")
         elif not self.shimmer.status_sd_in_slot:
             self.assertTrue(False, "No SD card detected")
         elif self.shimmer.status_sd_error:
@@ -617,9 +662,15 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
     # set commands
 
     def test_048_set_sampling_rate(self):
-        print("Test 048 - Set accel sensitivity command ")
+        print("Test 048 - Set sampling rate command ")
+        if not self.shimmer.is_hardware_version_set():
+            self.test_004_get_shimmer_new_version(True)
 
-        sampling_rate_hz = 102.4
+        # A Shimmer3R raises an enabled sensor's output rate to the lowest that covers the packet
+        # rate (CONFIGURATION_INFOMEM §10.6). Tests 051, 058 and 063 write rates down to the
+        # LSM6DSV's 1.875 Hz with the gyro and mag enabled, so on a Shimmer3R the packet rate set
+        # here, which they run at, is below that: 1 Hz. A Shimmer3 has no such correction.
+        sampling_rate_hz = 1.0 if self.shimmer.is_hardware_shimmer3r() else 102.4
         sampling_rate_ticks = int(32768 / sampling_rate_hz)
 
         tx_bytes = [sampling_rate_ticks & 0xFF, (sampling_rate_ticks >> 8) & 0xFF]
@@ -705,6 +756,24 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
     def test_056_set_mag_gain(self):
         print("Test 056 - Set Mag gain command")
         tx_bytes = [0x02]  # Default = 1, "set_config_bytes" test sets it to 0, choosing 2 here
+        if not self.shimmer.is_hardware_version_set():
+            self.test_004_get_shimmer_new_version(True)
+        if self.shimmer.is_hardware_shimmer3():
+            # On a Shimmer3 the firmware forces magRange to 0 unless the mag is an LSM303DLHC
+            # (CONFIGURATION_INFOMEM §10.3), so elsewhere the gain written must read back as 0.
+            dlhc = self.mag_is_lsm303dlhc()
+            if dlhc is None:
+                self.skipTest("the mag is not enabled, so the inquiry does not show which part is fitted")
+            if not dlhc:
+                self.shimmer.bluetooth_port.send_bluetooth([shimmer_comms_bluetooth.BtCmds.SET_MAG_GAIN_COMMAND]
+                                                           + tx_bytes)
+                self.bt_cmd_test_wait_for_ack()
+                time.sleep(0.5)
+                response = self.bt_cmd_test_get_common(shimmer_comms_bluetooth.BtCmds.GET_MAG_GAIN_COMMAND,
+                                                       shimmer_comms_bluetooth.BtCmds.MAG_GAIN_RESPONSE, 1)
+                self.assertEqual(list(response), [0x00],
+                                 "magRange must read back 0 on a board without an LSM303DLHC")
+                return
         self.bt_cmd_test_set_common(shimmer_comms_bluetooth.BtCmds.SET_MAG_GAIN_COMMAND, tx_bytes,
                                     shimmer_comms_bluetooth.BtCmds.GET_MAG_GAIN_COMMAND,
                                     shimmer_comms_bluetooth.BtCmds.MAG_GAIN_RESPONSE)
@@ -923,6 +992,14 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
                     0x00, 0x00, 0x00, 0x00,
                     0x00, 0x00, 0x00, 0x00]
 
+        if not self.shimmer.is_hardware_version_set():
+            self.test_004_get_shimmer_new_version(True)
+        if self.shimmer.is_hardware_shimmer3r():
+            # The image runs the WR accel at 400 Hz (byte 6, code 7) under a 512 Hz packet rate. A
+            # Shimmer3R raises it to 800 Hz, code 8, the lowest that covers the rate
+            # (CONFIGURATION_INFOMEM §10.6), so write what it would keep, as a host should.
+            tx_bytes[6] = (0x8 << 4) | (tx_bytes[6] & 0x0F)
+
         self.bt_cmd_test_set_common(shimmer_comms_bluetooth.BtCmds.SET_INFOMEM_COMMAND, tx_bytes,
                                     shimmer_comms_bluetooth.BtCmds.GET_INFOMEM_COMMAND,
                                     shimmer_comms_bluetooth.BtCmds.INFOMEM_RESPONSE, 2)
@@ -1056,19 +1133,24 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
                        "sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
         tx_bytes = [ord(c) for c in shimmer_name]
 
-        self.bt_cmd_test_set_common(
-            [shimmer_comms_bluetooth.BtCmds.SET_DAUGHTER_CARD_MEM_COMMAND, len(tx_bytes), 0, 0],
-            tx_bytes,
+        # Keep what the EEPROM held there, to put back rather than leave 0xFF.
+        original = self.bt_cmd_test_get_common(
             [shimmer_comms_bluetooth.BtCmds.GET_DAUGHTER_CARD_MEM_COMMAND, len(tx_bytes), 0, 0],
-            shimmer_comms_bluetooth.BtCmds.DAUGHTER_CARD_MEM_RESPONSE)
+            shimmer_comms_bluetooth.BtCmds.DAUGHTER_CARD_MEM_RESPONSE, 1)
+        self.assertEqual(len(original), len(tx_bytes), "Could not read the daughter card memory to restore it")
 
-        # Reset the EEPROM memory
-        tx_bytes = [0xFF] * len(shimmer_name)
-        self.bt_cmd_test_set_common(
-            [shimmer_comms_bluetooth.BtCmds.SET_DAUGHTER_CARD_MEM_COMMAND, len(tx_bytes), 0, 0],
-            tx_bytes,
-            [shimmer_comms_bluetooth.BtCmds.GET_DAUGHTER_CARD_MEM_COMMAND, len(tx_bytes), 0, 0],
-            shimmer_comms_bluetooth.BtCmds.DAUGHTER_CARD_MEM_RESPONSE)
+        try:
+            self.bt_cmd_test_set_common(
+                [shimmer_comms_bluetooth.BtCmds.SET_DAUGHTER_CARD_MEM_COMMAND, len(tx_bytes), 0, 0],
+                tx_bytes,
+                [shimmer_comms_bluetooth.BtCmds.GET_DAUGHTER_CARD_MEM_COMMAND, len(tx_bytes), 0, 0],
+                shimmer_comms_bluetooth.BtCmds.DAUGHTER_CARD_MEM_RESPONSE)
+        finally:
+            self.bt_cmd_test_set_common(
+                [shimmer_comms_bluetooth.BtCmds.SET_DAUGHTER_CARD_MEM_COMMAND, len(original), 0, 0],
+                list(original),
+                [shimmer_comms_bluetooth.BtCmds.GET_DAUGHTER_CARD_MEM_COMMAND, len(original), 0, 0],
+                shimmer_comms_bluetooth.BtCmds.DAUGHTER_CARD_MEM_RESPONSE, check_original_value=False)
 
     # TODO decide what to do about this command
     # def test_86_start_streaming_and_logging(self):
@@ -1093,15 +1175,21 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
         self.shimmer.bluetooth_port.send_bluetooth(
             [shimmer_comms_bluetooth.BtCmds.SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE] + tx_bytes)
         self.bt_cmd_test_wait_for_ack()
+        # Put the default back: the state lasts until the unit resets, and the next host expects it.
+        self.shimmer.bluetooth_port.send_bluetooth(
+            [shimmer_comms_bluetooth.BtCmds.SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE, 0x01])
+        self.bt_cmd_test_wait_for_ack()
 
     def test_090_set_sd_sync_response(self):
+        # The centre's sync packet. A unit that is not in a running SD sync session refuses it
+        # (BT_COMMUNICATION_PROTOCOL, NACK table), and that is the state this suite runs in.
         print("test 090: Set SD Sync")
         ts_ms = time.time()
         tx_bytes = util_shimmer_time.ms_to_shimmer_rtc_bytes(ts_ms)
         tx_bytes = [0x00] + tx_bytes + [0x00]  # first byte is to mock whether sensor isSensing, last byte mocks CRC
         self.shimmer.bluetooth_port.send_bluetooth(
             [shimmer_comms_bluetooth.BtCmds.SET_SD_SYNC_COMMAND] + tx_bytes)
-        self.bt_cmd_test_wait_for_ack()
+        self.bt_cmd_test_wait_for_nack("not in a running SD sync session")
 
     # TODO decide what to do about this command
     # def test_91_start_logging(self):
@@ -1161,8 +1249,15 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
             response = self.bt_cmd_test_get_common(
                 shimmer_comms_bluetooth.BtCmds.GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND,
                 shimmer_comms_bluetooth.BtCmds.PRESSURE_CALIBRATION_COEFFICIENTS_RESPONSE, 1)
-            self.assertFalse(all((val == 0) for val in response[1:]), "FAIL")  # Skip chip ID
-            self.assertFalse(all((val == 255) for val in response[1:]), "FAIL")  # Skip chip ID
+            # sensorId, then that sensor's coefficients: 22 (BMP180), 24 (BMP280), 21 (BMP390) or none
+            # at all for a BMP581, which outputs compensated data (BT_COMMUNICATION_PROTOCOL, 0xA7).
+            coefficient_len = {0: 22, 1: 24, 2: 21, 3: 0}
+            self.assertIn(response[0], coefficient_len, "Unknown pressure sensorId")
+            coefficients = response[1:]
+            self.assertEqual(len(coefficients), coefficient_len[response[0]], "Wrong coefficient count")
+            if coefficients:
+                self.assertFalse(all((val == 0) for val in coefficients), "FAIL")
+                self.assertFalse(all((val == 255) for val in coefficients), "FAIL")
         else:
             print("Skipping test, command not supported in firmware")
 
@@ -1285,4 +1380,5 @@ class TestShimmerBluetoothCommunication(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    # The COM port, when given, is the first argument; unittest gets the rest.
+    unittest.main(argv=shimmer_app_common.unittest_argv())

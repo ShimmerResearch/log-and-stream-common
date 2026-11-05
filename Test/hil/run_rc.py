@@ -4,6 +4,7 @@
     python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022
     python Test/hil/run_rc.py <tag> --tier smoke --upload       # attach the report to the pre-release
     python Test/hil/run_rc.py <tag> --no-flash                  # unit already runs the candidate
+    python Test/hil/run_rc.py <tag> --tier release              # the candidate's platform's matrix
 
 1. Downloads the image and build-info.json from the GitHub release with gh.
    Releases made before build-info.json existed get one synthesised from the
@@ -121,7 +122,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("tag")
     ap.add_argument("--tier", default="smoke or fleet",
-                    help="pytest -m expression (default: \"smoke or fleet\" - each platform runs its own)")
+                    help="pytest -m expression (default: \"smoke or fleet\" - each platform runs its own; "
+                         "\"release\" runs the candidate platform's matrix)")
     ap.add_argument("--rig", default=None)
     ap.add_argument("--no-flash", action="store_true", help="test what is on the units now")
     ap.add_argument("--manual-power", action="store_true",

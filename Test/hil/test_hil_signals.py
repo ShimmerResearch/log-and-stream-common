@@ -143,6 +143,79 @@ class AltAccelByteOrder(unittest.TestCase):
         self.assertIn("alt_accel x: 100.0% of samples at the int12 limit", probs)
         self.assertIn("alt_accel y: 100.0% of samples at the int12 limit", probs)
 
+    def test_on_shimmer3_the_alt_accel_saturates_at_16_bits(self):
+        # The 9-axis chip's int16: a reading past 2047 is a reading, not a limit.
+        rows = [(3000).to_bytes(2, "big", signed=True) * 3] * 100
+        chans = decode.split_channels(rows, list(ALT_IDS), bt.HW_SHIMMER3)
+        probs = signals.check_rest(chans, {}, 512.0, hw=bt.HW_SHIMMER3)[0]
+        self.assertEqual([p for p in probs if "limit" in p], [])
+
+
+def le(*vals):
+    return b"".join(v.to_bytes(2, "little", signed=True) for v in vals)
+
+
+def be(*vals):
+    return b"".join(v.to_bytes(2, "big", signed=True) for v in vals)
+
+
+@unittest.skipIf(np is None, "numpy not installed")
+class Shimmer3ByteOrder(unittest.TestCase):
+    """STREAMING_DATA_FORMAT §5.2: a Shimmer3 streams each part's registers
+    unswapped, so the gyro is big-endian on every board and the mag on an
+    LSM303DLHC board, which also lists it X, Z, Y (§4.1)."""
+
+    def test_the_gyro_is_big_endian(self):
+        chans = decode.split_channels([be(-300, 5, 1200)], list(GYRO_IDS), bt.HW_SHIMMER3)
+        self.assertEqual([chans[c][0] for c in GYRO_IDS], [-300, 5, 1200])
+
+    def test_the_gyro_is_little_endian_on_shimmer3r(self):
+        chans = decode.split_channels([le(-300, 5, 1200)], list(GYRO_IDS), bt.HW_SHIMMER3R)
+        self.assertEqual([chans[c][0] for c in GYRO_IDS], [-300, 5, 1200])
+
+    def test_an_lsm303dlhc_mag_is_big_endian_in_x_z_y_order(self):
+        order = [0x07, 0x09, 0x08]
+        chans = decode.split_channels([be(-250, 400, 90)], order, bt.HW_SHIMMER3)
+        self.assertEqual((chans[0x07][0], chans[0x08][0], chans[0x09][0]), (-250, 90, 400))
+
+    def test_an_lsm303ah_or_icm_mag_is_little_endian(self):
+        order = [0x07, 0x08, 0x09]
+        chans = decode.split_channels([le(-250, 90, 400)], order, bt.HW_SHIMMER3)
+        self.assertEqual((chans[0x07][0], chans[0x08][0], chans[0x09][0]), (-250, 90, 400))
+
+    def test_bmp_temperature_and_pressure_are_big_endian(self):
+        row = (25000).to_bytes(2, "big") + (300000).to_bytes(3, "big")
+        chans = decode.split_channels([row], [0x1A, 0x1B], bt.HW_SHIMMER3)
+        self.assertEqual((chans[0x1A][0], chans[0x1B][0]), (25000, 300000))
+
+    def test_the_wide_range_accel_stays_little_endian(self):
+        ids = [0x04, 0x05, 0x06]
+        chans = decode.split_channels([le(-16000, 30, 700)], ids, bt.HW_SHIMMER3)
+        self.assertEqual([chans[c][0] for c in ids], [-16000, 30, 700])
+
+
+@unittest.skipIf(np is None, "numpy not installed")
+class DefaultCalibration(unittest.TestCase):
+    """A firmware default seed carries no offset: a resting gyro read through one
+    can sit well off zero, and it is not this unit's calibration to judge."""
+
+    BLOCK = bytes(6) + (6550).to_bytes(2, "big") * 3 + bytes([100, 0, 0, 0, 100, 0, 0, 0, 100])
+
+    def chans(self):
+        raw = resting(500, seed=7) + np.array([1500, 0, 0])      # ~23 dps off on x at 65.5 LSB/dps
+        return chans_for(raw)
+
+    def test_a_gyro_offset_fails_with_a_calibration(self):
+        calibs = {"gyro": decode.Calib(self.BLOCK, 100)}
+        probs, _ = signals.check_rest(self.chans(), calibs, 51.2, hw=bt.HW_SHIMMER3)
+        self.assertTrue(any(p.startswith("gyro: resting mean") for p in probs))
+
+    def test_with_a_default_it_is_noted_not_judged(self):
+        calibs = {"gyro": decode.Calib(self.BLOCK, 100)}
+        probs, note = signals.check_rest(self.chans(), calibs, 51.2, hw=bt.HW_SHIMMER3, defaults={"gyro"})
+        self.assertFalse(any(p.startswith("gyro: resting mean") for p in probs))
+        self.assertIn("gyro: default calibration, mean not checked", note)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -203,6 +203,8 @@ What the suites cover today:
 | `test_swcrc` | `CRC/shimmer_swCrc.c` | ×1 | The CRC polynomial, against wire-format vectors |
 | `test_crc` | `CRC/shimmer_crc.c` | ×1 | Mode dispatch, CRC placement, corruption detection, and the firmware's own `testCrcDriver()` |
 | `test_packet_ring` | `Sensing/shimmer_packet_ring.c` | ×1 | The sample ring's interleavings, including the DEV-1023 field fault |
+| `test_autostop` | `Sensing/shimmer_autostop.c` | ×1 | The max_exp_len auto-stop: the stop time, and that doubled, missed or drifting checks, a clock set mid-log and the 32-bit clock wrap move it by a second at most (DEV-1417) |
+| `test_leds_phase` | `LEDs/shimmer_leds_phase.c` | ×1 | The LED frame arithmetic, and the phase lock run closed loop against a blink timer 3% slow to 3% fast: each whole-second tick comes once a second (DEV-1417) |
 | `test_util` | `Util/shimmer_util.c` | ×1 | SD directory naming, config-file 64-bit values, config-file sample rate round trip (every divider), BT response lengths, MAC byte order |
 | `test_rtc` | `RTC/shimmer_rtc.c` | ×2 | Every day from 2000 to 2099 round-trips; leap years; date validation |
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
@@ -355,15 +357,49 @@ release. A jump nobody can explain is a finding, not a curiosity — this is a
 ## 4. Gate 3 — on-device automated
 
 **Required for every release, on at least one unit per platform.** These drive a
-real device over a real link. They are `unittest` suites, so they run
+real device over a real link. The first two are `unittest` suites, so they run
 unattended and report properly.
 
-| Suite | Link | Covers |
+| Script | Link | Covers |
 |---|---|---|
 | `Extras/python_scripts/Bluetooth commands/test_bt_cmds.py` | Bluetooth | Every get/set command pair, response framing, length bytes |
 | `Extras/python_scripts/Docked commands/test_docked_cmds.py` | Dock UART / USB-C | The dock protocol, which is a different protocol and not a subset |
-| `Extras/python_scripts/Bluetooth commands/test_sd_transfer.py` | Bluetooth | SD file transfer (Shimmer3R) |
-| `Extras/python_scripts/Bluetooth commands/btCalv1Test.py` | Bluetooth | Calibration read-back |
+| `Extras/python_scripts/Bluetooth commands/test_sd_transfer.py` | Bluetooth | SD file transfer (Shimmer3R): free space, listing, stat, a refused delete, and the largest file downloaded. A script that prints its results, not a suite |
+| `Extras/python_scripts/Bluetooth commands/btCalv1Test.py` | Bluetooth | An interactive tool that writes and reads back one sensor's calibration at a time. `test_bt_cmds` covers the same commands unattended |
+
+Give the COM port as the first argument (`python test_bt_cmds.py COM12 -v`);
+without one, each script lists the ports and asks. `unittest` options such as
+`-v` or a test name follow the port.
+
+What the suites change on the unit, and what they put back:
+
+- **`test_bt_cmds`** resets the configuration and the calibration to defaults
+  and writes its own values into both. It reads the unit's own at the start and
+  writes them back at the end. It restores the 123 bytes of daughter-card memory
+  it writes, and the in-stream ACK prefix it turns off. It sets the clock to the
+  PC's time and leaves it there.
+- **`test_docked_cmds`** writes InfoMem and 128 bytes of daughter-card memory,
+  restoring both. It rewrites the card ID with its own value. On a Shimmer3R it
+  arms a reboot into the bootloader and cancels it.
+
+Some results depend on the board, as the firmware is documented to behave, and
+the suites expect that:
+
+- **A Shimmer3R raises an enabled sensor's output rate to cover the packet
+  rate** ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md)
+  §10.6). So on a Shimmer3R the rate tests run at a 1 Hz packet rate, below
+  every rate they write, and the InfoMem image carries the WR accel rate the
+  firmware would choose.
+- **A Shimmer3 forces `magRange` to 0** unless the mag is an LSM303DLHC (§10.3).
+  The suite tells which part is fitted from the inquiry's channel order.
+- **NACKs:** `GET_MPU9150_MAG_SENS_ADJ_VALS` is NACKed without an MPU-9x50, and
+  `SET_SD_SYNC` outside a running sync session.
+- **A BMP581 has no pressure coefficients** to return.
+
+Two need the unit **undocked and off USB**, because otherwise the card belongs
+to the dock or the PC: `GET_DIR` in `test_bt_cmds`, which is skipped otherwise,
+and `test_sd_transfer`. A unit whose user button is disabled starts logging when
+undocked, and the card cannot be read while it logs, so stop that log first.
 
 Run them against a **factory-reset configuration first**, then against the
 configuration a customer is most likely to have. A device only ever tested from
@@ -865,6 +901,7 @@ value. [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md)
 | 5.6.5 | Pull the card mid-log | Clean stop; the file up to that point is readable |
 | 5.6.6 | Start/stop 20 times | No leak, no drift, no stuck state |
 | 5.6.7 | **Talk to a unit that is already logging:** at 5.6.1's channels and rate, send `INQUIRY` every 0.25 s for a minute over Bluetooth | No gaps that 5.6.1's own log does not show |
+| 5.6.8 | Set `max_exp_len` to 10 minutes and log undocked | Logging stops 597.5 to 601.5 s after the file's first sample, by its own timestamps. bench-tools `shimmer/autostop_span.py` measures it. The window is wide on the early side because a Shimmer3's first sample comes 1-2 s after the log starts |
 
 Check 5.6.1–5.6.3 in Consensys, not just for file size. **A packet with a zero
 timestamp reads as a 24-bit roll-over worth 512 s** — that is the DEV-1023
@@ -1099,6 +1136,7 @@ case earns a permanent place here.
 | Host constant drift | A host restates a firmware constant and the firmware moves it; the device is fine and every host is wrong | `crosscheck_host_constants.py` for the in-repo host, §6.4 for the rest |
 | BMP581 SR48 window | A plain `>= 7.2` wrongly claims SR48-8-0 and 8-1 | `test_boards` — both layers catch it |
 | DEV-1363 | A host connects to a unit that is already logging, and its `INQUIRY` costs the log 100 ms of samples | `smoke.sd_inquiry_midlog` on Shimmer3R, on the required list — plus §5.6.7 by hand on Shimmer3 |
+| DEV-1417 | A Shimmer3R's `max_exp_len` auto-stop ended a 7-minute log 3% early: the LED phase lock counted seconds twice when TIM6 ran fast | `test_autostop`, `test_leds_phase` (closed loop) — plus §5.6.8 |
 
 **When a fault escapes, add its case here and a test for it in the same PR.** A
 regression list that only grows by hand stops growing.
@@ -1473,8 +1511,8 @@ grid. The stream runs with link CRC on, because without it a frame is
 confirmed by a plausible timestamp step, and an off-grid stamp would be
 dropped as a misframe instead of judged.
 
-The **release** tier (Shimmer3R so far) runs the configuration matrix in
-`Test/hil/matrix/s3r_release.toml`. There are about 22 rows, chosen so every
+The **release** tier runs a configuration matrix on each platform. On Shimmer3R
+it is the one in `Test/hil/matrix/s3r_release.toml`. There are about 22 rows, chosen so every
 pair of the following appears in at least one row: rate (51.2 to 1024 Hz),
 sensor set, mode (Bluetooth stream; SD log, with the hub port acting as the
 undock; or both together) and Bluetooth CRC mode. Two of them are five-minute
@@ -1502,6 +1540,63 @@ Two observations are kept as their own items so they do not fail every row
 they touch: `release.sd_log_start` (samples lost in the first second of a log)
 and `release.stop_ack` (a stream stop that goes unACKed, or leaves the link
 silent until a reconnect).
+
+On **Shimmer3** the matrix is `Test/hil/matrix/s3_release.toml`, 13 rows run on
+each Base6 unit, one per shipped radio. `run_rc.py --tier release` picks it for
+a Shimmer3 candidate. Each row is its own item, `release.<row>`. Every row
+streams; none logs. A docked Shimmer3 gives its SD card to the dock and refuses
+a log start, and a Base6 cannot undock one slot, so logging and logging while
+streaming stay with the manual §5.6. The rows differ from the Shimmer3R tier in
+four ways:
+
+- **Configured over Bluetooth, the customer's route.** A row's `configure`
+  field picks how:
+  - `infomem`: the whole 384-byte image in three `SET_INFOMEM` pages, as
+    Consensys writes it. This exercises the InfoMem flash write the firmware
+    makes with the radio held off (DEV-1246).
+  - `commands`: `SET_SENSORS`, `SET_SAMPLING_RATE`, the range commands and the
+    ODR commands, each read back with its `GET`, as older hosts do.
+
+  The rows cover each method with each rate, sensor set and CRC mode.
+- **The dock only checks and restores.** After the write, InfoMem is read over
+  the Base6 dock and must equal what was meant, byte for byte (byte 230 bit 0
+  excepted). That comparison is its own item, `release.bt_config`. A row whose
+  configuration did not take is not streamed, and is reported `not_covered`.
+  Each unit's InfoMem and calibration dump are saved before the first row and
+  put back after the last, the dump over Bluetooth and then InfoMem over the
+  dock. The dump needs it because every `SET_INFOMEM` at offset 0 re-stamps its
+  records for the ranges the image sets (BT_COMMUNICATION_PROTOCOL §7.5).
+  A unit that takes the Bluetooth link but answers nothing fails that row and
+  is reset through its Base6 slot. The rows after it then still run, and its
+  dump can still go back. A reset clears this state (known issue DEV-1136).
+- **The host derives the ODRs.** Shimmer3 firmware does not raise an ODR to
+  cover the packet rate: §10.6 of the InfoMem document is Shimmer3R's. So each
+  row writes ODR codes that cover its rate on every Shimmer3 part
+  (`Test/hil/rig/s3_config.py`), and each InfoMem write carries the calibration
+  dump's own blocks for the ranges it sets, as Consensys does. Otherwise the
+  write would file the old range's calibration under the new one. A wide-range
+  accel range code means the part's own register value: ±2/4/8/16 g on an
+  LSM303DLHC, ±2/16/4/8 g on an LSM303AHTR or the ICM-20948 standing in for it.
+- **Every row fits the slowest radio.** RN42 v4.77 delivers about 15.5 KB/s of
+  a saturated stream on the bench. Each row needs at most 75% of that, so a lost
+  sample is a finding and not the link. If a unit's own throughput baseline in
+  `rig.toml` says a row does not fit, that row is `not_covered` on that unit,
+  with the figures. The MCU has a ceiling of its own, about 950 Hz with 13
+  channels (DEV-1308), so the 1024 Hz rows carry only the LN accel.
+
+The checks after the stream are the Shimmer3R tier's:
+
+- **Timing and framing:** loss, duplicates, jitter, device-clock rate, link CRC.
+- **The inquiry:** its divider, setup bytes 6-9 and the channel list in the
+  firmware's order (STREAMING_DATA_FORMAT §4.1) must match what was stored. The
+  magnetometer may be listed X, Z, Y, the LSM303DLHC's order.
+- **Signals at rest:** the gyro and the LSM303DLHC magnetometer are decoded
+  big-endian. The magnitude and mean checks are made only where the unit's
+  calibration dump holds a real calibration for that range. A firmware default
+  seed carries no offset, and an MPU9x50 gyro can sit tens of dps off zero
+  without one.
+
+`release.stop_ack` is kept apart as on Shimmer3R.
 
 Run release-tier rows with STM32CubeIDE and Consensys closed. The suite warns
 when they are open. On USB arrival the IDE pages every Bluetooth COM port,
