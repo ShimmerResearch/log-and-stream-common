@@ -901,7 +901,7 @@ value. [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md)
 | 5.6.5 | Pull the card mid-log | Clean stop; the file up to that point is readable |
 | 5.6.6 | Start/stop 20 times | No leak, no drift, no stuck state |
 | 5.6.7 | **Talk to a unit that is already logging:** at 5.6.1's channels and rate, send `INQUIRY` every 0.25 s for a minute over Bluetooth | No gaps that 5.6.1's own log does not show |
-| 5.6.8 | Set `max_exp_len` to 10 minutes and log undocked | Logging stops between 600 and 601 s after the file's first sample, by its own timestamps |
+| 5.6.8 | Set `max_exp_len` to 10 minutes and log undocked | Logging stops 597.5 to 601.5 s after the file's first sample, by its own timestamps. bench-tools `shimmer/autostop_span.py` measures it. The window is wide on the early side because a Shimmer3's first sample comes 1-2 s after the log starts |
 
 Check 5.6.1–5.6.3 in Consensys, not just for file size. **A packet with a zero
 timestamp reads as a 24-bit roll-over worth 512 s** — that is the DEV-1023

@@ -577,8 +577,14 @@ Three things matter when writing configuration bytes directly:
 > logging. Each check adds the real-world clock time since the previous one
 > (`RTC_get32()`), and the first check at or after the limit stops the log.
 >
-> - **Accuracy:** a log stops within a second after the limit, judged by its
->   own timestamps, on both platforms.
+> - **Accuracy:** a log stops within a second after the limit, counted from
+>   the log's start, on both platforms.
+> - **A file reads slightly different from that,** because its first sample
+>   isn't the log's start. On Shimmer3R the first sample comes about 0.4 s
+>   before the file's start stamp, so a 10-minute log spans 600.4-600.6 s. A
+>   Shimmer3 creates the file before it samples, which takes 1-2 s, so its log
+>   spans about 599 s: 599.125 and 598.797 s on one unit (5 Nov 2026), on the
+>   old count and the new.
 > - **A clock set mid-log:** each check adds at most 2 s and never goes
 >   backwards, so a set moves the stop by about a second either way. That
 >   applies to Shimmer3R, whose clock is the calendar that `SET_RWC` moves.
@@ -586,8 +592,10 @@ Three things matter when writing configuration bytes directly:
 > - **Before DEV-1417** each check added one second, so the limit was only as
 >   good as the blink timer. On Shimmer3R that timer is off the crystal, and
 >   the LED phase lock could count a second twice (see
->   [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1). One unit
->   stopped a 7-minute log 3% early.
+>   [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1).
+>   - 9172 stopped a 7-minute log 3% early.
+>   - 15BC stopped a 10-minute log after 481.4 s, 19.8% early, on v1.01.025.
+>     With this change it stopped at 600.6 and 600.4 s.
 
 ### 8.1 Trial config byte 217
 
