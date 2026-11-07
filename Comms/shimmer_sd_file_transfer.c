@@ -280,26 +280,58 @@ static uint8_t sdFtCopyPathArg(const uint8_t *src, uint8_t pathLen, char *dst)
   return 1;
 }
 
-/* Deletion is restricted to content strictly under the data/ logging
- * directory so a host bug can never take out sdlog.cfg or /Calibration */
+/* 1 if p is something under the directory root (given in lower case),
+ * ignoring case */
+static uint8_t sdFtIsUnderRoot(const char *p, const char *root)
+{
+  while (*root != '\0')
+  {
+    char c = *p++;
+    if (c >= 'A' && c <= 'Z')
+    {
+      c = (char) (c - 'A' + 'a');
+    }
+    if (c != *root++)
+    {
+      return 0;
+    }
+  }
+  return (p[0] == '/' && p[1] != '\0');
+}
+
+/* The roots a host may delete under, in lower case: the data/ logging
+ * directory and the companion roots beside it. A companion file sits at its
+ * data file's path under its own root (data/X/NNN -> events/X/NNN,
+ * docs/SHIMMER3_EVENT_CHANNEL.md 4.1), so a new kind of companion file is one
+ * more entry here. */
+static const char *const sdFtDeletableRoots[] = {
+  "data",   /* the data files */
+  "events", /* their event files, Events/shimmer_events.c */
+};
+
+/* Deletion is restricted to content strictly under those roots, so a host bug
+ * can never take out sdlog.cfg or /Calibration */
 static uint8_t sdFtIsDeletablePath(const char *path)
 {
   const char *p = path;
+  uint8_t i;
+
   if (*p == '/')
   {
     p++;
-  }
-  if (!((p[0] == 'd' || p[0] == 'D') && (p[1] == 'a' || p[1] == 'A')
-          && (p[2] == 't' || p[2] == 'T') && (p[3] == 'a' || p[3] == 'A')
-          && p[4] == '/' && p[5] != '\0'))
-  {
-    return 0;
   }
   if (strstr(path, "..") != NULL)
   {
     return 0;
   }
-  return 1;
+  for (i = 0; i < sizeof(sdFtDeletableRoots) / sizeof(sdFtDeletableRoots[0]); i++)
+  {
+    if (sdFtIsUnderRoot(p, sdFtDeletableRoots[i]))
+    {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 static void sdFtQueueStatus(uint8_t sid, uint8_t status, uint32_t nextOffset)

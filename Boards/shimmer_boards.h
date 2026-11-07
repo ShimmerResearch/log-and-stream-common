@@ -98,6 +98,7 @@ uint8_t ShimBrd_isLis3mdlPresent(void);
 uint8_t isAds7028Present(void);
 uint8_t ShimBrd_isI2c4Supported(void);
 uint8_t ShimBrd_isBoardSr48_6_0(void);
+uint8_t ShimBrd_isTtlInputSupported(void);
 uint8_t ShimBrd_isI2cOnPPGControlledByAdcChip(void);
 uint8_t ShimBrd_areMcuAdcsUsedForSensing(void);
 

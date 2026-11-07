@@ -187,6 +187,12 @@ class BtCmds:
     DUMMY_COMMAND = 0xB5
     RESET_BT_ERROR_COUNTS = 0xB6
     SET_FEATURE = 0xB7
+    # Event channel (docs/SHIMMER3_BT_COMMUNICATION_PROTOCOL.md section 7.15).
+    # EVENT_RECORD_RESPONSE is an in-stream subtype under INSTREAM_CMD_RESPONSE,
+    # sent only after SET_FEATURE / BtFeatures.EVENT_STREAM.
+    GET_EVENT_CHANNEL_STATUS_COMMAND = 0xB9
+    EVENT_CHANNEL_STATUS_RESPONSE = 0xBA
+    EVENT_RECORD_RESPONSE = 0xBB
     # SD-card file transfer (LogAndStream_Shimmer3R >= v1.01.009).
     # Command opcodes avoid the EZ-Serial SOF bytes 0x80/0xC0/0xD0 (CYW20820
     # UART RX demux would swallow them), hence LIST sits at 0xCC.
@@ -203,6 +209,14 @@ class BtCmds:
     SD_DELETE_COMMAND = 0xCA
     SD_DELETE_RESPONSE = 0xCB
     INSTREAM_CMD_RESPONSE = 0x8A
+
+
+class BtFeatures:
+    """SET_FEATURE's feature ids (Comms/shimmer_bt_uart.h)."""
+    NONE = 0
+    RN4678_ERROR_LEDS = 1
+    REBOOT_ON_DISCONNECT = 2
+    EVENT_STREAM = 3
 
 
 class _ContinuousReader:

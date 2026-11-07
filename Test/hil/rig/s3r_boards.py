@@ -27,6 +27,12 @@ _ALT_BOARDS = {(EXP_BRD_GSR_UNIFIED, 6, 0), (EXP_BRD_GSR_UNIFIED, 7, 0), (EXP_BR
 OPTIONAL = {"alt_accel", "alt_mag"}
 
 
+def is_sr48_6_0(card_id: bytes) -> bool:
+    """ShimBrd_isBoardSr48_6_0(): its button is on BOOT0 and its TTL input is
+    unsupported, which changes how byte 232 is kept (rig/events.py)."""
+    return len(card_id) >= 3 and tuple(card_id[:3]) == (EXP_BRD_GSR_UNIFIED, 6, 0)
+
+
 def fitted_optional(card_id: bytes) -> set[str]:
     """card_id: the expansion-board ID page's first three bytes (board, revision, special)."""
     if len(card_id) < 3 or card_id[0] == 0xFF:

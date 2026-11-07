@@ -82,7 +82,9 @@ DIR dir; //Directory object
 #endif
 FIL dataFile;
 FILINFO dataFileInfo;
-char dataFileName[256];
+/* dirName plus "/" and fileNum, a uint16_t printed with "%03d", so up to five
+ * digits (ShimSdDataFile_makeFileName). */
+char dataFileName[sizeof(dirName) + 6];
 
 #if _FATFS == FATFS_V_0_12C
 extern uint8_t retSD;  /* Return value for SD */
@@ -135,11 +137,13 @@ void ShimSdDataFile_setFileNameIfEmpty(void)
   }
 }
 
-uint8_t ShimSdDataFile_setBasedir(void)
-{
 #if USE_FATFS
+/* Raises dirCounter past every session folder of this Shimmer's in the
+ * directory open in dir. Returns 0 for a folder named for this Shimmer with no
+ * '-' before its number. */
+static uint8_t ShimSdDataFile_countSessions(void)
+{
   FILINFO fno;
-  //volatile uint8_t res;
   uint16_t tmp_counter = 0;
   char lfn[_MAX_LFN + 1] = { 0 }, *fname, *scout, *dash, dirnum[8];
 
@@ -147,6 +151,72 @@ uint8_t ShimSdDataFile_setBasedir(void)
   fno.lfname = lfn;
   fno.lfsize = sizeof(lfn);
 #endif
+
+  //file name format
+  //shimmername    as defined in sdlog.cfg
+  //-              separator
+  //000
+  //we want to create a new directory with a sequential run number each power-up/reset for each shimmer
+  while (f_readdir(&dir, &fno) == FR_OK)
+  {
+    if (*fno.fname == 0)
+    {
+      break;
+    }
+    else if (fno.fattrib & AM_DIR)
+    {
+#if _FATFS == FATFS_V_0_08B
+      fname = (*fno.lfname) ? fno.lfname : fno.fname;
+#elif _FATFS == FATFS_V_0_12C
+      fname = (*lfn) ? lfn : fno.fname;
+#endif
+
+      if (!strncmp(fname, ShimConfig_shimmerNameParseToTxtAndPtrGet(), strlen(fname) - 4))
+      { //-4 because of the -000 etc.
+        scout = strchr(fname, '-');
+        if (scout)
+        { //if not, something is seriously wrong!
+          scout++;
+          dash = strchr(scout, '-');
+          while (dash)
+          { //In case the shimmer name contains '-'
+            scout = dash + 1;
+            dash = strchr(scout, '-');
+          }
+          strcpy(dirnum, scout);
+          tmp_counter = atoi(dirnum);
+          if (tmp_counter >= dirCounter)
+          {
+            dirCounter = tmp_counter;
+            dirCounter++; //start with next in numerical sequence
+          }
+        }
+        else
+        {
+          return 0; //FAIL;
+        }
+      }
+    }
+  }
+  return 1;
+}
+
+/* The roots companion files sit under, each at its data file's path
+ * (docs/SHIMMER3_EVENT_CHANNEL.md 4.1). A new kind of companion file is one
+ * more entry here, as it is in the SD file transfer's sdFtDeletableRoots. */
+static const char *const sdCompanionRoots[] = {
+  "events", /* Events/shimmer_events.c */
+};
+/* Room for a root of up to this many characters in place of "data" */
+#define SD_COMPANION_ROOT_MAX 8U
+#endif
+
+uint8_t ShimSdDataFile_setBasedir(void)
+{
+#if USE_FATFS
+  /* expDirName with a companion root in place of "data" */
+  char companionExpDirName[sizeof(expDirName) - 4U + SD_COMPANION_ROOT_MAX];
+  uint8_t i;
 
   file_status = f_opendir(&dir, "/data");
   if (file_status)
@@ -199,56 +269,36 @@ uint8_t ShimSdDataFile_setBasedir(void)
 
   dirCounter = 0; //this might be the first log for this shimmer
 
-  //file name format
-  //shimmername    as defined in sdlog.cfg
-  //-              separator
-  //000
-  //we want to create a new directory with a sequential run number each power-up/reset for each shimmer
-  while (f_readdir(&dir, &fno) == FR_OK)
+  if (!ShimSdDataFile_countSessions())
   {
-    if (*fno.fname == 0)
-    {
-      break;
-    }
-    else if (fno.fattrib & AM_DIR)
-    {
-#if _FATFS == FATFS_V_0_08B
-      fname = (*fno.lfname) ? fno.lfname : fno.fname;
-#elif _FATFS == FATFS_V_0_12C
-      fname = (*lfn) ? lfn : fno.fname;
-#endif
-
-      if (!strncmp(fname, ShimConfig_shimmerNameParseToTxtAndPtrGet(), strlen(fname) - 4))
-      { //-4 because of the -000 etc.
-        scout = strchr(fname, '-');
-        if (scout)
-        { //if not, something is seriously wrong!
-          scout++;
-          dash = strchr(scout, '-');
-          while (dash)
-          { //In case the shimmer name contains '-'
-            scout = dash + 1;
-            dash = strchr(scout, '-');
-          }
-          strcpy(dirnum, scout);
-          tmp_counter = atoi(dirnum);
-          if (tmp_counter >= dirCounter)
-          {
-            dirCounter = tmp_counter;
-            dirCounter++; //start with next in numerical sequence
-          }
-        }
-        else
-        {
-          return 0; //FAIL;
-        }
-      }
-    }
+    return 0; //FAIL;
   }
 #if _FATFS != FATFS_V_0_08B
   file_status = f_closedir(&dir);
   ShimSd_setFileTimestamp((char *) expDirName);
 #endif
+
+  /* A session's companion files sit at the same path under their own root,
+   * its event files under events/. A host that deletes only data/ leaves them
+   * behind, and a number still used there is not reused, or the new
+   * session's companion files would be written in among the old ones.
+   * Nothing there is a reason to fail: the data files are what matter. */
+  for (i = 0; i < sizeof(sdCompanionRoots) / sizeof(sdCompanionRoots[0]); i++)
+  {
+    if (strlen(sdCompanionRoots[i]) > SD_COMPANION_ROOT_MAX)
+    {
+      continue;
+    }
+    strcpy(companionExpDirName, sdCompanionRoots[i]);
+    strcat(companionExpDirName, (char *) expDirName + 4); //past "data"
+    if (f_opendir(&dir, companionExpDirName) == FR_OK)
+    {
+      (void) ShimSdDataFile_countSessions();
+#if _FATFS != FATFS_V_0_08B
+      (void) f_closedir(&dir);
+#endif
+    }
+  }
 
   //at this point, we have the id string and the counter, so we can make a directory name
   return 1; //SUCCESS;
@@ -321,10 +371,14 @@ void ShimSdDataFile_fileInit(void)
   sensing.isFileCreated = 1;
   /* Start of a logging session: the refusal counters describe this run. */
   SdWrBuf_init(&sdWrBuf);
+
+  /* Only queues the event file's open, so the data file's start is no later */
+  ShimEvt_onSessionStart(sdFileCrTs);
 }
 
 void ShimSdDataFile_close(void)
 {
+  ShimEvt_onSessionStop();
   ShimSdDataFile_closeDataFile();
   //Board_sdPower(0);
   shimmerStatus.sdBadFile = 0;
@@ -506,6 +560,7 @@ void ShimSdDataFile_writeToCard(void)
     ShimSdDataFile_writeSdHeaderToFile();
 
     sensing.newSdFileTsFlag = NEW_SD_FILE_TS_PENDING_UPDATE;
+    ShimEvt_onFileSplit(sdFileCrTs);
   }
 
   /* Sync file every minute */
@@ -516,6 +571,7 @@ void ShimSdDataFile_writeToCard(void)
     assert_param(file_status == FR_OK);
 #endif
     sdFileSyncTs = RTC_get64();
+    ShimEvt_onSyncTick();
   }
 
   sensing.isSdOperating = 0;
@@ -674,3 +730,10 @@ uint8_t *ShimSdDataFile_fileNamePtrGet(void)
 {
   return &fileName[0];
 }
+
+#if USE_FATFS
+const char *ShimSdDataFile_getDataFileName(void)
+{
+  return dataFileName;
+}
+#endif
