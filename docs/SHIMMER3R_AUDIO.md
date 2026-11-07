@@ -45,9 +45,13 @@ Each file's header says exactly when.
 
 Logging stopping, by any route, stops capture at once. Everything captured is
 written to the WAV, a fingerprint chunk already analysed is written, and the
-files are closed, before a dock can hand the card to a host. The fingerprint
-chunk still filling or being analysed at that moment is dropped, so the last 4
-to 9 s of a session have no fingerprint. A failure in audio (a file that will
+files are closed, before a dock can hand the card to a host. The WAV gets at
+most 1 s for this, about twice what a full ring takes on a healthy card. A card
+that has slowed down can owe far more, and the rest is then dropped: the file
+ends at its last sample written, which its header gives, and fault 4 is set.
+The fingerprint chunk still filling or being analysed at that moment is
+dropped, so the last 4 to 9 s of a session have no fingerprint. A failure in
+audio (a file that will
 not open, a microphone that will not start, a failed write) stops audio for the
 rest of the session, with the reason in the status (§5). It never stops logging.
 
@@ -122,7 +126,7 @@ little-endian.
 | 100 | 4 | Samples in the file |
 | 104 | 8 | **Shimmer clock of the last sample** |
 | 112 | 4 | Samples written as silence after an overrun |
-| 116 | 4 | Escape-hatch writes (u16), write errors (u16), since the session began |
+| 116 | 4 | Escape-hatch writes (u16), write errors (u16), since the session began; each stops at 65535 |
 | 120 | 12 | ADF error interrupts, of them saturation, of them overflow (u32 each), since the session began |
 | 132 | 372 | Zero |
 | 504 | 8 | `data` chunk id, u32 sample bytes |
@@ -147,8 +151,9 @@ little-endian.
   missed are written as silence and counted at offset 112, so the count never
   slips. On the bench, a card made to take nothing for 12 s left 65,536 samples
   (4.1 s) of silence at exactly the samples the ring lost. Every sample after
-  them kept its index, and the escape hatch (§4) then caught up in about 140
-  writes.
+  them kept its index, and the recording then caught up in about 140 writes.
+  That was measured when the escape hatch (§4) also paid silence; it no longer
+  does, so `TASK_AUDIO` alone now pays it.
 
 ### 3.2 The fingerprint file
 
@@ -181,7 +186,7 @@ hashes can skip the rest of the header.
 | 100 | 4 | Chunks in the file |
 | 104 | 8 | **Shimmer clock of the file's last chunk** |
 | 112 | 4 | Records in the file |
-| 116 | 4 | Escape-hatch writes (u16), write errors (u16), since the session began |
+| 116 | 4 | Escape-hatch writes (u16), write errors (u16), since the session began; each stops at 65535 |
 | 120 | 12 | ADF error interrupts, of them saturation, of them overflow (u32 each), since the session began |
 | 132 | 4 | Chunks skipped since the session began (§4) |
 | 136 | 376 | Zero |
@@ -287,6 +292,13 @@ and RM0456, not measured against a sound level:
   holds 8 s. If the ring ever passes half full, the main loop writes one block
   of the WAV ahead of the task list. That is the escape hatch, and each use is
   counted.
+- The hatch stops once the ring has overrun. What is owed first then is
+  silence, which frees nothing in the ring, so the hatch would only add a card
+  write to every pass of the main loop. On the bench, with a card that had
+  slowed to about 0.2 s a write, that made every pass long enough for the
+  sampling interrupts to queue `TASK_SAVEDATA` again before it ended. The
+  data file's writes and the dock then waited for hours (DEV-99). `TASK_AUDIO`
+  pays the silence as the task list allows.
 
 **The fingerprint:**
 - A full 5 s chunk is analysed one `af_step()` unit at a time: an STFT frame, a
@@ -331,8 +343,8 @@ them on the firmware version.
 | 3 | 1 | Fault: 0 none, 1 open (a directory or file), 2 capture (the mic would not start), 3 write, 4 overrun (silence was written), 5 the fingerprint fell behind (chunks were skipped) |
 | 4 | 4 | Seconds recorded this session: of WAV in modes 2 and 3, of audio fingerprinted in mode 1 |
 | 8 | 4 | Samples written as silence this session |
-| 12 | 2 | Escape-hatch writes |
-| 14 | 2 | Write errors |
+| 12 | 2 | Escape-hatch writes; stops at 65535 |
+| 14 | 2 | Write errors; stops at 65535 |
 | 16 | 4 | ADF error interrupts |
 | 20 | 4 | Of them, saturation |
 | 24 | 4 | Fingerprint chunks written this session |

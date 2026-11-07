@@ -200,10 +200,10 @@ uint32_t taskList;   // one bit per task
 | 12 | `TASK_STOPSENSING` | both |
 | 13 | `TASK_SDLOG_CFG_UPDATE` | both |
 | 14 | `TASK_STARTSENSING` | both |
-| 15 | `TASK_SAVEDATA` | both |
-| 16 | `TASK_SDWRITE` | both |
-| 17 | `TASK_FACTORY_TEST` | both |
-| 18 | `TASK_DOCK_OR_USB_STATE_CHANGE` | both |
+| 15 | `TASK_DOCK_OR_USB_STATE_CHANGE` | both, though only Shimmer3R's dock and USB interrupts queue it. Above the data path: the sampling interrupts queue `TASK_SAVEDATA`, so once a pass of the main loop outlasts a sample period it is pending again by the end of every pass, and a dock below it waited behind all of them (DEV-99) |
+| 16 | `TASK_SAVEDATA` | both; on Shimmer3R the sampling interrupts do not queue it while the SD buffers refuse records ([SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §4.1) |
+| 17 | `TASK_SDWRITE` | both |
+| 18 | `TASK_FACTORY_TEST` | both |
 | 19 | `TASK_BT_TX_BUF_CLEAR` | both |
 | 20 | `TASK_BT_TURN_ON_AFTER_BOOT` | both; SD sync's start callback queues it, so the radio is started from the main loop and not from the sync timer interrupt |
 | 21 | `TASK_JUMP_TO_BOOT_LOADER` / `TASK_BT_MODE_CHECK` | S3R / S3; on Shimmer3 the disconnect handler, which runs in an interrupt, queues the radio check that can stop and start the module |

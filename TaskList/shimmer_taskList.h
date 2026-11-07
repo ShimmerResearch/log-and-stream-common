@@ -107,10 +107,16 @@ typedef enum TaskId_Tag
   TASK_STOPSENSING = (0x00000001UL << 12U),
   TASK_SDLOG_CFG_UPDATE = (0x00000001UL << 13U),
   TASK_STARTSENSING = (0x00000001UL << 14U),
-  TASK_SAVEDATA = (0x00000001UL << 15U),
-  TASK_SDWRITE = (0x00000001UL << 16U),
-  TASK_FACTORY_TEST = (0x00000001UL << 17U),
-  TASK_DOCK_OR_USB_STATE_CHANGE = (0x00000001UL << 18U),
+  /* Above the data path on purpose. The sampling interrupts queue
+   * TASK_SAVEDATA, so whenever a pass of the main loop outlasts a sample
+   * period it is pending again by the end of the pass. Below it, a dock or a
+   * USB plug-in waited behind every one of those passes: on the bench a
+   * Shimmer3R whose card had slowed kept logging on its dock for hours
+   * (DEV-99). The task only reads the pins and queues TASK_SETUP_DOCK. */
+  TASK_DOCK_OR_USB_STATE_CHANGE = (0x00000001UL << 15U),
+  TASK_SAVEDATA = (0x00000001UL << 16U),
+  TASK_SDWRITE = (0x00000001UL << 17U),
+  TASK_FACTORY_TEST = (0x00000001UL << 18U),
   TASK_BT_TX_BUF_CLEAR = (0x00000001UL << 19U),
   TASK_BT_TURN_ON_AFTER_BOOT = (0x00000001UL << 20U),
 #if defined(SHIMMER3R)

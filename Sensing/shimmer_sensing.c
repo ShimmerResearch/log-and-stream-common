@@ -527,13 +527,31 @@ void ShimSens_saveTimestampToPacket(void)
   packetBuf->dataBuf[sensing.ptr.ts + 2] = (uint8_t) (rtc32 >> 16);
 }
 
+/* Queues the ring's drain from the sampling interrupts. On Shimmer3R, not
+ * while the SD buffers are refusing records: the drain could only stop at once
+ * (ShimSens_saveData's back-pressure), and TASK_SAVEDATA outranks
+ * TASK_SDWRITE. Queued on every sample, it was the task taken on every pass of
+ * the main loop once a pass outlasted a sample period, so the write that frees
+ * a buffer never ran and nothing recovered (DEV-99). The writer queues the
+ * drain again as each buffer is freed. */
+static void ShimSens_queueSaveData(void)
+{
+#if defined(SHIMMER3R) && USE_SD
+  if (shimmerStatus.sdLogging && ShimSdDataFile_isRefusingRecords())
+  {
+    return;
+  }
+#endif
+  ShimTask_set(TASK_SAVEDATA);
+}
+
 uint8_t ShimSens_sampleTimerTriggered(void)
 {
   switch (PktRing_onTick(&sensing.ring))
   {
     case PKT_TICK_FULL:
       //Fail-safe - if any packets are complete and haven't been saved.
-      ShimTask_set(TASK_SAVEDATA);
+      ShimSens_queueSaveData();
       return 1; //Wake MCU
     case PKT_TICK_START:
       /* If packet isn't currently underway, start a new one.
@@ -609,7 +627,7 @@ void ShimSens_stageCompleteCb(uint8_t stage)
 
     if (PktRing_onComplete(&sensing.ring))
     {
-      ShimTask_set(TASK_SAVEDATA);
+      ShimSens_queueSaveData();
     }
   }
 }

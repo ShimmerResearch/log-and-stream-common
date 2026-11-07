@@ -47,7 +47,9 @@ channel encodings are identical, only the framing around them differs.
 >   `SD_WR_BATCH_SPLIT_GUARD_TICKS`, failed-write handling),
 >   `Sensing/shimmer_packet_ring.h` (`DATA_BUF_QTY`), `Sensing/shimmer_sensing.c`
 >   (`ShimSens_saveData` back-pressure, `ShimSens_flushRingToSd`). Only §4.1's
->   claims about these were checked at this revision.
+>   claims about these were checked at this revision. The interrupts holding off
+>   the drain during a refusal (`ShimSens_queueSaveData`,
+>   `ShimSdDataFile_isRefusingRecords`) were added by DEV-99.
 > - **When `center=` is written:** `log-and-stream-common` @ `f573f60` —
 >   `ShimSdCfgFile_generate()` in `SDCard/shimmer_sd_cfg_file.c`. Only that
 >   claim was checked at this revision.
@@ -598,6 +600,12 @@ periods at a block boundary; it never shows a partial record.
 asks `SdWrBuf_canAccept()`; if the buffers would refuse it, the drain stops and
 leaves the packets in the sample ring, and `TASK_SDWRITE` restarts the drain
 once a buffer is released. The ring, not the SD buffers, absorbs a stall there.
+Until then the sampling interrupts do not queue the drain either
+(`ShimSdDataFile_isRefusingRecords`). `TASK_SAVEDATA` outranks `TASK_SDWRITE`,
+so queued on every sample it would be the task the main loop took on every
+pass, and the write that frees a buffer would never run. That happened on the
+bench once each pass outlasted a sample period, behind a card that had slowed,
+and the unit then missed its dock (DEV-99).
 
 When logging stops, the partially filled buffer is queued and every queued
 buffer is written before the file is closed. On Shimmer3R the packets still in

@@ -68,6 +68,10 @@ SdWriteBuf sdWrBuf;
  * the file lands on an aligned address; hence the 4 spare bytes. */
 static uint8_t sdWrBatch[SD_WR_BATCH_BUFS * SD_WRITE_BUF_SIZE + 4U]
     __attribute__((aligned(32)));
+/* Set when a record is refused because every buffer is queued, cleared when a
+ * write frees one. Read by the sampling interrupts, which must not queue the
+ * ring's drain meanwhile (ShimSdDataFile_isRefusingRecords). */
+static volatile uint8_t recordRefused;
 #endif
 
 uint8_t fileName[64], dirName[64], expDirName[32];
@@ -373,6 +377,11 @@ void ShimSdDataFile_fileInit(void)
   sensing.isFileCreated = 1;
   /* Start of a logging session: the refusal counters describe this run. */
   SdWrBuf_init(&sdWrBuf);
+#if defined(SHIMMER3R)
+  /* A refusal left over from a session that ended without freeing its
+   * buffers would hold the interrupts off the new session's drain for good */
+  recordRefused = 0;
+#endif
 
   /* Only queues the companions' opens (event and audio files), so the data
    * file's start is no later */
@@ -596,6 +605,7 @@ void ShimSdDataFile_writeToCard(void)
 #if defined(SHIMMER3R)
   /* A buffer is free again: resume a drain that ShimSens_saveData() paused
    * because every buffer was queued (DEV-1098). */
+  recordRefused = 0;
   if (!PktRing_isEmpty(&sensing.ring))
   {
     ShimTask_set(TASK_SAVEDATA);
@@ -650,8 +660,24 @@ uint8_t ShimSdDataFile_getNumberOfFullBuffers(void)
 
 uint8_t ShimSdDataFile_canAcceptRecord(uint16_t len)
 {
+#if defined(SHIMMER3R)
+  if (!SdWrBuf_canAccept(&sdWrBuf, len))
+  {
+    recordRefused = 1;
+    return 0;
+  }
+  return 1;
+#else
   return SdWrBuf_canAccept(&sdWrBuf, len);
+#endif
 }
+
+#if defined(SHIMMER3R)
+uint8_t ShimSdDataFile_isRefusingRecords(void)
+{
+  return recordRefused;
+}
+#endif
 
 uint16_t ShimSdDataFile_getBytesInCurrentSensingBuffer(void)
 {

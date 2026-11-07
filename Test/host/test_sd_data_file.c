@@ -1006,6 +1006,51 @@ static void test_freed_buffer_resumes_the_drain(void)
   session_stop(&s);
 }
 
+/* While the buffers refuse records, the sampling interrupts must not queue the
+ * drain: it outranks the write that frees a buffer, so queued on every sample
+ * it starved that write, and every task below it, for good (DEV-99). The
+ * refusal holds until a write frees a buffer, and a new session starts clear. */
+static void test_refusal_holds_off_the_interrupts(void)
+{
+  Session s;
+  uint32_t i;
+
+  testCase("a refused record holds the interrupts off the drain until a write");
+  rng = 29;
+  session_start(&s, 0, 0);
+  expectU("a session starts accepting", ShimSdDataFile_isRefusingRecords(), 0);
+  /* A stall: every buffer queued, then refused records. */
+  for (i = 0; i < 2000U; i++)
+  {
+    sample(&s);
+  }
+  expectU("a refused record is remembered", ShimSdDataFile_isRefusingRecords(), 1);
+  expectU("asking again changes nothing", ShimSdDataFile_isRefusingRecords(), 1);
+
+  ShimSdDataFile_writeToCard();
+  expectU("a freed buffer clears it", ShimSdDataFile_isRefusingRecords(), 0);
+
+  /* Refuse again, then start a new session without freeing anything. */
+  for (i = 0; i < 2000U; i++)
+  {
+    sample(&s);
+  }
+  expectU("refusing again", ShimSdDataFile_isRefusingRecords(), 1);
+  session_start(&s, 0, 0);
+  expectU("a new session starts clear", ShimSdDataFile_isRefusingRecords(), 0);
+  session_stop(&s);
+}
+
+/* The dock and USB change must outrank the data path: bit order is priority
+ * (ShimTask_NORM_popNext takes the lowest bit). */
+static void test_dock_change_outranks_the_data_path(void)
+{
+  testCase("a dock or USB change outranks saving and writing data");
+  expectTrue("above TASK_SAVEDATA", TASK_DOCK_OR_USB_STATE_CHANGE < TASK_SAVEDATA);
+  expectTrue("above TASK_SDWRITE", TASK_DOCK_OR_USB_STATE_CHANGE < TASK_SDWRITE);
+  expectTrue("data saving still outranks writing", TASK_SAVEDATA < TASK_SDWRITE);
+}
+
 /* A host that deletes data/ alone leaves a session's event files behind under
  * events/. Its number must not come round again, or the next session's event
  * files land among the old ones. */
@@ -1088,6 +1133,8 @@ int main(void)
   test_sync_heads_survive_batching();
   test_sync_heads_survive_short_writes();
   test_freed_buffer_resumes_the_drain();
+  test_refusal_holds_off_the_interrupts();
+  test_dock_change_outranks_the_data_path();
   test_session_number_skips_event_folders();
   test_session_number_skips_audio_folders();
 
