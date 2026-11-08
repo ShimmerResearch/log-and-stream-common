@@ -1138,6 +1138,81 @@ static void test_file2ram_stat_fails(void)
 }
 #endif
 
+#if defined(SHIMMER3)
+/* Config bytes holding a recognisable alt accel and alt mag block. */
+static gConfigBytes *altBlocks(uint8_t altAccelRange)
+{
+  gConfigBytes *config = ShimConfig_getStoredConfig();
+  unsigned i;
+
+  config->altAccelRange = altAccelRange;
+  for (i = 0; i < IMU_LEN; i++)
+  {
+    config->altAccelCalib.rawBytes[i] = (uint8_t) (0x30 + i);
+    config->altMagCalib.rawBytes[i] = (uint8_t) (0x60 + i);
+  }
+  return config;
+}
+
+/* What GET_ALT_ACCEL/ALT_MAG_CALIBRATION answer: the dump's record under the
+ * range ShimBt_replySingleSensorCalibCmd asks for. Returns 0 if found. */
+static uint8_t readAlt(uint16_t id, uint8_t range, sc_t *sc)
+{
+  sc->id = id;
+  sc->range = range;
+  sc->data_len = IMU_LEN;
+  return ShimCalib_singleSensorRead(sc);
+}
+
+/*
+ * SET_ALT_ACCEL_CALIBRATION / SET_ALT_MAG_CALIBRATION, then the matching GET
+ * (DEV-996). The SET stores the block in the config bytes and hands the
+ * sensor id to configBytesToCalibDump. That had no case for either id on
+ * Shimmer3, so the dump never held them and the GET answered 21 zeros.
+ */
+static void test_alt_blocks_reach_the_dump(void)
+{
+  sc_t sc;
+
+  testCase("test_alt_blocks_reach_the_dump");
+  reset();
+  altBlocks(2);
+  ShimCalib_configBytesToCalibDump(SC_SENSOR_MPU9X50_ICM20948_ACCEL, 0);
+  ShimCalib_configBytesToCalibDump(SC_SENSOR_MPU9X50_ICM20948_MAG, 0);
+
+  expectU("the alt accel block is in the dump under the alt accel range",
+      readAlt(SC_SENSOR_MPU9X50_ICM20948_ACCEL, 2, &sc), 0);
+  expectTrue("as written", isRamp(sc.data.raw, IMU_LEN, 0x30));
+  expectU("the alt mag block is in the dump under range 0",
+      readAlt(SC_SENSOR_MPU9X50_ICM20948_MAG, 0, &sc), 0);
+  expectTrue("as written", isRamp(sc.data.raw, IMU_LEN, 0x60));
+}
+
+/*
+ * The same blocks already in the config bytes at boot, written before a
+ * reset: they reach the dump through initFromConfigBytesAll, so the GET still
+ * answers them after a reboot, with the zero timestamp every block promoted
+ * at boot carries.
+ */
+static void test_alt_blocks_at_boot(void)
+{
+  sc_t sc;
+
+  testCase("test_alt_blocks_at_boot");
+  reset();
+  altBlocks(1);
+  ShimCalib_initFromConfigBytesAll();
+
+  expectU("the alt accel block is in the dump",
+      readAlt(SC_SENSOR_MPU9X50_ICM20948_ACCEL, 1, &sc), 0);
+  expectTrue("as stored", isRamp(sc.data.raw, IMU_LEN, 0x30));
+  expectTrue("with a zero timestamp", allBytes(sc.ts, SC_TIMESTAMP_LENGTH, 0));
+  expectU("and so is the alt mag block",
+      readAlt(SC_SENSOR_MPU9X50_ICM20948_MAG, 0, &sc), 0);
+  expectTrue("as stored", isRamp(sc.data.raw, IMU_LEN, 0x60));
+}
+#endif
+
 #if defined(SHIMMER3R)
 /*
  * dump to config bytes and SD header, a sensor with no slot. On Shimmer3R the
@@ -1194,6 +1269,10 @@ int main(void)
 #endif
 #if defined(SHIMMER3R)
   test_dump_to_config_unknown_sensor();
+#endif
+#if defined(SHIMMER3)
+  test_alt_blocks_reach_the_dump();
+  test_alt_blocks_at_boot();
 #endif
 
   return hostTestReport("shimmer_calibration (" PLATFORM_NAME ")");

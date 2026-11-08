@@ -89,7 +89,7 @@ something that "should work".
 | Shimmer3R ADC or battery millivolts 4x too small | The channel is 12-bit at 3.0 V; the div-by-four belongs to the MCU's own VBAT debug channel — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.2, [battery](SHIMMER3_BATTERY_AND_CHARGING.md) §1 |
 | Skin temperature does not stream although its bit is set | GSR wins the shared ADC input when the channel list is built — [InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.2 |
 | Uncalibrated magnetometer reads about 5x high on a Shimmer3 | LSM303AH boards are clamped to mag range 0, whose default seed carries the wrong sensitivities — [calibration](SHIMMER3_CALIBRATION.md) §6.1 |
-| `GET_ALT_ACCEL_CALIBRATION` returns 21 zeros after a successful write | On Shimmer3 those two blocks are write-only — [calibration](SHIMMER3_CALIBRATION.md) §4.1 |
+| `GET_ALT_ACCEL_CALIBRATION` returns 21 zeros after a successful write | On Shimmer3 up to v1.01.009 those two blocks are write-only; later firmware answers them (DEV-996) — [calibration](SHIMMER3_CALIBRATION.md) §4.1 |
 | VBATT is not the last channel on a Shimmer3R | An SR48-6.0 uses the MCU ADCs, which are configured first — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §4.2 |
 | GSR values out by a large constant factor | The range-pin reversal flag — [GSR](SHIMMER3_GSR_AUTORANGE.md) §2 |
 | Solid red LED and no battery indication | The host `TOGGLE_LED` override, never cleared by the firmware — [LEDs](SHIMMER3_LED_FEEDBACK.md) §4 |

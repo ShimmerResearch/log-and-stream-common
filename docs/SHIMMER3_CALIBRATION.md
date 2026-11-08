@@ -346,28 +346,30 @@ and `SET_ALT_ACCEL_CALIBRATION_COMMAND` / `SET_ALT_MAG_CALIBRATION_COMMAND`
 write them on either platform (`Comms/shimmer_bt_uart.c:1521-1545`). On
 Shimmer3 they hold the MPU9x50/ICM20948 accelerometer and magnetometer.
 
-> **On Shimmer3 those two blocks are write-only.** The write lands in InfoMem
-> and in the SD header, and then `ShimBt_calibrationChangeCommon` hands the
-> sensor id to `ShimCalib_configBytesToCalibDump`
-> (`Comms/shimmer_bt_uart.c:1734`) — which under `SHIMMER3` has cases for the
+> **On Shimmer3 up to LogAndStream v1.01.009 those two blocks are write-only.**
+> The write lands in InfoMem and in the SD header, and then
+> `ShimBt_calibrationChangeCommon` hands the sensor id to
+> `ShimCalib_configBytesToCalibDump`, which under `SHIMMER3` had cases for the
 > analog accel, gyro, LSM303 accel and LSM303 mag and **none** for
-> `SC_SENSOR_MPU9X50_ICM20948_ACCEL` (33) or `_MAG` (34)
-> (`Calibration/shimmer_calibration.c:955-982`). Nor does
-> `ShimCalib_configBytes128To255ToCalibDumpBytes` cover them: its whole body is
-> inside `#if defined(SHIMMER3R)` (`:947-953`). So no record for those ids ever
-> enters the dump, and the matching `GET` reply is built by
-> `ShimCalib_singleSensorRead`, which zero-fills its buffer and returns "not
-> found" — a return value the caller ignores before sending the buffer anyway
-> (`Comms/shimmer_bt_uart.c:1820-1823`).
+> `SC_SENSOR_MPU9X50_ICM20948_ACCEL` (33) or `_MAG` (34). Nor did
+> `ShimCalib_configBytes128To255ToCalibDumpBytes` cover them: its whole body was
+> Shimmer3R-only. So no record for those ids entered the dump, and the matching
+> `GET` reply, built by `ShimCalib_singleSensorRead`, which zero-fills its
+> buffer, was **21 zero bytes** whatever had been written. On those versions,
+> read the blocks back from the configuration bytes, not from the per-sensor
+> command.
 >
-> A Shimmer3 therefore answers `GET_ALT_ACCEL_CALIBRATION_COMMAND` with **21
-> zero bytes** no matter what was written, while the value the host wrote is
-> sitting in InfoMem and in every subsequent SD file header. Read those blocks
-> back from the configuration bytes, not from the per-sensor command. On
-> Shimmer3R both directions work.
+> Later Shimmer3 firmware (DEV-996) puts both blocks in the dump: the alt
+> accel under `altAccelRange` and the alt mag under range 0, which are the
+> ranges the `GET` asks for (`ShimBt_replySingleSensorCalibCmd`). That happens
+> on a `SET_ALT_*_CALIBRATION`, on a Bluetooth InfoMem write of the second
+> 128-byte page, and at boot, so the `GET` answers the block written. The other
+> direction is unchanged on Shimmer3: a record written into the dump with
+> `SET_CALIB_DUMP` does not reach InfoMem or the SD header for these two (§8.2).
+> On Shimmer3R both directions work.
 
 Each occupies 21 bytes. The first four are contiguous from 34 to 117; the two
-Shimmer3R additions live in the second 128-byte configuration page, which is why
+alt blocks live in the second 128-byte configuration page, which is why
 the firmware splits the sync into
 `ShimCalib_configBytes0To127ToCalibDumpBytes` and
 `ShimCalib_configBytes128To255ToCalibDumpBytes`. See
@@ -710,6 +712,10 @@ with the **currently configured range** for that sensor. Two wrappers drive it:
 
 Only blocks that pass the "not all `0xFF`" test are promoted (§3.3).
 
+Both wrappers cover all six blocks in §4.1: the first four from the first
+128-byte page, the alt accel and alt mag from the second. On Shimmer3 the alt
+pair is covered only after LogAndStream v1.01.009 (DEV-996).
+
 Because the record is tagged with the *current* range, this direction cannot
 populate sets for ranges that are not selected. Only a `SET_CALIB_DUMP` or the
 firmware defaults can do that.
@@ -721,6 +727,10 @@ sensor, looks up the record matching (sensor, current range), and copies its
 payload into both the configuration bytes and the SD header, plus the 8-byte
 timestamp into the SD header only. With `writeToFlash = 1` it also calls
 `InfoMem_write` per sensor, making the change persistent.
+
+On Shimmer3 "every sensor" is the four base sensors; the alt accel and alt mag
+are not copied back. They have no default seed (§6.1), so a missing record
+would zero their InfoMem blocks, and each copy rewrites a whole InfoMem segment.
 
 > **A missing record silently zeroes the target.** `ShimCalib_singleSensorRead`
 > memsets the caller's payload buffer before scanning, and returns 1 without
