@@ -97,6 +97,13 @@ TICKS_PER_S = evf.TICKS_PER_S
 MAX_QUIET_S = 125.0
 HEARTBEAT_BY_S = 130.0          # a log this long has had a heartbeat
 SPAN_SLACK_S = 2.0              # the final record against the data file's last sample
+# A data file's first samples can come from before it opened: sampling starts at
+# the start command, and the file opens once its session folder is numbered and
+# made, which takes seconds in a trial folder of hundreds of sessions (about 4 s
+# for 531). Those samples are buffered and written first. The event file starts
+# at the open (§4.3), so its span is measured against the data file's from there.
+DATA_LEAD_MAX_S = 30.0
+TS24 = 1 << 24                  # a data sample's stamp: the RTC's low 24 bits
 
 
 def companion_path(data_path: Path, root: Path) -> Path:
@@ -112,12 +119,16 @@ class FileCheck:
 
 
 def check_file(path: Path, data_blob: bytes, *, want_enables: int, hw_id: int,
-               data_span_s: float) -> FileCheck:
+               data_first_ts: int, data_span_s: float) -> FileCheck:
     """An event file from a session nobody touched: the reference reader's
     checks (sequence, order, final record, paired with this data file), then
     that it records the inputs byte 232 enables, opened with the session, holds
     only state records, has a heartbeat at least every MAX_QUIET_S and closes
-    with the data file."""
+    with the data file.
+
+    data_first_ts is the 24-bit stamp of the data file's first sample and
+    data_span_s the time from it to the last. The data file's open is the
+    header's initial timestamp, which the reader checks is the event file's."""
     fc = FileCheck()
     path = Path(path)
     if not path.is_file():
@@ -163,9 +174,14 @@ def check_file(path: Path, data_blob: bytes, *, want_enables: int, hw_id: int,
     span = (recs[-1]["ts"] - first["ts"]) / TICKS_PER_S
     if span >= HEARTBEAT_BY_S and not beats:
         p.append(f"no heartbeat in {span:.0f} s")
-    if abs(span - data_span_s) > SPAN_SLACK_S:
-        p.append(f"spans {span:.1f} s, the data file {data_span_s:.1f} s")
+    lead = ((h["file_open_ts"] - data_first_ts) % TS24) / TICKS_PER_S
+    if lead > DATA_LEAD_MAX_S:
+        p.append(f"the data file's first sample is {lead:.1f} s before its open, or after it")
+    elif abs(span - (data_span_s - lead)) > SPAN_SLACK_S:
+        p.append(f"spans {span:.1f} s, the data file {data_span_s - lead:.1f} s from its open")
     fc.note = f"{len(recs)} records, {beats} heartbeats, {span:.1f} s"
+    if lead >= 1.0:
+        fc.note += f"; the data file opened {lead:.1f} s after its first sample"
     return fc
 
 

@@ -115,13 +115,17 @@ class Byte232(unittest.TestCase):
 
 
 class EventFile(unittest.TestCase):
-    def check(self, blob: bytes, *, data_ts=OPEN_TS, span=None, enables=None):
+    def check(self, blob: bytes, *, data_ts=OPEN_TS, span=None, enables=None, lead=0.0):
+        """lead: how long before its open the data file's first sample is; span,
+        the data file's from that sample (default: the event file's plus lead)."""
         h, recs = evf.parse(blob)
-        span = (recs[-1]["ts"] - recs[0]["ts"]) / T if span is None else span
+        span = (recs[-1]["ts"] - recs[0]["ts"]) / T + lead if span is None else span
+        first = (data_ts - round(lead * T)) & 0xFFFFFF
         with tempfile.TemporaryDirectory() as d:
             p = Path(d, "000")
             p.write_bytes(blob)
-            return events.check_file(p, data_header(data_ts), hw_id=HW_S3R, data_span_s=span,
+            return events.check_file(p, data_header(data_ts), hw_id=HW_S3R, data_first_ts=first,
+                                     data_span_s=span,
                                      want_enables=h["enables"] if enables is None else enables)
 
     def test_a_quiet_three_minute_file_passes(self):
@@ -136,7 +140,7 @@ class EventFile(unittest.TestCase):
     def test_no_file(self):
         with tempfile.TemporaryDirectory() as d:
             fc = events.check_file(Path(d, "000"), data_header(OPEN_TS), want_enables=1, hw_id=HW_S3R,
-                                   data_span_s=30)
+                                   data_first_ts=OPEN_TS & 0xFFFFFF, data_span_s=30)
         self.assertIn("no event file", fc.problems[0])
 
     def test_cut_short(self):
@@ -175,6 +179,21 @@ class EventFile(unittest.TestCase):
     def test_it_closes_with_the_data_file(self):
         probs = self.check(event_file(quiet(30)), span=25.0).problems
         self.assertTrue(any("spans" in p for p in probs), probs)
+
+    def test_a_data_file_that_opened_after_its_first_sample(self):
+        # Sampling starts at the start command; the file opens once its session
+        # folder is made, 3.9 s later in a trial folder of 531 sessions (bench,
+        # 2026-11-08). The event file starts at the open, so a 30 s event file
+        # pairs with 33.9 s of samples.
+        fc = self.check(event_file(quiet(30)), lead=3.9)
+        self.assertEqual(fc.problems, [])
+        self.assertIn("opened 3.9 s after its first sample", fc.note)
+        probs = self.check(event_file(quiet(30)), lead=3.9, span=30.0).problems
+        self.assertTrue(any("spans 30.0 s, the data file 26.1 s" in p for p in probs), probs)
+
+    def test_a_data_file_whose_first_sample_is_after_its_open(self):
+        probs = self.check(event_file(quiet(30)), lead=-1.0).problems
+        self.assertTrue(any("before its open, or after it" in p for p in probs), probs)
 
     def test_the_initial_state_comes_first_with_nothing_pressed_or_high(self):
         recs = quiet(30)

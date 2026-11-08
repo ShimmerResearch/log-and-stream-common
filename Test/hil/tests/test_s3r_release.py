@@ -207,6 +207,7 @@ def _check_events(path: Path, root: Path, cfg: S3rConfig, fc) -> tuple[list[str]
     if extra:
         probs.append(f"more than one event file for a short log: {extra}")
     ec = events.check_file(session / path.name, head, want_enables=want, hw_id=bt.HW_SHIMMER3R,
+                           data_first_ts=fc.ts[0] if fc.ts else 0,
                            data_span_s=fc.span_ticks / events.TICKS_PER_S)
     return probs + ec.problems, f"event file: {ec.note}" if ec.note else ""
 
@@ -282,6 +283,8 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
                 if row["mode"] == "log":
                     link.simple(bt.START_LOGGING)
                     link.wait_status(bt.STATUS_LOGGING, True, 10)
+                    if link.silent_s >= 1:
+                        notes.append(f"silent {link.silent_s:.1f} s while starting the log")
                     time.sleep(row["seconds"])
                     link.simple(bt.STOP_LOGGING)
                     link.wait_status(bt.STATUS_LOGGING, False, 15)

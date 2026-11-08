@@ -133,13 +133,26 @@ def test_s3r_bt_stream(unit, s3r_saved, hil_note):
     assert not probs, "; ".join(probs)
 
 
-def _undocked(unit, power, port: str, act) -> None:
-    """Undock by the hub port, run act(link) over Bluetooth, re-dock."""
+def _undocked(unit, power, port: str, act) -> str:
+    """Undock by the hub port, run act(link) over Bluetooth, re-dock. Returns a
+    note of what the link needed: a second connection, or a wait while the unit
+    was silent opening a log (bt.BtLink.wait_status)."""
+    notes = []
     power.off(unit.hub_port, unit.name)
     try:
         s3r_usb.wait_cdc_gone(unit.usb_serial, 15)
-        with bt.BtLink(port, connect_timeout_s=20) as link:
+        try:
+            link = bt.BtLink(port, connect_timeout_s=20)
+        except bt.BtError as e:
+            # Seen once in six undocked connects (2026-11-08, byte 232 0x11):
+            # the link opened and the first exchange went unanswered.
+            notes.append(f"connected a second time ({e})")
+            time.sleep(3)
+            link = bt.BtLink(port, connect_timeout_s=20)
+        with link:
             act(link)
+            if link.silent_s >= 1:
+                notes.append(f"silent {link.silent_s:.1f} s while starting a log")
             # Never re-dock mid-log: the dock would take the card from a log
             # this test did not mean to leave running.
             if link.status() & bt.STATUS_LOGGING:
@@ -147,6 +160,7 @@ def _undocked(unit, power, port: str, act) -> None:
                 link.wait_status(bt.STATUS_LOGGING, False, 15)
     finally:
         power.on(unit.hub_port, unit.name)
+    return "; ".join(notes)
 
 
 def _logging_within(link, seconds: float) -> bool:
@@ -172,7 +186,9 @@ def test_s3r_log_triggers(unit, power, s3r_saved, hil_note):
             return None
         root = s3r_usb.wait_drive(unit.usb_serial, 60)
         before = sdfile.session_dirs(root)
-        _undocked(unit, power, port, check)
+        link_note = _undocked(unit, power, port, check)
+        if link_note:
+            notes.append(f"{value:#04x}: {link_note}")
         root = s3r_usb.wait_drive(unit.usb_serial, 90)
         return len(sdfile.session_dirs(root) - before)
 
@@ -222,6 +238,7 @@ def test_s3r_session_number(unit, power, s3r_saved, hil_note):
     assert back[events.BYTE] == mode, f"byte 232 read back {back[events.BYTE]:#04x}, wrote {mode:#04x}"
     port = bt.spp_port(unit.mac)
     assert port, f"no paired SPP port for {unit.mac}"
+    notes = []
 
     def one_log() -> Path:
         root = s3r_usb.wait_drive(unit.usb_serial, 60)
@@ -231,7 +248,9 @@ def test_s3r_session_number(unit, power, s3r_saved, hil_note):
             link.simple(bt.START_LOGGING)
             link.wait_status(bt.STATUS_LOGGING, True, 10)
             time.sleep(LOG_S)
-        _undocked(unit, power, port, log)
+        link_note = _undocked(unit, power, port, log)
+        if link_note:
+            notes.append(link_note)
         root = s3r_usb.wait_drive(unit.usb_serial, 90)
         new = sorted(sdfile.session_dirs(root) - before)
         assert len(new) == 1, f"expected one new SD session, found {new}"
@@ -245,7 +264,7 @@ def test_s3r_session_number(unit, power, s3r_saved, hil_note):
     time.sleep(2)
     second = one_log()
     n1, n2 = _session_number(first), _session_number(second)
-    hil_note(f"{first.name} then {second.name}")
+    hil_note("; ".join([f"{first.name} then {second.name}"] + notes))
     assert second.parent.name == first.parent.name, f"the second log went to {second.parent.name}"
     assert n2 > n1, (f"the second log reused session {n2} although {evdir.relative_to(root).as_posix()} "
                      f"still holds number {n1}")
