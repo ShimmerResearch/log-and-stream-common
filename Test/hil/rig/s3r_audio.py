@@ -370,7 +370,10 @@ def _clock_checks(name, first, last, samples, data: DataFile) -> list:
     if not FIRST_SAMPLE_S[0] <= d0 <= FIRST_SAMPLE_S[1]:
         p.append(f"{name}: first sample {d0:+.2f} s from the data file's initial timestamp, "
                  f"expected {FIRST_SAMPLE_S[0]} to {FIRST_SAMPLE_S[1]} s")
-    if last is not None:
+    if last == 0:
+        # A WAV cut short at stop far behind the capture: its last sample's time is not known
+        p.append(f"{name}: no last-sample time (the file was cut short at stop)")
+    elif last is not None:
         d1 = (last - data.last_ticks) / TICKS
         if not LAST_SAMPLE_S[0] <= d1 <= LAST_SAMPLE_S[1]:
             p.append(f"{name}: last sample {d1:+.2f} s from the data file's last record, "

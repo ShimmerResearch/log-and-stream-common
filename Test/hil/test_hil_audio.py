@@ -200,6 +200,19 @@ class AudioFiles(unittest.TestCase):
         p = self.run_check(1, None, data=data_file(0)).problems
         self.assertTrue(any("byte 226" in x for x in p), p)
 
+    def test_wav_cut_short_at_stop(self):
+        """A slowed card: the stop's WAV drain ran out of time minutes behind the
+        capture, so the header has no last-sample time (0) and fault 4."""
+        first, n, _ = good_geometry()
+        raw = bytearray(wav_bytes(3, first, n // 2))
+        raw[97] = 4
+        struct.pack_into("<Q", raw, 104, 0)
+        self.s.write("000.WAV", bytes(raw))
+        p = " | ".join(self.run_check(3, None).problems)
+        self.assertIn("no last-sample time", p)
+        self.assertNotIn("data file's last record", p)
+        self.assertNotIn("ppm", p)
+
     def test_remove_raw_keeps_the_fingerprint(self):
         first, n, chunks = good_geometry()
         self.s.write("000.WAV", wav_bytes(2, first, 1000))

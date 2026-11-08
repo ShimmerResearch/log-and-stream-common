@@ -48,7 +48,10 @@ written to the WAV, a fingerprint chunk already analysed is written, and the
 files are closed, before a dock can hand the card to a host. The WAV gets at
 most 1 s for this, about twice what a full ring takes on a healthy card. A card
 that has slowed down can owe far more, and the rest is then dropped: the file
-ends at its last sample written, which its header gives, and fault 4 is set.
+ends at its last sample written, and fault 4 is set. Its header gives that
+sample's clock only if the file ended within about 8 s of the capture, which is
+as far back as the capture keeps block times; a file that ended further behind
+has 0 there (§3.1, byte 104).
 The fingerprint chunk still filling or being analysed at that moment is
 dropped, so the last 4 to 9 s of a session have no fingerprint. A failure in
 audio (a file that will
@@ -124,7 +127,7 @@ little-endian.
 | 96 | 1 | **Closed**: 1 when the file closed normally |
 | 97 | 1 | The session's first fault (§5), 0 if none |
 | 100 | 4 | Samples in the file |
-| 104 | 8 | **Shimmer clock of the last sample** |
+| 104 | 8 | **Shimmer clock of the last sample**, 0 if not known: a file cut short at stop more than about 8 s behind the capture (§1) |
 | 112 | 4 | Samples written as silence after an overrun |
 | 116 | 4 | Escape-hatch writes (u16), write errors (u16), since the session began; each stops at 65535 |
 | 120 | 12 | ADF error interrupts, of them saturation, of them overflow (u32 each), since the session began |
