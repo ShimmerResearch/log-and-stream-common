@@ -2307,5 +2307,141 @@ class ReleaseTierPicksThePlatform(unittest.TestCase):
         self.assertNotIn("test_s3_release.py", out)
 
 
+def _crc(frame: bytes, n: int) -> bytes:
+    c = dock.crc16(frame)
+    return bytes([c & 0xFF, c >> 8])[:n]
+
+
+class InStreamReplies(unittest.TestCase):
+    """A battery read answered mid-stream is ACK 0x8A 0x94 and three bytes. It
+    frames as a reply between two packets, not as stray bytes, and its place
+    in the stream is kept (st.instream) so a lost sample can be laid at its door."""
+
+    CHANNELS = [0x00, 0x01, 0x02]               # LN accel: 10-byte packets
+    DIVIDER = 128
+
+    class Spp(FakeSpp):
+        def __init__(self, stream, crc):
+            super().__init__(1)
+            self.stream, self.crc = stream, crc
+
+        def write(self, data):
+            ack = bytes([bt.ACK])
+            if data in (bytes([bt.START_STREAMING]), bytes([bt.STOP_STREAMING])):
+                self.buf += ack + _crc(ack, self.crc)
+                if data == bytes([bt.START_STREAMING]):
+                    self.buf += self.stream
+
+    def run_stream(self, reply: bytes, crc: int = 0, skip_after_reply: bool = False):
+        pkts = []
+        for i in range(10):
+            if skip_after_reply and i >= 5:
+                i += 1
+            body = bytes([0]) + (1000 + self.DIVIDER * i).to_bytes(3, "little") + bytes(6)
+            pkts.append(body + _crc(body, crc))
+        frame = reply + _crc(reply, crc) if reply else b""
+        link = bt.BtLink.__new__(bt.BtLink)
+        link.hw, link._nstatus, link.crc_mode = bt.HW_SHIMMER3, 1, crc
+        link.ser = self.Spp(b"".join(pkts[:5]) + frame + b"".join(pkts[5:]), crc)
+        link.ser.timeout = 0.0
+        return link.stream(0.0, bt.Inquiry(self.DIVIDER, self.CHANNELS, 0, b""), keep=True)
+
+    VBATT = bytes([bt.ACK, bt.INSTREAM, bt.VBATT_RSP, 0x10, 0x0A, 0x00])
+    STATUS = bytes([bt.ACK, bt.INSTREAM, bt.STATUS_RSP, 0x20])
+
+    def test_a_battery_reply_frames_between_packets(self):
+        for crc in (0, 1, 2):
+            st = self.run_stream(self.VBATT, crc)
+            self.assertEqual((st.packets, st.resyncs, st.crc_errors), (10, 0, 0), f"CRC mode {crc}")
+            self.assertEqual(st.instream, [(bt.VBATT_RSP, 5)])
+            self.assertEqual((st.status_pushes, st.pushed), (0, []), "a battery reply is not a status frame")
+
+    def test_a_status_frame_is_still_a_status_frame(self):
+        st = self.run_stream(self.STATUS, 1)
+        self.assertEqual((st.packets, st.resyncs, st.status_pushes, st.pushed), (10, 0, 1, [0x20]))
+        self.assertEqual(st.instream, [(bt.STATUS_RSP, 5)])
+
+    def test_the_sample_skipped_at_a_reply_is_laid_at_its_door(self):
+        st = self.run_stream(self.VBATT, 0, skip_after_reply=True)
+        gaps = bt.gap_positions(st.ts, self.DIVIDER)
+        self.assertEqual(gaps, [(5, 1)])
+        mod = _defects_module()
+        if mod is None:
+            self.skipTest("needs pytest")
+        lost = mod.losses_by_reply(gaps, st.instream)
+        self.assertEqual(lost, {bt.VBATT_RSP: 1, bt.STATUS_RSP: 0, None: 0})
+
+    def test_a_gap_away_from_any_reply_is_elsewhere(self):
+        mod = _defects_module()
+        if mod is None:
+            self.skipTest("needs pytest")
+        self.assertEqual(mod.losses_by_reply([(40, 2)], [(bt.VBATT_RSP, 5), (bt.STATUS_RSP, 20)]),
+                         {bt.VBATT_RSP: 0, bt.STATUS_RSP: 0, None: 2})
+
+
+class GapPositions(unittest.TestCase):
+    def test_a_late_stamp_is_not_a_gap(self):
+        ts = [0, 32, 64 + 20, 96, 128]
+        self.assertEqual(bt.gap_positions(ts, 32), [])
+
+    def test_a_skipped_slot_is_found_at_the_packet_after_it(self):
+        ts = [0, 32, 64, 128, 160, 288]
+        self.assertEqual(bt.gap_positions(ts, 32), [(3, 1), (5, 3)])
+
+
+def _defects_module():
+    """tests/test_defects.py, which imports pytest; None without it."""
+    import importlib.util
+    if "_defects" in sys.modules:
+        return sys.modules["_defects"]
+    if importlib.util.find_spec("pytest") is None:
+        return None
+    spec = importlib.util.spec_from_file_location("_defects", HERE / "tests" / "test_defects.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod                     # its dataclass looks itself up there
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class DockArgLengths(unittest.TestCase):
+    """dock_protocol.arg_lengths: which frames it sends, and how it judges the replies."""
+
+    class Link:
+        def __init__(self, code):
+            self.code, self.sent = code, []
+
+        def exchange(self, raw, timeout_s=None):
+            self.sent.append(raw)
+            return dock.Reply(self.code, dock.COMP_SHIMMER, dock.PROP_INFOMEM, b"\x00")
+
+        def request(self, cmd, comp, prop, data=b""):
+            return dock.Reply(dock.CMD_RSP, comp, prop, bytes(7))
+
+    def walk(self, code):
+        from rig import dock_protocol
+        w = dock_protocol.Walk(self.Link(code), dock_protocol.S3)
+        dock_protocol.arg_lengths(w)
+        return w
+
+    def test_each_variable_length_get_is_sent_short_and_long(self):
+        w = self.walk(dock.BAD_ARG)
+        lens = [(f[2], f[3], f[4]) for f in w.link.sent]
+        self.assertEqual(lens, [(2, dock.COMP_SHIMMER, dock.PROP_INFOMEM), (4, dock.COMP_SHIMMER, dock.PROP_INFOMEM),
+                                (6, dock.COMP_SHIMMER, dock.PROP_INFOMEM),
+                                (2, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID),
+                                (3, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID),
+                                (5, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID),
+                                (2, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM),
+                                (4, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM),
+                                (6, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM)])
+        self.assertTrue(all(f[1] == dock.CMD_GET for f in w.link.sent), "only GETs: a short SET writes stale bytes")
+        self.assertEqual(w.failures, [])
+
+    def test_an_answer_with_data_is_a_failure(self):
+        w = self.walk(dock.CMD_RSP)
+        self.assertEqual(len(w.failures), 9)
+        self.assertIn("GET INFOMEM with no arguments (LEN 2): RSP, expected BAD_ARG", w.failures[0])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

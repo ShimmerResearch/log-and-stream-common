@@ -262,6 +262,31 @@ def errors(w: Walk, seen: dict) -> None:
              frame(S, COMP_DAUGHTER_CARD, PROP_CARD_MEM, rng(2, 2031) + eeprom[-1:] + b"\xFF"), BAD_ARG)
 
 
+def arg_lengths(w: Walk) -> None:
+    """The variable-length GETs - INFOMEM, CARD_ID and CARD_MEM - sent with a LEN
+    that does not match their arguments: none, one byte short, one byte over.
+
+    Each must be refused with BAD_ARG, as the fixed-length properties already
+    are (errors() above). Firmware that reads the arguments at fixed offsets
+    whatever LEN says takes the frame's own CRC, then whatever an earlier frame
+    left in its buffer, as length and offset, and answers with data nobody
+    asked for (DEV-1279). Not part of walk() until the firmware refuses them,
+    so that the release items keep passing meanwhile.
+
+    Only GETs: a short SET of the same kind writes stale buffer bytes into the
+    configuration or the expansion-board EEPROM.
+    """
+    G = CMD_GET
+    for comp, prop, label, args in [(COMP_SHIMMER, PROP_INFOMEM, "INFOMEM", 3),
+                                    (COMP_DAUGHTER_CARD, PROP_CARD_ID, "CARD_ID", 2),
+                                    (COMP_DAUGHTER_CARD, PROP_CARD_MEM, "CARD_MEM", 3)]:
+        # A real request's arguments, one byte at a time: 1 byte to read from offset 0.
+        real = bytes([1, 0, 0])[:args]
+        for data, how in [(b"", "no arguments"), (real[:-1], "one argument byte short"),
+                          (real + b"\x00", "one argument byte over")]:
+            w.expect(f"GET {label} with {how} (LEN {2 + len(data)})", frame(G, comp, prop, data), BAD_ARG)
+
+
 def framing(w: Walk) -> None:
     """§2.1: junk before a frame is skipped, a frame may arrive in pieces, and a
     gap of more than 100 ms abandons the frame it falls in."""
