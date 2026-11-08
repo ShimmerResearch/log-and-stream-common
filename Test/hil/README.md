@@ -114,6 +114,7 @@ plug and unplug.
 | `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial. The drive comes from Get-Disk, or from Win32_DiskDrive when Get-Disk does not list the unit: on one bench Get-Disk has listed no disks at all for minutes, and listed a unit back from a long log minutes late. `wait_usb_settled` waits for both the port and the drive. A docked stream takes the unit's USB away until it stops, and the port can return before the rest of the device. So call `wait_usb_settled` before the first dock exchange after sensing or a re-dock (DEV-1368, TEST_PROCEDURE §10.4). Run those exchanges in `stall_named`: a failure within 35 s of the unit's USB arrival is checked against System event 7011 and, inside a host service stall, raised as `HostServiceStall` naming it. It is still a failure (bench-tools `hil/known_issues.md`) |
 | `rig/usb_throughput.py` | The SD card's write and read rates over USB mass storage, timed around the PC's file cache |
 | `rig/sdfile.py` | Reads a Shimmer3R SD data file and checks its records |
+| `rig/events.py` | The event channel: byte 232 as the firmware keeps it (INFOMEM §8.3), an event file checked against its data file with Extras' `shimmer_event_file.py`, and the Bluetooth record frames and status (TEST_PROCEDURE §5.12) |
 | `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version. USB DFU flashes only a DFU device that appeared after this unit was sent to its bootloader, and only if it is the only one |
 | `rig/base6.py` | Base6 slot mux: which slots are occupied, select one, mask its BSL lines |
 | `rig/msp430_bsl.py` | MSP430 ROM bootloader client (port of Consensys's): erase, write, CRC-verify |
@@ -126,7 +127,7 @@ plug and unplug.
 | `rig/signals.py` | Checks on a resting unit: 1 g, gyro ≈ 0, stuck/staircase/saturated axes, VBatt |
 | `matrix/s3r_release.toml` | The Shimmer3R release matrix: one row per configuration |
 | `matrix/s3_release.toml` | The Shimmer3 release matrix: stream rows, each configured over Bluetooth by InfoMem or by the individual commands |
-| `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (each platform's matrix) or `soak` (long-running, advisory; `HIL_SOAK_SCALE` sets the length) |
+| `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (each platform's matrix, and the event channel's items) or `soak` (long-running, advisory; `HIL_SOAK_SCALE` sets the length) |
 | `triage.py` | Claude triage of a failed run: advice in `triage.md`, never a verdict |
 | `test_hil_*.py` | Unit tests for the above that need no hardware; run by `make -C Test/host` |
 

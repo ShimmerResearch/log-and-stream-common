@@ -516,4 +516,7 @@ test for the stream:
   Consensys and the Java and C# APIs do none of these yet, and the Java driver's
   full configuration write still puts 0 in byte 232 (§1).
 - **Bench testing.** The event file, the TTL capture and the Bluetooth stream
-  have been tested on the host only.
+  have been tested on the host only. The release gate's steps for them are
+  [SHIMMER3_TEST_PROCEDURE.md](SHIMMER3_TEST_PROCEDURE.md) §5.12: the rig
+  covers byte 232, an untouched event file, the log triggers, the session
+  number and the stream's opt-in, and the presses and TTL edges are a person's.

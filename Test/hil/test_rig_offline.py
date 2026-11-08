@@ -958,6 +958,45 @@ class StatusLength(unittest.TestCase):
         self.assertEqual(link.asked, 0)
 
 
+class WaitStatus(unittest.TestCase):
+    """A Shimmer3R starting a log after a configuration write left status queries
+    unanswered for 3.6-4 s (bench, 2026-11-08): wait_status asks again until its
+    own deadline, and says how long the unit was silent."""
+
+    class BusySpp(FakeSpp):
+        def __init__(self, silent):
+            super().__init__(2)
+            self.silent = silent
+
+        def write(self, data):
+            if data != bytes([bt.GET_STATUS]):
+                return
+            if self.silent:
+                self.silent -= 1
+                return
+            self.buf += bytes([bt.ACK, bt.INSTREAM, bt.STATUS_RSP, bt.STATUS_LOGGING, 0])
+
+    def link(self, silent):
+        link = bt_link(bt.HW_SHIMMER3R, (3, 1, 1, 0), sent=2)
+        link.ser = self.BusySpp(silent)
+        link.silent_s = 0.0
+        quick = bt.BtLink.status
+        link.status = lambda timeout_s=3.0: quick(link, 0.05)
+        return link
+
+    def test_it_waits_through_a_silent_spell(self):
+        link = self.link(silent=3)
+        with mock.patch.object(bt.time, "sleep", lambda s: None):
+            self.assertEqual(link.wait_status(bt.STATUS_LOGGING, True, 5), bt.STATUS_LOGGING)
+        self.assertGreaterEqual(link.silent_s, 0.1)
+
+    def test_a_unit_silent_throughout_still_fails(self):
+        link = self.link(silent=10 ** 6)
+        with mock.patch.object(bt.time, "sleep", lambda s: None):
+            with self.assertRaisesRegex(bt.BtError, "no status for"):
+                link.wait_status(bt.STATUS_LOGGING, True, 0.3)
+
+
 class TagVersion(unittest.TestCase):
     def test_the_tag_suffix_and_build_info_compare_as_one_version(self):
         platform, _, _, version = run_rc.parse_tag("LogAndStream_Shimmer3R_v1.01.022")

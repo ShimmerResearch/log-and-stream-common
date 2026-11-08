@@ -274,6 +274,8 @@ test: build
 	  failed="$$failed test_hil_usb_throughput.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_dock.py; then \
 	  failed="$$failed test_hil_dock.py"; fi; \
+	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_events.py; then \
+	  failed="$$failed test_hil_events.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_rig_offline.py; then \
 	  failed="$$failed test_rig_offline.py"; fi; \
 	if ! $(PYTHON) check_weak_decls.py; then \
@@ -399,6 +401,7 @@ hil-gate:
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_audio.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_usb_throughput.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_dock.py
+	@$(PYTHON) $(REPO)/Test/hil/test_hil_events.py
 	@$(PYTHON) $(REPO)/Test/hil/test_rig_offline.py
 
 # No compiler, no binary: every header in the repository, read as text. The

@@ -7,7 +7,10 @@ Each row is one report item, release.<id>. For every row:
    Read back, the image must hold exactly that - and every enabled sensor's
    ODR must cover the packet rate, because the firmware is meant to raise it
    (INFOMEM §10.6). A host that wrote only the bitmap and rate, as many do,
-   depends on that correction.
+   depends on that correction. Byte 232 is always written, the row's
+   `button_log_mode` or 0, with userButtonEnable on, so no row's undock
+   starts a log before the row does; it must read back as INFOMEM §8.3 keeps
+   it (rig/events.py).
 2. Run the row's mode: Bluetooth stream (docked), SD log (undocked by the hub
    port, started and stopped over Bluetooth), or both at once.
 3. Check timing (lost / duplicate samples, jitter, device-clock rate), framing
@@ -22,6 +25,13 @@ Each row is one report item, release.<id>. For every row:
    and agreeing with it and with the status (rig/s3r_audio.py). With audio off,
    no audio directory may appear. A WAV records the bench room, so it is
    checked where it lies on the card and then deleted.
+5. The event channel, on every logging row: the SD header carries byte 232
+   at offset 225. A byte that records an input (button mode 4 or 5, or the
+   TTL input) puts an event file beside the data file, at the same path under
+   events/, which must pair with the data file, open and close with it, have
+   a heartbeat at least every two minutes and hold no edges, since nothing
+   touches the button or the input. One that records nothing must leave no
+   event file (EVENT_CHANNEL §4).
 
 Two observations are reported as their own items rather than failing every
 row they touch (see _Aside): loss in the first second of an SD log
@@ -39,7 +49,7 @@ from pathlib import Path
 
 import pytest
 
-from rig import bt, decode, dock, s3r_audio, s3r_boards, s3r_usb, sdfile, signals
+from rig import bt, decode, dock, events, s3r_audio, s3r_boards, s3r_usb, sdfile, signals
 from rig.s3r_config import S3rConfig, divider_for
 
 try:
@@ -107,13 +117,19 @@ def _configure(unit, row) -> tuple[S3rConfig, set[str]]:
         cfg.audio_mode = row.get("audio", 0)    # always written: a unit can hold a mode from before
         # The rows start and stop logging over Bluetooth. A unit set to log on
         # undock would be logging, and recording audio, before the link is up.
-        cfg.start_by_command_only()
+        # So byte 232 is always written, with userButtonEnable on: a unit can
+        # hold a byte 232 that starts a log on undock.
+        cfg.button_log_mode = row.get("button_log_mode", 0)
+        cfg.user_button_enable = 1
         d.write_infomem(cfg.bytes())
         back = S3rConfig(d.read_infomem())
     problems = []
-    if not back.starts_by_command_only:
-        problems.append(f"bytes 217 and 232 read back {back.b[217]:#04x} {back.b[232]:#04x}: "
-                        "an undock may start logging")
+    kept = events.correct(cfg.button_log_mode, sr48_6_0=s3r_boards.is_sr48_6_0(card))
+    if back.button_log_mode != kept:
+        problems.append(f"byte 232 read back {back.button_log_mode:#04x}, wrote {cfg.button_log_mode:#04x}, "
+                        f"which INFOMEM §8.3 keeps as {kept:#04x}")
+    if events.undock_starts(back.button_log_mode, back.user_button_enable):
+        problems.append(f"bytes 217 and 232 read back {back.b[217]:#04x} {back.b[232]:#04x}: an undock starts logging")
     if back.divider != cfg.divider:
         problems.append(f"divider read back {back.divider}, wrote {cfg.divider}")
     if back.enabled() != want:
@@ -190,6 +206,29 @@ def _check_log(path: Path, cfg: S3rConfig, inq, seconds, unit, aside):
     return fc, probs + sig, note
 
 
+def _check_events(path: Path, root: Path, cfg: S3rConfig, fc) -> tuple[list[str], str]:
+    """The event channel's part of a logging row (EVENT_CHANNEL §4): the header's
+    copy of byte 232, then the event file, or that there is none."""
+    head = path.read_bytes()[:sdfile.HEAD_S3R]
+    probs = []
+    if head[events.SD_HEADER_BYTE] != cfg.button_log_mode:
+        probs.append(f"SD header byte {events.SD_HEADER_BYTE} is {head[events.SD_HEADER_BYTE]:#04x}, "
+                     f"byte 232 {cfg.button_log_mode:#04x}")
+    session = events.companion_path(path, root).parent
+    want = events.enables(cfg.button_log_mode)
+    if not want:
+        if session.exists():
+            probs.append(f"{session.relative_to(root).as_posix()} exists, but byte 232 records nothing")
+        return probs, ""
+    extra = sorted(p.name for p in session.iterdir() if p.name != path.name) if session.is_dir() else []
+    if extra:
+        probs.append(f"more than one event file for a short log: {extra}")
+    ec = events.check_file(session / path.name, head, want_enables=want, hw_id=bt.HW_SHIMMER3R,
+                           data_first_ts=fc.ts[0] if fc.ts else 0,
+                           data_span_s=fc.span_ticks / events.TICKS_PER_S)
+    return probs + ec.problems, f"event file: {ec.note}" if ec.note else ""
+
+
 class _Aside:
     """Records observations as their own report items, beside the row's.
 
@@ -264,6 +303,8 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
                     link.simple(bt.START_LOGGING)
                     link.wait_status(bt.STATUS_LOGGING, True, 10)
                     t0 = time.monotonic()
+                    if link.silent_s >= 1:
+                        notes.append(f"silent {link.silent_s:.1f} s while starting the log")
                     if audio:
                         probs += _audio_started(link)
                     time.sleep(max(0.0, row["seconds"] - (time.monotonic() - t0)))
@@ -308,6 +349,9 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
             ac = s3r_audio.check(path, data, audio, astatus)
             probs += [f"audio: {p}" for p in ac.problems]
             notes.append(f"audio mode {audio}: {ac.note}" if audio else "")
+            ep, enote = _check_events(path, root, cfg, fc)
+            probs += [f"events: {p}" for p in ep]
+            notes.append(enote)
         finally:
             removed = s3r_audio.remove_raw(path)
         if removed:
