@@ -321,40 +321,37 @@ and RM0456, not measured against a sound level:
 
 ## 5. Status
 
-A host learns about audio from **status byte 1** alone. It is Shimmer3R only, and
-comes in `GET_STATUS_COMMAND`'s reply and every unsolicited status push
-([SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) §5.3).
-There is no audio command:
+**Status byte 1** is Shimmer3R only, and comes in `GET_STATUS_COMMAND`'s reply
+and every unsolicited status push
+([SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) §5.3):
 
 | Bit | Meaning |
 |---:|---|
 | 1 | Recording: audio is being captured for the current log |
 | 2 | Fault: this session's audio failed or was degraded; cleared when the next session starts |
-| 3 | Available: this firmware records audio and this board has a microphone |
 
-- **Bit 3 is how a host tells whether to offer byte 233.** It never changes while
-  the firmware runs. Firmware before DEV-99 sends zero in bits 1-3, so a host reads
-  them only from the first Shimmer3R firmware with DEV-99, and takes a zero below
-  that as "no audio". Until that release, hosts read them from LogAndStream
-  v1.01.025, which development builds of DEV-99 report.
-- **The firmware pushes a status frame whenever bit 1 or 2 changes,** streaming or
-  not. A connected host sees recording start within a second of logging starting,
-  and sees it stop and any fault, without polling.
-- **The detail is in the files.** Each file's closing summary (§3) holds the
-  session's first fault, the samples written as silence, the escape-hatch writes,
-  the write errors and the ADF's error counts; the fingerprint file adds the chunks
-  skipped.
+The firmware pushes a status frame whenever either bit changes. A connected host
+sees recording start within a second of logging starting, and sees it stop and
+any fault, without polling. Firmware before DEV-99 sends zero in these bits, so gate
+them on the firmware version.
 
-The fault codes, in the closing summary:
+**`GET_AUDIO_STATUS_COMMAND`** (`0xBC`) is answered with `AUDIO_STATUS_RESPONSE`
+(`0xBD`) and 32 bytes:
 
-| Fault | Meaning |
-|---:|---|
-| 0 | None |
-| 1 | Open: a directory or file could not be made |
-| 2 | Capture: the microphone would not start |
-| 3 | Write: a write to the card failed |
-| 4 | Overrun: the card fell further behind than the ring holds, and the gap was written as silence |
-| 5 | Fingerprint behind: the analysis fell further behind than the ring holds, and chunks were skipped |
+| Offset | Size | Field |
+|---:|---:|---|
+| 0 | 1 | Payload version, 1 |
+| 1 | 1 | Mode configured (byte 233, corrected) |
+| 2 | 1 | State: 0 off, 1 starting, 2 recording, 3 stopped, 4 fault |
+| 3 | 1 | Fault: 0 none, 1 open (a directory or file), 2 capture (the mic would not start), 3 write, 4 overrun (silence was written), 5 the fingerprint fell behind (chunks were skipped) |
+| 4 | 4 | Seconds recorded this session: of WAV in modes 2 and 3, of audio fingerprinted in mode 1 |
+| 8 | 4 | Samples written as silence this session |
+| 12 | 2 | Escape-hatch writes; stops at 65535 |
+| 14 | 2 | Write errors; stops at 65535 |
+| 16 | 4 | ADF error interrupts |
+| 20 | 4 | Of them, saturation |
+| 24 | 4 | Fingerprint chunks written this session |
+| 28 | 4 | Fingerprint chunks skipped this session |
 
 Faults 4 and 5 are degradations, not stops: recording carries on, and the fault
 bit says the WAV has silence in it or the fingerprint has gaps. The other faults
@@ -368,9 +365,9 @@ Each fault has been forced on the bench, with logging at 1024 Hz losing nothing:
 
 | Fault | How it was forced | What followed |
 |---|---|---|
-| 4 | The WAV took nothing for 12 s | Fault bit set when the ring overran; recording bit still set, 65,536 silence samples |
+| 4 | The WAV took nothing for 12 s | Fault bit set when the ring overran; recording on, seconds paused, 65,536 silence samples |
 | 5 | The analysis did nothing for 12 s | Fault bit set at the next chunk; 3 chunks skipped, numbering and hashes of the rest still right |
-| 3 | A WAV write failed at 20 s | Recording bit clear and fault bit set within a second; both files closed at 20 s with fault 3 |
+| 3 | A WAV write failed at 20 s | State 4, recording bit clear and fault bit set within a second; both files closed at 20 s |
 
 ## 6. Power and sleep
 

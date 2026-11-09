@@ -3,13 +3,12 @@
 audio/X/NNN.WAV (modes 2 and 3) and audio/X/NNN.AFP (modes 1 and 2) belong
 with data/X/NNN (§2). A release row's log is short, so there is one of each,
 NNN = 000. check() reads their headers, walks the fingerprint's chunks, and
-compares both with the data file and, in mode 2, with each other. The firmware
-reports nothing else about a recording: over the link there are only status
-byte 1's bits, which the release test reads itself.
+compares both with the data file and with the GET_AUDIO_STATUS_COMMAND reply
+taken after the log stopped.
 
 What is judged is structure and timing: the files are there and paired, closed
-cleanly with no fault, cover the log, and keep the Shimmer clock. What the
-microphone heard is the bench room's business. The WAV's
+cleanly with no fault, cover the log, keep the Shimmer clock, and agree with
+the status. What the microphone heard is the bench room's business. The WAV's
 level is reported, and judged only far enough to show sound arrived. Nothing
 here recomputes the fingerprint: that needs the algorithm on the PC.
 
@@ -52,6 +51,7 @@ LAST_SAMPLE_S = (-1.5, 0.5)
 MIN_RMS_LSB = 1.0
 
 WAV_MODES, AFP_MODES = {2, 3}, {1, 2}
+STATES = {0: "off", 1: "starting", 2: "recording", 3: "stopped", 4: "fault"}
 FAULTS = {0: "none", 1: "open", 2: "capture", 3: "write", 4: "overrun", 5: "fingerprint fell behind"}
 
 
@@ -100,6 +100,30 @@ def identity(raw: bytes) -> Identity:
         adf_saturation=struct.unpack_from("<I", raw, 124)[0],
         adf_overflow=struct.unpack_from("<I", raw, 128)[0],
     )
+
+
+@dataclass
+class AudioStatus:
+    """GET_AUDIO_STATUS_COMMAND's reply (§5)."""
+    version: int
+    mode: int
+    state: int
+    fault: int
+    seconds: int
+    silence: int
+    escapes: int
+    write_errors: int
+    adf_errors: int
+    adf_saturation: int
+    chunks: int
+    chunks_skipped: int
+
+
+def audio_status(payload: bytes) -> AudioStatus:
+    if len(payload) != 32:
+        raise ValueError(f"audio status is {len(payload)} bytes, expected 32")
+    return AudioStatus(payload[0], payload[1], payload[2], payload[3],
+                       *struct.unpack_from("<IIHHIIII", payload, 4))
 
 
 @dataclass
@@ -217,9 +241,9 @@ def audio_dir(data_path: Path) -> Path:
     return Path(*parts[:i], "audio", *parts[i + 1:-1])
 
 
-def check(data_path: Path, data: DataFile, mode: int) -> AudioCheck:
+def check(data_path: Path, data: DataFile, mode: int, status: AudioStatus | None) -> AudioCheck:
     """The session's audio files beside data_path (.../data/X/S/000), for a log
-    recorded in `mode`, against its data file."""
+    recorded in `mode`, against its data file and the status read after the stop."""
     data_path = Path(data_path)
     adir = audio_dir(data_path)
     wav_path, afp_path = adir / f"{data_path.name}.WAV", adir / f"{data_path.name}.AFP"
@@ -236,6 +260,14 @@ def check(data_path: Path, data: DataFile, mode: int) -> AudioCheck:
     want = ({wav_path.name} if mode in WAV_MODES else set()) | ({afp_path.name} if mode in AFP_MODES else set())
     if present != want:
         p.append(f"audio files {sorted(present) or 'none'}, expected {sorted(want)} in mode {mode}")
+    if status is not None:
+        if (status.version, status.mode, status.state, status.fault) != (1, mode, 3, 0):
+            p.append(f"audio status after the stop: version {status.version}, mode {status.mode}, "
+                     f"state {STATES.get(status.state, status.state)}, fault "
+                     f"{FAULTS.get(status.fault, status.fault)}; expected 1, {mode}, stopped, none")
+        if status.silence or status.escapes or status.write_errors or status.chunks_skipped:
+            p.append(f"audio status: {status.silence} silence samples, {status.escapes} escape-hatch writes, "
+                     f"{status.write_errors} write errors, {status.chunks_skipped} chunks skipped")
 
     wav = afp = None
     samples = None
@@ -265,6 +297,8 @@ def check(data_path: Path, data: DataFile, mode: int) -> AudioCheck:
             notes.append(f"WAV {samples / RATE:.1f} s, RMS {level:.0f} dBFS, peak {peak}"
                          + (f", {sum(1 for v in x if v in (32767, -32768))} at full scale" if peak >= 32767 else ""))
             del x
+        if status is not None and status.seconds != samples // RATE:
+            p.append(f"audio status: {status.seconds} s recorded, the WAV holds {samples / RATE:.2f} s")
 
     if afp_path.name in present:
         raw = afp_path.read_bytes()
@@ -286,6 +320,9 @@ def check(data_path: Path, data: DataFile, mode: int) -> AudioCheck:
         if chunks and (afp.first_ticks, afp.last_ticks) != (chunks[0].ticks, chunks[-1].ticks):
             p.append(f"AFP: header's first and last chunk clocks {afp.first_ticks}, {afp.last_ticks}; "
                      f"the chunks' {chunks[0].ticks}, {chunks[-1].ticks}")
+        if status is not None and (status.chunks, status.chunks_skipped) != (len(chunks), skipped):
+            p.append(f"audio status: {status.chunks} chunks written, {status.chunks_skipped} skipped; "
+                     f"the file holds {len(chunks)}, skipped {skipped}")
         # Chunk k starts at the session's sample k x 64000 (§3.2): on the WAV's
         # clock in mode 2, otherwise from where the audio began to the log's end.
         if samples is not None:
@@ -314,11 +351,11 @@ def check(data_path: Path, data: DataFile, mode: int) -> AudioCheck:
             if off and max(abs(o) for o in off) > CHUNK_CLOCK_TICKS:
                 p.append(f"AFP: chunk clocks {min(off):+.1f} to {max(off):+.1f} ticks off the WAV's clock")
 
-    # Both files close at the stop with the session's counts (§3), so in mode 2 they agree.
-    if wav is not None and afp is not None and \
-            (wav.adf_errors, wav.adf_saturation) != (afp.adf_errors, afp.adf_saturation):
-        p.append(f"ADF errors {wav.adf_errors} (saturation {wav.adf_saturation}) in the WAV, "
-                 f"{afp.adf_errors} ({afp.adf_saturation}) in the AFP")
+    for name, ident in (("WAV", wav), ("AFP", afp)):
+        if ident is not None and status is not None and \
+                (ident.adf_errors, ident.adf_saturation) != (status.adf_errors, status.adf_saturation):
+            p.append(f"{name}: ADF errors {ident.adf_errors}, of them saturation {ident.adf_saturation}; "
+                     f"the status says {status.adf_errors}, {status.adf_saturation}")
     ref = wav or afp
     if ref is not None:
         notes.append(f"ADF saturation {ref.adf_saturation}")

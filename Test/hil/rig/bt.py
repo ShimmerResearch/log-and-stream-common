@@ -33,6 +33,8 @@ SET_CRC = 0x8B
 START_STREAMING, STOP_STREAMING = 0x07, 0x20
 START_LOGGING, STOP_LOGGING = 0x92, 0x93
 START_SDBT, STOP_SDBT = 0x70, 0x97
+# Shimmer3R audio (docs/SHIMMER3R_AUDIO.md §5): the reply is 32 bytes.
+GET_AUDIO_STATUS, AUDIO_STATUS_RSP, AUDIO_STATUS_LEN = 0xBC, 0xBD, 32
 
 # Configuration over Bluetooth, the way a host writes it (§7.5, §7.6, §7.8).
 GET_INFOMEM, INFOMEM_RSP, SET_INFOMEM = 0x8E, 0x8D, 0x8C
@@ -59,9 +61,8 @@ WRITE_ACK_S = 3.0               # a write's ACK follows the flash erase and writ
 
 STATUS_DOCKED, STATUS_SENSING, STATUS_LOGGING, STATUS_STREAMING = 0x01, 0x02, 0x08, 0x10
 STATUS_SD_INSERTED, STATUS_SD_BAD_FILE = 0x20, 0x40
-# Status byte 1, Shimmer3R: bit 0 usbPluggedIn, then the audio bits (SHIMMER3R_AUDIO §5),
-# the only audio status the firmware reports over the link.
-STATUS1_AUDIO_RECORDING, STATUS1_AUDIO_FAULT, STATUS1_AUDIO_AVAILABLE = 0x02, 0x04, 0x08
+# Status byte 1, Shimmer3R: bit 0 usbPluggedIn, then the audio bits (SHIMMER3R_AUDIO §5).
+STATUS1_AUDIO_RECORDING, STATUS1_AUDIO_FAULT = 0x02, 0x04
 
 HW_SHIMMER3, HW_SHIMMER3R = 3, 10
 # Shimmer3R LogAndStream sends two status bytes from v1.00.024, one before it
@@ -313,6 +314,11 @@ class BtLink:
                 self.ser.reset_input_buffer()     # its CRC, if a mode is on
                 return bytes(buf[i + 3:i + 3 + n])
         raise BtError(f"no status reply within {timeout_s:.0f} s (got {bytes(buf[:24]).hex()})")
+
+    def audio_status(self) -> bytes:
+        """GET_AUDIO_STATUS_COMMAND's 32-byte reply (SHIMMER3R_AUDIO §5); rig/s3r_audio.py reads it."""
+        self.command(GET_AUDIO_STATUS, rsp=AUDIO_STATUS_RSP)
+        return self._read(AUDIO_STATUS_LEN)
 
     def inquiry(self) -> Inquiry:
         self.command(INQUIRY, rsp=INQUIRY_RSP)

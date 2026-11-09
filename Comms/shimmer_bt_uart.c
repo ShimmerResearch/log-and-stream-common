@@ -766,6 +766,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case GET_EVENT_CHANNEL_STATUS_COMMAND:
           case RESET_BT_ERROR_COUNTS:
 #if defined(SHIMMER3R)
+          case GET_AUDIO_STATUS_COMMAND:
           case SD_TRANSFER_ABORT_COMMAND:
           case SD_FREE_SPACE_COMMAND:
 #endif
@@ -1020,6 +1021,9 @@ void ShimBt_processCmd(void)
       case GET_ALT_MAG_CALIBRATION_COMMAND:
       case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
       case GET_EVENT_CHANNEL_STATUS_COMMAND:
+#if defined(SHIMMER3R)
+      case GET_AUDIO_STATUS_COMMAND:
+#endif
       {
         getCmdWaitingResponse = gAction;
         break;
@@ -2450,6 +2454,14 @@ void ShimBt_sendRsp(void)
         packet_length += ShimEvt_buildStatus(resPacket + packet_length);
         break;
       }
+#if defined(SHIMMER3R)
+      case GET_AUDIO_STATUS_COMMAND:
+      {
+        *(resPacket + packet_length++) = AUDIO_STATUS_RESPONSE;
+        packet_length += ShimAudio_buildStatus(resPacket + packet_length);
+        break;
+      }
+#endif
       case GET_EXG_REGS_COMMAND:
       {
         *(resPacket + packet_length++) = EXG_REGS_RESPONSE;
@@ -3262,8 +3274,7 @@ uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr)
       | (shimmerStatus.sensing << 1) | shimmerStatus.docked;
 
 #if defined(SHIMMER3R)
-  /* Bits 1-3: audio recording, audio fault and audio available
-   * (Audio/shimmer_audio.h) */
+  /* Bits 1-2: audio recording and audio fault (Audio/shimmer_audio.h) */
   *(bufPtr + 1) = shimmerStatus.usbPluggedIn | ShimAudio_statusBits();
 #endif /* SHIMMER3R */
 

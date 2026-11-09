@@ -44,10 +44,12 @@ void ShimAudio_process(void)
 
 uint8_t ShimAudio_statusBits(void)
 {
-  /* AVAILABLE is the build and the board, so it never changes while the
-   * firmware runs and never causes a status push of its own. */
-  return PlatAudio_statusBits()
-      | (ShimBrd_isMicrophoneSupported() ? AUDIO_STATUS_AVAILABLE : 0U);
+  return PlatAudio_statusBits();
+}
+
+uint8_t ShimAudio_buildStatus(uint8_t *buf)
+{
+  return PlatAudio_buildStatus(buf);
 }
 
 #endif /* SHIMMER3R */

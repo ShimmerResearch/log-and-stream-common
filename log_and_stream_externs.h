@@ -75,6 +75,7 @@ extern void PlatAudio_syncTick(void);
 extern void PlatAudio_sessionStop(void);
 extern void PlatAudio_process(void);
 extern uint8_t PlatAudio_statusBits(void);
+extern uint8_t PlatAudio_buildStatus(uint8_t *buf);
 #endif
 
 extern void DockUart_init(void);
