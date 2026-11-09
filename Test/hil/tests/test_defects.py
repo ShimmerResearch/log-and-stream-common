@@ -158,35 +158,6 @@ def test_dev1279_dock_arg_lengths_s3r(unit, hil_note):
     assert not w.failures, "; ".join(w.failures)
 
 
-# --- DEV-985: the LSM303 magnetometer's default calibration seeds --------------
-
-LSM303_MAG_ID = 32                          # SC_SENSOR_LSM303_MAG (CALIBRATION §4.1)
-LSM303_MAG_RANGES = range(1, 8)             # gain codes ±1.3 to ±8.1 Ga; 0 is not one
-
-
-@pytest.mark.hil("defect.dev985_mag_seed_ranges", needs=["shimmer3", "bt", "dock"])
-def test_dev985_mag_seed_ranges(unit, base6, hil_note):
-    """The calibration dump must hold an LSM303 mag record for every gain code,
-    1 to 7, so a range with no calibration of its own still has a default.
-
-    The seed loop runs 0-6 (ShimCalib_setDefaultLsm303MagCalib), so ±8.1 Ga
-    (code 7) has none, and GET_MAG_CALIBRATION at that range reads 21 zeros.
-    Reads only: a docked Shimmer3 builds its dump at boot from those seeds and
-    InfoMem, so what is read is what the seeds made.
-    """
-    with _open_bt(unit, base6) as link:
-        cfg = S3Config(link.read_infomem())
-        records = calib_records(link.read_calib_dump())
-    have = sorted(r for (sid, r) in records if sid == LSM303_MAG_ID)
-    missing = [r for r in LSM303_MAG_RANGES if r not in have]
-    in_use = cfg.get("mag_range")
-    hil_note(f"LSM303 mag records for ranges {have}; range in use {in_use}")
-    note = (f" Range {in_use} is in use, so its record may be InfoMem's own block rather than a seed."
-            if in_use in LSM303_MAG_RANGES else "")
-    assert not missing, (f"no LSM303 mag record for gain code(s) {missing} (records: {have}); "
-                         f"a unit set to that range reads an all-zero calibration.{note}")
-
-
 # --- DEV-1327: the mag rate set by command and by InfoMem ----------------------
 
 MAG_RATE_220HZ = 7                          # LSM303DLHC_MAG_220HZ: 220 Hz on an LSM303DLHC

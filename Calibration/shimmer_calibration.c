@@ -721,17 +721,43 @@ void ShimCalib_setDefaultLsm303AccelCalib(sc_t *sc1Ptr)
   }
 }
 
-void ShimCalib_setDefaultLsm303MagCalib(sc_t *sc1Ptr)
+/* The default LSM303 mag record for sc1Ptr->range, 0 to 7, ready to store:
+ * zero timestamp, bias and sensitivity in the dump's byte order (DEV-985,
+ * DEV-995).
+ *
+ * Range 0 is the LSM303AH, the range the configuration forces on any board
+ * without an LSM303DLHC: 1.5 mgauss/LSB on every axis (LSM303AH datasheet
+ * DocID027766 Rev 6, §2.1 Table 3, M_So), so 667 LSB/gauss. Its alignment is
+ * a quarter turn from the LSM303DLHC's: the part sits rotated on the board,
+ * and its accelerometer and magnetometer share one frame (datasheet Figure 2).
+ * Measured on two LSM303AH boards against the low-noise accelerometer.
+ *
+ * Ranges 1 to 7 are the LSM303DLHC's gain codes, ±1.3 to ±8.1 gauss. */
+static void ShimCalib_lsm303MagSeed(sc_t *sc1Ptr)
 {
-  uint16_t bias;
   sc1Ptr->id = SC_SENSOR_LSM303_MAG;
   sc1Ptr->data_len = SC_DATA_LEN_LSM303_MAG;
-  for (sc1Ptr->range = 0; sc1Ptr->range < SC_SENSOR_RANGE_MAX_LSM303_MAG; sc1Ptr->range++)
+  memset(sc1Ptr->ts, 0, sizeof(sc1Ptr->ts));
+  sc1Ptr->data.dd.bias_x = 0;
+  sc1Ptr->data.dd.bias_y = 0;
+  sc1Ptr->data.dd.bias_z = 0;
+  if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303AH_MAG_49G)
   {
-    bias = 0;
-    sc1Ptr->data.dd.bias_x = bias;
-    sc1Ptr->data.dd.bias_y = bias;
-    sc1Ptr->data.dd.bias_z = bias;
+    sc1Ptr->data.dd.sens_x = 667;
+    sc1Ptr->data.dd.sens_y = 667;
+    sc1Ptr->data.dd.sens_z = 667;
+    sc1Ptr->data.dd.align_xx = 0;
+    sc1Ptr->data.dd.align_xy = -100;
+    sc1Ptr->data.dd.align_xz = 0;
+    sc1Ptr->data.dd.align_yx = 100;
+    sc1Ptr->data.dd.align_yy = 0;
+    sc1Ptr->data.dd.align_yz = 0;
+    sc1Ptr->data.dd.align_zx = 0;
+    sc1Ptr->data.dd.align_zy = 0;
+    sc1Ptr->data.dd.align_zz = -100;
+  }
+  else
+  {
     if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_1_3G)
     {
       sc1Ptr->data.dd.sens_x = 1100;
@@ -769,7 +795,7 @@ void ShimCalib_setDefaultLsm303MagCalib(sc_t *sc1Ptr)
       sc1Ptr->data.dd.sens_z = 295;
     }
     else
-    { //sc1Ptr->range == SC_SENSOR_RANGE_LSM303DLHC_MAG_8_1G)
+    { //sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_8_1G
       sc1Ptr->data.dd.sens_x = 230;
       sc1Ptr->data.dd.sens_y = 230;
       sc1Ptr->data.dd.sens_z = 205;
@@ -783,10 +809,72 @@ void ShimCalib_setDefaultLsm303MagCalib(sc_t *sc1Ptr)
     sc1Ptr->data.dd.align_zx = 0;
     sc1Ptr->data.dd.align_zy = 0;
     sc1Ptr->data.dd.align_zz = -100;
+  }
+  ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
+}
 
-    ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
+void ShimCalib_setDefaultLsm303MagCalib(sc_t *sc1Ptr)
+{
+  uint8_t range;
+
+  for (range = 0; range < SC_SENSOR_RANGE_MAX_LSM303_MAG; range++)
+  {
+    sc1Ptr->range = range;
+    ShimCalib_lsm303MagSeed(sc1Ptr);
     ShimCalib_singleSensorWrite(sc1Ptr);
   }
+}
+
+/* Bring a dump that older firmware built up to the current LSM303 mag seeds
+ * (DEV-985, DEV-995). Up to v1.01.009 the seed gave range 7 no record and gave
+ * range 0, the LSM303AH's, range 7's values. Those records reach the SD card's
+ * calibration file and InfoMem, and come back from either at every boot and
+ * undock, so the seed alone would never reach a unit that has run the old
+ * firmware.
+ *
+ * So a missing range gets its seed, and so does a range-0 record that is
+ * exactly the old one: range 7's seed under a zero timestamp. Nothing else is
+ * touched: a record a host or a calibration wrote stays, whatever it holds.
+ *
+ * Returns 1 if the dump changed. */
+uint8_t ShimCalib_repairLsm303MagDefaults(void)
+{
+  sc_t sc1, oldRange0;
+  uint8_t range, changed = 0;
+
+  oldRange0.range = SC_SENSOR_RANGE_LSM303_MAG_8_1G;
+  ShimCalib_lsm303MagSeed(&oldRange0);
+
+  for (range = 0; range < SC_SENSOR_RANGE_MAX_LSM303_MAG; range++)
+  {
+    sc1.id = SC_SENSOR_LSM303_MAG;
+    sc1.range = range;
+    sc1.data_len = SC_DATA_LEN_LSM303_MAG;
+    if (ShimCalib_singleSensorRead(&sc1) == 0)
+    {
+      uint8_t ts;
+      uint8_t tsZero = 1;
+
+      for (ts = 0; ts < SC_TIMESTAMP_LENGTH; ts++)
+      {
+        if (sc1.ts[ts] != 0)
+        {
+          tsZero = 0;
+        }
+      }
+      if ((range != SC_SENSOR_RANGE_LSM303AH_MAG_49G) || !tsZero
+          || (sc1.data_len != SC_DATA_LEN_LSM303_MAG)
+          || (memcmp(sc1.data.raw, oldRange0.data.raw, SC_DATA_LEN_LSM303_MAG) != 0))
+      {
+        continue;
+      }
+    }
+    sc1.range = range;
+    ShimCalib_lsm303MagSeed(&sc1);
+    ShimCalib_singleSensorWrite(&sc1);
+    changed = 1;
+  }
+  return changed;
 }
 
 #elif defined(SHIMMER3R)

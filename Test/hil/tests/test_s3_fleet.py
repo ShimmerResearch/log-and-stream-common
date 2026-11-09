@@ -20,6 +20,7 @@ import time
 import pytest
 
 from rig import ble, bt, dock, dock_protocol, midstream, throughput
+from rig.s3_config import S3Config, calib_records
 from rig.s3_flash import restore_infomem
 
 pytestmark = pytest.mark.fleet
@@ -185,6 +186,77 @@ def test_alt_calibration(unit, base6, hil_note):
         elif not in_infomem:
             problems.append(f"{name}: the GET answers the block, but InfoMem does not hold it")
     hil_note("; ".join(notes))
+    assert not problems, "; ".join(problems)
+
+
+# The LSM303 mag's default calibration (CALIBRATION §4.1): range 0 is the
+# LSM303AH, 1 to 7 the LSM303DLHC's gain codes. (X/Y, Z) sensitivity in
+# LSB/gauss and the alignment matrix x100; the bias is 0.
+LSM303_MAG_ID = 32                          # SC_SENSOR_LSM303_MAG
+_DLHC_MAG_ALIGN = (-100, 0, 0, 0, 100, 0, 0, 0, -100)
+_AH_MAG_ALIGN = (0, -100, 0, 100, 0, 0, 0, 0, -100)    # a quarter turn from the LSM303DLHC
+LSM303_MAG_SEEDS = {
+    0: ((667, 667), _AH_MAG_ALIGN),         # LSM303AH: 1.5 mgauss/LSB
+    1: ((1100, 980), _DLHC_MAG_ALIGN),      # ±1.3 gauss
+    2: ((855, 760), _DLHC_MAG_ALIGN),
+    3: ((670, 600), _DLHC_MAG_ALIGN),
+    4: ((450, 400), _DLHC_MAG_ALIGN),
+    5: ((400, 355), _DLHC_MAG_ALIGN),
+    6: ((330, 295), _DLHC_MAG_ALIGN),
+    7: ((230, 205), _DLHC_MAG_ALIGN),       # ±8.1 gauss
+}
+
+
+def mag_seed_block(rng: int) -> bytes:
+    (sxy, sz), align = LSM303_MAG_SEEDS[rng]
+    return struct.pack(">3h3h9b", 0, 0, 0, sxy, sxy, sz, *align)
+
+
+def describe_mag_block(block: bytes) -> str:
+    sens = struct.unpack(">3h", block[6:12])
+    align = struct.unpack("9b", block[12:21])
+    return f"sens {sens} align {align}"
+
+
+@pytest.mark.hil("fleet.mag_seeds", needs=["shimmer3", "bt", "dock"])
+def test_mag_seeds(unit, hil_note):
+    """The calibration dump holds a default LSM303 mag record for every range,
+    0 to 7, and each one that is still a default holds its part's values.
+
+    Up to v1.01.009 the seed loop ran 0-6 against gain codes 1-7 (DEV-985,
+    DEV-995): range 7 (±8.1 gauss) had no record, so GET_MAG_CALIBRATION
+    there read 21 zeros, and range 0, the LSM303AH's, carried ±8.1 gauss's
+    230/230/205 and the LSM303DLHC's alignment, so an LSM303AH read about 3x
+    high.
+
+    Reads only. A docked Shimmer3 builds its dump at boot from the seeds and
+    InfoMem, so a record under a zero timestamp is a seed, except the range in
+    use, where InfoMem's own block replaces it. That one, and any record with
+    a timestamp, is someone's calibration and is not compared.
+    """
+    with open_bt(unit) as link:
+        cfg = S3Config(link.read_infomem())
+        records = calib_records(link.read_calib_dump())
+    in_use = cfg.get("mag_range")
+    have = sorted(r for (sid, r) in records if sid == LSM303_MAG_ID)
+    missing = [r for r in LSM303_MAG_SEEDS if r not in have]
+    wrong, compared = [], []
+    for rng in LSM303_MAG_SEEDS:
+        rec = records.get((LSM303_MAG_ID, rng))
+        if rec is None or rng == in_use or any(rec.ts):
+            continue
+        compared.append(rng)
+        want = mag_seed_block(rng)
+        if bytes(rec.data[:21]) != want:
+            wrong.append(f"range {rng}: {describe_mag_block(bytes(rec.data))}, "
+                         f"expected {describe_mag_block(want)}")
+    hil_note(f"LSM303 mag records for ranges {have}; range {in_use} in use; "
+             f"defaults compared for ranges {compared}")
+    problems = []
+    if missing:
+        problems.append(f"no LSM303 mag record for range(s) {missing}: a unit set to one reads an "
+                        f"all-zero calibration")
+    problems += wrong
     assert not problems, "; ".join(problems)
 
 

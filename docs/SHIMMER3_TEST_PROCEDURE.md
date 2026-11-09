@@ -615,7 +615,7 @@ documented cause:
 
 | # | Check | The trap |
 |---|---|---|
-| 5.4.2a | Uncalibrated magnetometer magnitude is plausible | LSM303AH boards are clamped to mag range 0, whose default seed carries the wrong sensitivities — reads ~5× high ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
+| 5.4.2a | Uncalibrated magnetometer magnitude is plausible | LSM303AH boards are clamped to mag range 0, whose default seed up to v1.01.009 carries the LSM303DLHC's ±8.1 Ga values — reads ~3× high. A unit's own hard-iron offset can swamp it at rest, so check while rotating the unit, or read the seed itself (`fleet.mag_seeds`) ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
 | 5.4.2b | Calibration bias and sensitivity read back correctly | They are **big-endian**, unlike most of the config (§3.1) |
 | 5.4.2c | Low-noise and wide-range accel calibrations are not swapped | The SD header order is not the InfoMem order (§4.2) |
 | 5.4.2d | ExG millivolts in 16-bit mode | The 16-bit word is bits 22:7 of the 24-bit conversion — the denominator needs a factor of 2 ([streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.5) |
@@ -1442,6 +1442,7 @@ flash.
 | `fleet.boot_identity` | Hardware 3, LogAndStream identifier, the candidate's version, and a radio banner on the shipped list |
 | `fleet.config_roundtrip` | The configuration reads back exactly as written |
 | `fleet.dock_protocol` | `smoke.dock_protocol` over the Base6's UART, on each unit. `ENTER_BOOTLOADER` is Shimmer3R only, so a Shimmer3 must answer it `BAD_CMD` |
+| `fleet.mag_seeds` | The calibration dump holds an LSM303 mag record for every range, 0 to 7, and each default among them (zero timestamp, not the range in use) holds its part's values: the LSM303AH's at 0, the LSM303DLHC's at 1-7 ([calibration](SHIMMER3_CALIBRATION.md) §6.1). Reads only |
 | `fleet.reboot` | Five resets through the RST line; every boot answers the dock with the same radio banner (§5.1.5) |
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |

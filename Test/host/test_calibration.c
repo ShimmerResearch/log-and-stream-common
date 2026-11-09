@@ -1211,6 +1211,189 @@ static void test_alt_blocks_at_boot(void)
       readAlt(SC_SENSOR_MPU9X50_ICM20948_MAG, 0, &sc), 0);
   expectTrue("as stored", isRamp(sc.data.raw, IMU_LEN, 0x60));
 }
+
+/* An LSM303 mag block as the seed stores it (CALIBRATION §3): bias 0, the
+ * three sensitivities as big-endian int16, then the int8 alignment matrix. */
+static void magSeedBlock(uint8_t *out, uint16_t sxy, uint16_t sz, const int8_t align[9])
+{
+  memset(out, 0, 6);
+  out[6] = sxy >> 8;
+  out[7] = sxy & 0xFF;
+  out[8] = sxy >> 8;
+  out[9] = sxy & 0xFF;
+  out[10] = sz >> 8;
+  out[11] = sz & 0xFF;
+  memcpy(out + 12, align, 9);
+}
+
+/* The LSM303DLHC's gains, codes 1 to 7 (±1.3 to ±8.1 gauss): X/Y, then Z. */
+static const uint16_t dlhcMagSens[7][2] = {
+  { 1100, 980 },
+  { 855, 760 },
+  { 670, 600 },
+  { 450, 400 },
+  { 400, 355 },
+  { 330, 295 },
+  { 230, 205 },
+};
+static const int8_t dlhcMagAlign[9] = { -100, 0, 0, 0, 100, 0, 0, 0, -100 };
+/* The LSM303AH sits a quarter turn round from the LSM303DLHC. */
+static const int8_t ahMagAlign[9] = { 0, -100, 0, 100, 0, 0, 0, 0, -100 };
+
+/*
+ * The default LSM303 mag records: one for every range, 0 to 7 (DEV-985,
+ * DEV-995). The seed loop ran 0 to 6 against gain codes 1 to 7, so range 7
+ * (±8.1 gauss) had no record and range 0 fell through to ±8.1 gauss's
+ * 230/230/205. Range 0 is the LSM303AH, the range the configuration forces on
+ * every board without an LSM303DLHC: 667 LSB/gauss on every axis
+ * (1.5 mgauss/LSB) and its own alignment.
+ */
+static void test_lsm303_mag_seed_every_range(void)
+{
+  uint8_t want[IMU_LEN];
+  char what[96];
+  uint8_t range;
+  sc_t sc;
+
+  testCase("test_lsm303_mag_seed_every_range");
+  reset();
+  for (range = 0; range <= SC_SENSOR_RANGE_LSM303_MAG_8_1G; range++)
+  {
+    if (range == SC_SENSOR_RANGE_LSM303AH_MAG_49G)
+    {
+      magSeedBlock(want, 667, 667, ahMagAlign);
+    }
+    else
+    {
+      magSeedBlock(want, dlhcMagSens[range - 1][0], dlhcMagSens[range - 1][1], dlhcMagAlign);
+    }
+    sc.id = SC_SENSOR_LSM303_MAG;
+    sc.range = range;
+    sc.data_len = IMU_LEN;
+    snprintf(what, sizeof(what), "range %u has a default record", (unsigned) range);
+    expectU(what, ShimCalib_singleSensorRead(&sc), 0);
+    snprintf(what, sizeof(what), "range %u holds its part's datasheet seed", (unsigned) range);
+    expectTrue(what, memcmp(sc.data.raw, want, IMU_LEN) == 0);
+    snprintf(what, sizeof(what),
+        "range %u carries the default's zero timestamp", (unsigned) range);
+    expectTrue(what, allBytes(sc.ts, SC_TIMESTAMP_LENGTH, 0));
+  }
+}
+
+/*
+ * A new LSM303AH board, its InfoMem still erased (all 0xFF), at boot: the
+ * configuration forces range 0, no block is promoted, so what
+ * GET_MAG_CALIBRATION answers from the dump is range 0's seed.
+ */
+static void test_lsm303ah_mag_seed_at_boot(void)
+{
+  gConfigBytes *config;
+  uint8_t want[IMU_LEN];
+  sc_t sc;
+
+  testCase("test_lsm303ah_mag_seed_at_boot");
+  reset();
+  config = ShimConfig_getStoredConfig();
+  memset(config, 0xFF, sizeof(*config));
+  config->magRange = SC_SENSOR_RANGE_LSM303AH_MAG_49G;
+  ShimCalib_initFromConfigBytesAll();
+
+  magSeedBlock(want, 667, 667, ahMagAlign);
+  sc.id = SC_SENSOR_LSM303_MAG;
+  sc.range = config->magRange;
+  sc.data_len = IMU_LEN;
+  expectU("the range in use has a record", ShimCalib_singleSensorRead(&sc), 0);
+  expectTrue("the LSM303AH seed: 667 LSB/gauss, quarter-turn alignment",
+      memcmp(sc.data.raw, want, IMU_LEN) == 0);
+}
+
+/* Store one LSM303 mag record as given. */
+static void putMag(uint8_t range, const uint8_t *block, uint8_t tsByte)
+{
+  sc_t sc;
+
+  sc.id = SC_SENSOR_LSM303_MAG;
+  sc.range = range;
+  sc.data_len = IMU_LEN;
+  memset(sc.ts, tsByte, sizeof(sc.ts));
+  memcpy(sc.data.raw, block, IMU_LEN);
+  ShimCalib_singleSensorWrite(&sc);
+}
+
+static int magIs(uint8_t range, const uint8_t *block)
+{
+  sc_t sc;
+
+  sc.id = SC_SENSOR_LSM303_MAG;
+  sc.range = range;
+  sc.data_len = IMU_LEN;
+  return (ShimCalib_singleSensorRead(&sc) == 0)
+      && (memcmp(sc.data.raw, block, IMU_LEN) == 0);
+}
+
+/*
+ * A dump older firmware built, as it comes back from the SD card's
+ * calibration file or InfoMem (DEV-985, DEV-995): mag records for ranges 0 to
+ * 6, range 0 holding range 7's values. The repair gives range 0 the LSM303AH
+ * seed and range 7 its own, leaves 1 to 6 alone, and the second pass finds
+ * nothing to do.
+ */
+static void test_lsm303_mag_repair_old_dump(void)
+{
+  uint8_t old0[IMU_LEN], want[IMU_LEN];
+  uint8_t range;
+
+  testCase("test_lsm303_mag_repair_old_dump");
+  reset();
+  ramEmpty();
+  magSeedBlock(old0, 230, 205, dlhcMagAlign);
+  putMag(0, old0, 0);
+  for (range = 1; range <= 6; range++)
+  {
+    magSeedBlock(want, dlhcMagSens[range - 1][0], dlhcMagSens[range - 1][1], dlhcMagAlign);
+    putMag(range, want, 0);
+  }
+
+  expectU("the repair reports a change", ShimCalib_repairLsm303MagDefaults(), 1);
+  magSeedBlock(want, 667, 667, ahMagAlign);
+  expectTrue("range 0 now holds the LSM303AH seed", magIs(0, want));
+  magSeedBlock(want, 230, 205, dlhcMagAlign);
+  expectTrue("range 7 now has its seed", magIs(7, want));
+  magSeedBlock(want, 1100, 980, dlhcMagAlign);
+  expectTrue("range 1 is as it was", magIs(1, want));
+  expectU("a second pass changes nothing", ShimCalib_repairLsm303MagDefaults(), 0);
+}
+
+/*
+ * What the repair must leave alone: a range-0 record with a timestamp, even if
+ * its values match the old default (someone wrote it on purpose), and a
+ * range-0 record with no timestamp whose values differ from the old default
+ * (a host's block, such as Consensys' own 667 default, or a unit's zeros).
+ */
+static void test_lsm303_mag_repair_keeps_written_blocks(void)
+{
+  uint8_t block[IMU_LEN];
+
+  testCase("test_lsm303_mag_repair_keeps_written_blocks");
+  reset();
+  magSeedBlock(block, 230, 205, dlhcMagAlign);
+  putMag(0, block, 0x11);
+  expectU("old values under a timestamp: no change",
+      ShimCalib_repairLsm303MagDefaults(), 0);
+  expectTrue("range 0 kept", magIs(0, block));
+
+  reset();
+  magSeedBlock(block, 667, 667, dlhcMagAlign);
+  putMag(0, block, 0);
+  expectU("other values, no timestamp: no change", ShimCalib_repairLsm303MagDefaults(), 0);
+  expectTrue("range 0 kept", magIs(0, block));
+
+  reset();
+  memset(block, 0, IMU_LEN);
+  putMag(0, block, 0);
+  expectU("all zeros: no change", ShimCalib_repairLsm303MagDefaults(), 0);
+  expectTrue("range 0 kept", magIs(0, block));
+}
 #endif
 
 #if defined(SHIMMER3R)
@@ -1273,6 +1456,10 @@ int main(void)
 #if defined(SHIMMER3)
   test_alt_blocks_reach_the_dump();
   test_alt_blocks_at_boot();
+  test_lsm303_mag_seed_every_range();
+  test_lsm303ah_mag_seed_at_boot();
+  test_lsm303_mag_repair_old_dump();
+  test_lsm303_mag_repair_keeps_written_blocks();
 #endif
 
   return hostTestReport("shimmer_calibration (" PLATFORM_NAME ")");
