@@ -102,10 +102,6 @@ def good_geometry():
     return first, n, chunks
 
 
-def status(mode, seconds, chunks, skipped=0):
-    return sa.AudioStatus(1, mode, 3, 0, seconds, 0, 0, 0, 280, 280, chunks, skipped)
-
-
 class AudioFiles(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -114,17 +110,28 @@ class AudioFiles(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_check(self, mode, st, data=None):
-        return sa.check(self.s.data, data or data_file(mode), mode, st)
+    def run_check(self, mode, data=None):
+        return sa.check(self.s.data, data or data_file(mode), mode)
 
     def test_mode_2_clean(self):
         first, n, chunks = good_geometry()
         self.s.write("000.WAV", wav_bytes(2, first, n))
         self.s.write("000.AFP", afp_bytes(2, first, chunks))
-        r = self.run_check(2, status(2, n // 16000, chunks))
+        r = self.run_check(2)
         self.assertEqual(r.problems, [])
         self.assertIn("AFP 5 chunks", r.note)
         self.assertIn("WAV 28.", r.note)
+
+    def test_mode_2_adf_counts_disagree(self):
+        """Both files close with the session's counts, so a WAV and an AFP that
+        differ mean one of them was closed with stale ones."""
+        first, n, chunks = good_geometry()
+        self.s.write("000.WAV", wav_bytes(2, first, n))
+        afp = bytearray(afp_bytes(2, first, chunks))
+        struct.pack_into("<I", afp, 120, 281)
+        self.s.write("000.AFP", bytes(afp))
+        p = " | ".join(self.run_check(2).problems)
+        self.assertIn("ADF errors 280 (saturation 280) in the WAV, 281 (280) in the AFP", p)
 
     def test_full_clock_against_the_header_s_40_bits(self):
         """On a unit whose RTC holds the date, the Shimmer clock passes 2^40
@@ -134,56 +141,55 @@ class AudioFiles(unittest.TestCase):
         raw = bytearray(afp_bytes(1, first + high, chunks))
         struct.pack_into("<Q", raw, 56, INITIAL_TS + high)
         self.s.write("000.AFP", bytes(raw))
-        self.assertEqual(self.run_check(1, status(1, 20, chunks)).problems, [])
+        self.assertEqual(self.run_check(1).problems, [])
         struct.pack_into("<Q", raw, 56, INITIAL_TS + high + 1)
         self.s.write("000.AFP", bytes(raw))
-        p = " | ".join(self.run_check(1, None).problems)
+        p = " | ".join(self.run_check(1).problems)
         self.assertIn("data file timestamp", p)
 
     def test_mode_1_and_3_clean(self):
         first, n, chunks = good_geometry()
         self.s.write("000.AFP", afp_bytes(1, first, chunks))
-        self.assertEqual(self.run_check(1, status(1, 20, chunks)).problems, [])
+        self.assertEqual(self.run_check(1).problems, [])
         (self.s.audio / "000.AFP").unlink()
         self.s.write("000.WAV", wav_bytes(3, first, n))
-        self.assertEqual(self.run_check(3, status(3, n // 16000, 0)).problems, [])
+        self.assertEqual(self.run_check(3).problems, [])
 
     def test_mode_0(self):
-        self.assertEqual(self.run_check(0, None).problems, [])
+        self.assertEqual(self.run_check(0).problems, [])
         self.s.audio.mkdir(parents=True)
-        self.assertIn("audio off", self.run_check(0, None).problems[0])
+        self.assertIn("audio off", self.run_check(0).problems[0])
 
     def test_wrong_files_for_the_mode(self):
         first, n, _ = good_geometry()
         self.s.write("000.WAV", wav_bytes(2, first, n))
-        p = self.run_check(2, None).problems
+        p = self.run_check(2).problems
         self.assertTrue(any("expected ['000.AFP', '000.WAV']" in x for x in p), p)
 
     def test_not_closed_and_silent(self):
         first, n, _ = good_geometry()
         self.s.write("000.WAV", wav_bytes(3, first, n, closed=0, silent=True))
-        p = " | ".join(self.run_check(3, None).problems)
+        p = " | ".join(self.run_check(3).problems)
         self.assertIn("not closed", p)
         self.assertIn("no sound", p)
 
-    def test_chunk_gap_and_status_mismatch(self):
+    def test_chunk_gap(self):
         first, n, chunks = good_geometry()
         self.s.write("000.AFP", afp_bytes(1, first, chunks, numbers=[0, 1, 3, 4]))
-        p = " | ".join(self.run_check(1, status(1, 20, chunks)).problems)
+        p = " | ".join(self.run_check(1).problems)
         self.assertIn("without a gap", p)
-        self.assertIn("audio status: 5 chunks written", p)
 
     def test_chunk_clock_off_its_line(self):
         first, n, chunks = good_geometry()
         self.s.write("000.AFP", afp_bytes(1, first, chunks, jitter=[0, 1, 30, 0, 2]))
-        p = " | ".join(self.run_check(1, None).problems)
+        p = " | ".join(self.run_check(1).problems)
         self.assertIn("ticks off their line", p)
 
     def test_audio_starting_late(self):
         first, n, chunks = good_geometry()
         late = first + 2 * TICKS
         self.s.write("000.AFP", afp_bytes(1, late, chunks - 1))
-        p = " | ".join(self.run_check(1, None).problems)
+        p = " | ".join(self.run_check(1).problems)
         self.assertIn("first sample +2.4", p)
 
     def test_identity_against_the_data_file(self):
@@ -191,13 +197,13 @@ class AudioFiles(unittest.TestCase):
         self.s.write("000.AFP", afp_bytes(1, first, chunks))
         other = data_file(1)
         other.config_time += 1
-        p = " | ".join(self.run_check(1, None, data=other).problems)
+        p = " | ".join(self.run_check(1, data=other).problems)
         self.assertIn("config time", p)
 
     def test_header_byte_226(self):
         first, n, chunks = good_geometry()
         self.s.write("000.AFP", afp_bytes(1, first, chunks))
-        p = self.run_check(1, None, data=data_file(0)).problems
+        p = self.run_check(1, data=data_file(0)).problems
         self.assertTrue(any("byte 226" in x for x in p), p)
 
     def test_wav_cut_short_at_stop(self):
@@ -208,7 +214,7 @@ class AudioFiles(unittest.TestCase):
         raw[97] = 4
         struct.pack_into("<Q", raw, 104, 0)
         self.s.write("000.WAV", bytes(raw))
-        p = " | ".join(self.run_check(3, None).problems)
+        p = " | ".join(self.run_check(3).problems)
         self.assertIn("no last-sample time", p)
         self.assertNotIn("data file's last record", p)
         self.assertNotIn("ppm", p)
@@ -236,13 +242,6 @@ class DataHeader(unittest.TestCase):
         self.assertEqual((d.initial_ts, d.config_time, d.mac, d.fw, d.audio_mode),
                          (ts, CONFIG_TIME, MAC.hex().upper(), FW, 2))
         self.assertEqual((d.first_ticks, d.last_ticks), (ts - 100, ts + 900))
-
-    def test_status_reply(self):
-        raw = bytes([1, 2, 3, 0]) + struct.pack("<IIHHIIII", 28, 0, 0, 0, 280, 280, 6, 0)
-        st = sa.audio_status(raw)
-        self.assertEqual((st.mode, st.state, st.seconds, st.chunks), (2, 3, 28, 6))
-        with self.assertRaises(ValueError):
-            sa.audio_status(raw[:31])
 
 
 if __name__ == "__main__":

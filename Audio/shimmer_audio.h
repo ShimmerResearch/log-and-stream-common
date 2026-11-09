@@ -15,16 +15,17 @@
 
 #include <stdint.h>
 
-/* Status byte 1 (Comms/shimmer_bt_uart.c ShimBt_assembleStatusBytes).
- * RECORDING: capturing for the current log. FAULT: this session's audio
- * failed or was degraded. */
+/* Status byte 1 (Comms/shimmer_bt_uart.c ShimBt_assembleStatusBytes), the
+ * only way a host learns about audio over the link. RECORDING: capturing for
+ * the current log. FAULT: this session's audio failed or was degraded; the
+ * reason is in the files' closing summary (Audio/shimmer_audio_file.h).
+ * AVAILABLE: this firmware records audio and this board has a microphone,
+ * which is how a host tells whether to offer configuration byte 233. */
 #define AUDIO_STATUS_RECORDING 0x02U
 #define AUDIO_STATUS_FAULT     0x04U
+#define AUDIO_STATUS_AVAILABLE 0x08U
 
-/* AUDIO_STATUS_RESPONSE's payload length, after the opcode */
-#define AUDIO_STATUS_LEN       32U
-
-/* AUDIO_STATUS_RESPONSE byte 2. OFF: not configured, or not logging.
+/* The recorder's state (the platform's). OFF: not configured, or not logging.
  * STARTING: logging has started and the file and the mic are coming up.
  * STOPPED: the session's recording ended normally. FAULT: stopped for the
  * rest of the session. */
@@ -34,7 +35,7 @@
 #define AUDIO_STATE_STOPPED    3U
 #define AUDIO_STATE_FAULT      4U
 
-/* AUDIO_STATUS_RESPONSE byte 3, the session's first fault. OPEN: a directory
+/* The session's first fault, in the files' closing summary. OPEN: a directory
  * or file could not be made. CAPTURE: the microphone would not start. WRITE:
  * a write to the card failed. OVERRUN: the card fell further behind than the
  * ring holds, and the gap was written as silence. FP_BEHIND: the fingerprint
@@ -54,10 +55,8 @@ void ShimAudio_onSyncTick(void);
 void ShimAudio_onSessionStop(void);
 /* TASK_AUDIO */
 void ShimAudio_process(void);
-/* AUDIO_STATUS_RECORDING and AUDIO_STATUS_FAULT, for status byte 1 */
+/* The AUDIO_STATUS_* bits, for status byte 1 */
 uint8_t ShimAudio_statusBits(void);
-/* GET_AUDIO_STATUS_COMMAND: writes AUDIO_STATUS_LEN bytes, returns it */
-uint8_t ShimAudio_buildStatus(uint8_t *buf);
 #else
 static inline void ShimAudio_onSessionStart(uint64_t dataFileTs)
 {

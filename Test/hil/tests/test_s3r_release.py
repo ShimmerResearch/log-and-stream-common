@@ -20,9 +20,9 @@ Each row is one report item, release.<id>. For every row:
 4. Audio (Shimmer3R, docs/SHIMMER3R_AUDIO.md), on every logging row: with
    the row's `audio` mode (byte 233, 0 when the row has none), status byte 1
    must show recording within AUDIO_START_S of the log starting and clear when
-   it stops, GET_AUDIO_STATUS_COMMAND must say the recording stopped cleanly,
-   and the session's audio files must be the mode's, paired with the data file
-   and agreeing with it and with the status (rig/s3r_audio.py). With audio off,
+   it stops, with the audio-available bit set and no fault, and the session's
+   audio files must be the mode's, closed without a fault, and paired and
+   agreeing with the data file (rig/s3r_audio.py). With audio off,
    no audio directory may appear. A WAV records the bench room, so it is
    checked where it lies on the card and then deleted.
 5. The event channel, on every logging row: the SD header carries byte 232
@@ -289,7 +289,6 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
         notes.append(f"{st.packets} pkts, {note}")
     else:
         audio = cfg.audio_mode
-        astatus = None
         root = s3r_usb.wait_drive(unit.usb_serial, 60)
         before = sdfile.session_dirs(root)
         power.off(unit.hub_port, unit.name)
@@ -312,7 +311,6 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
                     link.wait_status(bt.STATUS_LOGGING, False, 15)
                     if audio:
                         probs += _audio_stopped(link)
-                        astatus = s3r_audio.audio_status(link.audio_status())
                     st = None
                 else:
                     link.set_crc(row.get("crc", 0))
@@ -324,7 +322,6 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
                         link.set_crc(0)
                         if audio:
                             probs += _audio_stopped(link)
-                            astatus = s3r_audio.audio_status(link.audio_status())
                     aside.stop(st, hung)
                     if audio:
                         probs += _audio_pushes(st)
@@ -335,7 +332,6 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
                     again.wait_status(bt.STATUS_SENSING, False, 15)
                     if audio:
                         probs += _audio_stopped(again)
-                        astatus = s3r_audio.audio_status(again.audio_status())
         finally:
             power.on(unit.hub_port, unit.name)
         root = s3r_usb.wait_drive(unit.usb_serial, 90)
@@ -346,7 +342,7 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
             notes.append(f"{fc.records} records, {note}")
             data = s3r_audio.DataFile.from_file(path.read_bytes()[:sdfile.HEAD_S3R],
                                                 fc.ts[0] if fc.ts else 0, fc.span_ticks)
-            ac = s3r_audio.check(path, data, audio, astatus)
+            ac = s3r_audio.check(path, data, audio)
             probs += [f"audio: {p}" for p in ac.problems]
             notes.append(f"audio mode {audio}: {ac.note}" if audio else "")
             ep, enote = _check_events(path, root, cfg, fc)
@@ -392,6 +388,7 @@ def _audio_started(link) -> list[str]:
                    "of the log starting")
     if s1 & bt.STATUS1_AUDIO_FAULT:
         out.append(f"audio: status byte 1 {s1:#04x}, fault bit set while recording")
+    out += _audio_available(s1)
     return out
 
 
@@ -402,7 +399,15 @@ def _audio_stopped(link) -> list[str]:
         out.append(f"audio: status byte 1 {s1:#04x}, still recording {AUDIO_STOP_S:.0f} s after the log stopped")
     if s1 & bt.STATUS1_AUDIO_FAULT:
         out.append(f"audio: status byte 1 {s1:#04x}, fault bit set after the stop")
+    out += _audio_available(s1)
     return out
+
+
+def _audio_available(s1: int) -> list[str]:
+    """The available bit is how a host knows to offer the audio mode (SHIMMER3R_AUDIO §5)."""
+    if s1 & bt.STATUS1_AUDIO_AVAILABLE:
+        return []
+    return [f"audio: status byte 1 {s1:#04x}, the audio-available bit is clear"]
 
 
 def _audio_pushes(st) -> list[str]:

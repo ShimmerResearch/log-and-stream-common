@@ -1002,8 +1002,6 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `0xB9` | `GET_EVENT_CHANNEL_STATUS_COMMAND` | GET | 0 | `EVENT_CHANNEL_STATUS_RESPONSE` | 9 | both |  |  |  | FW_ONLY |
 | `0xBA` | `EVENT_CHANNEL_STATUS_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
 | `0xBB` | `EVENT_RECORD_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
-| `0xBC` | `GET_AUDIO_STATUS_COMMAND` | GET | 0 | `AUDIO_STATUS_RESPONSE` | 32 | S3R |  |  |  | FW_ONLY |
-| `0xBD` | `AUDIO_STATUS_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
 | `0xFE` | `NACK_COMMAND_PROCESSED` | ACK | 0 |  |  | both |  |  |  | FW_ONLY |
 | `0xFF` | `ACK_COMMAND_PROCESSED` | ACK | 1 |  |  | both |  |  |  | permitted while SD syncing |
 
@@ -1242,7 +1240,8 @@ Shimmer3R from `LogAndStream_Shimmer3R_v1.00.024`** (LogAndStream 1.0.24,
 | 0 | `usbPluggedIn` |
 | 1 | Audio recording: capturing for the current log (DEV-99, [SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §5) |
 | 2 | Audio fault: this session's audio failed or was degraded |
-| 3-7 | zero |
+| 3 | Audio available: this firmware records audio and this board has a microphone |
+| 4-7 | zero |
 
 > `Comms/shimmer_bt_uart.c:2995-3007`. Byte 1 is written inside
 > `#if defined(SHIMMER3R)` at `:3002-3004`, so on Shimmer3 it is not merely zero
@@ -3782,7 +3781,7 @@ exist nowhere else, which are exactly the ones added after the extraction.
 | Status response | status bit 7 carries the red-LED toggle state | `isSupportedRedLedStateInStatus`<br>LogAndStream 0.7.10 | `toggleLedRedCmd` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.011`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit c42e0f6, 2024-10-07)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 65aa6176, 2023-11-09) |
 | Status response | status bits 6 and 5 carry SD bad-file / SD-inserted | `isSupportedSdInfoInStatus`<br>LogAndStream 0.7.12 | `sdBadFile` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.012`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit ed662e8, 2024-11-05)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 42a86589, 2024-11-05) |
 | Status response | status bit 2 carries "real-world clock has been set" | `isSupportedRtcStateInStatus`<br>LogAndStream 0.7.14 | `RTC_isRwcTimeSet` | Shimmer3: `LogAndStream_Shimmer3_BLE_v1.00.000`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit e501346, 2025-06-30)<br>Shimmer3R: `LogAndStream_Shimmer3R_v1.00.027` (introducing commit b4964c95, 2025-06-30) |
-| Status response | status byte 1 bits 1-2 carry audio recording and audio fault | _not yet in any host_<br>the first Shimmer3R release with DEV-99 | `ShimAudio_statusBits` | DEV-99, not yet released |
+| Status response | status byte 1 bits 1-3 carry audio recording, audio fault and audio available | _not yet in any host_<br>the first Shimmer3R release with DEV-99 | `ShimAudio_statusBits` | DEV-99, not yet released |
 | Status response | a SECOND status byte carrying USB-plugged-in | `isSupportedUSBPluggedInStatus`<br>LogAndStream 1.0.24 (Shimmer3R) | `ShimBt_assembleStatusBytes` | shared module: `LogAndStream_Shimmer3R_v1.00.024` (introducing commit 8377afc, 2025-06-04) |
 | Commands | GET_BT_VERSION_STR_COMMAND (Bluetooth module firmware string) | `isSupportedBtFwVerRequest`<br>_no version threshold (hardware-keyed or unconditional)_ | `GET_BT_VERSION_STR_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000` (introducing commit 372a4de, 2023-02-08)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | Commands | GET_STATUS_COMMAND | `isSupportedBtStatusRequest`<br>LogAndStream 0.5.2 (Shimmer3) | `GET_STATUS_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 8b7e616, 2014-07-22)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |

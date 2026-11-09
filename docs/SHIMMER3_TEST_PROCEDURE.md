@@ -1582,20 +1582,19 @@ logs. Each row is its own item, `release.<row>`:
   each mode while logging and while logging and streaming, the heaviest load
   (1024 Hz, every sensor, mode 2) and a five-minute mode 2 log. On those rows:
   - status byte 1 must show recording within 5 s of the log starting, and clear
-    within 5 s of the stop. While streaming it is read from the pushed status
-    frames;
-  - after the stop, `GET_AUDIO_STATUS_COMMAND` must say stopped, with no fault,
-    silence, escape-hatch write, write error or skipped chunk;
+    within 5 s of the stop, with the audio-available bit set and the fault bit
+    clear. While streaming it is read from the pushed status frames;
   - the session's audio files must be the mode's, paired with the data file
     (same experiment, session and number; the same initial timestamp, config
-    time, MAC and firmware), closed, and without a fault;
+    time, MAC and firmware), closed, and without a fault, silence, escape-hatch
+    write, write error or skipped chunk;
   - the audio must start 0.1-1.5 s after the data file's initial timestamp and
     end with the log, and the audio clock must be within 300 ppm of the Shimmer
     clock;
   - the fingerprint's chunks must be numbered without a gap, as many as the
     audio allows less the one or two a stop drops, and each chunk's clock within
     8 ticks of the line through them all and of the WAV's clock;
-  - the counters in the file headers must equal the status;
+  - in mode 2 the two files' ADF counts must agree;
   - the WAV must hold sound: an RMS of at least 1 LSB, which a quiet room passes
     and a dead microphone does not. The level is reported, not judged.
 
