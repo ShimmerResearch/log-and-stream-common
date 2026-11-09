@@ -547,10 +547,14 @@ actually applies.
 | | | 1 (±500 dps) | 0 | 6550 |
 | | | 2 (±1000 dps) | 0 | 3280 |
 | | | 3 (±2000 dps) | 0 | 1640 |
-| LSM303 wide-range accel | 31 | 0 (±2 g) | 0 | 1631 |
+| LSM303 wide-range accel, LSM303DLHC board | 31 | 0 (±2 g) | 0 | 1631 |
 | | | 1 (±4 g) | 0 | 815 |
 | | | 2 (±8 g) | 0 | 408 |
 | | | 3 (±16 g) | 0 | 135 |
+| LSM303 wide-range accel, any other board (LSM303AH) | 31 | 0 (±2 g) | 0 | 1671 |
+| | | 1 (±16 g) | 0 | 209 |
+| | | 2 (±4 g) | 0 | 836 |
+| | | 3 (±8 g) | 0 | 418 |
 | LSM303 mag | 32 | 0 (LSM303AH, ±49.152 Ga) | 0 | 667 / 667 / 667 |
 | | | 1 (±1.3 Ga) | 0 | 1100 / 1100 / 980 |
 | | | 2 (±1.9 Ga) | 0 | 855 / 855 / 760 |
@@ -560,9 +564,50 @@ actually applies.
 | | | 6 (±5.6 Ga) | 0 | 330 / 330 / 295 |
 | | | 7 (±8.1 Ga) | 0 | 230 / 230 / 205 |
 
-Where three sensitivity values are given they are X / Y / Z. Note that the ±16 g
-accelerometer default of 135 does not follow the halving pattern of the lower
-ranges.
+Where three sensitivity values are given they are X / Y / Z. Note that the
+LSM303DLHC's ±16 g accelerometer default of 135 does not follow the halving
+pattern of the lower ranges.
+
+> **The wide-range accel's range codes are different full scales on the two
+> parts.** The firmware writes `wrAccelRange` into the part's own full-scale
+> field as it is. The LSM303DLHC's (`CTRL_REG4_A` `FS[1:0]`) runs ±2, 4, 8, 16 g;
+> the LSM303AH's (`CTRL1_A` `FS[1:0]`, datasheet §8.3) runs ±2, **16**, 4, 8 g.
+> The firmware's own ICM-20948 path, which stands in for a missing LSM303AH,
+> maps the codes the same way (`i2c.c` in the Shimmer3 firmware), and so does
+> every host API: Java's `SensorLSM303AH.ListofLSM303AccelRangeConfigValues` is
+> `{0, 2, 3, 1}` for ±2, 4, 8, 16 g. The `SC_SENSOR_RANGE_LSM303AH_ACCEL_*`
+> constants name the LSM303AH's codes.
+>
+> The seed follows the part `detectI2cSlaves()` found at boot: the LSM303DLHC's
+> records on an LSM303DLHC board, the LSM303AH's on any other, which is the same
+> test that forces `magRange = 0`. The LSM303AH's sensitivities are 0.061 /
+> 0.122 / 0.244 / 0.488 mg/digit at ±2 / 4 / 8 / 16 g (datasheet DocID027766
+> Rev 6, §2.1 Table 3, `LA_So`, typical values), so 1671 / 836 / 418 / 209 LSB
+> per m/s², as the Java driver has them. An ICM-20948 standing in for the
+> LSM303AH is set to the same full scale per code, and its sensitivities
+> (16384 / 8192 / 4096 / 2048 LSB/g) are within 0.1 % of those.
+>
+> **Up to v1.01.009 every board got the LSM303DLHC's records.** On an LSM303AH
+> board, with the range codes in a different order, an uncalibrated
+> wide-range accelerometer therefore read 2.4 % high at ±2 g, about a quarter of
+> the true value at ±16 g (815 where 209 is right), about twice it at ±4 g (408
+> for 836), and about three times it at ±8 g (135 for 418). X and Y were also a
+> quarter turn round (below). The host APIs take a device's block whatever its
+> timestamp, and fall back to their own defaults only for an all-`0x00` or
+> all-`0xFF` block (§3.3), so they showed those values.
+>
+> **A unit updated from v1.01.009 or earlier keeps the old records.** Unlike
+> the mag's (below), nothing repairs them. They are in InfoMem, for the range in
+> use, and in the SD card's calibration file, for every range, and the firmware
+> reads both back at every boot and undock (§8). So the new seed reaches only a
+> fresh dump: a unit that never stored one, or one whose calibration is reset.
+> `RESET_CALIBRATION_VALUE_COMMAND` does that, but it discards every sensor's
+> calibration, factory calibration included
+> ([BT protocol](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) §7.6). Writing the
+> wide-range accel's block with `SET_WR_ACCEL_CALIBRATION_COMMAND`, or a whole
+> dump with `SET_CALIB_DUMP_COMMAND`, touches only what it writes. Docked, the firmware builds its
+> dump from the seed and InfoMem without reading the card, so the ranges not in
+> use show the new seed there even on an updated unit.
 
 > **Mag range 0 is the LSM303AH; 1 to 7 are the LSM303DLHC's gain codes.**
 > `ShimConfig_checkAndCorrectConfig` forces `magRange = 0` on every Shimmer3
@@ -592,8 +637,8 @@ Alignment matrices, Shimmer3:
 | Sensor | Matrix (row-major) |
 |---|---|
 | Analog accel, gyro | `[0, -1, 0, -1, 0, 0, 0, 0, -1]` |
-| LSM303 accel; LSM303 mag ranges 1-7 (LSM303DLHC) | `[-1, 0, 0, 0, 1, 0, 0, 0, -1]` |
-| LSM303 mag range 0 (LSM303AH) | `[0, -1, 0, 1, 0, 0, 0, 0, -1]` |
+| LSM303 accel on an LSM303DLHC board; LSM303 mag ranges 1-7 (LSM303DLHC) | `[-1, 0, 0, 0, 1, 0, 0, 0, -1]` |
+| LSM303 accel on any other board; LSM303 mag range 0 (LSM303AH) | `[0, -1, 0, 1, 0, 0, 0, 0, -1]` |
 
 > **The LSM303AH sits a quarter turn round from the LSM303DLHC.** Its matrix
 > was measured, not inferred: on two LSM303AH boards standing in a Base6, the
@@ -603,11 +648,10 @@ Alignment matrices, Shimmer3:
 > frame (datasheet Figure 2), so the measurement holds for the magnetometer.
 > It is also the Java driver's `SensorLSM303AH.DefaultAlignmentLSM303AH`.
 >
-> The wide-range accelerometer's seed has the same mismatch and is **not**
-> changed yet: on an LSM303AH board it carries the LSM303DLHC's alignment and
-> sensitivities, where the LSM303AH's are 1671 / 836 / 418 / 209
-> (datasheet `LA_So`, as the Java driver has them). That is 2.4 % off at ±2 g
-> to ±8 g and a factor of 1.55 at ±16 g.
+> On a board where an ICM-20948 stands in for the LSM303AH, the firmware negates
+> the ICM-20948's Y axis "to match LSM303 chip placement" before packing it.
+> Whether that lands in the LSM303AH's frame has not been measured; the seed
+> assumes it does.
 
 ### 6.2 Shimmer3R
 
@@ -870,13 +914,14 @@ Two divergences are worth knowing about:
   toward zero, while sensitivity and alignment are rounded before their cast.
   The TypeScript SDK reproduces this deliberately (`Math.trunc` for offset,
   `Math.round` for the others) so the two agree byte-for-byte.
-- **Java carries two different range-code tables for what looks like the same
-  part.** `SensorLSM303AH` and `SensorLSM303DLHC` both declare
-  `ListofLSM303AccelRangeConfigValues`, with *different* values — `{0, 2, 3, 1}`
-  and `{0, 1, 2, 3}` respectively. Porting the wrong one silently selects the
-  wrong full-scale range and produces calibrated output wrong by a factor of
-  four. Take range codes from the firmware, not from a Java table, when the two
-  disagree.
+- **Java carries two different range-code tables for the two wide-range
+  accelerometers, and both are right.** `SensorLSM303AH` and `SensorLSM303DLHC`
+  both declare `ListofLSM303AccelRangeConfigValues`, with *different* values —
+  `{0, 2, 3, 1}` and `{0, 1, 2, 3}` respectively, for ±2, 4, 8, 16 g. The
+  firmware writes the code into each part's own full-scale field, and the two
+  parts number their full scales differently (§6.1). Using the LSM303DLHC's
+  table on an LSM303AH selects the wrong calibration set, wrong by up to a
+  factor of four. The firmware's own seed did exactly that up to v1.01.009.
 
 ## Still unverified / not found in code
 
@@ -902,3 +947,7 @@ Two divergences are worth knowing about:
   is the LSM303AH's only range and 1-7 are the LSM303DLHC's gains, so both the
   loop bound and range 0's values were wrong. The seed now covers 0-7, with the
   LSM303AH's datasheet sensitivity and measured alignment at 0 — see §6.1.
+- ~~Shimmer3 wide-range accel defaults on an LSM303AH board~~ — resolved: the
+  seed is now the fitted part's, with the LSM303AH's range-code order — see §6.1.
+  Still unmeasured: the alignment on a board where an ICM-20948 stands in for the
+  LSM303AH.

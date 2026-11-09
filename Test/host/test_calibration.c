@@ -1448,6 +1448,119 @@ static void test_lsm303_mag_repair_keeps_written_blocks(void)
   expectU("all zeros: no change", ShimCalib_repairLsm303MagDefaults(), 0);
   expectTrue("range 0 kept", magIs(0, block));
 }
+
+/* The wide-range accel's default sensitivity per range code. The code goes
+ * into the part's own full-scale field as it is, so the LSM303AH's run ±2,
+ * 16, 4, 8 g and the LSM303DLHC's ±2, 4, 8, 16 g. */
+static const uint16_t ahAccelSens[4] = { 1671, 209, 836, 418 };
+static const uint16_t dlhcAccelSens[4] = { 1631, 815, 408, 135 };
+
+/* The LSM303 accel block the seed stores for one range on one part. */
+static void accelSeedBlock(uint8_t *out, uint8_t isLsm303ah, uint8_t range)
+{
+  if (isLsm303ah)
+  {
+    magSeedBlock(out, ahAccelSens[range], ahAccelSens[range], ahMagAlign);
+  }
+  else
+  {
+    magSeedBlock(out, dlhcAccelSens[range], dlhcAccelSens[range], dlhcMagAlign);
+  }
+}
+
+static int accelIs(uint8_t range, const uint8_t *block)
+{
+  sc_t sc;
+
+  sc.id = SC_SENSOR_LSM303_ACCEL;
+  sc.range = range;
+  sc.data_len = IMU_LEN;
+  return (ShimCalib_singleSensorRead(&sc) == 0)
+      && (memcmp(sc.data.raw, block, IMU_LEN) == 0);
+}
+
+/* Power-on with the given wide-range accel detected, as detectI2cSlaves()
+ * leaves it before the configuration and calibration load. */
+static void resetWithWrAccel(uint8_t wrAccelInUse)
+{
+  ShimBrd_setWrAccelAndMagInUse(wrAccelInUse);
+  reset();
+}
+
+/*
+ * The default wide-range accel records are the fitted part's. Up to v1.01.009
+ * every board got the LSM303DLHC's, so on an LSM303AH board range 0 was 2.4%
+ * out, ranges 1 to 3 (±16, 4, 8 g there) 2 to 4 times out, and X and Y were a
+ * quarter turn round. A board without an LSM303DLHC gets the LSM303AH's: the
+ * ICM-20948 that stands in for one is run at the same full scale per code.
+ */
+static void test_lsm303_accel_seed_per_part(void)
+{
+  static const struct
+  {
+    uint8_t wrAccelInUse;
+    uint8_t isLsm303ah;
+    const char *name;
+  } parts[] = {
+    { WR_ACCEL_AND_MAG_LSM303DLHC_IN_USE, 0, "LSM303DLHC" },
+    { WR_ACCEL_AND_MAG_LSM303AHTR_IN_USE, 1, "LSM303AH" },
+    { WR_ACCEL_AND_MAG_ICM20948_IN_USE, 1, "ICM-20948 for the LSM303AH" },
+  };
+
+  uint8_t want[IMU_LEN];
+  char what[96];
+  unsigned p;
+  uint8_t range;
+  sc_t sc;
+
+  testCase("test_lsm303_accel_seed_per_part");
+  for (p = 0; p < sizeof(parts) / sizeof(parts[0]); p++)
+  {
+    resetWithWrAccel(parts[p].wrAccelInUse);
+    for (range = 0; range < SC_SENSOR_RANGE_MAX_LSM303_ACCEL; range++)
+    {
+      accelSeedBlock(want, parts[p].isLsm303ah, range);
+      snprintf(what, sizeof(what), "%s: range %u holds the part's seed",
+          parts[p].name, (unsigned) range);
+      expectTrue(what, accelIs(range, want));
+      sc.id = SC_SENSOR_LSM303_ACCEL;
+      sc.range = range;
+      sc.data_len = IMU_LEN;
+      ShimCalib_singleSensorRead(&sc);
+      snprintf(what, sizeof(what), "%s: range %u has the default's zero timestamp",
+          parts[p].name, (unsigned) range);
+      expectTrue(what, allBytes(sc.ts, SC_TIMESTAMP_LENGTH, 0));
+    }
+  }
+  ShimBrd_setWrAccelAndMagInUse(WR_ACCEL_AND_MAG_NONE_IN_USE);
+}
+
+/*
+ * A new LSM303AH board, its InfoMem still erased, at boot, set to ±16 g
+ * (code 1): no block is promoted, so the seed is what reaches the config bytes
+ * and the SD header, and so what GET_WR_ACCEL_CALIBRATION answers.
+ */
+static void test_lsm303ah_accel_seed_at_boot(void)
+{
+  gConfigBytes *config;
+  uint8_t want[IMU_LEN];
+
+  testCase("test_lsm303ah_accel_seed_at_boot");
+  resetWithWrAccel(WR_ACCEL_AND_MAG_LSM303AHTR_IN_USE);
+  config = ShimConfig_getStoredConfig();
+  memset(config, 0xFF, sizeof(*config));
+  config->wrAccelRange = SC_SENSOR_RANGE_LSM303AH_ACCEL_16G;
+  ShimCalib_initFromConfigBytesAll();
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LSM303_ACCEL, 0);
+
+  accelSeedBlock(want, 1, SC_SENSOR_RANGE_LSM303AH_ACCEL_16G);
+  expectTrue(
+      "the config bytes hold the LSM303AH's ±16 g seed: 209, quarter turn",
+      memcmp(config->wrAccelCalib.rawBytes, want, IMU_LEN) == 0);
+  expectTrue("and so does the SD header",
+      memcmp(ShimSdHead_getSdHeadText() + SDH_WR_ACCEL_CALIBRATION, want, IMU_LEN) == 0);
+  ShimBrd_setWrAccelAndMagInUse(WR_ACCEL_AND_MAG_NONE_IN_USE);
+}
 #endif
 
 #if defined(SHIMMER3R)
@@ -1515,6 +1628,8 @@ int main(void)
   test_lsm303ah_mag_seed_at_boot();
   test_lsm303_mag_repair_old_dump();
   test_lsm303_mag_repair_keeps_written_blocks();
+  test_lsm303_accel_seed_per_part();
+  test_lsm303ah_accel_seed_at_boot();
 #endif
 
   return hostTestReport("shimmer_calibration (" PLATFORM_NAME ")");

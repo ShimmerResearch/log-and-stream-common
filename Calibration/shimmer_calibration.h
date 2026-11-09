@@ -134,11 +134,19 @@ typedef struct shimmer_calib_t
 #define SC_DATA_LEN_MPU9X50_ICM20948_ACCEL            SC_DATA_LEN_STD_IMU_CALIB
 #define SC_SENSOR_RANGE_MPU9X50_ICM20948_MAG          0
 #define SC_DATA_LEN_MPU9X50_ICM20948_MAG              SC_DATA_LEN_STD_IMU_CALIB
-//LSM303DLHC Accel Range
+//LSM303 Accel range: wrAccelRange, written as it is into the part's full-scale
+//field, so the two parts number it differently.
+//LSM303DLHC (CTRL_REG4_A FS[1:0])
 #define SC_SENSOR_RANGE_LSM303_ACCEL_2G               0x00
 #define SC_SENSOR_RANGE_LSM303_ACCEL_4G               0x01
 #define SC_SENSOR_RANGE_LSM303_ACCEL_8G               0x02
 #define SC_SENSOR_RANGE_LSM303_ACCEL_16G              0x03
+//LSM303AH (CTRL1_A FS[1:0]); also what the ICM-20948 is set to when it stands
+//in for a missing LSM303AH
+#define SC_SENSOR_RANGE_LSM303AH_ACCEL_2G             0x00
+#define SC_SENSOR_RANGE_LSM303AH_ACCEL_16G            0x01
+#define SC_SENSOR_RANGE_LSM303AH_ACCEL_4G             0x02
+#define SC_SENSOR_RANGE_LSM303AH_ACCEL_8G             0x03
 #define SC_SENSOR_RANGE_MAX_LSM303_ACCEL              4
 #define SC_DATA_LEN_LSM303_ACCEL                      SC_DATA_LEN_STD_IMU_CALIB
 //LSM303 Mag range: 0 is the LSM303AH's only range, the one the configuration
