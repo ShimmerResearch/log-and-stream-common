@@ -1282,8 +1282,12 @@ void ShimCalib_singleSensorToCalibDump(uint16_t id,
   sc_t sc1;
 
   /* Mark as valid if any calibration byte is not 0xFF (i.e., the default
-   * config byte value) */
-  for (byte_cnt = data_len; byte_cnt > 0; byte_cnt--)
+   * config byte value). The block is bytes 0 to data_len - 1. The loop used to
+   * run from data_len down to 1, so it never looked at byte 0 and it read the
+   * first byte after the block, which belongs to the next block in the config
+   * bytes: an erased block followed by a written one was copied over the seed
+   * as 21 bytes of 0xFF, and a block written only in byte 0 was ignored. */
+  for (byte_cnt = 0; byte_cnt < data_len; byte_cnt++)
   {
     if (configBytePtr[byte_cnt] != 0xFF)
     {

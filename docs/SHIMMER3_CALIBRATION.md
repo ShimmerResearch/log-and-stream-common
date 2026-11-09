@@ -317,13 +317,20 @@ The firmware applies the same rule in the other direction:
 `ShimCalib_singleSensorToCalibDump` scans the configuration-byte block and only
 promotes it into the dump if at least one byte differs from `0xFF`.
 
-> **Known defect in that scan.** The loop is
-> `for (byte_cnt = data_len; byte_cnt > 0; byte_cnt--)`, indexing
-> `configBytePtr[21]` down to `configBytePtr[1]` for a 21-byte block. It reads
-> one byte **past** the block and never examines byte **0**. A block whose only
-> non-`0xFF` byte is its first (bias X high byte) is therefore misclassified as
-> absent, and the validity decision depends on one byte of whatever follows the
-> block in the configuration-byte array.
+> **Up to Shimmer3 v1.01.009 and Shimmer3R v1.01.025 that scan checked the
+> wrong bytes.** The loop ran `for (byte_cnt = data_len; byte_cnt > 0; byte_cnt--)`,
+> so for a 21-byte block it looked at `configBytePtr[21]` down to
+> `configBytePtr[1]`. It read one byte **past** the block, the first byte of the
+> next block in §4.1's table, and never looked at byte **0**. Two things followed:
+>
+> - An erased block followed by a written one was taken as written, and its 21
+>   bytes of `0xFF` replaced the default seed in the dump. From there they
+>   reached InfoMem, the SD header and the calibration file, where hosts read
+>   them as "no calibration" (above).
+> - A block whose only non-`0xFF` byte is its first (bias X high byte), followed
+>   by an erased block, was taken as absent.
+>
+> The scan now covers bytes 0 to 20 and nothing else.
 
 ## 4. Where calibration blocks live
 

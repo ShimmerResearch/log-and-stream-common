@@ -65,11 +65,15 @@
  * platforms and seeded on neither, so it is never among the defaults. */
 #define TEST_SENSOR SC_SENSOR_HOST_ECG
 
-/* The sensor whose calibration the config bytes keep in lnAccelCalib. */
+/* The sensor whose calibration the config bytes keep in lnAccelCalib, and the
+ * range configBytesToCalibDump files it under once reset() has zeroed the
+ * config bytes (Shimmer3R's lnAccelRange is then 0). */
 #if defined(SHIMMER3)
 #define LN_ACCEL_SENSOR SC_SENSOR_ANALOG_ACCEL
+#define LN_ACCEL_RANGE  SC_SENSOR_RANGE_ANALOG_ACCEL
 #else
 #define LN_ACCEL_SENSOR SC_SENSOR_LSM6DSV_ACCEL
+#define LN_ACCEL_RANGE  0
 #endif
 
 /* The buffer SET_CALIB_DUMP chunks are staged in. The module keeps it as a
@@ -1138,6 +1142,56 @@ static void test_file2ram_stat_fails(void)
 }
 #endif
 
+/* What the dump holds for the low-noise accel. Returns 0 if found. */
+static uint8_t readLnAccel(sc_t *sc)
+{
+  sc->id = LN_ACCEL_SENSOR;
+  sc->range = LN_ACCEL_RANGE;
+  sc->data_len = IMU_LEN;
+  return ShimCalib_singleSensorRead(sc);
+}
+
+/*
+ * configBytesToCalibDump promotes a config-byte block into the dump only if
+ * the block is not all 0xFF, InfoMem's erased value. The scan ran from byte 21
+ * down to byte 1 of the 21-byte block: it read the first byte of the block
+ * after it, and never byte 0. lnAccelCalib is followed by gyroCalib, so:
+ *   - an erased block followed by a written one was promoted, and its 21 bytes
+ *     of 0xFF replaced the seed;
+ *   - a block written only in byte 0, followed by an erased one, was not.
+ */
+static void test_config_block_scan(void)
+{
+  gConfigBytes *config;
+  uint8_t seed[IMU_LEN];
+  sc_t sc;
+
+  testCase("test_config_block_scan");
+  reset();
+  config = ShimConfig_getStoredConfig();
+  expectU("gyroCalib starts where lnAccelCalib ends",
+      (unsigned) (config->gyroCalib.rawBytes - config->lnAccelCalib.rawBytes), IMU_LEN);
+  expectU("the seed has a low-noise accel record", readLnAccel(&sc), 0);
+  memcpy(seed, sc.data.raw, IMU_LEN);
+
+  memset(config->lnAccelCalib.rawBytes, 0xFF, IMU_LEN);
+  memset(config->gyroCalib.rawBytes, 0x00, IMU_LEN);
+  ShimCalib_configBytesToCalibDump(LN_ACCEL_SENSOR, 1);
+  expectU("erased block, written block after it: the record is still there",
+      readLnAccel(&sc), 0);
+  expectTrue("and still the seed, not 0xFF", memcmp(sc.data.raw, seed, IMU_LEN) == 0);
+
+  reset();
+  config = ShimConfig_getStoredConfig();
+  memset(config->lnAccelCalib.rawBytes, 0xFF, IMU_LEN);
+  config->lnAccelCalib.rawBytes[0] = 0x12;
+  memset(config->gyroCalib.rawBytes, 0xFF, IMU_LEN);
+  ShimCalib_configBytesToCalibDump(LN_ACCEL_SENSOR, 1);
+  expectU("block written only in byte 0: there is a record", readLnAccel(&sc), 0);
+  expectTrue("and it is the block",
+      memcmp(sc.data.raw, config->lnAccelCalib.rawBytes, IMU_LEN) == 0);
+}
+
 #if defined(SHIMMER3)
 /* Config bytes holding a recognisable alt accel and alt mag block. */
 static gConfigBytes *altBlocks(uint8_t altAccelRange)
@@ -1450,6 +1504,7 @@ int main(void)
 #if defined(SHIMMER3R)
   test_file2ram_stat_fails();
 #endif
+  test_config_block_scan();
 #if defined(SHIMMER3R)
   test_dump_to_config_unknown_sensor();
 #endif
