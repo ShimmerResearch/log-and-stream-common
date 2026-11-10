@@ -260,6 +260,67 @@ def test_mag_seeds(unit, hil_note):
     assert not problems, "; ".join(problems)
 
 
+LSM303_ACCEL_ID = 31                        # SC_SENSOR_LSM303_ACCEL
+# The wide-range accel's range code is the part's own full-scale field value,
+# so the two parts number their full scales differently (CALIBRATION §6.1).
+LSM303_ACCEL_SEEDS = {
+    "LSM303DLHC": ({0: 1631, 1: 815, 2: 408, 3: 135}, _DLHC_MAG_ALIGN),  # ±2/4/8/16 g
+    "LSM303AH": ({0: 1671, 1: 209, 2: 836, 3: 418}, _AH_MAG_ALIGN),     # ±2/16/4/8 g
+}
+
+
+def accel_seed_block(part: str, rng: int) -> bytes:
+    sens, align = LSM303_ACCEL_SEEDS[part]
+    return struct.pack(">3h3h9b", 0, 0, 0, sens[rng], sens[rng], sens[rng], *align)
+
+
+@pytest.mark.hil("fleet.wr_accel_seeds", needs=["shimmer3", "bt", "dock"])
+def test_wr_accel_seeds(unit, hil_note):
+    """The calibration dump holds a default LSM303 wide-range accel record for
+    every range, 0 to 3, and each one that is still a default holds the fitted
+    part's values.
+
+    Up to v1.01.009 every board got the LSM303DLHC's records. On an LSM303AH
+    board, whose codes run ±2/16/4/8 g, that read 2.4% high at ±2 g and 2 to 4
+    times out at the others, with X and Y a quarter turn round.
+
+    The part is read off the configuration: the firmware forces mag range 0
+    on every board without an LSM303DLHC, and 0 is no LSM303DLHC gain, while
+    the default is 1. Reads only. As in fleet.mag_seeds, the range in use and
+    any record with a timestamp may be someone's calibration and are not
+    compared.
+
+    Docked, the firmware builds the dump from the seed and InfoMem without
+    reading the SD card, so this checks the seed even on a unit updated from
+    v1.01.009, whose old records stay in InfoMem (range in use) and on the
+    card: nothing repairs them (CALIBRATION §6.1).
+    """
+    with open_bt(unit) as link:
+        cfg = S3Config(link.read_infomem())
+        records = calib_records(link.read_calib_dump())
+    part = "LSM303AH" if cfg.get("mag_range") == 0 else "LSM303DLHC"
+    in_use = cfg.get("wr_accel_range")
+    have = sorted(r for (sid, r) in records if sid == LSM303_ACCEL_ID)
+    missing = [r for r in range(4) if r not in have]
+    wrong, compared = [], []
+    for rng in range(4):
+        rec = records.get((LSM303_ACCEL_ID, rng))
+        if rec is None or rng == in_use or any(rec.ts):
+            continue
+        compared.append(rng)
+        want = accel_seed_block(part, rng)
+        if bytes(rec.data[:21]) != want:
+            wrong.append(f"range {rng}: {describe_mag_block(bytes(rec.data))}, "
+                         f"expected the {part}'s {describe_mag_block(want)}")
+    hil_note(f"{part} board (mag range {cfg.get('mag_range')}); LSM303 accel records for ranges "
+             f"{have}; range {in_use} in use; defaults compared for ranges {compared}")
+    problems = []
+    if missing:
+        problems.append(f"no LSM303 accel record for range(s) {missing}")
+    problems += wrong
+    assert not problems, "; ".join(problems)
+
+
 STREAM_DIVIDER = 640    # 51.2 Hz: well inside every shipped radio's capacity
 
 

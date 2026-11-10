@@ -675,15 +675,62 @@ void ShimCalib_setDefaultMpu9X50Icm20948GyroCalib(sc_t *sc1Ptr)
   }
 }
 
-void ShimCalib_setDefaultLsm303AccelCalib(sc_t *sc1Ptr)
+/* The default LSM303 wide-range accel record for sc1Ptr->range, 0 to 3, ready
+ * to store: zero timestamp, bias and sensitivity in the dump's byte order.
+ *
+ * isLsm303ah picks the part. The two number their ranges differently, because
+ * the firmware writes wrAccelRange into the part's own full-scale field as it
+ * is (see SC_SENSOR_RANGE_LSM303*_ACCEL_*).
+ *
+ * LSM303AH: 0.061 / 0.122 / 0.244 / 0.488 mg/digit at ±2 / 4 / 8 / 16 g
+ * (datasheet DocID027766 Rev 6, §2.1 Table 3, LA_So), so 1671 / 836 / 418 /
+ * 209 LSB per m/s². Its alignment is a quarter turn from the LSM303DLHC's, the
+ * same as its magnetometer's (ShimCalib_lsm303MagSeed): measured on two
+ * LSM303AH boards against the low-noise accelerometer. The ICM-20948 that
+ * stands in for a missing LSM303AH is set to the same full scale for each
+ * code, and its sensitivities are within 0.1% of these.
+ *
+ * LSM303DLHC: the values the seed has always had. */
+static void ShimCalib_lsm303AccelSeed(sc_t *sc1Ptr, uint8_t isLsm303ah)
 {
-  uint16_t bias, sensitivity;
+  uint16_t sensitivity;
+
   sc1Ptr->id = SC_SENSOR_LSM303_ACCEL;
   sc1Ptr->data_len = SC_DATA_LEN_LSM303_ACCEL;
-  for (sc1Ptr->range = 0; sc1Ptr->range < SC_SENSOR_RANGE_MAX_LSM303_ACCEL;
-       sc1Ptr->range++)
+  memset(sc1Ptr->ts, 0, sizeof(sc1Ptr->ts));
+  sc1Ptr->data.dd.bias_x = 0;
+  sc1Ptr->data.dd.bias_y = 0;
+  sc1Ptr->data.dd.bias_z = 0;
+  sc1Ptr->data.dd.align_xz = 0;
+  sc1Ptr->data.dd.align_yz = 0;
+  sc1Ptr->data.dd.align_zx = 0;
+  sc1Ptr->data.dd.align_zy = 0;
+  sc1Ptr->data.dd.align_zz = -100;
+  if (isLsm303ah)
   {
-    bias = 0;
+    if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303AH_ACCEL_2G)
+    {
+      sensitivity = 1671;
+    }
+    else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303AH_ACCEL_4G)
+    {
+      sensitivity = 836;
+    }
+    else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303AH_ACCEL_8G)
+    {
+      sensitivity = 418;
+    }
+    else
+    { //sc1Ptr->range == SC_SENSOR_RANGE_LSM303AH_ACCEL_16G
+      sensitivity = 209;
+    }
+    sc1Ptr->data.dd.align_xx = 0;
+    sc1Ptr->data.dd.align_xy = -100;
+    sc1Ptr->data.dd.align_yx = 100;
+    sc1Ptr->data.dd.align_yy = 0;
+  }
+  else
+  {
     if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_ACCEL_2G)
     {
       sensitivity = 1631;
@@ -697,26 +744,37 @@ void ShimCalib_setDefaultLsm303AccelCalib(sc_t *sc1Ptr)
       sensitivity = 408;
     }
     else
-    { //(sc1Ptr->range == SC_SENSOR_RANGE_LSM303DLHC_ACCEL_16G)
+    { //sc1Ptr->range == SC_SENSOR_RANGE_LSM303_ACCEL_16G
       sensitivity = 135;
     }
-    sc1Ptr->data.dd.bias_x = bias;
-    sc1Ptr->data.dd.bias_y = bias;
-    sc1Ptr->data.dd.bias_z = bias;
-    sc1Ptr->data.dd.sens_x = sensitivity;
-    sc1Ptr->data.dd.sens_y = sensitivity;
-    sc1Ptr->data.dd.sens_z = sensitivity;
     sc1Ptr->data.dd.align_xx = -100;
     sc1Ptr->data.dd.align_xy = 0;
-    sc1Ptr->data.dd.align_xz = 0;
     sc1Ptr->data.dd.align_yx = 0;
     sc1Ptr->data.dd.align_yy = 100;
-    sc1Ptr->data.dd.align_yz = 0;
-    sc1Ptr->data.dd.align_zx = 0;
-    sc1Ptr->data.dd.align_zy = 0;
-    sc1Ptr->data.dd.align_zz = -100;
+  }
+  sc1Ptr->data.dd.sens_x = sensitivity;
+  sc1Ptr->data.dd.sens_y = sensitivity;
+  sc1Ptr->data.dd.sens_z = sensitivity;
+  ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
+}
 
-    ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
+/* Seeds the part that is fitted. Up to v1.01.009 every board got the
+ * LSM303DLHC's records, so on an LSM303AH board only range 0 was close (2.4%
+ * high), ranges 1 to 3 were 2 to 4 times out, and the axes were a quarter
+ * turn round. The board type is known here:
+ * detectI2cSlaves() runs before ShimConfig_loadSensorConfigAndCalib() at boot,
+ * and the other callers of ShimCalib_init() run after boot. A board that is
+ * not an LSM303DLHC gets the LSM303AH's, the same test the configuration uses
+ * to force magRange to 0. */
+void ShimCalib_setDefaultLsm303AccelCalib(sc_t *sc1Ptr)
+{
+  uint8_t range;
+  uint8_t isLsm303ah = !ShimBrd_isWrAccelInUseLsm303dlhc();
+
+  for (range = 0; range < SC_SENSOR_RANGE_MAX_LSM303_ACCEL; range++)
+  {
+    sc1Ptr->range = range;
+    ShimCalib_lsm303AccelSeed(sc1Ptr, isLsm303ah);
     ShimCalib_singleSensorWrite(sc1Ptr);
   }
 }
@@ -1282,8 +1340,12 @@ void ShimCalib_singleSensorToCalibDump(uint16_t id,
   sc_t sc1;
 
   /* Mark as valid if any calibration byte is not 0xFF (i.e., the default
-   * config byte value) */
-  for (byte_cnt = data_len; byte_cnt > 0; byte_cnt--)
+   * config byte value). The block is bytes 0 to data_len - 1. The loop used to
+   * run from data_len down to 1, so it never looked at byte 0 and it read the
+   * first byte after the block, which belongs to the next block in the config
+   * bytes: an erased block followed by a written one was copied over the seed
+   * as 21 bytes of 0xFF, and a block written only in byte 0 was ignored. */
+  for (byte_cnt = 0; byte_cnt < data_len; byte_cnt++)
   {
     if (configBytePtr[byte_cnt] != 0xFF)
     {
