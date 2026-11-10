@@ -1174,6 +1174,7 @@ the only per-command refusals in the protocol:
 | `SET_CALIB_DUMP_COMMAND` 0x98 | The chunk is out of range; a start is at offset 1, is shorter than the 2-byte length header, or declares a dump larger than the calibration RAM or shorter than its 8-byte version header; or a chunk at offset ≥ 2 arrives with no transfer in progress ([§7.6](#76-calibration-dump-and-per-sensor-calibration)) |
 | `RESET_BT_ERROR_COUNTS` 0xB6 | Shimmer3R always; Shimmer3 without an EEPROM |
 | `SET_FEATURE` 0xB7 | Unrecognised feature id |
+| `START_SDBT_COMMAND` 0x70, `START_LOGGING_COMMAND` 0x92 | No log is running and none can start ([§6.1](#61-the-six-startstop-commands)); nothing starts. Firmware before DEV-1431 ACKs it |
 | `SET_SD_SYNC_COMMAND` 0xE0 | Not actually in a running sync session |
 | `ACK_COMMAND_PROCESSED` 0xFF | Received outside a running sync session |
 | `GET_BMP180_CALIBRATION_COEFFICIENTS_COMMAND` 0x59 | Shimmer3R (no such sensor) |
@@ -1356,16 +1357,27 @@ answer with a bare ACK.
 > `sensingStateChangeFromBtCmd = 1` (so no unsolicited status push follows, see
 > [§5.4](#54-in-stream-responses)) and then queues the corresponding task.
 
-> **The start commands are conditional and the ACK does not mean "started".**
-> They queue `ShimTask_setStartStreamingIfReady()`,
-> `ShimTask_setStartLoggingIfReady()` or
+> **The start commands are conditional.** They queue
+> `ShimTask_setStartStreamingIfReady()`, `ShimTask_setStartLoggingIfReady()` or
 > `ShimTask_setStartStreamingAndLoggingIfReady()` — the *IfReady* is load-bearing.
-> A start that cannot proceed (no card, bad file, docked, already sensing) is
-> ACKed and then quietly does nothing. **Confirm with the status bits**: bit 4
-> for streaming, bit 3 for logging, bit 1 for sensing overall
-> ([§5.3](#53-the-status-bytes)). Because a command-initiated change suppresses
-> the unsolicited push, the host must poll `GET_STATUS_COMMAND` rather than wait
-> for one.
+>
+> - **A log start that cannot be carried out is refused.** `START_LOGGING_COMMAND`
+>   and `START_SDBT_COMMAND` are NACKed when no log is running and
+>   `ShimSens_checkStartLoggingConditions()` will not start one: no card, a bad
+>   file, the card not ready, or docked or on USB. Nothing starts, and
+>   `START_SDBT_COMMAND` does not start the stream either
+>   (`ShimSens_isLogStartRefused`, `Sensing/shimmer_sensing.c`). A start sent
+>   while a log is already running is ACKed, so `START_SDBT_COMMAND` can add a
+>   stream to a log the button started.
+> - **Firmware before DEV-1431 ACKs such a start** and quietly does nothing;
+>   `START_SDBT_COMMAND` then streams alone. A host that has to work with that
+>   firmware cannot take the ACK as a log.
+> - **Otherwise the ACK still does not mean "started".** A stream start that
+>   cannot proceed (not connected for streaming, already streaming) is ACKed and
+>   does nothing. **Confirm with the status bits**: bit 4 for streaming, bit 3
+>   for logging, bit 1 for sensing overall ([§5.3](#53-the-status-bytes)).
+>   Because a command-initiated change suppresses the unsolicited push, the host
+>   must poll `GET_STATUS_COMMAND` rather than wait for one.
 
 The Java driver names 0x92 and 0x93 `START_LOGGING_ONLY_COMMAND` /
 `STOP_LOGGING_ONLY_COMMAND` ([§4.2](#42-sd--trial-configuration)), which is a

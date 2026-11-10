@@ -227,6 +227,7 @@ void ShimSens_init(void);
 SENSINGTypeDef *ShimSens_getSensing(void);
 void ShimSens_configureChannels(void);
 uint8_t ShimSens_checkStartLoggingConditions(void);
+uint8_t ShimSens_isLogStartRefused(void);
 uint8_t ShimSens_checkStartStreamingConditions(void);
 uint8_t ShimSens_shouldStopLogging(void);
 uint8_t ShimSens_shouldStopStreaming(void);

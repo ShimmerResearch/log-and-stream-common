@@ -1037,12 +1037,24 @@ void ShimBt_processCmd(void)
       }
       case START_SDBT_COMMAND:
       {
+        /* Refused, not ACKed and dropped, when no log is running and none can
+         * start: nothing starts, not even the stream (DEV-1431). */
+        if (ShimSens_isLogStartRefused())
+        {
+          sendNack = 1;
+          break;
+        }
         sensingStateChangeFromBtCmd = 1;
         ShimTask_setStartStreamingAndLoggingIfReady();
         break;
       }
       case START_LOGGING_COMMAND:
       {
+        if (ShimSens_isLogStartRefused())
+        {
+          sendNack = 1;
+          break;
+        }
         sensingStateChangeFromBtCmd = 1;
         ShimTask_setStartLoggingIfReady();
         break;
