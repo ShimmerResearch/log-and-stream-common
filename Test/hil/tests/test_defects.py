@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pytest
 
-from rig import bt, dock, dock_protocol, midstream, s3r_usb, throughput
+from rig import bt, dock, midstream, throughput
 from rig.s3_config import S3Config, calib_records
 from rig.s3_flash import reset_slot, restore_infomem
 
@@ -132,30 +132,6 @@ def _stop_and_check(link: bt.BtLink) -> str | None:
     return None
 
 
-# --- DEV-1279: dock requests whose LEN does not match their arguments ----------
-
-@pytest.mark.hil("defect.dev1279_dock_arg_lengths", needs=["shimmer3", "dock"])
-def test_dev1279_dock_arg_lengths_s3(unit, base6, hil_note):
-    """GET INFOMEM, CARD_ID and CARD_MEM with no arguments, one byte short and
-    one byte over must each get BAD_ARG (rig/dock_protocol.arg_lengths).
-    Reads only."""
-    base6.select(unit.base6_slot)
-    with dock.open_when_ready(base6.uart_port) as d:
-        w = dock_protocol.Walk(d, dock_protocol.S3)
-        dock_protocol.arg_lengths(w)
-    hil_note(f"Base6 UART: {w.counts['error']} requests")
-    assert not w.failures, "; ".join(w.failures)
-
-
-@pytest.mark.hil("defect.dev1279_dock_arg_lengths", needs=["shimmer3r", "usb"])
-def test_dev1279_dock_arg_lengths_s3r(unit, hil_note):
-    """The same requests over a Shimmer3R's USB CDC port."""
-    cdc = s3r_usb.wait_usb_settled(unit.usb_serial, 60)
-    with dock.open_when_ready(cdc) as d:
-        w = dock_protocol.Walk(d, dock_protocol.S3R)
-        dock_protocol.arg_lengths(w)
-    hil_note(f"USB CDC: {w.counts['error']} requests")
-    assert not w.failures, "; ".join(w.failures)
 
 
 # --- DEV-1327: the mag rate set by command and by InfoMem ----------------------

@@ -82,7 +82,7 @@ SINGLE_PLATFORM_SUITES := test_crc test_sd_data_file
 
 # Suites built twice, once per platform. See the note above.
 DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards test_bt_reply \
-                        test_calibration test_platform_seam
+                        test_calibration test_platform_seam test_dock_args
 
 PLATFORMS := SHIMMER3 SHIMMER3R
 
@@ -109,6 +109,7 @@ SRC_test_rtc         := test_rtc.c $(REPO)/RTC/shimmer_rtc.c
 SRC_test_battery     := test_battery.c $(REPO)/Battery/shimmer_battery.c
 SRC_test_boards      := test_boards.c $(REPO)/Boards/shimmer_boards.c
 SRC_test_bt_reply    := test_bt_reply.c $(REPO)/Comms/shimmer_bt_reply.c
+SRC_test_dock_args   := test_dock_args.c $(REPO)/Comms/shimmer_dock_args.c
 SRC_test_calibration := test_calibration.c \
                         $(REPO)/Calibration/shimmer_calibration.c \
                         $(REPO)/Boards/shimmer_boards.c
@@ -310,6 +311,7 @@ DUAL_COMPILE_MODULES := \
   CRC/shimmer_swCrc.c \
   Calibration/shimmer_calibration.c \
   Comms/shimmer_bt_reply.c \
+  Comms/shimmer_dock_args.c \
   LEDs/shimmer_leds_phase.c \
   Platform/platform_api.c \
   RTC/shimmer_rtc.c \

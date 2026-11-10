@@ -2407,38 +2407,48 @@ class DockArgLengths(unittest.TestCase):
     """dock_protocol.arg_lengths: which frames it sends, and how it judges the replies."""
 
     class Link:
-        def __init__(self, code):
-            self.code, self.sent = code, []
+        """Answers as firmware with the DEV-1279 check does, or with data to everything."""
+
+        def __init__(self, checks):
+            self.checks, self.sent = checks, []
 
         def exchange(self, raw, timeout_s=None):
             self.sent.append(raw)
-            return dock.Reply(self.code, dock.COMP_SHIMMER, dock.PROP_INFOMEM, b"\x00")
+            pyshimmer_card_id = (raw[3], raw[4], raw[2]) == (dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID, 5)
+            if self.checks and not pyshimmer_card_id:
+                return dock.Reply(dock.BAD_ARG)
+            return dock.Reply(dock.CMD_RSP, raw[3], raw[4], b"\x00")
 
         def request(self, cmd, comp, prop, data=b""):
             return dock.Reply(dock.CMD_RSP, comp, prop, bytes(7))
 
-    def walk(self, code):
+    def walk(self, checks):
         from rig import dock_protocol
-        w = dock_protocol.Walk(self.Link(code), dock_protocol.S3)
+        w = dock_protocol.Walk(self.Link(checks), dock_protocol.S3)
         dock_protocol.arg_lengths(w)
         return w
 
     def test_each_variable_length_get_is_sent_short_and_long(self):
-        w = self.walk(dock.BAD_ARG)
+        w = self.walk(checks=True)
         lens = [(f[2], f[3], f[4]) for f in w.link.sent]
         self.assertEqual(lens, [(2, dock.COMP_SHIMMER, dock.PROP_INFOMEM), (4, dock.COMP_SHIMMER, dock.PROP_INFOMEM),
                                 (6, dock.COMP_SHIMMER, dock.PROP_INFOMEM),
                                 (2, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID),
                                 (3, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID),
-                                (5, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID),
+                                (6, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID),
                                 (2, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM),
                                 (4, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM),
-                                (6, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM)])
+                                (6, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM),
+                                (5, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID)])
         self.assertTrue(all(f[1] == dock.CMD_GET for f in w.link.sent), "only GETs: a short SET writes stale bytes")
         self.assertEqual(w.failures, [])
 
+    def test_pyshimmer_s_card_id_read_is_sent_as_pyshimmer_sends_it(self):
+        w = self.walk(checks=True)
+        self.assertEqual(w.link.sent[-1][:8], b"\x24\x03\x05\x03\x02\x00\x00\x00")
+
     def test_an_answer_with_data_is_a_failure(self):
-        w = self.walk(dock.CMD_RSP)
+        w = self.walk(checks=False)
         self.assertEqual(len(w.failures), 9)
         self.assertIn("GET INFOMEM with no arguments (LEN 2): RSP, expected BAD_ARG", w.failures[0])
 

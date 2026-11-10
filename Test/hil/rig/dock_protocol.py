@@ -260,31 +260,37 @@ def errors(w: Walk, seen: dict) -> None:
     w.expect("SET CARD_MEM of length 0", frame(S, COMP_DAUGHTER_CARD, PROP_CARD_MEM, rng(0, 0)), BAD_ARG)
     w.expect("SET CARD_MEM 2 at 2031",
              frame(S, COMP_DAUGHTER_CARD, PROP_CARD_MEM, rng(2, 2031) + eeprom[-1:] + b"\xFF"), BAD_ARG)
+    arg_lengths(w)
 
 
 def arg_lengths(w: Walk) -> None:
     """The variable-length GETs - INFOMEM, CARD_ID and CARD_MEM - sent with a LEN
     that does not match their arguments: none, one byte short, one byte over.
 
-    Each must be refused with BAD_ARG, as the fixed-length properties already
-    are (errors() above). Firmware that reads the arguments at fixed offsets
-    whatever LEN says takes the frame's own CRC, then whatever an earlier frame
-    left in its buffer, as length and offset, and answers with data nobody
-    asked for (DEV-1279). Not part of walk() until the firmware refuses them,
-    so that the release items keep passing meanwhile.
+    Each must be refused with BAD_ARG, as the fixed-length properties are
+    (errors() above). Firmware before DEV-1279 read the arguments at fixed
+    offsets whatever LEN said, so it took the frame's own CRC, then whatever an
+    earlier frame left in its buffer, as length and offset, and answered with
+    data nobody asked for.
+
+    One form over is accepted on purpose: GET CARD_ID with a 2-byte offset,
+    which pyshimmer sends before every InfoMem read. Refusing it would break that
+    library, so it must be answered; CARD_ID's over-long probe is two bytes over.
 
     Only GETs: a short SET of the same kind writes stale buffer bytes into the
-    configuration or the expansion-board EEPROM.
+    configuration or the expansion-board EEPROM on firmware without the check.
     """
     G = CMD_GET
-    for comp, prop, label, args in [(COMP_SHIMMER, PROP_INFOMEM, "INFOMEM", 3),
-                                    (COMP_DAUGHTER_CARD, PROP_CARD_ID, "CARD_ID", 2),
-                                    (COMP_DAUGHTER_CARD, PROP_CARD_MEM, "CARD_MEM", 3)]:
+    for comp, prop, label, args, over in [(COMP_SHIMMER, PROP_INFOMEM, "INFOMEM", 3, 1),
+                                          (COMP_DAUGHTER_CARD, PROP_CARD_ID, "CARD_ID", 2, 2),
+                                          (COMP_DAUGHTER_CARD, PROP_CARD_MEM, "CARD_MEM", 3, 1)]:
         # A real request's arguments, one byte at a time: 1 byte to read from offset 0.
         real = bytes([1, 0, 0])[:args]
         for data, how in [(b"", "no arguments"), (real[:-1], "one argument byte short"),
-                          (real + b"\x00", "one argument byte over")]:
+                          (real + bytes(over), f"{'one argument byte' if over == 1 else f'{over} argument bytes'} over")]:
             w.expect(f"GET {label} with {how} (LEN {2 + len(data)})", frame(G, comp, prop, data), BAD_ARG)
+    w.expect("GET CARD_ID with a 2-byte offset (LEN 5, as pyshimmer sends it)",
+             frame(G, COMP_DAUGHTER_CARD, PROP_CARD_ID, struct.pack("<BH", 0, 0)), dock.CMD_RSP)
 
 
 def framing(w: Walk) -> None:

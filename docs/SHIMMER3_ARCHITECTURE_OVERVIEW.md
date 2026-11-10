@@ -491,7 +491,7 @@ not start and stop logging repeatedly. Dock/USB state changes are debounced at
   | `platform_crcData16` | **no** | **no** | software CRC, 16-bit length (`ShimSwCrc_calc16`) |
   | `platform_isDockUartInitialised` | yes | yes | false |
   | `platform_isUsbUartInitialised` | **no** (no USB) | yes | false |
-  | `platform_sleepWhenNoTask` | yes (LPM3) | yes (Sleep / WFI) | no-op (busy loop) |
+  | `platform_sleepWhenNoTask` | yes (LPM3) | yes (Sleep / WFI; none while a USB host has the device configured, DEV-192) | no-op (busy loop) |
   | `platform_ledTickElapsedRtcTicks` | yes (`main.c`) | yes (`tim.c`) | 0 |
   | `platform_ledTickShift` | yes (`main.c`) | yes (`tim.c`) | no-op |
 
