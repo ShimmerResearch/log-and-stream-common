@@ -13,6 +13,7 @@
 #include "log_and_stream_externs.h"
 #include "log_and_stream_includes.h"
 #include "shimmer_definitions.h"
+#include "shimmer_dock_args.h"
 #include "version.h"
 
 #if defined(SHIMMER3)
@@ -194,7 +195,13 @@ void ShimDock_processCmd(void)
   {
     if (ShimDock_uartCheckCrc(dockRxBuf[UART_RXBUF_LEN] + 3))
     {
-      if (uartAction == UART_GET)
+      /* Before anything reads the arguments at their fixed offsets. */
+      if (!ShimDock_isArgLenOk(uartAction, dockRxBuf[UART_RXBUF_COMP], dockRxBuf[UART_RXBUF_PROP],
+              dockRxBuf[UART_RXBUF_LEN], dockRxBuf[UART_RXBUF_DATA]))
+      {
+        uartSendRspBadArg = 1;
+      }
+      else if (uartAction == UART_GET)
       { //get
         if (dockRxBuf[UART_RXBUF_COMP] == UART_COMP_SHIMMER)
         { //get shimmer
