@@ -130,6 +130,10 @@ typedef struct shimmer_calib_t
 #define SC_SENSOR_RANGE_MPU9X50_ICM20948_GYRO_2000DPS 0x03 //+/-2000 dps
 #define SC_SENSOR_RANGE_MAX_MPU9X50_ICM20948_GYRO     4
 #define SC_DATA_LEN_MPU9X50_ICM20948_GYRO             SC_DATA_LEN_STD_IMU_CALIB
+//MPU9x50/ICM20948 Accel (the alt accel; its range is altAccelRange) and Mag (one range, 0)
+#define SC_DATA_LEN_MPU9X50_ICM20948_ACCEL            SC_DATA_LEN_STD_IMU_CALIB
+#define SC_SENSOR_RANGE_MPU9X50_ICM20948_MAG          0
+#define SC_DATA_LEN_MPU9X50_ICM20948_MAG              SC_DATA_LEN_STD_IMU_CALIB
 //LSM303DLHC Accel Range
 #define SC_SENSOR_RANGE_LSM303_ACCEL_2G               0x00
 #define SC_SENSOR_RANGE_LSM303_ACCEL_4G               0x01

@@ -21,7 +21,6 @@ refuses a log start, and a Base6 cannot undock one slot.
 
 from __future__ import annotations
 
-import struct
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -187,52 +186,6 @@ def test_dev1327_mag_rate_command_matches_infomem(unit, base6, restored, hil_not
              f"(stored {stored.get('mag_rate')})")
     assert by_command == by_infomem, (f"mag rate code 7: SET_MAG_SAMPLING_RATE stores {by_command}, "
                                       f"an InfoMem write stores {by_infomem}")
-
-
-# --- DEV-996: the alt accel and alt mag calibration, written and read back ------
-
-ALT_BLOCKS = {"alt_accel": 133, "alt_mag": 154}     # NV_ALT_ACCEL/MAG_CALIBRATION: InfoMem offsets
-
-
-def _test_block(current: bytes, n: int) -> bytes:
-    """A plausible 21-byte block (CALIBRATION §3: big-endian bias and
-    sensitivity, then an int8 alignment matrix) that differs from `current`."""
-    block = struct.pack(">3h3h9b", 11 + n, -22 - n, 33 + n, 1234, 1235 + n, 1236,
-                        100, 0, 0, 0, 100, 0, 0, 0, 100)
-    return block if block != current else struct.pack(">3h", 44, 55, 66) + block[6:]
-
-
-@pytest.mark.hil("defect.dev996_alt_calibration", needs=["shimmer3", "bt", "dock"])
-def test_dev996_alt_calibration_reads_back(unit, base6, restored, hil_note):
-    """SET_ALT_ACCEL_CALIBRATION / SET_ALT_MAG_CALIBRATION, then the matching GET,
-    must return the block just written.
-
-    On Shimmer3 the SET reaches InfoMem and the SD header but not the
-    calibration dump (ShimCalib_configBytesToCalibDump has no case for ids 33
-    and 34), and the GET answers from the dump, so it returns 21 zeros or an
-    older record. InfoMem is read over the dock as well, to say which side is
-    wrong.
-    """
-    written, got = {}, {}
-    with _open_bt(unit, base6) as link:
-        for n, name in enumerate(ALT_BLOCKS):
-            written[name] = _test_block(link.get_calibration(name), n)
-            link.set_calibration(name, written[name])
-            got[name] = link.get_calibration(name)
-    base6.select(unit.base6_slot)
-    with dock.open_when_ready(base6.uart_port) as d:
-        im = d.read_infomem()
-    problems, notes = [], []
-    for name, off in ALT_BLOCKS.items():
-        in_infomem = im[off:off + bt.CALIB_BLOCK] == written[name]
-        notes.append(f"{name}: GET {'matches' if got[name] == written[name] else 'differs'}, "
-                     f"InfoMem {'holds it' if in_infomem else 'does not'}")
-        if got[name] != written[name]:
-            what = "21 zero bytes" if not any(got[name]) else got[name].hex()
-            problems.append(f"{name}: wrote {written[name].hex()}, GET returned {what}"
-                            f" (InfoMem {'holds the block' if in_infomem else 'does not hold it either'})")
-    hil_note("; ".join(notes))
-    assert not problems, "; ".join(problems)
 
 
 # --- DEV-1297: a battery or status read answered mid-stream --------------------

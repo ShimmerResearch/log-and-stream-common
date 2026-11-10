@@ -14,6 +14,7 @@ drifted from what customers have, or the firmware misreads the module.
 from __future__ import annotations
 
 import re
+import struct
 import time
 
 import pytest
@@ -118,6 +119,73 @@ def test_dock_protocol(unit, docklink, candidate, hil_note):
     note, failures = dock_protocol.walk(docklink, dock_protocol.S3, "Base6 UART", mac=unit.mac, version=version)
     hil_note(note)
     assert not failures, "; ".join(failures)
+
+
+ALT_BLOCKS = {"alt_accel": 133, "alt_mag": 154}     # NV_ALT_ACCEL/MAG_CALIBRATION: InfoMem offsets
+
+
+def alt_test_block(current: bytes, n: int) -> bytes:
+    """A plausible 21-byte block (CALIBRATION §3: big-endian bias and
+    sensitivity, then an int8 alignment matrix) that differs from `current`."""
+    block = struct.pack(">3h3h9b", 11 + n, -22 - n, 33 + n, 1234, 1235 + n, 1236,
+                        100, 0, 0, 0, 100, 0, 0, 0, 100)
+    return block if block != current else struct.pack(">3h", 44, 55, 66) + block[6:]
+
+
+@pytest.mark.hil("fleet.alt_calibration", needs=["shimmer3", "bt", "dock"])
+def test_alt_calibration(unit, base6, hil_note):
+    """SET_ALT_ACCEL_CALIBRATION / SET_ALT_MAG_CALIBRATION, then the matching GET,
+    return the block just written.
+
+    The GET answers from the calibration dump, under the alt accel's range and
+    range 0 for the alt mag. Until DEV-996 the SET reached InfoMem and the SD
+    header but never the dump, so the GET answered 21 zeros. InfoMem is read
+    over the dock as well, to say which side is wrong.
+
+    What it writes it puts back: the calibration dump over Bluetooth, then the
+    whole InfoMem over the dock, from copies taken first and kept on disk.
+    """
+    base6.select(unit.base6_slot)
+    with dock.open_when_ready(base6.uart_port) as d:
+        original = bytes(d.read_infomem())
+    backup = throughput.save_infomem(unit.name, original)
+    written, got, error = {}, {}, None
+    try:
+        with open_bt(unit) as link:
+            dump = link.read_calib_dump()
+            backup.with_name(backup.stem + "_calib_dump.bin").write_bytes(dump)
+            for n, name in enumerate(ALT_BLOCKS):
+                written[name] = alt_test_block(link.get_calibration(name), n)
+                link.set_calibration(name, written[name])
+                got[name] = link.get_calibration(name)
+            # Put the dump back first: writing it pushes its blocks into InfoMem
+            # (CALIBRATION §8.3), which the InfoMem restore below then undoes.
+            if link.read_calib_dump() != dump:
+                link.write_calib_dump(dump)
+                assert link.read_calib_dump() == dump, "calibration dump not restored: read back differs"
+        base6.select(unit.base6_slot)
+        with dock.open_when_ready(base6.uart_port) as d:
+            im = d.read_infomem()
+    except BaseException as e:
+        error = e
+        raise
+    finally:
+        retries = restore_infomem(base6, original, error, backup)
+        if retries:
+            hil_note(f"InfoMem restore needed {len(retries)} retries: {'; '.join(retries)}")
+    problems, notes = [], []
+    for name, off in ALT_BLOCKS.items():
+        in_infomem = im[off:off + bt.CALIB_BLOCK] == written[name]
+        notes.append(f"{name}: GET {'matches' if got[name] == written[name] else 'differs'}, "
+                     f"InfoMem {'holds it' if in_infomem else 'does not'}")
+        if got[name] != written[name]:
+            what = "21 zero bytes" if not any(got[name]) else got[name].hex()
+            problems.append(f"{name}: wrote {written[name].hex()}, GET returned {what}"
+                            f" (InfoMem {'holds the block' if in_infomem else 'does not hold it either'})")
+        elif not in_infomem:
+            problems.append(f"{name}: the GET answers the block, but InfoMem does not hold it")
+    hil_note("; ".join(notes))
+    assert not problems, "; ".join(problems)
 
 
 STREAM_DIVIDER = 640    # 51.2 Hz: well inside every shipped radio's capacity

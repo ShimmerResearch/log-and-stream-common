@@ -1090,11 +1090,15 @@ void ShimCalib_configBytes0To127ToCalibDumpBytes(uint8_t setCalibTsZero)
 
 void ShimCalib_configBytes128To255ToCalibDumpBytes(uint8_t setCalibTsZero)
 {
-#if defined(SHIMMER3R)
+#if defined(SHIMMER3)
+  /* The alt accel and alt mag blocks (NV_ALT_ACCEL_CALIBRATION,
+   * NV_ALT_MAG_CALIBRATION): on Shimmer3 the MPU9x50/ICM20948's own
+   * accelerometer and magnetometer. */
+  ShimCalib_configBytesToCalibDump(SC_SENSOR_MPU9X50_ICM20948_ACCEL, setCalibTsZero);
+  ShimCalib_configBytesToCalibDump(SC_SENSOR_MPU9X50_ICM20948_MAG, setCalibTsZero);
+#elif defined(SHIMMER3R)
   ShimCalib_configBytesToCalibDump(SC_SENSOR_ADXL371_ACCEL, setCalibTsZero);
   ShimCalib_configBytesToCalibDump(SC_SENSOR_LIS3MDL_MAG, setCalibTsZero);
-#else
-  (void) setCalibTsZero; //Shimmer3 keeps no calibration in config bytes 128-255
 #endif
 }
 
@@ -1125,6 +1129,22 @@ void ShimCalib_configBytesToCalibDump(uint8_t id, uint8_t setCalibTsZero)
   {
     ShimCalib_singleSensorToCalibDump(SC_SENSOR_LSM303_MAG, configBytes->magRange,
         SC_DATA_LEN_LSM303_MAG, &configBytes->magCalib.rawBytes[0], setCalibTsZero);
+  }
+  /* Under the ranges GET_ALT_ACCEL_CALIBRATION and GET_ALT_MAG_CALIBRATION look
+   * them up by (ShimBt_replySingleSensorCalibCmd). Without these two, a SET
+   * reached InfoMem and the SD header but never the dump, and the GET answered
+   * 21 zeros (DEV-996). */
+  if (id == SC_SENSOR_ALL || id == SC_SENSOR_MPU9X50_ICM20948_ACCEL)
+  {
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_MPU9X50_ICM20948_ACCEL,
+        configBytes->altAccelRange, SC_DATA_LEN_MPU9X50_ICM20948_ACCEL,
+        &configBytes->altAccelCalib.rawBytes[0], setCalibTsZero);
+  }
+  if (id == SC_SENSOR_ALL || id == SC_SENSOR_MPU9X50_ICM20948_MAG)
+  {
+    ShimCalib_singleSensorToCalibDump(SC_SENSOR_MPU9X50_ICM20948_MAG,
+        SC_SENSOR_RANGE_MPU9X50_ICM20948_MAG, SC_DATA_LEN_MPU9X50_ICM20948_MAG,
+        &configBytes->altMagCalib.rawBytes[0], setCalibTsZero);
   }
 #elif defined(SHIMMER3R)
   if (id == SC_SENSOR_ALL || id == SC_SENSOR_LSM6DSV_ACCEL)
