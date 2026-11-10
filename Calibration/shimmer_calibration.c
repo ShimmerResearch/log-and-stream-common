@@ -428,6 +428,10 @@ void ShimCalib_ramTempInit(void)
   shimmerCalib_ramTempLen = 0;
 }
 
+#if defined(SHIMMER3)
+static uint8_t ShimCalib_replaceOldLsm303MagRange0(void);
+#endif
+
 //return 0 : success on this write; 1: successfully finished all;  0xff: fail
 //the calib dump write operation starts with offset = 0, ends with shimmerCalib_ramTempMax bytes received.
 uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
@@ -501,6 +505,14 @@ uint8_t ShimCalib_ramWrite(const uint8_t *buf, uint8_t length, uint16_t offset)
 
     ShimCalib_initVer();
     ShimCalib_ramTempInit();
+#if defined(SHIMMER3)
+    /* A dump saved from firmware up to v1.01.009 carries that firmware's
+     * LSM303 mag default at range 0 (DEV-985, DEV-995). Replace it before it
+     * reaches InfoMem, the SD header and the card. Ranges the host left out
+     * stay out: the dump is the host's, and the next boot or undock adds
+     * them. */
+    ShimCalib_replaceOldLsm303MagRange0();
+#endif
 
     //Update config bytes with latest & current calib from calib dump
     ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
@@ -675,20 +687,54 @@ void ShimCalib_setDefaultMpu9X50Icm20948GyroCalib(sc_t *sc1Ptr)
   }
 }
 
+/* The LSM303's alignment matrix, x 100. Its accelerometer and magnetometer
+ * share it: they share one frame (LSM303AH datasheet DocID027766 Rev 6,
+ * Figure 2), and the LSM303DLHC's two have always had the same seed.
+ *
+ * The LSM303AH's X and Y are the LSM303DLHC's swapped and negated, Z the same.
+ * That makes its matrix a mirror image of the LSM303DLHC's (determinant -1,
+ * against +1), not a turn of it. Measured against the low-noise accelerometer
+ * on two LSM303AH boards standing in a Base6, and on one of them tilted two
+ * ways as well: of the 48 ways to permute and sign the three axes, only this
+ * one matches all three orientations. It is also the Java driver's. */
+static void ShimCalib_lsm303Align(sc_t *sc1Ptr, uint8_t isLsm303ah)
+{
+  if (isLsm303ah)
+  {
+    sc1Ptr->data.dd.align_xx = 0;
+    sc1Ptr->data.dd.align_xy = -100;
+    sc1Ptr->data.dd.align_xz = 0;
+    sc1Ptr->data.dd.align_yx = 100;
+    sc1Ptr->data.dd.align_yy = 0;
+    sc1Ptr->data.dd.align_yz = 0;
+  }
+  else
+  {
+    sc1Ptr->data.dd.align_xx = -100;
+    sc1Ptr->data.dd.align_xy = 0;
+    sc1Ptr->data.dd.align_xz = 0;
+    sc1Ptr->data.dd.align_yx = 0;
+    sc1Ptr->data.dd.align_yy = 100;
+    sc1Ptr->data.dd.align_yz = 0;
+  }
+  sc1Ptr->data.dd.align_zx = 0;
+  sc1Ptr->data.dd.align_zy = 0;
+  sc1Ptr->data.dd.align_zz = -100;
+}
+
 /* The default LSM303 wide-range accel record for sc1Ptr->range, 0 to 3, ready
  * to store: zero timestamp, bias and sensitivity in the dump's byte order.
  *
  * isLsm303ah picks the part. The two number their ranges differently, because
  * the firmware writes wrAccelRange into the part's own full-scale field as it
- * is (see SC_SENSOR_RANGE_LSM303*_ACCEL_*).
+ * is (see SC_SENSOR_RANGE_LSM303*_ACCEL_*). The alignment is the part's
+ * (ShimCalib_lsm303Align).
  *
  * LSM303AH: 0.061 / 0.122 / 0.244 / 0.488 mg/digit at ±2 / 4 / 8 / 16 g
  * (datasheet DocID027766 Rev 6, §2.1 Table 3, LA_So), so 1671 / 836 / 418 /
- * 209 LSB per m/s². Its alignment is a quarter turn from the LSM303DLHC's, the
- * same as its magnetometer's (ShimCalib_lsm303MagSeed): measured on two
- * LSM303AH boards against the low-noise accelerometer. The ICM-20948 that
- * stands in for a missing LSM303AH is set to the same full scale for each
- * code, and its sensitivities are within 0.1% of these.
+ * 209 LSB per m/s². The ICM-20948 that stands in for a missing LSM303AH is set
+ * to the same full scale for each code, and its sensitivities are within 0.1%
+ * of these.
  *
  * LSM303DLHC: the values the seed has always had. */
 static void ShimCalib_lsm303AccelSeed(sc_t *sc1Ptr, uint8_t isLsm303ah)
@@ -701,11 +747,6 @@ static void ShimCalib_lsm303AccelSeed(sc_t *sc1Ptr, uint8_t isLsm303ah)
   sc1Ptr->data.dd.bias_x = 0;
   sc1Ptr->data.dd.bias_y = 0;
   sc1Ptr->data.dd.bias_z = 0;
-  sc1Ptr->data.dd.align_xz = 0;
-  sc1Ptr->data.dd.align_yz = 0;
-  sc1Ptr->data.dd.align_zx = 0;
-  sc1Ptr->data.dd.align_zy = 0;
-  sc1Ptr->data.dd.align_zz = -100;
   if (isLsm303ah)
   {
     if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303AH_ACCEL_2G)
@@ -724,10 +765,6 @@ static void ShimCalib_lsm303AccelSeed(sc_t *sc1Ptr, uint8_t isLsm303ah)
     { //sc1Ptr->range == SC_SENSOR_RANGE_LSM303AH_ACCEL_16G
       sensitivity = 209;
     }
-    sc1Ptr->data.dd.align_xx = 0;
-    sc1Ptr->data.dd.align_xy = -100;
-    sc1Ptr->data.dd.align_yx = 100;
-    sc1Ptr->data.dd.align_yy = 0;
   }
   else
   {
@@ -747,21 +784,18 @@ static void ShimCalib_lsm303AccelSeed(sc_t *sc1Ptr, uint8_t isLsm303ah)
     { //sc1Ptr->range == SC_SENSOR_RANGE_LSM303_ACCEL_16G
       sensitivity = 135;
     }
-    sc1Ptr->data.dd.align_xx = -100;
-    sc1Ptr->data.dd.align_xy = 0;
-    sc1Ptr->data.dd.align_yx = 0;
-    sc1Ptr->data.dd.align_yy = 100;
   }
   sc1Ptr->data.dd.sens_x = sensitivity;
   sc1Ptr->data.dd.sens_y = sensitivity;
   sc1Ptr->data.dd.sens_z = sensitivity;
+  ShimCalib_lsm303Align(sc1Ptr, isLsm303ah);
   ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
 }
 
 /* Seeds the part that is fitted. Up to v1.01.009 every board got the
  * LSM303DLHC's records, so on an LSM303AH board only range 0 was close (2.4%
- * high), ranges 1 to 3 were 2 to 4 times out, and the axes were a quarter
- * turn round. The board type is known here:
+ * high), ranges 1 to 3 were 2 to 4 times out, and X and Y were swapped. The
+ * board type is known here:
  * detectI2cSlaves() runs before ShimConfig_loadSensorConfigAndCalib() at boot,
  * and the other callers of ShimCalib_init() run after boot. A board that is
  * not an LSM303DLHC gets the LSM303AH's, the same test the configuration uses
@@ -785,89 +819,69 @@ void ShimCalib_setDefaultLsm303AccelCalib(sc_t *sc1Ptr)
  *
  * Range 0 is the LSM303AH, the range the configuration forces on any board
  * without an LSM303DLHC: 1.5 mgauss/LSB on every axis (LSM303AH datasheet
- * DocID027766 Rev 6, §2.1 Table 3, M_So), so 667 LSB/gauss. Its alignment is
- * a quarter turn from the LSM303DLHC's: the part sits rotated on the board,
- * and its accelerometer and magnetometer share one frame (datasheet Figure 2).
- * Measured on two LSM303AH boards against the low-noise accelerometer.
+ * DocID027766 Rev 6, §2.1 Table 3, M_So), so 667 LSB/gauss, with the
+ * LSM303AH's alignment (ShimCalib_lsm303Align).
  *
  * Ranges 1 to 7 are the LSM303DLHC's gain codes, ±1.3 to ±8.1 gauss. */
 static void ShimCalib_lsm303MagSeed(sc_t *sc1Ptr)
 {
+  uint8_t isLsm303ah = (sc1Ptr->range == SC_SENSOR_RANGE_LSM303AH_MAG_49G);
+
   sc1Ptr->id = SC_SENSOR_LSM303_MAG;
   sc1Ptr->data_len = SC_DATA_LEN_LSM303_MAG;
   memset(sc1Ptr->ts, 0, sizeof(sc1Ptr->ts));
   sc1Ptr->data.dd.bias_x = 0;
   sc1Ptr->data.dd.bias_y = 0;
   sc1Ptr->data.dd.bias_z = 0;
-  if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303AH_MAG_49G)
+  if (isLsm303ah)
   {
     sc1Ptr->data.dd.sens_x = 667;
     sc1Ptr->data.dd.sens_y = 667;
     sc1Ptr->data.dd.sens_z = 667;
-    sc1Ptr->data.dd.align_xx = 0;
-    sc1Ptr->data.dd.align_xy = -100;
-    sc1Ptr->data.dd.align_xz = 0;
-    sc1Ptr->data.dd.align_yx = 100;
-    sc1Ptr->data.dd.align_yy = 0;
-    sc1Ptr->data.dd.align_yz = 0;
-    sc1Ptr->data.dd.align_zx = 0;
-    sc1Ptr->data.dd.align_zy = 0;
-    sc1Ptr->data.dd.align_zz = -100;
+  }
+  else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_1_3G)
+  {
+    sc1Ptr->data.dd.sens_x = 1100;
+    sc1Ptr->data.dd.sens_y = 1100;
+    sc1Ptr->data.dd.sens_z = 980;
+  }
+  else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_1_9G)
+  {
+    sc1Ptr->data.dd.sens_x = 855;
+    sc1Ptr->data.dd.sens_y = 855;
+    sc1Ptr->data.dd.sens_z = 760;
+  }
+  else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_2_5G)
+  {
+    sc1Ptr->data.dd.sens_x = 670;
+    sc1Ptr->data.dd.sens_y = 670;
+    sc1Ptr->data.dd.sens_z = 600;
+  }
+  else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_4_0G)
+  {
+    sc1Ptr->data.dd.sens_x = 450;
+    sc1Ptr->data.dd.sens_y = 450;
+    sc1Ptr->data.dd.sens_z = 400;
+  }
+  else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_4_7G)
+  {
+    sc1Ptr->data.dd.sens_x = 400;
+    sc1Ptr->data.dd.sens_y = 400;
+    sc1Ptr->data.dd.sens_z = 355;
+  }
+  else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_5_6G)
+  {
+    sc1Ptr->data.dd.sens_x = 330;
+    sc1Ptr->data.dd.sens_y = 330;
+    sc1Ptr->data.dd.sens_z = 295;
   }
   else
-  {
-    if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_1_3G)
-    {
-      sc1Ptr->data.dd.sens_x = 1100;
-      sc1Ptr->data.dd.sens_y = 1100;
-      sc1Ptr->data.dd.sens_z = 980;
-    }
-    else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_1_9G)
-    {
-      sc1Ptr->data.dd.sens_x = 855;
-      sc1Ptr->data.dd.sens_y = 855;
-      sc1Ptr->data.dd.sens_z = 760;
-    }
-    else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_2_5G)
-    {
-      sc1Ptr->data.dd.sens_x = 670;
-      sc1Ptr->data.dd.sens_y = 670;
-      sc1Ptr->data.dd.sens_z = 600;
-    }
-    else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_4_0G)
-    {
-      sc1Ptr->data.dd.sens_x = 450;
-      sc1Ptr->data.dd.sens_y = 450;
-      sc1Ptr->data.dd.sens_z = 400;
-    }
-    else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_4_7G)
-    {
-      sc1Ptr->data.dd.sens_x = 400;
-      sc1Ptr->data.dd.sens_y = 400;
-      sc1Ptr->data.dd.sens_z = 355;
-    }
-    else if (sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_5_6G)
-    {
-      sc1Ptr->data.dd.sens_x = 330;
-      sc1Ptr->data.dd.sens_y = 330;
-      sc1Ptr->data.dd.sens_z = 295;
-    }
-    else
-    { //sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_8_1G
-      sc1Ptr->data.dd.sens_x = 230;
-      sc1Ptr->data.dd.sens_y = 230;
-      sc1Ptr->data.dd.sens_z = 205;
-    }
-    sc1Ptr->data.dd.align_xx = -100;
-    sc1Ptr->data.dd.align_xy = 0;
-    sc1Ptr->data.dd.align_xz = 0;
-    sc1Ptr->data.dd.align_yx = 0;
-    sc1Ptr->data.dd.align_yy = 100;
-    sc1Ptr->data.dd.align_yz = 0;
-    sc1Ptr->data.dd.align_zx = 0;
-    sc1Ptr->data.dd.align_zy = 0;
-    sc1Ptr->data.dd.align_zz = -100;
+  { //sc1Ptr->range == SC_SENSOR_RANGE_LSM303_MAG_8_1G
+    sc1Ptr->data.dd.sens_x = 230;
+    sc1Ptr->data.dd.sens_y = 230;
+    sc1Ptr->data.dd.sens_z = 205;
   }
+  ShimCalib_lsm303Align(sc1Ptr, isLsm303ah);
   ShimCalib_reverseBiasAndSensitivityByteOrder(sc1Ptr);
 }
 
@@ -883,6 +897,44 @@ void ShimCalib_setDefaultLsm303MagCalib(sc_t *sc1Ptr)
   }
 }
 
+/* Give LSM303 mag range 0 the LSM303AH's seed if its record is exactly the
+ * default older firmware gave it (DEV-985, DEV-995): range 7's seed under a
+ * zero timestamp. Up to v1.01.009 the seed gave range 0 range 7's values, and
+ * that record reaches InfoMem, the SD card's calibration file and any dump a
+ * host saves. A record a host or a calibration wrote stays, whatever it holds.
+ *
+ * Returns 1 if the dump changed. */
+static uint8_t ShimCalib_replaceOldLsm303MagRange0(void)
+{
+  sc_t sc1, oldRange0;
+  uint8_t ts;
+
+  sc1.id = SC_SENSOR_LSM303_MAG;
+  sc1.range = SC_SENSOR_RANGE_LSM303AH_MAG_49G;
+  sc1.data_len = SC_DATA_LEN_LSM303_MAG;
+  if ((ShimCalib_singleSensorRead(&sc1) != 0) || (sc1.data_len != SC_DATA_LEN_LSM303_MAG))
+  {
+    return 0;
+  }
+  for (ts = 0; ts < SC_TIMESTAMP_LENGTH; ts++)
+  {
+    if (sc1.ts[ts] != 0)
+    {
+      return 0;
+    }
+  }
+  oldRange0.range = SC_SENSOR_RANGE_LSM303_MAG_8_1G;
+  ShimCalib_lsm303MagSeed(&oldRange0);
+  if (memcmp(sc1.data.raw, oldRange0.data.raw, SC_DATA_LEN_LSM303_MAG) != 0)
+  {
+    return 0;
+  }
+  ShimCalib_lsm303MagSeed(&sc1);
+  //the record is there, so this overwrites it and cannot fail
+  ShimCalib_singleSensorWrite(&sc1);
+  return 1;
+}
+
 /* Bring a dump that older firmware built up to the current LSM303 mag seeds
  * (DEV-985, DEV-995). Up to v1.01.009 the seed gave range 7 no record and gave
  * range 0, the LSM303AH's, range 7's values. Those records reach the SD card's
@@ -890,47 +942,32 @@ void ShimCalib_setDefaultLsm303MagCalib(sc_t *sc1Ptr)
  * undock, so the seed alone would never reach a unit that has run the old
  * firmware.
  *
- * So a missing range gets its seed, and so does a range-0 record that is
- * exactly the old one: range 7's seed under a zero timestamp. Nothing else is
- * touched: a record a host or a calibration wrote stays, whatever it holds.
+ * So the old range-0 record is replaced (ShimCalib_replaceOldLsm303MagRange0),
+ * and a missing range gets its seed if the dump has room for it. Nothing else
+ * is touched.
  *
- * Returns 1 if the dump changed. */
+ * Returns 1 if the dump changed. A seed that did not fit is no change: the
+ * callers rewrite the card's file on a change, and a full dump would have them
+ * do it at every boot and undock for nothing. */
 uint8_t ShimCalib_repairLsm303MagDefaults(void)
 {
-  sc_t sc1, oldRange0;
-  uint8_t range, changed = 0;
-
-  oldRange0.range = SC_SENSOR_RANGE_LSM303_MAG_8_1G;
-  ShimCalib_lsm303MagSeed(&oldRange0);
+  sc_t sc1;
+  uint8_t range;
+  uint8_t changed = ShimCalib_replaceOldLsm303MagRange0();
 
   for (range = 0; range < SC_SENSOR_RANGE_MAX_LSM303_MAG; range++)
   {
     sc1.id = SC_SENSOR_LSM303_MAG;
     sc1.range = range;
     sc1.data_len = SC_DATA_LEN_LSM303_MAG;
-    if (ShimCalib_singleSensorRead(&sc1) == 0)
+    if (ShimCalib_singleSensorRead(&sc1) != 0)
     {
-      uint8_t ts;
-      uint8_t tsZero = 1;
-
-      for (ts = 0; ts < SC_TIMESTAMP_LENGTH; ts++)
+      ShimCalib_lsm303MagSeed(&sc1);
+      if (ShimCalib_singleSensorWrite(&sc1) == 0)
       {
-        if (sc1.ts[ts] != 0)
-        {
-          tsZero = 0;
-        }
-      }
-      if ((range != SC_SENSOR_RANGE_LSM303AH_MAG_49G) || !tsZero
-          || (sc1.data_len != SC_DATA_LEN_LSM303_MAG)
-          || (memcmp(sc1.data.raw, oldRange0.data.raw, SC_DATA_LEN_LSM303_MAG) != 0))
-      {
-        continue;
+        changed = 1;
       }
     }
-    sc1.range = range;
-    ShimCalib_lsm303MagSeed(&sc1);
-    ShimCalib_singleSensorWrite(&sc1);
-    changed = 1;
   }
   return changed;
 }

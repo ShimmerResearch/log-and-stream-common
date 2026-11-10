@@ -591,8 +591,8 @@ pattern of the lower ranges.
 > board, with the range codes in a different order, an uncalibrated
 > wide-range accelerometer therefore read 2.4 % high at ±2 g, about a quarter of
 > the true value at ±16 g (815 where 209 is right), about twice it at ±4 g (408
-> for 836), and about three times it at ±8 g (135 for 418). X and Y were also a
-> quarter turn round (below). The host APIs take a device's block whatever its
+> for 836), and about three times it at ±8 g (135 for 418). X and Y were also
+> swapped (below). The host APIs take a device's block whatever its
 > timestamp, and fall back to their own defaults only for an all-`0x00` or
 > all-`0xFF` block (§3.3), so they showed those values.
 >
@@ -608,6 +608,15 @@ pattern of the lower ranges.
 > dump with `SET_CALIB_DUMP_COMMAND`, touches only what it writes. Docked, the firmware builds its
 > dump from the seed and InfoMem without reading the card, so the ranges not in
 > use show the new seed there even on an updated unit.
+>
+> **So an updated unit's dump depends on how it last booted.** After a docked
+> boot it holds the new seed for the ranges not in use and InfoMem's old block
+> for the one in use; after an undocked boot, the card's old records for all
+> four. Docking does not rebuild the dump, so a unit that booted undocked and
+> was then docked still shows the card's. A host that reads the dump in one
+> state and the unit's data in the other can see the wide-range accel's
+> defaults change. `fleet.wr_accel_seeds` resets the unit through its slot
+> first, so that what it reads is the seed.
 
 > **Mag range 0 is the LSM303AH; 1 to 7 are the LSM303DLHC's gain codes.**
 > `ShimConfig_checkAndCorrectConfig` forces `magRange = 0` on every Shimmer3
@@ -630,7 +639,15 @@ pattern of the lower ranges.
 > gives any missing range its default, and replaces a range-0 record that is
 > exactly the old one (range 7's values under a zero timestamp). Any other
 > record is left as it is, so a real calibration, or a host's own block, stays.
-> When the repair changes a dump read from the card, the file is rewritten.
+> When the repair changes a dump read from the card, the file is rewritten. A
+> default that does not fit a full dump (§2.4) is not added, and is no change,
+> so the file is not rewritten for it at every boot.
+>
+> A host can bring the old record back too, by writing with
+> `SET_CALIB_DUMP_COMMAND` a dump it saved from older firmware. So when such a
+> write completes, the old range-0 record is replaced the same way before the
+> dump reaches InfoMem, the SD header and the card. Ranges the host's dump
+> leaves out stay out until the next boot or undock adds them.
 
 Alignment matrices, Shimmer3:
 
@@ -640,13 +657,22 @@ Alignment matrices, Shimmer3:
 | LSM303 accel on an LSM303DLHC board; LSM303 mag ranges 1-7 (LSM303DLHC) | `[-1, 0, 0, 0, 1, 0, 0, 0, -1]` |
 | LSM303 accel on any other board; LSM303 mag range 0 (LSM303AH) | `[0, -1, 0, 1, 0, 0, 0, 0, -1]` |
 
-> **The LSM303AH sits a quarter turn round from the LSM303DLHC.** Its matrix
-> was measured, not inferred: on two LSM303AH boards standing in a Base6, the
-> wide-range accelerometer's gravity matched the low-noise accelerometer's
-> through this matrix (cosine 0.97 and 0.98) and not through the LSM303DLHC's
-> (0.12 and 0.20). The LSM303AH's accelerometer and magnetometer share one
-> frame (datasheet Figure 2), so the measurement holds for the magnetometer.
-> It is also the Java driver's `SensorLSM303AH.DefaultAlignmentLSM303AH`.
+> **The LSM303AH's X and Y are the LSM303DLHC's swapped and negated.** Its
+> matrix is therefore a mirror image of the LSM303DLHC's (determinant −1,
+> against +1), not a turn of it, and was measured, not inferred. On two
+> LSM303AH boards standing in a Base6, the wide-range accelerometer's gravity
+> matched the low-noise accelerometer's through this matrix (cosine 0.97 and
+> 0.98) and not through the LSM303DLHC's (0.12 and 0.20). Standing alone
+> pins only one axis, so one of the boards was also tilted fore and aft and
+> left and right: of the 48 ways to permute and sign the three axes, only this
+> matrix fitted all three orientations (cosine 0.97, 0.95, 0.98). Its
+> rotation-only twin, with the sign of the second row flipped, fell to 0.56 on
+> the left-right tilt. The LSM303AH's accelerometer and magnetometer share one
+> frame (datasheet Figure 2), so the measurement holds for the magnetometer,
+> and the firmware takes both seeds from one place
+> (`ShimCalib_lsm303Align`). It is also the Java driver's
+> `SensorLSM303AH.DefaultAlignmentLSM303AH`. Applied as §7 applies it, the
+> LSM303DLHC's matrix on an LSM303AH board swaps X and Y.
 >
 > On a board where an ICM-20948 stands in for the LSM303AH, the firmware negates
 > the ICM-20948's Y axis "to match LSM303 chip placement" before packing it.
