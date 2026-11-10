@@ -29,6 +29,9 @@ INQUIRY, INQUIRY_RSP = 0x01, 0x02
 GET_DEVICE_VERSION, DEVICE_VERSION_RSP = 0x3F, 0x25
 GET_FW_VERSION, FW_VERSION_RSP = 0x2E, 0x2F
 GET_STATUS, STATUS_RSP = 0x72, 0x71
+# The battery read: answered in the in-stream wrapper, ACK 0x8A 0x94, then the
+# 3 bytes of battStatusRaw (ADC value, then the charger status), streaming or not.
+GET_VBATT, VBATT_RSP, VBATT_BYTES = 0x95, 0x94, 3
 SET_CRC = 0x8B
 START_STREAMING, STOP_STREAMING = 0x07, 0x20
 START_LOGGING, STOP_LOGGING = 0x92, 0x93
@@ -56,6 +59,13 @@ SETTINGS = {
     "alt_accel_range": (0x4F, 0x50, 0x51),
 }
 WRITE_ACK_S = 3.0               # a write's ACK follows the flash erase and write
+# One sensor's 21-byte calibration block (§7.6): name -> (SET, response, GET).
+# The GET answers from the calibration dump, for the sensor's current range.
+CALIBRATION_CMDS = {
+    "ln_accel": (0x11, 0x12, 0x13), "gyro": (0x14, 0x15, 0x16), "mag": (0x17, 0x18, 0x19),
+    "wr_accel": (0x1A, 0x1B, 0x1C), "alt_accel": (0xA9, 0xAA, 0xAB), "alt_mag": (0xAF, 0xB0, 0xB1),
+}
+CALIB_BLOCK = 21
 
 STATUS_DOCKED, STATUS_SENSING, STATUS_LOGGING, STATUS_STREAMING = 0x01, 0x02, 0x08, 0x10
 STATUS_SD_INSERTED, STATUS_SD_BAD_FILE = 0x20, 0x40
@@ -119,6 +129,9 @@ class StreamStats:
     resyncs: int = 0            # bytes skipped to find a packet boundary
     status_pushes: int = 0
     pushed: list = field(default_factory=list)  # status byte 0 of each in-stream status frame, in order
+    # Every in-stream frame, status and battery alike: (response opcode, packets
+    # framed before it), so a caller can tell which samples sit either side.
+    instream: list = field(default_factory=list)
     acks: int = 0               # bare ACKs mid-stream: commands sent with actions=
     events: list = field(default_factory=list)  # (label, packets so far, seconds) per action sent
     first_ts: int | None = None
@@ -178,6 +191,19 @@ def classify_step(st, d: int, period: int) -> None:
     if off > 1:
         st.jitter += 1
         st.max_jitter_ticks = max(st.max_jitter_ticks, off)
+
+
+def gap_positions(ts: list[int], period: int) -> list[tuple[int, int]]:
+    """Where a kept stream (stream(keep=True)) lost samples: (index of the packet
+    after the gap, samples lost), judged on the grid exactly as classify_step
+    judges the whole stream."""
+    scratch, out = StreamStats(), []
+    for i in range(1, len(ts)):
+        before = scratch.missing
+        classify_step(scratch, ts_step(ts[i], ts[i - 1]), period)
+        if scratch.missing > before:
+            out.append((i, scratch.missing - before))
+    return out
 
 
 class BtLink:
@@ -383,6 +409,18 @@ class BtLink:
             self.command(SET_CALIB_DUMP, bytes([len(chunk)]) + at.to_bytes(2, "little") + chunk,
                          ack_timeout_s=WRITE_ACK_S)
 
+    def get_calibration(self, name: str) -> bytes:
+        """One sensor's calibration block, as GET_<sensor>_CALIBRATION answers it."""
+        _, rsp, get = CALIBRATION_CMDS[name]
+        self.command(get, rsp=rsp)
+        return self._read(CALIB_BLOCK)
+
+    def set_calibration(self, name: str, block: bytes) -> None:
+        """SET_<sensor>_CALIBRATION: stored in InfoMem and the SD header before the ACK."""
+        if len(block) != CALIB_BLOCK:
+            raise BtError(f"a calibration block is {CALIB_BLOCK} bytes, not {len(block)}")
+        self.command(CALIBRATION_CMDS[name][0], bytes(block), ack_timeout_s=WRITE_ACK_S)
+
     def set_sampling_divider(self, ticks: int) -> None:
         """SET_SAMPLING_RATE: a divider of the 32768 Hz clock, not a frequency (§7.8)."""
         if not 1 <= ticks <= 0xFFFF:
@@ -456,13 +494,15 @@ class BtLink:
         after the start), .label and .bytes() (rig/midstream.py's Action). Each
         is recorded in st.events with the packet count when it went out. Their
         replies are counted, not matched: a bare ACK at a frame boundary in
-        st.acks, an in-stream status frame's status byte in st.pushed.
+        st.acks, an in-stream status frame's status byte in st.pushed, and
+        every in-stream frame (status or battery) in st.instream.
         """
         inq = inq or self.inquiry()
         crc_n = getattr(self, "crc_mode", 0)
         body = 4 + sum(channel_width(c, self.hw) for c in inq.channels)
         plen = body + crc_n
         push_len = 3 + self.status_len() + crc_n  # [ACK][0x8A][0x71][status...][CRC]; asked before the start
+        vbatt_len = 3 + VBATT_BYTES + crc_n       # [ACK][0x8A][0x94][3 bytes][CRC]
         st = StreamStats()
         self.command(start_op)
         if crc_n:
@@ -535,15 +575,22 @@ class BtLink:
                             st.rows.append(bytes(buf[4:body]))
                         del buf[:plen]
                     elif buf[0] == ACK and len(buf) >= 2 and buf[1] == INSTREAM:
-                        if len(buf) < push_len:
+                        # Its length follows from the response opcode: a battery
+                        # reply, or anything else framed as a status frame.
+                        if len(buf) < 3:
+                            break
+                        n = vbatt_len if buf[2] == VBATT_RSP else push_len
+                        if len(buf) < n:
                             break
                         # The CRC covers the whole frame, ACK included (§3.3).
-                        if crc_n and not _crc_ok(buf[:push_len - crc_n], buf[push_len - crc_n:push_len]):
+                        if crc_n and not _crc_ok(buf[:n - crc_n], buf[n - crc_n:n]):
                             st.crc_errors += 1
                         else:
-                            st.status_pushes += 1
-                            st.pushed.append(buf[3])
-                        del buf[:push_len]
+                            st.instream.append((buf[2], st.packets))
+                            if buf[2] != VBATT_RSP:
+                                st.status_pushes += 1
+                                st.pushed.append(buf[3])
+                        del buf[:n]
                     elif buf[0] == ACK and stop_t is None and len(buf) >= 2:
                         # A bare ACK at a frame boundary while streaming: the
                         # reply to a command sent with actions=.
