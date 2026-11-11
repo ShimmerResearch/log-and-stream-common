@@ -101,6 +101,13 @@ void LogAndStream_syncConfigAndCalibOnSd(void)
     }
     else
     {
+#if defined(SHIMMER3)
+      if (ShimCalib_repairLsm303MagDefaults())
+      {
+        //the file held older firmware's LSM303 mag defaults (DEV-985, DEV-995)
+        ShimCalib_ram2File();
+      }
+#endif
       //only need to do this when file2Ram succeeds
       ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
     }

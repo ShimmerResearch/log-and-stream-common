@@ -238,8 +238,12 @@ None of these is handled: `ShimDock_processCmd` has no branch for
 
 1. Verify the CRC over `length + 3` bytes. On failure, reply
    `UART_BAD_CRC_RESPONSE`.
-2. Dispatch on `UART_GET` or `UART_SET`, then on component, then on property.
-3. Unknown component or property replies `UART_BAD_CMD_RESPONSE`. A known one
+2. Check `LEN` against the arguments of the variable-length requests
+   (`ShimDock_isArgLenOk`, `Comms/shimmer_dock_args.c`; the `LEN` column in
+   Appendix A). On a mismatch, reply `UART_BAD_ARG_RESPONSE` before anything
+   reads them.
+3. Dispatch on `UART_GET` or `UART_SET`, then on component, then on property.
+4. Unknown component or property replies `UART_BAD_CMD_RESPONSE`. A known one
    with the wrong length or an argument out of range replies
    `UART_BAD_ARG_RESPONSE` (Appendix A).
 
@@ -318,11 +322,11 @@ counts component + property + value. Multi-byte integers are little-endian.
 | `SHIMMER` | `VER` `0x03` | none (`LEN` 2) | `DEVICE_VER`, `FW_IDENTIFIER` u16, `FW_VERSION_MAJOR` u16, `FW_VERSION_MINOR`, `FW_VERSION_PATCH` (`LEN` 9) |
 | `SHIMMER` | `RWC_CFG_TIME` `0x04` | none (`LEN` 2) | 8 bytes: the 64-bit tick value the clock was last set to (`LEN` 10) |
 | `SHIMMER` | `CURR_LOCAL_TIME` `0x05` | none (`LEN` 2) | 8 bytes: current 64-bit real-world-clock ticks (`LEN` 10) |
-| `SHIMMER` | `INFOMEM` `0x06` | `length` u8, `offset` u16 — `length ≤ 128`, `offset ≤ 0x1FF`, `length + offset ≤ 0x200` | `length` bytes of InfoMem from `offset` (`LEN` = length + 2) |
+| `SHIMMER` | `INFOMEM` `0x06` | `length` u8, `offset` u16 (`LEN` must be 5) — `length ≤ 128`, `offset ≤ 0x1FF`, `length + offset ≤ 0x200` | `length` bytes of InfoMem from `offset` (`LEN` = length + 2) |
 | `SHIMMER` | `CALIB_DUMP` (no value)* | `length` u8, `offset` u16 — `length ≤ 128`, within `SHIMMER_CALIB_RAM_MAX` | `length` bytes of the calibration RAM image |
 | `BAT` `0x02` | `VALUE` `0x02` | none (`LEN` 2) | 3 bytes `battStatusRaw` — ADC LSB, ADC MSB, charger status (`LEN` 5) |
-| `DAUGHTER_CARD` `0x03` | `CARD_ID` `0x02` | `length` u8, `offset` u8 — `length ≤ 16`, `offset ≤ 15`, sum `≤ 16` | `length` bytes of the 16-byte daughter-card ID |
-| `DAUGHTER_CARD` | `CARD_MEM` `0x03` | `length` u8, `offset` u16 — `length ≤ 128`, `offset ≤ 2031`, sum `≤ 2032` | `length` bytes of EEPROM read from `offset + 16` |
+| `DAUGHTER_CARD` `0x03` | `CARD_ID` `0x02` | `length` u8, `offset` u8 (`LEN` 4; 5 is accepted too, see below) — `length ≤ 16`, `offset ≤ 15`, sum `≤ 16` | `length` bytes of the 16-byte daughter-card ID |
+| `DAUGHTER_CARD` | `CARD_MEM` `0x03` | `length` u8, `offset` u16 (`LEN` 5) — `length ≤ 128`, `offset ≤ 2031`, sum `≤ 2032` | `length` bytes of EEPROM read from `offset + 16` |
 | `BT` `0x0A` | `VER` `0x03` | none (`LEN` 2) | the module's version string, as many bytes as it has (`LEN` = 2 + strlen) |
 
 \* **Do not implement this one.** It is listed because the handler is in the
@@ -339,12 +343,12 @@ table used to give was wrong. `0x07` in the `SHIMMER` component's own space is
 | Component | Property | Value bytes | Effect |
 |---|---|---|---|
 | `SHIMMER` | `RWC_CFG_TIME` `0x04` | 8 bytes, 64-bit ticks (`LEN` must be 10) | `RTC_setTimeFromTicksPtr`, clears `rtcSetByBt` through `ShimRtc_setRtcSetByBt(0)` (which writes InfoMem byte `NV_SD_TRIAL_CONFIG0` only if the bit was set; later than the pin, see [Still unverified](#still-unverified--not-found-in-code)), and updates the SD header |
-| `SHIMMER` | `INFOMEM` `0x06` | `length` u8, `offset` u16, then `length` bytes — bounded by `STOREDCONFIG_SIZE` | `ShimConfig_storedConfigSet`, `ShimConfig_checkAndCorrectConfig`, flags the SD config file for rewrite, `LogAndStream_infomemUpdate` |
+| `SHIMMER` | `INFOMEM` `0x06` | `length` u8, `offset` u16, then `length` bytes (`LEN` must be 5 + length) — bounded by `STOREDCONFIG_SIZE` | `ShimConfig_storedConfigSet`, `ShimConfig_checkAndCorrectConfig`, flags the SD config file for rewrite, `LogAndStream_infomemUpdate` |
 | `SHIMMER` | `CALIB_DUMP`* | `length` u8, `offset` u16, then `length` bytes | `ShimmerCalib_ramWrite` (return value ignored; always ACKs) |
-| `SHIMMER` | `ENTER_BOOTLOADER` `0x09` (Shimmer3R only) | 1 byte: seconds until reboot; `0` cancels | arms `RTC_setAlarmRebootToBootloader`, sets `bslRebootPending` |
-| `DAUGHTER_CARD` | `CARD_ID` `0x02` | `length` u8, `offset` u8, then `length` bytes — `length ≤ 16`, `offset ≤ 15`, sum `≤ 16` (earlier firmware did not check the sum, so a write could run past byte 15 into the daughter-card memory) | writes EEPROM bytes 0-15 and refreshes the in-RAM daughter-card ID |
-| `DAUGHTER_CARD` | `CARD_MEM` `0x03` | `length` u8, `offset` u16, then `length` bytes | `ShimEeprom_writeDaughterCardMem` — writes at `offset + 16`; rejects zero length, over-long or out-of-range writes with `BAD_ARG` |
-| `TEST` `0x0B` | *suite index* | none | property byte `< FACTORY_TEST_COUNT` → `ShimFactoryTest_setup(PRINT_TO_DOCK_UART, suite)` and `TASK_FACTORY_TEST`; otherwise `BAD_CMD` |
+| `SHIMMER` | `ENTER_BOOTLOADER` `0x09` (Shimmer3R only) | 1 byte: seconds until reboot; `0` cancels (`LEN` 3) | arms `RTC_setAlarmRebootToBootloader`, sets `bslRebootPending` |
+| `DAUGHTER_CARD` | `CARD_ID` `0x02` | `length` u8, `offset` u8, then `length` bytes (`LEN` 4 + length) — `length ≤ 16`, `offset ≤ 15`, sum `≤ 16` (earlier firmware did not check the sum, so a write could run past byte 15 into the daughter-card memory) | writes EEPROM bytes 0-15 and refreshes the in-RAM daughter-card ID |
+| `DAUGHTER_CARD` | `CARD_MEM` `0x03` | `length` u8, `offset` u16, then `length` bytes (`LEN` 5 + length) | `ShimEeprom_writeDaughterCardMem` — writes at `offset + 16`; rejects zero length, over-long or out-of-range writes with `BAD_ARG` |
+| `TEST` `0x0B` | *suite index* | none (`LEN` 2) | property byte `< FACTORY_TEST_COUNT` → `ShimFactoryTest_setup(PRINT_TO_DOCK_UART, suite)` and `TASK_FACTORY_TEST`; otherwise `BAD_CMD` |
 
 Any component/property pair not in these tables → `UART_BAD_CMD_RESPONSE`
 (`0xFC`); a recognised pair with a bad `LEN` or an out-of-range argument →
@@ -352,13 +356,19 @@ Any component/property pair not in these tables → `UART_BAD_CMD_RESPONSE`
 (`0xFE`). Error responses are four bytes: `'$'`, code, CRC-16 (the CRC is over
 the two leading bytes).
 
-> **Only the fixed-size properties have their `LEN` checked**: MAC, VER, the
-> two clock GETs, the clock SET, BAT and the BT version. INFOMEM, CARD_ID and
-> CARD_MEM, and the ENTER_BOOTLOADER and TEST SETs, take their arguments from
-> fixed offsets whatever `LEN` says. A frame shorter than its arguments is
-> therefore not refused: its own CRC bytes are read as them, and the bench saw a
-> GET INFOMEM with no arguments answered with InfoMem from an offset its CRC
-> chose. A host must send every argument byte.
+> **Every `LEN` in these tables is checked**, from the releases after Shimmer3
+> v1.01.009 and Shimmer3R v1.01.025 (DEV-1279). Before them only the
+> fixed-size properties were: MAC, VER, the two clock GETs, the clock SET, BAT
+> and the BT version. INFOMEM, CARD_ID and CARD_MEM, and the ENTER_BOOTLOADER
+> and TEST SETs, took their arguments from fixed offsets whatever `LEN` said. A
+> frame shorter than its arguments was therefore not refused: its own CRC bytes,
+> then whatever an earlier frame left in the buffer, were read as them. The bench
+> saw a GET INFOMEM with no arguments answered with InfoMem from an offset its
+> CRC chose. A host must send every argument byte, and no more.
+>
+> **One exception: GET CARD_ID also accepts `LEN` 5**, a 2-byte offset whose
+> high byte is ignored. pyshimmer's `ShimmerDock.get_infomem()` sends it that
+> way before every InfoMem read, and refusing it would break that library.
 
 On Shimmer3R the response goes to USB-CDC when USB is plugged in and initialised,
 otherwise to the dock UART; on Shimmer3 always to the dock UART.

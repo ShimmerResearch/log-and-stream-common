@@ -14,11 +14,13 @@ drifted from what customers have, or the firmware misreads the module.
 from __future__ import annotations
 
 import re
+import struct
 import time
 
 import pytest
 
 from rig import ble, bt, dock, dock_protocol, midstream, throughput
+from rig.s3_config import MAG_DLHC, S3Config, calib_records
 from rig.s3_flash import restore_infomem
 
 pytestmark = pytest.mark.fleet
@@ -118,6 +120,266 @@ def test_dock_protocol(unit, docklink, candidate, hil_note):
     note, failures = dock_protocol.walk(docklink, dock_protocol.S3, "Base6 UART", mac=unit.mac, version=version)
     hil_note(note)
     assert not failures, "; ".join(failures)
+
+
+ALT_BLOCKS = {"alt_accel": 133, "alt_mag": 154}     # NV_ALT_ACCEL/MAG_CALIBRATION: InfoMem offsets
+
+
+def alt_test_block(current: bytes, n: int) -> bytes:
+    """A plausible 21-byte block (CALIBRATION §3: big-endian bias and
+    sensitivity, then an int8 alignment matrix) that differs from `current`."""
+    block = struct.pack(">3h3h9b", 11 + n, -22 - n, 33 + n, 1234, 1235 + n, 1236,
+                        100, 0, 0, 0, 100, 0, 0, 0, 100)
+    return block if block != current else struct.pack(">3h", 44, 55, 66) + block[6:]
+
+
+@pytest.mark.hil("fleet.alt_calibration", needs=["shimmer3", "bt", "dock"])
+def test_alt_calibration(unit, base6, hil_note):
+    """SET_ALT_ACCEL_CALIBRATION / SET_ALT_MAG_CALIBRATION, then the matching GET,
+    return the block just written.
+
+    The GET answers from the calibration dump, under the alt accel's range and
+    range 0 for the alt mag. Until DEV-996 the SET reached InfoMem and the SD
+    header but never the dump, so the GET answered 21 zeros. InfoMem is read
+    over the dock as well, to say which side is wrong.
+
+    What it writes it puts back: the calibration dump over Bluetooth, then the
+    whole InfoMem over the dock, from copies taken first and kept on disk.
+    """
+    base6.select(unit.base6_slot)
+    with dock.open_when_ready(base6.uart_port) as d:
+        original = bytes(d.read_infomem())
+    backup = throughput.save_infomem(unit.name, original)
+    written, got, error = {}, {}, None
+    try:
+        with open_bt(unit) as link:
+            dump = link.read_calib_dump()
+            backup.with_name(backup.stem + "_calib_dump.bin").write_bytes(dump)
+            for n, name in enumerate(ALT_BLOCKS):
+                written[name] = alt_test_block(link.get_calibration(name), n)
+                link.set_calibration(name, written[name])
+                got[name] = link.get_calibration(name)
+            # Put the dump back first: writing it pushes its blocks into InfoMem
+            # (CALIBRATION §8.3), which the InfoMem restore below then undoes.
+            if link.read_calib_dump() != dump:
+                link.write_calib_dump(dump)
+                assert link.read_calib_dump() == dump, "calibration dump not restored: read back differs"
+        base6.select(unit.base6_slot)
+        with dock.open_when_ready(base6.uart_port) as d:
+            im = d.read_infomem()
+    except BaseException as e:
+        error = e
+        raise
+    finally:
+        retries = restore_infomem(base6, original, error, backup)
+        if retries:
+            hil_note(f"InfoMem restore needed {len(retries)} retries: {'; '.join(retries)}")
+    problems, notes = [], []
+    for name, off in ALT_BLOCKS.items():
+        in_infomem = im[off:off + bt.CALIB_BLOCK] == written[name]
+        notes.append(f"{name}: GET {'matches' if got[name] == written[name] else 'differs'}, "
+                     f"InfoMem {'holds it' if in_infomem else 'does not'}")
+        if got[name] != written[name]:
+            what = "21 zero bytes" if not any(got[name]) else got[name].hex()
+            problems.append(f"{name}: wrote {written[name].hex()}, GET returned {what}"
+                            f" (InfoMem {'holds the block' if in_infomem else 'does not hold it either'})")
+        elif not in_infomem:
+            problems.append(f"{name}: the GET answers the block, but InfoMem does not hold it")
+    hil_note("; ".join(notes))
+    assert not problems, "; ".join(problems)
+
+
+# The LSM303's default alignment, x100, shared by its accel and mag
+# (CALIBRATION §6.1). The LSM303AH's X and Y are the LSM303DLHC's swapped and
+# negated: a mirror image of it, determinant -1.
+_DLHC_ALIGN = (-100, 0, 0, 0, 100, 0, 0, 0, -100)
+_AH_ALIGN = (0, -100, 0, 100, 0, 0, 0, 0, -100)
+
+# The LSM303 mag's default calibration (CALIBRATION §4.1): range 0 is the
+# LSM303AH, 1 to 7 the LSM303DLHC's gain codes. (X/Y, Z) sensitivity in
+# LSB/gauss and the alignment; the bias is 0.
+LSM303_MAG_ID = 32                          # SC_SENSOR_LSM303_MAG
+LSM303_MAG_SEEDS = {
+    0: ((667, 667), _AH_ALIGN),             # LSM303AH: 1.5 mgauss/LSB
+    1: ((1100, 980), _DLHC_ALIGN),          # ±1.3 gauss
+    2: ((855, 760), _DLHC_ALIGN),
+    3: ((670, 600), _DLHC_ALIGN),
+    4: ((450, 400), _DLHC_ALIGN),
+    5: ((400, 355), _DLHC_ALIGN),
+    6: ((330, 295), _DLHC_ALIGN),
+    7: ((230, 205), _DLHC_ALIGN),           # ±8.1 gauss
+}
+MAG_CHANNELS = {0x07, 0x08, 0x09}           # mag X, Y, Z in an inquiry's channel list
+BOOT_SETTLE_S = 4.0     # radio bring-up after a slot reset, as rig/btmode.py waits
+
+
+def mag_seed_block(rng: int) -> bytes:
+    (sxy, sz), align = LSM303_MAG_SEEDS[rng]
+    return struct.pack(">3h3h9b", 0, 0, 0, sxy, sxy, sz, *align)
+
+
+# What firmware up to v1.01.009 seeded at mag range 0: range 7's values.
+OLD_MAG_RANGE0 = mag_seed_block(7)
+
+
+def describe_mag_block(block: bytes) -> str:
+    sens = struct.unpack(">3h", block[6:12])
+    align = struct.unpack("9b", block[12:21])
+    return f"sens {sens} align {align}"
+
+
+@pytest.fixture
+def booted_docked(unit, base6):
+    """Reset the unit through its slot first, so that its calibration dump is
+    the one a docked boot builds: from the seeds and InfoMem, after the
+    firmware's repairs. A unit that last booted undocked holds the dump it
+    read from its SD card instead, and docking does not rebuild it."""
+    from rig.s3_flash import reset_slot
+    reset_slot(base6, unit.base6_slot)
+    with dock.open_when_ready(base6.uart_port, attempts=30, delay_s=0.5) as d:
+        d.version()
+    time.sleep(BOOT_SETTLE_S)
+
+
+@pytest.mark.hil("fleet.mag_seeds", needs=["shimmer3", "bt", "dock"])
+def test_mag_seeds(unit, booted_docked, hil_note):
+    """The calibration dump holds a default LSM303 mag record for every range,
+    0 to 7, and each one that is still a default holds its part's values.
+
+    Up to v1.01.009 the seed loop ran 0-6 against gain codes 1-7 (DEV-985,
+    DEV-995): range 7 (±8.1 gauss) had no record, so GET_MAG_CALIBRATION
+    there read 21 zeros, and range 0, the LSM303AH's, carried ±8.1 gauss's
+    230/230/205 and the LSM303DLHC's alignment, so an LSM303AH read about 3x
+    high.
+
+    Writes nothing, after a reset through the slot (booted_docked). A docked
+    Shimmer3 builds its dump at boot from the seeds and InfoMem, so a record
+    under a zero timestamp is a seed, except the range in use, where InfoMem's
+    own block replaces it. That one, and any record with a timestamp, is
+    someone's calibration and is not compared. One thing InfoMem's block may
+    not be is the old range-0 default, which the boot replaces whatever its
+    timestamp: on an LSM303AH board, where range 0 is always in use, that is
+    the check on the repair.
+    """
+    with open_bt(unit) as link:
+        cfg = S3Config(link.read_infomem())
+        records = calib_records(link.read_calib_dump())
+    in_use = cfg.get("mag_range")
+    have = sorted(r for (sid, r) in records if sid == LSM303_MAG_ID)
+    missing = [r for r in LSM303_MAG_SEEDS if r not in have]
+    wrong, compared = [], []
+    for rng in LSM303_MAG_SEEDS:
+        rec = records.get((LSM303_MAG_ID, rng))
+        if rec is None:
+            continue
+        block = bytes(rec.data[:21])
+        if rng == in_use == 0:
+            compared.append("0 (in use: not the old default)")
+            if block == OLD_MAG_RANGE0:
+                wrong.append(f"range 0, in use, still holds the default up to v1.01.009 gave it "
+                             f"({describe_mag_block(block)}): the boot did not replace it")
+            continue
+        if rng == in_use or any(rec.ts):
+            continue
+        compared.append(str(rng))
+        want = mag_seed_block(rng)
+        if block != want:
+            wrong.append(f"range {rng}: {describe_mag_block(block)}, "
+                         f"expected {describe_mag_block(want)}")
+    hil_note(f"LSM303 mag records for ranges {have}; range {in_use} in use; "
+             f"defaults compared for ranges {compared}")
+    problems = []
+    if missing:
+        problems.append(f"no LSM303 mag record for range(s) {missing}: a unit set to one reads an "
+                        f"all-zero calibration")
+    problems += wrong
+    assert not problems, "; ".join(problems)
+
+
+LSM303_ACCEL_ID = 31                        # SC_SENSOR_LSM303_ACCEL
+# The wide-range accel's range code is the part's own full-scale field value,
+# so the two parts number their full scales differently (CALIBRATION §6.1).
+LSM303_ACCEL_SEEDS = {
+    "LSM303DLHC": ({0: 1631, 1: 815, 2: 408, 3: 135}, _DLHC_ALIGN),  # ±2/4/8/16 g
+    "LSM303AH": ({0: 1671, 1: 209, 2: 836, 3: 418}, _AH_ALIGN),     # ±2/16/4/8 g
+}
+
+
+def accel_seed_block(part: str, rng: int) -> bytes:
+    sens, align = LSM303_ACCEL_SEEDS[part]
+    return struct.pack(">3h3h9b", 0, 0, 0, sens[rng], sens[rng], sens[rng], *align)
+
+
+def lsm303_part(cfg: S3Config, channels: list[int]) -> tuple[str, str, bool]:
+    """Which LSM303 the firmware found at boot: (part, how that was told,
+    whether that is proof). "LSM303AH" includes an ICM-20948 standing in for
+    one, which the seed treats the same way.
+
+    A host cannot ask for the part (STREAMING_DATA_FORMAT §5.2), but two
+    things show it. With the mag enabled, the inquiry lists its channels X,
+    Z, Y on an LSM303DLHC board and X, Y, Z on any other (§4.1). And a mag
+    range other than 0 means an LSM303DLHC, because the firmware moves it to
+    0 on any other board. Range 0 alone proves nothing: it is no LSM303DLHC
+    gain, but nothing stops a host writing it to one.
+    """
+    mag = tuple(c for c in channels if c in MAG_CHANNELS)
+    if mag:
+        return ("LSM303DLHC" if mag == MAG_DLHC else "LSM303AH"), "the inquiry's mag channel order", True
+    mag_range = cfg.get("mag_range")
+    if mag_range != 0:
+        return "LSM303DLHC", f"mag range {mag_range}", True
+    return "LSM303AH", "mag range 0, with the mag off", False
+
+
+@pytest.mark.hil("fleet.wr_accel_seeds", needs=["shimmer3", "bt", "dock"])
+def test_wr_accel_seeds(unit, booted_docked, hil_note):
+    """The calibration dump holds a default LSM303 wide-range accel record for
+    every range, 0 to 3, and each one that is still a default holds the fitted
+    part's values.
+
+    Up to v1.01.009 every board got the LSM303DLHC's records. On an LSM303AH
+    board, whose codes run ±2/16/4/8 g, that read 2.4% high at ±2 g and 2 to 4
+    times out at the others, with X and Y swapped.
+
+    The part is the one the firmware found at boot, as lsm303_part tells it.
+    Writes nothing, after a reset through the slot (booted_docked). As in
+    fleet.mag_seeds, the range in use and any record with a timestamp may be
+    someone's calibration and are not compared.
+
+    The reset matters here. Docked, the firmware builds the dump from the seed
+    and InfoMem without reading the SD card, so this checks the seed even on a
+    unit updated from v1.01.009, whose old records stay in InfoMem (range in
+    use) and on the card: nothing repairs them (CALIBRATION §6.1). A unit that
+    last booted undocked would hold the card's records instead.
+    """
+    with open_bt(unit) as link:
+        cfg = S3Config(link.read_infomem())
+        channels = list(link.inquiry().channels)
+        records = calib_records(link.read_calib_dump())
+    part, told_by, proven = lsm303_part(cfg, channels)
+    in_use = cfg.get("wr_accel_range")
+    have = sorted(r for (sid, r) in records if sid == LSM303_ACCEL_ID)
+    missing = [r for r in range(4) if r not in have]
+    wrong, compared = [], []
+    for rng in range(4):
+        rec = records.get((LSM303_ACCEL_ID, rng))
+        if rec is None or rng == in_use or any(rec.ts):
+            continue
+        compared.append(rng)
+        want = accel_seed_block(part, rng)
+        if bytes(rec.data[:21]) != want:
+            wrong.append(f"range {rng}: {describe_mag_block(bytes(rec.data))}, "
+                         f"expected the {part}'s {describe_mag_block(want)}")
+    hil_note(f"{part} board, from {told_by}; LSM303 accel records for ranges "
+             f"{have}; range {in_use} in use; defaults compared for ranges {compared}")
+    problems = []
+    if missing:
+        problems.append(f"no LSM303 accel record for range(s) {missing}")
+    problems += wrong
+    if wrong and not proven:
+        problems.append(f"the part was inferred from {told_by}: if this is an LSM303DLHC board set to "
+                        f"mag range 0, enable the mag and repeat, and the inquiry will settle it")
+    assert not problems, "; ".join(problems)
 
 
 STREAM_DIVIDER = 640    # 51.2 Hz: well inside every shipped radio's capacity

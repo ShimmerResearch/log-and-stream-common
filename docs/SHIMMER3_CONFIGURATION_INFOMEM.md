@@ -523,10 +523,11 @@ Bytes 175-186 are `NV_MPL_GYRO_CALIBRATION`, a 12-byte legacy MPL block, now
 > §2 already lists `idxMPLAccelCalibration` alongside the ADXL371 name. This
 > table said S3R and the byte map said both; the byte map was right.
 >
-> On Shimmer3 the pair is effectively **write-only**: the value reaches these
-> bytes and the SD header, but never the calibration dump, so the matching
-> `GET_ALT_*_CALIBRATION` command answers with 21 zeros. Read them back from
-> here instead — see
+> On Shimmer3 up to LogAndStream v1.01.009 the pair is effectively
+> **write-only**: the value reaches these bytes and the SD header, but never the
+> calibration dump, so the matching `GET_ALT_*_CALIBRATION` command answers with
+> 21 zeros. On those versions read them back from here instead. Later firmware
+> also keeps them in the dump, and the `GET` answers them (DEV-996). See
 > [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §4.1.
 
 The internal layout of a 21-byte block — three big-endian `int16` biases, three

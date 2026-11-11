@@ -326,9 +326,11 @@ because it also drops field widths, which `%02X` and `%03d` depend on.
 
 `TASK_JUMP_TO_BOOT_LOADER` exists only on Shimmer3R
 ([SHIMMER3_ARCHITECTURE_OVERVIEW.md](SHIMMER3_ARCHITECTURE_OVERVIEW.md) §4).
-While the bootloader check is pending, the lower LED flashes purple —
-the highest-priority indication there is
-([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §6).
+Holding the user button for 3 s at power-up also enters the bootloader. While
+the firmware times the button, the lower LED flashes purple — the
+highest-priority indication there is
+([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §6). Entry through the
+dock protocol shows no purple.
 
 #### Sometimes the new image doesn't start after a USB DFU write (DEV-1316)
 

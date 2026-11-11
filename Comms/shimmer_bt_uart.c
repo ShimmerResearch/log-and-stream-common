@@ -1611,13 +1611,12 @@ void ShimBt_processCmd(void)
             ShimCalib_configBytes0To127ToCalibDumpBytes(0);
             update_calib_dump_file = 1;
           }
-#if defined(SHIMMER3R)
           else if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
           {
+            /* The alt accel and alt mag blocks, on both platforms (DEV-996). */
             ShimCalib_configBytes128To255ToCalibDumpBytes(0);
             update_calib_dump_file = 1;
           }
-#endif
 
           ShimSdHead_config2SdHead();
           update_sdconfig = 1;
