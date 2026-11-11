@@ -73,6 +73,8 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "release: the release tier")
     config.addinivalue_line("markers", "fleet: one unit per shipped radio firmware (Shimmer3)")
     config.addinivalue_line("markers", "soak: long-running, advisory")
+    config.addinivalue_line("markers", "defect: reproduces an open defect and fails until it is fixed; "
+                                       "in no release tier")
     config._hil_collector = hil_report.Collector()
     config._hil_waivers = _waivers(config)
 

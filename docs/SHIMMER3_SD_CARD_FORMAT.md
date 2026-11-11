@@ -638,6 +638,11 @@ The initial timestamp in the header is therefore captured *before* the header
 is written but *after* the configuration snapshot — the header describes the
 configuration in force at file creation, which cannot change while logging.
 
+`fileInit` runs after the sample timer has started (`ShimSens_startSensing`),
+so the samples taken meanwhile wait in the packet ring. If the file takes longer
+to open than the ring can hold, the rest are lost, as one gap after the first
+sample. What makes it slow is in §7.1.
+
 ## 5. `sdlog.cfg`
 
 A plain-text file at the card root that lets a device be configured by editing
@@ -802,6 +807,48 @@ While the device is docked, or USB is connected on Shimmer3R, the card may be
 presented to the host as mass storage instead of being owned by the firmware.
 Logging cannot start in that state, and the firmware tears the USB stack down
 before taking the card for logging.
+
+### 7.1 Rewriting a file, and FatFs's free-cluster hint
+
+`sdlog.cfg` (`ShimSdCfgFile_generate`) and the calibration file
+(`ShimCalib_ram2File`) are rewritten in place. Each is opened with
+`FA_OPEN_ALWAYS`, written from the start, then cut to length with
+`f_truncate()`. Neither is opened with `FA_CREATE_ALWAYS` (DEV-1429). A file
+that already exists must not be rewritten that way.
+
+**Why:** FatFs looks for a free cluster by reading the FAT upward from a hint.
+That hint is `last_clst` in RAM, and on FAT32 it is also saved in the FSINFO
+sector. Each card read covers one 512-byte FAT sector, which is 128 clusters.
+`FA_CREATE_ALWAYS` on an existing file frees the file's clusters and moves the
+hint back to them. Both FatFs releases do this (R0.08b and R0.12c, "Reuse the
+cluster hole" in `f_open`). These two files are among the first on a card, so
+the next cluster to be allocated is found only after a read through every
+cluster in use. That cluster is the next log's session directory, made after
+sampling has started (§4.3). Before the change, every log after a
+configuration write paid for this, because the configuration write rewrites
+`sdlog.cfg`.
+
+Measured on Shimmer3R, 512 Hz with every sensor on (DEV-1429, 2026-11-11). The
+FAT sectors read were worked out from each card's FAT, and the read cost about
+0.45 ms per sector:
+
+| Card (8 GB) | Clusters in use | FAT sectors read | File open after the first sample | Samples lost |
+| --- | --- | --- | --- | --- |
+| 4 KB clusters, 53% used | 1,032,000 | 8,067 | 4.02 s, against 0.42 s without the rewrite | about 1,074 |
+| 4 KB clusters, 69% used | 1,342,000 | 10,483 | 5.04 s (2026-11-08) | about 1,594 |
+| 32 KB clusters, 55% used | 133,000 | 1,038 | 0.84 s, against 0.35 s | none |
+
+The cost grows with the number of clusters in use, so a well-used card
+formatted with small clusters is the worst case. Shimmer3 reads the FAT over
+SPI and has a smaller packet ring, and the same rewrite has not been measured
+there.
+
+A host that writes to the card while it is mass storage can also leave a low
+hint, because it saves its own value in FSINFO. Windows set it to cluster 1908
+of a well-used card after appending to `sdlog.cfg`, and the next log paid the
+same read once (0.84 s on a 32 KB-cluster card). After creating and deleting a
+file on a card with no free clusters below its used region, Windows left the
+hint where it was. The firmware does not guard against this case.
 
 ## Still unverified / not found in code
 

@@ -222,7 +222,17 @@ uint8_t ShimSdCfgFile_generate(void)
 
     if (ShimConfig_areConfigBytesValid())
     {
-      cfg_file_status = f_open(&cfgFile, cfgname, FA_WRITE | FA_CREATE_ALWAYS);
+      /* Rewritten in place, then cut to length - never FA_CREATE_ALWAYS. FatFs
+       * truncates an existing file opened that way and moves its next-free-
+       * cluster hint back to the file's first cluster ("reuse the cluster
+       * hole", in f_open() of both FatFs releases), and this is one of the
+       * first files on a card. The next cluster allocated - the next log's
+       * session folder, after sampling has started - is then found by reading
+       * the FAT from there through every cluster in use: seconds on a well-used
+       * card, on the first log after every configuration change (DEV-1429).
+       * Writing over the file's own clusters allocates none and leaves the hint
+       * where it was. */
+      cfg_file_status = f_open(&cfgFile, cfgname, FA_WRITE | FA_OPEN_ALWAYS);
 
       //sensor0
       CFG_WRITE_INT(&cfgFile, CFG_KEY_ACCEL, storedConfig->chEnLnAccel);
@@ -400,6 +410,8 @@ uint8_t ShimSdCfgFile_generate(void)
       CFG_WRITE_INT(&cfgFile, CFG_KEY_EXG_2_RESP2,
           storedConfig->rawBytes[NV_EXG_ADS1292R_2_RESP2]);
 
+      /* Drop whatever an older, longer file had past the end of this one. */
+      f_truncate(&cfgFile);
       cfg_file_status = f_close(&cfgFile);
       ShimSd_setFileTimestamp(cfgname);
 

@@ -205,6 +205,7 @@ What the suites cover today:
 | `test_packet_ring` | `Sensing/shimmer_packet_ring.c` | ×1 | The sample ring's interleavings, including the DEV-1023 field fault |
 | `test_autostop` | `Sensing/shimmer_autostop.c` | ×1 | The max_exp_len auto-stop: the stop time, and that doubled, missed or drifting checks, a clock set mid-log and the 32-bit clock wrap move it by a second at most (DEV-1417) |
 | `test_leds_phase` | `LEDs/shimmer_leds_phase.c` | ×1 | The LED frame arithmetic, and the phase lock run closed loop against a blink timer 3% slow to 3% fast: each whole-second tick comes once a second (DEV-1417) |
+| `test_leds` | `LEDs/shimmer_leds.c` | ×2 | The lower LED's priority order (button, host override, SD-card error, battery or charging), drawn through a recording LED driver; the SD-card error shown only out of the dock and off USB |
 | `test_util` | `Util/shimmer_util.c` | ×1 | SD directory naming, config-file 64-bit values, config-file sample rate round trip (every divider), BT response lengths, MAC byte order |
 | `test_rtc` | `RTC/shimmer_rtc.c` | ×2 | Every day from 2000 to 2099 round-trips; leap years; date validation |
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
@@ -462,7 +463,7 @@ differs, and the difference matters for what you are looking for:
 | Platform | When the baud ladder is exhausted | What you see |
 |---|---|---|
 | **Shimmer3** | `while (1) { __bis_SR_register(LPM3_bits + GIE); }` — the boot never completes | **The unit is halted.** No Bluetooth, no logging, no dock response. Yellow at 5 Hz, because the blink timer still runs on ACLK |
-| **Shimmer3R** | `break` — boot continues without the radio | The unit comes up and logs, but has no Bluetooth. Yellow at 5 Hz |
+| **Shimmer3R** | `break` — boot continues without the radio | The unit comes up and logs, but has no Bluetooth. **No LED pattern:** the boot sets `BOOT_STAGE_CONFIGURATION` straight after, so the yellow flash is overwritten before it is drawn |
 
 > `shimmer3-firmware` `LogAndStream_Shimmer3/main.c:300-321`;
 > `shimmer3r-firmware` `LogAndStream_Shimmer3R/Core/Src/main.c:732-739`;
@@ -471,7 +472,9 @@ differs, and the difference matters for what you are looking for:
 > The Shimmer3R behaviour is the friendlier one and the Shimmer3 behaviour is
 > the one that generates support calls — but **the Shimmer3R case is easier to
 > miss**, because a unit that boots and logs looks fine until someone tries to
-> connect to it. Check for the LED pattern on both, not just for "it booted".
+> connect to it, and it shows no LED pattern to warn you. On Shimmer3 check for
+> the yellow flash; on Shimmer3R connect to the unit, rather than checking only
+> that it booted.
 
 Two modules on Shimmer3, one on Shimmer3R, and **six recognised firmware
 versions on the RN4678 alone**:
@@ -615,12 +618,13 @@ documented cause:
 
 | # | Check | The trap |
 |---|---|---|
-| 5.4.2a | Uncalibrated magnetometer magnitude is plausible | LSM303AH boards are clamped to mag range 0, whose default seed carries the wrong sensitivities — reads ~5× high ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
+| 5.4.2a | Uncalibrated magnetometer magnitude is plausible | LSM303AH boards are clamped to mag range 0, whose default seed up to v1.01.009 carries the LSM303DLHC's ±8.1 Ga values — reads ~3× high. A unit's own hard-iron offset can swamp it at rest, so check while rotating the unit, or read the seed itself (`fleet.mag_seeds`) ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
 | 5.4.2b | Calibration bias and sensitivity read back correctly | They are **big-endian**, unlike most of the config (§3.1) |
 | 5.4.2c | Low-noise and wide-range accel calibrations are not swapped | The SD header order is not the InfoMem order (§4.2) |
 | 5.4.2d | ExG millivolts in 16-bit mode | The 16-bit word is bits 22:7 of the 24-bit conversion — the denominator needs a factor of 2 ([streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.5) |
 | 5.4.2e | Shimmer3R ADC / battery millivolts | 12-bit at 3.0 V; the divide-by-four belongs to the MCU's own VBAT debug channel, not these (§7.2) |
 | 5.4.2f | Gyro range on Shimmer3R | The range's high bit lives in config byte 130 — getting it wrong is a 16× error ([InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §4.1) |
+| 5.4.2g | Uncalibrated wide-range accel reads about 1 g at rest, on the right axes | Up to v1.01.009 LSM303AH boards carry the LSM303DLHC's default seed, and their range codes run ±2/16/4/8 g, not ±2/4/8/16 g: 2.4 % high at code 0, 2 to 4 times out at codes 1-3, X and Y swapped. A unit updated from those versions keeps the old records in InfoMem and on its SD card until its calibration is rewritten. Read the seed itself with `fleet.wr_accel_seeds` ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
 
 Axis identity is a firmware question here, not a hardware one: rotate the unit
 through six orientations only to establish **which emitted channel is which
@@ -1174,6 +1178,7 @@ case earns a permanent place here.
 | BMP581 SR48 window | A plain `>= 7.2` wrongly claims SR48-8-0 and 8-1 | `test_boards` — both layers catch it |
 | DEV-1363 | A host connects to a unit that is already logging, and its `INQUIRY` costs the log 100 ms of samples | `smoke.sd_inquiry_midlog` on Shimmer3R, on the required list — plus §5.6.7 by hand on Shimmer3 |
 | DEV-1417 | A Shimmer3R's `max_exp_len` auto-stop ended a 7-minute log 3% early: the LED phase lock counted seconds twice when TIM6 ran fast | `test_autostop`, `test_leds_phase` (closed loop) — plus §5.6.8 |
+| SD error on USB | A Shimmer3R on USB-C, out of the dock and with no card, flashed the SD-card error instead of its charging colour: the error was gated on the dock alone | `test_leds` |
 
 **When a fault escapes, add its case here and a test for it in the same PR.** A
 regression list that only grows by hand stops growing.
@@ -1279,7 +1284,10 @@ roughly the order of return.
    defines `main()`.
 2. Include `host_test.h` for the assertion helpers.
 3. Add it to `SRC_test_<module>` and one of the suite lists in
-   `Test/host/Makefile`. CI picks it up with no workflow change.
+   `Test/host/Makefile`. CI picks it up with no workflow change. A
+   dual-platform suite that needs its own define sets `DEFS_test_<module>`:
+   `test_leds` links the real `LEDs/shimmer_leds.c`, so it passes
+   `-DHOST_TEST_LINKS_LEDS` to drop `host_stubs.c`'s stand-ins for it.
 4. If it should be built for both platforms, put it in
    `DUAL_PLATFORM_SUITES`. Prefer that where the module has any `#if
    defined(SHIMMER3...)` in it at all.
@@ -1480,6 +1488,8 @@ flash.
 | `fleet.boot_identity` | Hardware 3, LogAndStream identifier, the candidate's version, and a radio banner on the shipped list |
 | `fleet.config_roundtrip` | The configuration reads back exactly as written |
 | `fleet.dock_protocol` | `smoke.dock_protocol` over the Base6's UART, on each unit. `ENTER_BOOTLOADER` is Shimmer3R only, so a Shimmer3 must answer it `BAD_CMD` |
+| `fleet.mag_seeds` | The calibration dump holds an LSM303 mag record for every range, 0 to 7, and each default among them (zero timestamp, not the range in use) holds its part's values: the LSM303AH's at 0, the LSM303DLHC's at 1-7. Range 0 in use, as on every LSM303AH board, may hold any block but the default up to v1.01.009 gave it, which the boot replaces ([calibration](SHIMMER3_CALIBRATION.md) §6.1). Resets the unit through its slot first, so the dump is the one a docked boot builds; writes nothing |
+| `fleet.wr_accel_seeds` | The calibration dump holds an LSM303 wide-range accel record for every range, 0 to 3, and each default among them (zero timestamp, not the range in use) holds the fitted part's values: the LSM303AH's (codes ±2/16/4/8 g) or the LSM303DLHC's ([calibration](SHIMMER3_CALIBRATION.md) §6.1). The part is the one the firmware found: the inquiry's mag channel order when the mag is enabled (X, Z, Y on an LSM303DLHC), else the mag range, which the firmware moves to 0 on any board without an LSM303DLHC. Range 0 with the mag off is not proof, and a failure then says so. Resets the unit through its slot first, because an updated unit that booted undocked holds its SD card's old records; writes nothing |
 | `fleet.reboot` | Five resets through the RST line; every boot answers the dock with the same radio banner (§5.1.5) |
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |

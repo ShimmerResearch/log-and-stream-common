@@ -61,6 +61,22 @@ read it.
 the firmware checkouts the model may read, and a spending cap
 (`budget_usd`, default 2).
 
+## Checking an open defect
+
+`tests/test_defects.py` holds checks that reproduce defects already filed, one
+report item per ticket (`defect.dev1297_reads_midstream` and so on). Each fails
+while its defect is there, so they carry the `defect` marker, which no release
+tier selects:
+
+```
+python -m pytest Test/hil/tests/test_defects.py -m defect -rA
+python -m pytest Test/hil/tests/test_defects.py -m defect -k dev1297 --unit s3-rn42-615
+```
+
+What a check changes on a unit it puts back before the next one starts. When a
+fix makes its check pass, move the check into its platform's tier, and into
+`required/` if it should gate releases, in the same PR as the fix.
+
 ## Setting up a bench
 
 1. `pip install pytest pyserial tomli bleak` (Python 3.10+; `tomli` only before 3.11; `bleak` for
@@ -126,7 +142,7 @@ plug and unplug.
 | `rig/signals.py` | Checks on a resting unit: 1 g, gyro ≈ 0, stuck/staircase/saturated axes, VBatt |
 | `matrix/s3r_release.toml` | The Shimmer3R release matrix: one row per configuration |
 | `matrix/s3_release.toml` | The Shimmer3 release matrix: stream rows, each configured over Bluetooth by InfoMem or by the individual commands |
-| `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (each platform's matrix, and the event channel's items) or `soak` (long-running, advisory; `HIL_SOAK_SCALE` sets the length) |
+| `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (each platform's matrix, and the event channel's items), `soak` (long-running, advisory; `HIL_SOAK_SCALE` sets the length) or `defect` (open defects, in no release tier) |
 | `triage.py` | Claude triage of a failed run: advice in `triage.md`, never a verdict |
 | `test_hil_*.py` | Unit tests for the above that need no hardware; run by `make -C Test/host` |
 

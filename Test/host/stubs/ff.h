@@ -126,9 +126,11 @@ typedef enum
 #define FA_WRITE         0x02
 #define FA_CREATE_ALWAYS 0x08
 #define FA_CREATE_NEW    0x04
+#define FA_OPEN_ALWAYS   0x10
 
 FRESULT f_open(FIL *fp, const TCHAR *path, BYTE mode);
 FRESULT f_close(FIL *fp);
+FRESULT f_truncate(FIL *fp);
 FRESULT f_read(FIL *fp, void *buff, UINT btr, UINT *br);
 FRESULT f_write(FIL *fp, const void *buff, UINT btw, UINT *bw);
 #if defined(SHIMMER3)

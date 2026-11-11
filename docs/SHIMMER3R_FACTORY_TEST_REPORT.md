@@ -236,11 +236,13 @@ diagnostic code:
 
 ### 5.4 LED tests
 
-`FACTORY_TEST_LED_STATES` calls `ShimLeds_testOperationalStates`, which drives
-the LEDs through the operational patterns so an operator can confirm each
-colour and each state renders. It bypasses the normal state machine entirely.
+`FACTORY_TEST_LED_STATES` calls `ShimLeds_testOperationalStates`, which steps
+the device through the operational states so an operator can confirm each
+state renders. It does not drive the LEDs itself: it sets the status flags for
+each state and lets the normal state machine draw it.
 
-`FACTORY_TEST_LEDS` is the simpler exercise. Neither sets a result bit; both
+`FACTORY_TEST_LEDS` is the simpler exercise: `led_test` stops the blink timer
+and lights each LED colour in turn. Neither sets a result bit; both
 are visual checks. See
 [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §7.
 

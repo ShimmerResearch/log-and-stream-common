@@ -1286,6 +1286,10 @@ void ShimConfig_loadSensorConfigAndCalib(void)
 
   ShimCalib_init();
   ShimCalib_initFromConfigBytesAll();
+#if defined(SHIMMER3)
+  //InfoMem may hold the LSM303 mag default older firmware gave range 0 (DEV-995)
+  ShimCalib_repairLsm303MagDefaults();
+#endif
 
   //Read storedConfig from SD cfg file or update it from RAM if RAM is newer
   if (!shimmerStatus.docked && LogAndStream_checkSdInSlot())
@@ -1319,6 +1323,13 @@ void ShimConfig_loadSensorConfigAndCalib(void)
       //fail, i.e. no such file. use current DumpRam to generate a file
       ShimCalib_ram2File();
     }
+#if defined(SHIMMER3)
+    else if (ShimCalib_repairLsm303MagDefaults())
+    {
+      //the file held older firmware's LSM303 mag defaults (DEV-985, DEV-995)
+      ShimCalib_ram2File();
+    }
+#endif
   }
 
   //TODO should this only be called if calib dump file is available?
