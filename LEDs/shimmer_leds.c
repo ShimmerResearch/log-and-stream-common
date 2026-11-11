@@ -643,7 +643,7 @@ void ShimLeds_blinkSetLwrEnteringBslMode(void)
   if (ShimLeds_isBlinkTimerCnt200ms())
   {
     Board_ledUprSetColourRgb(0, 0, 0);
-    //Toggle upper and lower LEDs purple every 100ms
+    //Upper off. Lower toggles purple every other tick: 200 ms on, 200 off
     if (lastLedToggleLwr)
     {
       Board_ledLwrSetColourRgb(128, 0, 128);

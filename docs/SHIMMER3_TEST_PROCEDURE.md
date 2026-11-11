@@ -462,7 +462,7 @@ differs, and the difference matters for what you are looking for:
 | Platform | When the baud ladder is exhausted | What you see |
 |---|---|---|
 | **Shimmer3** | `while (1) { __bis_SR_register(LPM3_bits + GIE); }` — the boot never completes | **The unit is halted.** No Bluetooth, no logging, no dock response. Yellow at 5 Hz, because the blink timer still runs on ACLK |
-| **Shimmer3R** | `break` — boot continues without the radio | The unit comes up and logs, but has no Bluetooth. Yellow at 5 Hz |
+| **Shimmer3R** | `break` — boot continues without the radio | The unit comes up and logs, but has no Bluetooth. **No LED pattern:** the boot sets `BOOT_STAGE_CONFIGURATION` straight after, so the yellow flash is overwritten before it is drawn |
 
 > `shimmer3-firmware` `LogAndStream_Shimmer3/main.c:300-321`;
 > `shimmer3r-firmware` `LogAndStream_Shimmer3R/Core/Src/main.c:732-739`;
@@ -471,7 +471,9 @@ differs, and the difference matters for what you are looking for:
 > The Shimmer3R behaviour is the friendlier one and the Shimmer3 behaviour is
 > the one that generates support calls — but **the Shimmer3R case is easier to
 > miss**, because a unit that boots and logs looks fine until someone tries to
-> connect to it. Check for the LED pattern on both, not just for "it booted".
+> connect to it, and it shows no LED pattern to warn you. On Shimmer3 check for
+> the yellow flash; on Shimmer3R connect to the unit, rather than checking only
+> that it booted.
 
 Two modules on Shimmer3, one on Shimmer3R, and **six recognised firmware
 versions on the RN4678 alone**:

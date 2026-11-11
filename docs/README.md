@@ -92,7 +92,7 @@ something that "should work".
 | `GET_ALT_ACCEL_CALIBRATION` returns 21 zeros after a successful write | On Shimmer3 up to v1.01.009 those two blocks are write-only; later firmware answers them (DEV-996) — [calibration](SHIMMER3_CALIBRATION.md) §4.1 |
 | VBATT is not the last channel on a Shimmer3R | An SR48-6.0 uses the MCU ADCs, which are configured first — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §4.2 |
 | GSR values out by a large constant factor | The range-pin reversal flag — [GSR](SHIMMER3_GSR_AUTORANGE.md) §2 |
-| Solid red LED and no battery indication | The host `TOGGLE_LED` override, never cleared by the firmware — [LEDs](SHIMMER3_LED_FEEDBACK.md) §4 |
+| Solid red LED and no battery indication | The host `TOGGLE_LED` override, which stays until the host sends it again or the device resets — [LEDs](SHIMMER3_LED_FEEDBACK.md) §4 |
 | A newer command gets no response at all | Older firmware ignores unknown opcodes rather than NACKing — [versioning](SHIMMER3_RELEASE_AND_VERSIONING.md) §6 |
 | `sdlog.cfg` edit reset unrelated settings | Parsing starts from a blank configuration; the file is authoritative — [SD card](SHIMMER3_SD_CARD_FORMAT.md) §5.2 |
 | A Shimmer3 file is missing a run of consecutive samples at roughly every block boundary | Older Shimmer3 firmware had one SD write buffer and dropped records while it waited for the card — [SD card](SHIMMER3_SD_CARD_FORMAT.md) §4.1 |
