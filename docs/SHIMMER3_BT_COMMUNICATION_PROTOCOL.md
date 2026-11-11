@@ -1556,7 +1556,7 @@ A host must therefore know the generation *before* it can find
 `GET_DEVICE_VERSION_COMMAND` ([§7.2](#72-version-information)). Read the version
 first, then inquire.
 
-> **Shimmer3R before DEV-99: one bogus channel with InfoMem byte 4 bit 6 set.** That
+> **Shimmer3R before v1.01.026 (DEV-99): one bogus channel with InfoMem byte 4 bit 6 set.** That
 > bit (`chEnMicrophone`) added one to `numberOfChannels` without adding the
 > microphone to the packet, and the IDs are copied from the firmware's channel table
 > for that count, so the list ended in one entry that was not a channel and the
@@ -3337,9 +3337,11 @@ unknown feature id ([§5.2](#52-the-three-nack-preconditions)). Firmware older
 than `SET_FEATURE` itself does not: it runs feature 3 as
 `GET_SAMPLING_RATE_COMMAND` and ACKs it ([§7.12](#712-control-and-test)).
 Neither answers `GET_EVENT_CHANNEL_STATUS_COMMAND`, an unknown byte to them.
-No release has the event channel yet
-([Appendix A](#appendix-a-firmware-version-gates)), and the builds that do have
-it report the previous release's version. So a host tells in two steps:
+`LogAndStream_Shimmer3R_v1.01.026` is the first Shimmer3R release with the
+event channel, and no Shimmer3 release has it yet
+([Appendix A](#appendix-a-firmware-version-gates)). The development builds
+before a release report the previous release's version. So a host tells in two
+steps:
 
 1. The firmware version is `LogAndStream_Shimmer3R_v1.00.052` or
    `LogAndStream_Shimmer3_v1.00.017` or later, so it has `SET_FEATURE`.
@@ -3782,7 +3784,7 @@ exist nowhere else, which are exactly the ones added after the extraction.
 | Status response | status bit 7 carries the red-LED toggle state | `isSupportedRedLedStateInStatus`<br>LogAndStream 0.7.10 | `toggleLedRedCmd` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.011`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit c42e0f6, 2024-10-07)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 65aa6176, 2023-11-09) |
 | Status response | status bits 6 and 5 carry SD bad-file / SD-inserted | `isSupportedSdInfoInStatus`<br>LogAndStream 0.7.12 | `sdBadFile` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.012`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit ed662e8, 2024-11-05)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 42a86589, 2024-11-05) |
 | Status response | status bit 2 carries "real-world clock has been set" | `isSupportedRtcStateInStatus`<br>LogAndStream 0.7.14 | `RTC_isRwcTimeSet` | Shimmer3: `LogAndStream_Shimmer3_BLE_v1.00.000`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit e501346, 2025-06-30)<br>Shimmer3R: `LogAndStream_Shimmer3R_v1.00.027` (introducing commit b4964c95, 2025-06-30) |
-| Status response | status byte 1 bits 1-2 carry audio recording and audio fault | _not yet in any host_<br>the first Shimmer3R release with DEV-99 | `ShimAudio_statusBits` | DEV-99, not yet released |
+| Status response | status byte 1 bits 1-2 carry audio recording and audio fault | _no Java predicate_; web SDK `shimmer3RRecordsAudio`<br>LogAndStream 1.1.26 (Shimmer3R); a build reporting 1.1.25 is asked with `GET_AUDIO_STATUS_COMMAND` | `ShimAudio_statusBits` | shared module: `LogAndStream_Shimmer3R_v1.01.026` (introducing commit e3cedf1, 2026-11-02) |
 | Status response | a SECOND status byte carrying USB-plugged-in | `isSupportedUSBPluggedInStatus`<br>LogAndStream 1.0.24 (Shimmer3R) | `ShimBt_assembleStatusBytes` | shared module: `LogAndStream_Shimmer3R_v1.00.024` (introducing commit 8377afc, 2025-06-04) |
 | Commands | GET_BT_VERSION_STR_COMMAND (Bluetooth module firmware string) | `isSupportedBtFwVerRequest`<br>_no version threshold (hardware-keyed or unconditional)_ | `GET_BT_VERSION_STR_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000` (introducing commit 372a4de, 2023-02-08)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | Commands | GET_STATUS_COMMAND | `isSupportedBtStatusRequest`<br>LogAndStream 0.5.2 (Shimmer3) | `GET_STATUS_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 8b7e616, 2014-07-22)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
@@ -3801,7 +3803,9 @@ exist nowhere else, which are exactly the ones added after the extraction.
 | Calibration | GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND (sensor-agnostic pressure coefficients) | — | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.006`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit a5151db, 2024-07-08)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 707d1387, 2024-07-01) |
 | Calibration | alternative accel / alternative mag calibration commands | — | `SET_ALT_ACCEL_CALIBRATION_COMMAND` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.013`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit 6459f66, 2024-12-12)<br>Shimmer3R: `LogAndStream_Shimmer3R_v1.00.005` (introducing commit 15947690, 2024-11-28) |
 | SD transfer | SD file transfer over Bluetooth (Shimmer3R) | — | `SD_FILE_READ_COMMAND` | shared module: `LogAndStream_Shimmer3R_v1.01.009` (introducing commit 71d283f, 2026-08-18) |
-| Event channel | `FEATURE_EVENT_STREAM`, `GET_EVENT_CHANNEL_STATUS_COMMAND` and the event record frame | — | `GET_EVENT_CHANNEL_STATUS_COMMAND` | _not yet released_ |
+| Event channel | `FEATURE_EVENT_STREAM`, `GET_EVENT_CHANNEL_STATUS_COMMAND` and the event record frame | — | `GET_EVENT_CHANNEL_STATUS_COMMAND` | shared module: `LogAndStream_Shimmer3R_v1.01.026` (introducing commit 692bbab, 2026-10-30)<br>Shimmer3: _not yet released_ |
+| Audio | `GET_AUDIO_STATUS_COMMAND` and configuration byte 233 bits 0-3 (audio recording) | _no Java predicate_; web SDK `shimmer3RRecordsAudio`<br>LogAndStream 1.1.26 (Shimmer3R); a build reporting 1.1.25 is asked with `GET_AUDIO_STATUS_COMMAND` | `GET_AUDIO_STATUS_COMMAND` | shared module: `LogAndStream_Shimmer3R_v1.01.026` (introducing commit e3cedf1, 2026-11-02) |
+| Audio | the `SOUND_LEVEL` channel (0x38), configuration byte 233 bit 4 | _no version gate_: write bit 4 and read it back ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8) | `AUDIO_SOUND_LEVEL` | shared module: `LogAndStream_Shimmer3R_v1.01.026` (introducing commit f49ccc8, 2026-11-11) |
 | InfoMem | configuration setup bytes 4-6 at InfoMem 130-132 | — | `NV_CONFIG_SETUP_BYTE4` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 00425d6, 2015-03-30)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | InfoMem | the Bluetooth PIN byte at InfoMem 231 | — | `NV_BT_SET_PIN` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, `LogAndStream_v0.9.0` (introducing commit 87ff27c, 2017-08-18)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | Commands | RESET_BT_ERROR_COUNTS | — | `RESET_BT_ERROR_COUNTS` | shared module: `LogAndStream_Shimmer3R_v1.00.049`, `LogAndStream_Shimmer3_v1.00.015` (introducing commit 039dbbd, 2025-11-27) |
