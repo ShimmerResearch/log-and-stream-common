@@ -241,6 +241,12 @@ static struct
   /* Opens for writing, and f_write calls: ShimCalib_ram2File() at work. */
   uint32_t writeOpens;
   uint32_t writes;
+  /* The last write open's mode, and the file pointer at each f_truncate()
+   * (with how many came before the file was closed). */
+  BYTE writeMode;
+  uint32_t truncates;
+  uint32_t truncatesBeforeClose;
+  uint32_t truncatedAt;
   /* Bytes a read was asked to put past the end of the calibration RAM. */
   uint32_t pastRamEnd;
   /* Set when CARD_READ_BUDGET ran out: the read loop would not have ended. */
@@ -292,6 +298,7 @@ FRESULT f_open(FIL *fp, const TCHAR *path, BYTE mode)
   if (mode & FA_WRITE)
   {
     card.writeOpens++; /* ShimCalib_ram2File(), counted but not modelled */
+    card.writeMode = mode;
     return FR_OK;
   }
   if (!card.present)
@@ -366,6 +373,17 @@ FRESULT f_write(FIL *fp, const void *buff, UINT btw, UINT *bw)
   card.writes++;
   fp->fptr += btw;
   *bw = btw;
+  return FR_OK;
+}
+
+FRESULT f_truncate(FIL *fp)
+{
+  card.truncates++;
+  if (card.closes == 0)
+  {
+    card.truncatesBeforeClose++;
+  }
+  card.truncatedAt = (uint32_t) fp->fptr;
   return FR_OK;
 }
 
@@ -1733,6 +1751,36 @@ static void test_lsm303ah_accel_seed_at_boot(void)
 }
 #endif
 
+/*
+ * ram2File, how the file is opened. It is rewritten in place - FA_OPEN_ALWAYS,
+ * the dump written over it, then cut to the dump's length - and never opened
+ * FA_CREATE_ALWAYS. FatFs truncates a file opened that way and moves its
+ * next-free-cluster hint back to the file's first cluster, one of the first on
+ * the card. The next log's session folder, made after sampling has started,
+ * then waits on a read of the FAT through every cluster in use: seconds on a
+ * well-used card, at the first log start after every configuration change
+ * (DEV-1429). sdlog.cfg is written the same way (ShimSdCfgFile_generate()).
+ */
+static void test_ram2file_rewrites_in_place(void)
+{
+  const uint16_t len = 300;
+
+  testCase("test_ram2file_rewrites_in_place");
+  reset();
+  setLenField(ram(), len);
+
+  ShimCalib_ram2File();
+  expectU("the file is opened for writing once", card.writeOpens, 1);
+  expectStr("the file named for the MAC", card.path, "/Calibration/calib_5A1C");
+  expectU("in place: FA_OPEN_ALWAYS, not FA_CREATE_ALWAYS",
+      card.writeMode & (FA_OPEN_ALWAYS | FA_CREATE_ALWAYS | FA_CREATE_NEW), FA_OPEN_ALWAYS);
+  expectTrue("the dump is written", card.writes > 0);
+  expectU("then cut once", card.truncates, 1);
+  expectU("before the file is closed", card.truncatesBeforeClose, 1);
+  expectU("at the dump's end, length field included", card.truncatedAt, len + 2U);
+  expectU("and the file is closed", card.closes, 1);
+}
+
 #if defined(SHIMMER3R)
 /*
  * dump to config bytes and SD header, a sensor with no slot. On Shimmer3R the
@@ -1788,6 +1836,7 @@ int main(void)
   test_file2ram_stat_fails();
 #endif
   test_config_block_scan();
+  test_ram2file_rewrites_in_place();
 #if defined(SHIMMER3R)
   test_dump_to_config_unknown_sensor();
 #endif

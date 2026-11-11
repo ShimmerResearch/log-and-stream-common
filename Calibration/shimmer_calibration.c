@@ -143,7 +143,11 @@ void ShimCalib_ram2File(void)
     strcat(cal_file_name, "/calib_");
     strcat(cal_file_name, (char *) shimmerCalib_macId);
 
-    res = f_open(&gfc, cal_file_name, (FA_WRITE | FA_CREATE_ALWAYS));
+    /* Rewritten in place and cut to length, never FA_CREATE_ALWAYS: truncating
+     * an existing file moves FatFs's next-free-cluster hint back to it, and the
+     * next log's first allocation then reads the FAT through every used
+     * cluster on the card (DEV-1429; see ShimSdCfgFile_generate()). */
+    res = f_open(&gfc, cal_file_name, (FA_WRITE | FA_OPEN_ALWAYS));
     if (res == FR_NO_FILE)
     {
       return;
@@ -155,6 +159,7 @@ void ShimCalib_ram2File(void)
       f_write(&gfc, shimmerCalib_ram + gfc.fptr, this_write_size, &bw);
     }
 
+    f_truncate(&gfc);
     f_close(&gfc);
 #if defined(SHIMMER3)
     _delay_cycles(1200000); //50ms
