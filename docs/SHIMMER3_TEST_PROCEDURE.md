@@ -981,6 +981,43 @@ non-zero delta names which mechanism to chase.
 | 5.11.1 | Reset the counters, stream + log overnight, read them back | All four still zero |
 | 5.11.2 | Repeat on one unit per radio firmware from §5.1 | As above — this is where a bad radio build shows itself |
 
+### 5.12 The event channel and byte 232
+
+Configuration byte 232 sets what the user button does, what may start logging,
+and whether the TTL input is recorded
+([INFOMEM](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.3). The event channel records
+the button's presses and the TTL input's edges in an event file beside each
+data file, and live to a Bluetooth host that opts in
+([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md)).
+
+The rig's release tier covers every step that needs no hand on the button and
+nothing on the input (§10.4). The rest are a person's, and so is the sign-off,
+`gate4.event_channel`: the steps marked "by hand", walked on each platform, and
+the rig's items passed, or walked by hand where the release tier was not run.
+A Shimmer3 logs only undocked and the Base6 cannot undock one, so its logging
+steps are all by hand.
+
+| # | Step | Expected | Covered by |
+|---|---|---|---|
+| 5.12.1 | Write byte 232 values of every kind, with `userButtonEnable` on and off, and read them back | Kept or corrected as §8.3 says; `userButtonEnable` held at the mode's equivalent; `singleTouchStart` cleared | `release.evt_config` |
+| 5.12.2 | Log with an input recorded (`0x24`, `0x20`, `0x05`) and nobody touching anything | SD header byte 225 is byte 232; an event file at the data file's path under `events/`, paired with it, opening and closing with it, a heartbeat at least every two minutes, no edges. With nothing recorded, no event file | Shimmer3R: the matrix's `events_*` rows. Shimmer3: by hand |
+| 5.12.3 | `0x11`: undock, then send `START_LOGGING` | Nothing logs; the command is ACKed | Shimmer3R: `release.evt_log_triggers`. Shimmer3: by hand |
+| 5.12.4 | `0x09` and `0x01`: undock | `0x09` starts a log; `0x01` does not, but `START_LOGGING` does | As 5.12.3 |
+| 5.12.5 | Delete only `data/` from a card (as Consensys' Clear SD does), then log | The new session is numbered past the event file still on the card | Shimmer3R: `release.evt_session_number`. Shimmer3: by hand |
+| 5.12.6 | Over Bluetooth, set `0x24` with a one-byte `SET_INFOMEM`, opt in, opt out, reconnect | The initial state as one frame at sequence 0; the status agrees and the TTL input is armed; nothing more while nothing is connected; the opt-out disarms it; a new connection starts opted out | `release.evt_bt_stream` |
+| 5.12.7 | Button modes 2 to 5: single press, double press, presses recorded | As §8.3's table: the press or double press starts and stops logging, a double press within its limits (EVENT_CHANNEL §2.3), every press and release recorded in modes 4 and 5 and none in 2 and 3. The LED shows a held press | By hand |
+| 5.12.8 | Mode 1 (`0x01`) and logging off (`0x11`), with an empty card slot | A press does nothing and the LED stays dark; no SD error flash with logging off | By hand |
+| 5.12.9 | TTL input (pin 10 of the external connector, level-shifted from 5 V) from a pulse generator, the same signal into an analogue channel at 1024 Hz | Every edge in the event file and over Bluetooth, timed within a sample of the analogue edge; the shortest pulse caught, about 61 µs on Shimmer3 and 0.2 µs on Shimmer3R | By hand |
+| 5.12.10 | More than 32 TTL edges in 100 ms | Capture pauses for 1 s; the records count what was dropped | By hand |
+| 5.12.11 | Log across the hourly split with an input recorded | The old event file ends with a final record, the new one opens with reason 2 and carries on the sequence numbers | By hand |
+| 5.12.12 | `test_event_stream.py --stream` at the highest rate the unit streams | Frames arrive; the data stream loses nothing | By hand |
+| 5.12.13 | Shimmer3R: plug and unplug USB-C with the TTL input armed, and after it is disarmed | Detected each time: PE9 shares EXTI9 with VBUS | By hand |
+| 5.12.14 | Each dock the unit is sold with, TTL input armed and opted in | Note the input's level. Edges mean the dock drives pin 10 (EVENT_CHANNEL §3.1) | By hand |
+
+Two bench tools in `Extras/python_scripts/`: `Bluetooth commands/test_event_stream.py`
+opts in and checks the live records, and `Shimmer_common/shimmer_event_file.py`
+checks an event file against its data file. The rig uses the second.
+
 ---
 
 ## 6. Gate 5 — host-side and Consensys compatibility
@@ -1166,6 +1203,7 @@ is what has to be true before you trigger it.
 - [ ] **§5.1 boot matrix** walked — one unit per radio firmware, banner strings recorded
 - [ ] §5.4 walked on the models the release's changes actually touch (§5.4.5), rows recorded
 - [ ] Rest of §5 walked on at least one unit, results recorded
+- [ ] **§5.12 event channel** walked on each platform: the button and TTL steps by hand, the rest by the release tier or by hand
 - [ ] **§6.4 host stack** exercised against the release candidate, with the *shipping* host versions
 - [ ] **§6.4.5** — a recording from the previous release still imports
 - [ ] **§6.5** version skew walked in both directions
@@ -1522,7 +1560,7 @@ confirmed by a plausible timestamp step, and an off-grid stamp would be
 dropped as a misframe instead of judged.
 
 The **release** tier runs a configuration matrix on each platform. On Shimmer3R
-it is the one in `Test/hil/matrix/s3r_release.toml`. There are about 22 rows, chosen so every
+it is the one in `Test/hil/matrix/s3r_release.toml`. There are about 25 rows, chosen so every
 pair of the following appears in at least one row: rate (51.2 to 1024 Hz),
 sensor set, mode (Bluetooth stream; SD log, with the hub port acting as the
 undock; or both together) and Bluetooth CRC mode. Two of them are five-minute
@@ -1607,6 +1645,25 @@ The checks after the stream are the Shimmer3R tier's:
   without one.
 
 `release.stop_ack` is kept apart as on Shimmer3R.
+
+**The event channel** (§5.12) is in the release tier on both platforms
+(`Test/hil/rig/events.py`). On Shimmer3R every row writes byte 232, 0 unless
+the row sets `button_log_mode`, with `userButtonEnable` on, so no row's undock
+starts a log before the row does. It must read back as INFOMEM §8.3 keeps it.
+Every logging row checks the SD header's copy at byte 225. Three rows,
+`events_*`, log with an input recorded. Their event file is read with
+`shimmer_event_file.py` and must pair with the data file, open and close with
+it, have a heartbeat at least every two minutes, and hold no edges, since
+nothing touches the button or the input. A row whose byte records nothing must
+leave no event file. Four items of their own are in
+`Test/hil/tests/test_event_channel.py`:
+
+| Item | Platforms | Checks |
+|---|---|---|
+| `release.evt_config` | Both | 19 values of byte 232, each written with `singleTouchStart` set: kept, reserved, invalid and legacy, with `userButtonEnable` on and off. Each must read back as §8.3 keeps it, `userButtonEnable` held at the mode's equivalent and `singleTouchStart` cleared. Shimmer3R writes the whole image over the USB dock; Shimmer3 writes one byte at a time over Bluetooth, as §8.3 tells a host to. SR48-6-0's rules apply on that board |
+| `release.evt_bt_stream` | Both | `0x24` written with a one-byte `SET_INFOMEM`, then BT protocol §7.15: the opt-out probe is ACKed and brings nothing; the opt-in brings the initial state as one CRC-checked frame at sequence 0; the status shows the stream on, the TTL input armed and nothing lost; nothing more arrives in 10 s; the opt-out disarms; a second opt-in starts at sequence 0 again; a new connection starts opted out. The initial state must show the input low on Shimmer3R. In a Base6 the input is the dock's pin 10, so there its level is noted, and an edge fails with that named |
+| `release.evt_log_triggers` | Shimmer3R | Undocked by the hub port: `0x11` ACKs `START_LOGGING` and puts no session on the card; `0x09` starts a log on the undock; `0x01` does not, and `START_LOGGING` then does |
+| `release.evt_session_number` | Shimmer3R | A short log with presses recorded, its `data/` session folder deleted over USB, then another: the second must be numbered past the first, whose event folder is still there |
 
 Run release-tier rows with STM32CubeIDE and Consensys closed. The suite warns
 when they are open. On USB arrival the IDE pages every Bluetooth COM port,

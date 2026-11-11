@@ -215,6 +215,7 @@ class BtLink:
         self.hw: int | None = None
         self.crc_mode = 0
         self._nstatus: int | None = None
+        self.silent_s = 0.0             # the last wait_status's unanswered stretch
         # Until the constructor returns there is no link to close, so if the
         # first exchange fails the port is closed here: left open, it would
         # hold the COM port against every later connection.
@@ -447,9 +448,31 @@ class BtLink:
         return self._read(1)[0]
 
     def wait_status(self, mask: int, want: bool, timeout_s: float = 10.0) -> int:
+        """Poll status until the bits are as wanted, for up to timeout_s.
+
+        A unit can be silent for seconds while it opens a log: the session's
+        number comes from a scan of its trial folder, and the folder is made,
+        before the file opens (about 4 s in a folder of 531 sessions). A query
+        it leaves unanswered is asked again until timeout_s, so only a unit
+        silent for all of it fails. How long it was silent is kept in
+        silent_s for the caller's notes.
+        """
         end = time.monotonic() + timeout_s
+        self.silent_s, quiet_since = 0.0, None
         while True:
-            s = self.status()
+            asked = time.monotonic()
+            try:
+                s = self.status()
+            except BtError as e:
+                if quiet_since is None:
+                    quiet_since = asked
+                if time.monotonic() > end:
+                    raise BtError(f"no status for {time.monotonic() - quiet_since:.0f} s: {e}") from e
+                self.quiesce(quiet_s=0.3, max_s=3.0)   # a late reply to the query given up on
+                continue
+            if quiet_since is not None:
+                self.silent_s = max(self.silent_s, time.monotonic() - quiet_since)
+                quiet_since = None
             if bool(s & mask) == want:
                 return s
             if time.monotonic() > end:

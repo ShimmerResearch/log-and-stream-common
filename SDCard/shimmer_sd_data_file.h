@@ -37,5 +37,8 @@ uint16_t ShimSdDataFile_getBytesInCurrentSensingBuffer(void);
 uint8_t ShimSdDataFile_isFileStatusOk(void);
 
 uint8_t *ShimSdDataFile_fileNamePtrGet(void);
+/* The open data file's path, "data/<experiment>/<session>/<NNN>"; it changes
+ * at each split */
+const char *ShimSdDataFile_getDataFileName(void);
 
 #endif /* SHIMMER_SD_H_ */

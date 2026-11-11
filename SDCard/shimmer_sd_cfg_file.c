@@ -24,8 +24,11 @@ static const uint8_t all0xff[6U] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
  * ShimSdCfgFile_generate(). parse() calls generate() only when its own f_open()
  * failed or after its f_close(), so the two never have the file open at once.
  * A FIL carries a 512-byte sector buffer, and with one in each frame
- * parse() -> generate() was the deepest stack path in the firmware. */
+ * parse() -> generate() was the deepest stack path in the firmware.
+ *
+ * The event file borrows it for a logging session (ShimSdCfgFile_lendFil). */
 static FIL cfgFile;
+static uint8_t cfgFileLent;
 
 /* ShimSdCfgFile_parse() backs the configuration bytes up here before parsing
  * and restores the calibration bytes from it afterwards. It is file scope
@@ -104,6 +107,7 @@ static int cfg_key_is(const char *line, const char *key)
 #define CFG_KEY_ACCEL_ALT_RATE     "accel_alt_rate"
 
 #define CFG_KEY_USER_BUTTON_ENABLE "user_button_enable"
+#define CFG_KEY_TTL_INPUT_ENABLE   "ttl_input_enable"
 #define CFG_KEY_RTC_ERROR_ENABLE   "rtc_error_enable"
 #define CFG_KEY_SD_ERROR_ENABLE    "sd_error_enable"
 #define CFG_KEY_IAMMASTER          "iammaster"
@@ -111,6 +115,8 @@ static int cfg_key_is(const char *line, const char *key)
 #define CFG_KEY_LOW_BATT_AUTOSTOP  "low_battery_autostop"
 #define CFG_KEY_INTERVAL           "interval"
 #define CFG_KEY_BT_DISABLED        "bluetoothDisabled"
+#define CFG_KEY_BUTTON_MODE        "button_mode"
+#define CFG_KEY_LOG_TRIGGERS       "log_triggers"
 
 #define CFG_KEY_MAX_EXP_LEN        "max_exp_len"
 #define CFG_KEY_EST_EXP_LEN        "est_exp_len"
@@ -166,8 +172,33 @@ void ShimSdCfgFile_init(void)
 {
 }
 
-void ShimSdCfgFile_generate(void)
+FIL *ShimSdCfgFile_lendFil(void)
 {
+  if (cfgFileLent)
+  {
+    return 0;
+  }
+  cfgFileLent = 1;
+  memset(&cfgFile, 0, sizeof(cfgFile));
+  return &cfgFile;
+}
+
+void ShimSdCfgFile_returnFil(void)
+{
+  memset(&cfgFile, 0, sizeof(cfgFile));
+  cfgFileLent = 0;
+}
+
+uint8_t ShimSdCfgFile_generate(void)
+{
+  /* Never while the event file has the file object: that is a logging session,
+   * and sdlog.cfg is only written outside one. Said, so that a caller keeps
+   * the write pending rather than taking it as done. */
+  if (cfgFileLent)
+  {
+    return 0;
+  }
+
   if (!shimmerStatus.docked && LogAndStream_checkSdInSlot() && !shimmerStatus.sdBadFile)
   {
     uint8_t sd_power_state = shimmerStatus.sdPowerOn;
@@ -282,6 +313,12 @@ void ShimSdCfgFile_generate(void)
 
       //trial config
       CFG_WRITE_INT(&cfgFile, CFG_KEY_USER_BUTTON_ENABLE, storedConfig->userButtonEnable);
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_TTL_INPUT_ENABLE,
+          ShimBtnLogMode_isTtlInputEnabled(storedConfig->buttonLogMode));
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_BUTTON_MODE,
+          ShimBtnLogMode_buttonMode(storedConfig->buttonLogMode));
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_LOG_TRIGGERS,
+          ShimBtnLogMode_logTriggers(storedConfig->buttonLogMode));
       CFG_WRITE_INT(&cfgFile, CFG_KEY_RTC_ERROR_ENABLE, storedConfig->rtcErrorEnable);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_SD_ERROR_ENABLE, storedConfig->sdErrorEnable);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_IAMMASTER, storedConfig->masterEnable);
@@ -393,6 +430,7 @@ void ShimSdCfgFile_generate(void)
       Board_setSdPower(0);
     }
   }
+  return 1;
 }
 
 void ShimSdCfgFile_parse(void)
@@ -409,6 +447,12 @@ void ShimSdCfgFile_parse(void)
   uint32_t max_exp_len = 0;
 
   uint8_t triggerSdCardUpdate = 0;
+
+  /* Never while the event file has the file object (see generate()) */
+  if (cfgFileLent)
+  {
+    return;
+  }
 
   LogAndStream_checkSdInSlot();
   gConfigBytes *storedConfigPtr = ShimConfig_getStoredConfig();
@@ -678,6 +722,21 @@ void ShimSdCfgFile_parse(void)
       else if (cfg_key_is(buffer, CFG_KEY_USER_BUTTON_ENABLE))
       {
         storedConfigPtr->userButtonEnable = (atoi(equals) == 0) ? 0 : 1;
+      }
+      else if (cfg_key_is(buffer, CFG_KEY_TTL_INPUT_ENABLE))
+      {
+        storedConfigPtr->buttonLogMode = ShimBtnLogMode_withTtlInput(
+            storedConfigPtr->buttonLogMode, atoi(equals));
+      }
+      else if (cfg_key_is(buffer, CFG_KEY_BUTTON_MODE))
+      {
+        storedConfigPtr->buttonLogMode = ShimBtnLogMode_withButtonMode(
+            storedConfigPtr->buttonLogMode, atoi(equals));
+      }
+      else if (cfg_key_is(buffer, CFG_KEY_LOG_TRIGGERS))
+      {
+        storedConfigPtr->buttonLogMode = ShimBtnLogMode_withLogTriggers(
+            storedConfigPtr->buttonLogMode, atoi(equals));
       }
       else if (cfg_key_is(buffer, CFG_KEY_IAMMASTER))
       { //0=slave=node

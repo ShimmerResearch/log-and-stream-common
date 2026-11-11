@@ -118,6 +118,22 @@ gConfigBytes *ShimConfig_getStoredConfig(void)
   return &stubStoredConfig;
 }
 
+#if defined(HOST_TEST_LINKS_LEDS)
+/* LEDs/shimmer_leds.c asks the configuration whether logging and the button
+ * are turned off (configuration byte 232). The real accessors' bodies, over the
+ * stub config, for the one suite that links the real LED module; it links
+ * Configuration/shimmer_button_log_mode.c for the rule itself. */
+uint8_t ShimConfig_isLoggingDisabled(void)
+{
+  return ShimBtnLogMode_isLoggingDisabled(stubStoredConfig.buttonLogMode);
+}
+
+uint8_t ShimConfig_isButtonDisabled(void)
+{
+  return ShimBtnLogMode_isButtonDisabled(stubStoredConfig.buttonLogMode);
+}
+#endif
+
 /* The real accessor's body, over the stub config. */
 uint8_t ShimConfig_gyroRangeGet(void)
 {

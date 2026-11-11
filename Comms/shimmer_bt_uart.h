@@ -247,6 +247,12 @@
 #define DUMMY_COMMAND                                 0xB5
 #define RESET_BT_ERROR_COUNTS                         0xB6
 #define SET_FEATURE                                   0xB7
+/* The event channel (Events/shimmer_events.h). EVENT_RECORD_RESPONSE is an
+ * in-stream subtype under INSTREAM_CMD_RESPONSE, sent only to a host that has
+ * opted in with SET_FEATURE / FEATURE_EVENT_STREAM. */
+#define GET_EVENT_CHANNEL_STATUS_COMMAND              0xB9
+#define EVENT_CHANNEL_STATUS_RESPONSE                 0xBA
+#define EVENT_RECORD_RESPONSE                         0xBB
 
 /* SD-card file transfer over BT. Opcodes are reserved protocol-wide but the
  * commands are currently only served on SHIMMER3R (older FW silently ignores
@@ -332,7 +338,12 @@ enum
    * advertising names) without the user power-cycling the device by hand. The
    * reboot cannot happen while the host is still connected, because the link
    * has to drop for the Bluetooth module to re-read its name. */
-  FEATURE_REBOOT_ON_DISCONNECT = 2
+  FEATURE_REBOOT_ON_DISCONNECT = 2,
+  /* Send event records on this link as EVENT_RECORD_RESPONSE frames. Opt-in
+   * because a host that does not know the frame would lose sync on it. For
+   * this connection only: cleared on connect and disconnect. Firmware without
+   * it NACKs the value, which tells a host it is not supported. */
+  FEATURE_EVENT_STREAM = 3
 };
 
 typedef enum

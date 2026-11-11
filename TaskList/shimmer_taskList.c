@@ -191,8 +191,10 @@ void ShimTask_NORM_manage(void)
         {
           shimmerStatus.configuring = 1;
           ShimConfig_readRam();
-          ShimSdCfgFile_generate();
-          ShimConfig_setFlagWriteCfgToSd(0, 1);
+          if (ShimSdCfgFile_generate())
+          {
+            ShimConfig_setFlagWriteCfgToSd(0, 1);
+          }
           shimmerStatus.configuring = 0;
         }
         break;
@@ -221,6 +223,9 @@ void ShimTask_NORM_manage(void)
         break;
       case TASK_BT_REPLY_RETRY:
         ShimBtReply_retry();
+        break;
+      case TASK_EVENT_CHANNEL:
+        ShimEvt_process();
         break;
 
       case TASK_BT_TURN_ON_AFTER_BOOT:
