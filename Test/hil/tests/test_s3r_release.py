@@ -49,7 +49,7 @@ from pathlib import Path
 
 import pytest
 
-from rig import bt, decode, dock, events, s3r_audio, s3r_boards, s3r_usb, sdfile, signals
+from rig import bt, decode, dock, events, s3r_audio, s3r_boards, s3r_usb, sdfile, signals, sound_level
 from rig.s3r_config import S3rConfig, divider_for
 
 try:
@@ -115,6 +115,7 @@ def _configure(unit, row) -> tuple[S3rConfig, set[str]]:
         cfg.gyro_range = row["gyro_range"]
         cfg.wr_accel_range = row["wr_accel_range"]
         cfg.audio_mode = row.get("audio", 0)    # always written: a unit can hold a mode from before
+        cfg.sound_level = row.get("sound_level", 0)   # likewise (SHIMMER3R_AUDIO.md §8)
         # The rows start and stop logging over Bluetooth. A unit set to log on
         # undock would be logging, and recording audio, before the link is up.
         # So byte 232 is always written, with userButtonEnable on: a unit can
@@ -134,7 +135,7 @@ def _configure(unit, row) -> tuple[S3rConfig, set[str]]:
         problems.append(f"divider read back {back.divider}, wrote {cfg.divider}")
     if back.enabled() != want:
         problems.append(f"sensors read back {sorted(back.enabled())}, wrote {sorted(want)}")
-    for f in ("ln_accel_range", "gyro_range", "wr_accel_range", "audio_mode"):
+    for f in ("ln_accel_range", "gyro_range", "wr_accel_range", "audio_mode", "sound_level"):
         if getattr(back, f) != getattr(cfg, f):
             problems.append(f"{f} read back {getattr(back, f)}, wrote {getattr(cfg, f)}")
     problems += [f"ODR not corrected: {p}" for p in back.odr_shortfalls()]
@@ -203,7 +204,10 @@ def _check_log(path: Path, cfg: S3rConfig, inq, seconds, unit, aside):
     aside.log_start(_start_loss(fc.ts, h.divider))
     chans = decode.split_channels(fc.rows, h.channels, bt.HW_SHIMMER3R)
     sig, note = signals.check_rest(chans, calibs, cfg.rate_hz)
-    return fc, probs + sig, note
+    lp, lnote = sound_level.check(chans.get(sound_level.CHANNEL), cfg.rate_hz, cfg.sound_level,
+                                  sound_level.FIRST_BY_S_LOG)
+    sig += [f"sound level: {p}" for p in lp]
+    return fc, probs + sig, "; ".join(n for n in (note, lnote) if n)
 
 
 def _check_events(path: Path, root: Path, cfg: S3rConfig, fc) -> tuple[list[str], str]:
@@ -287,6 +291,9 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
         sig, note = signals.check_rest(chans, calibs, cfg.rate_hz)
         probs += sig
         notes.append(f"{st.packets} pkts, {note}")
+        lp, lnote = sound_level.check(chans.get(sound_level.CHANNEL), cfg.rate_hz, cfg.sound_level)
+        probs += [f"sound level: {p}" for p in lp]
+        notes.append(lnote)
     else:
         audio = cfg.audio_mode
         astatus = None
@@ -346,7 +353,9 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
             notes.append(f"{fc.records} records, {note}")
             data = s3r_audio.DataFile.from_file(path.read_bytes()[:sdfile.HEAD_S3R],
                                                 fc.ts[0] if fc.ts else 0, fc.span_ticks)
-            ac = s3r_audio.check(path, data, audio, astatus)
+            ac = s3r_audio.check(path, data, audio, astatus,
+                                 s3r_audio.FIRST_SAMPLE_JOINED_S if cfg.sound_level
+                                 else s3r_audio.FIRST_SAMPLE_S)
             probs += [f"audio: {p}" for p in ac.problems]
             notes.append(f"audio mode {audio}: {ac.note}" if audio else "")
             ep, enote = _check_events(path, root, cfg, fc)

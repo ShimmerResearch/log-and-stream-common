@@ -24,7 +24,7 @@ TRIPLETS = {
     "alt_mag": ((0x17, 0x18, 0x19), 154, 1),
 }
 VBATT = 0x03
-SIGNED_I16 = {c for t in TRIPLETS.values() for c in t[0]}
+SIGNED_I16 = {c for t in TRIPLETS.values() for c in t[0]} | {0x38}   # 0x38: the sound level
 # The alt accel is big-endian on both platforms (STREAMING_DATA_FORMAT §5): on
 # Shimmer3R the ADXL371's 12-bit value, left-justified (the driver's i12*>); on
 # Shimmer3 the 9-axis chip's own accelerometer, a plain int16.

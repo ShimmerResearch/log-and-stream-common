@@ -15,6 +15,10 @@ Shimmer3 has no microphone, and none of this exists there.
 A mode that is not built reads back as 0, so a host learns what a unit records
 by writing the byte and reading it back.
 
+Bit 4 of the same byte turns on the **sound level** (DEV-1413): every data
+packet carries the A-weighted level of the microphone's latest 128 ms, while
+the unit senses, whether it streams, logs or both (§8). It stores no audio.
+
 > **Raw audio records speech.** A host should ask for confirmation before
 > setting mode 2 or 3, and everyone near the device needs to know it is
 > recording. The fingerprint (mode 1) does not store audio.
@@ -27,6 +31,8 @@ by writing the byte and reading it back.
 | The recorder | shimmer3r-firmware `Shimmer_Driver/hal_AudioRecorder.c` |
 | The fingerprint: a port of audfprint, with CMSIS-DSP's FFT | shimmer3r-firmware `Middlewares/Third_Party/AudioFingerprint`, `Middlewares/Third_Party/CMSIS-DSP` |
 | Capture: ADF1, GPDMA1 channel 11 | shimmer3r-firmware `Shimmer_Driver/hal_Audio.c` |
+| The sound level: the arithmetic | `Audio/shimmer_audio_level.{c,h}` |
+| The sound level: its capture and task | shimmer3r-firmware `Shimmer_Driver/hal_AudioLevel.c` |
 
 ## 1. When it records
 
@@ -67,6 +73,15 @@ capture earlier than the data file, so match samples to records by their
 Shimmer clock times, not by which file they are in. The fingerprint's chunks
 run on across a split (§3.2), and a chunk whose records are being written
 finishes in the old file first.
+
+**The capture is shared with the sound level** (§8), which holds it for as
+long as the unit senses with the level on:
+- **A log that starts meanwhile joins it.** Its first audio sample is the start
+  of the 128 ms block filling at that moment. There is no start-up drop, since
+  the microphone has already settled, and the session's ADF counts start there.
+- **A log that stops meanwhile leaves the capture running.** It writes out the
+  WAV only as far as the capture had got at the stop. The capture stops when
+  sensing does.
 
 ## 2. Files
 
@@ -277,7 +292,8 @@ and RM0456, not measured against a sound level:
 - GPDMA1 channel 11 writes the samples straight into an 8 s ring, through a
   circular linked list of 64 nodes, each a 128 ms block.
 - Each block's interrupt only stamps it with the Shimmer clock and queues
-  `TASK_AUDIO`. Nothing is copied at interrupt level.
+  `TASK_AUDIO`, and `TASK_AUDIO_LEVEL` while the sound level is on (§8).
+  Nothing is copied at interrupt level.
 - The interrupt is at priority 2 and the ADF's at 7, both below the RTC
   sampling interrupt at 1, so recording never delays a sensor sample.
 - On the bench, 70 minutes of 1024 Hz logging with every sensor on lost no
@@ -402,7 +418,12 @@ From the differences:
 - raw audio's card writes cost about 2.9 mA.
 
 The write cost depends on the card. The fingerprint's 4 s cycle shows in the
-current, and the 4 s averages varied by about 0.2 mA within each run. For
+current, and the 4 s averages varied by about 0.2 mA within each run.
+
+**The sound level** (§8) keeps the capture running whenever the unit senses
+with it on, streaming included. That costs the capture's share above, about
+1.4 mA, plus its filter: about 1.5 ms of CPU every 128 ms, estimated, not
+measured. Its current while streaming has not been measured yet. For
 comparison, the same unit undocked and not logging drew 20.0 mA. A raw-audio
 build wrote zeros in place of the room, the same number of bytes, so the card
 saw the same writes.
@@ -411,9 +432,104 @@ saw the same writes.
 
 The factory test S3R_TEST_0026 captures through the same driver, at its own
 settings (decimation 64, gain −8). It runs one capture at a time. A factory test
-while a recording owns the microphone reports `FAIL: Microphone busy recording`
-rather than restarting the ADF under the recording
+while a recording or the sound level (§8) holds the microphone would report
+`FAIL: Microphone busy recording`, whichever it is,
+rather than restart the ADF under the recording
 ([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §5.6).
+
+In practice neither route can start one while the unit senses, so the check is
+a safeguard:
+- **Bluetooth** refuses `SET_FACTORY_TEST` while sensing
+  (`ShimBt_isCmdBlockedWhileSensing`).
+- **A docked Shimmer3R's USB is down while it senses,** so its dock UART is not
+  there either.
+
+On the bench, with the sound level on and the unit streaming docked, both were
+tried: no test ran until the stream stopped.
+
+## 8. The sound level
+
+Configuration byte 233 bit 4
+([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.5)
+adds the `SOUND_LEVEL` channel, ID `0x38`
+([SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §3), to
+every data packet: the A-weighted level at the microphone, in nominal dB SPL.
+- **It is a sensor channel like any other:** listed in the inquiry response and
+  the SD header, at the sampling rate, logged and streamed.
+- **It needs no log, unlike the recording (§1).** The capture runs whenever the
+  unit senses with the bit set, whether it streams, logs or both, and stops when
+  sensing stops.
+- **It stores no audio.**
+
+| | |
+|---|---|
+| Position | After the ExG blocks and before the ADS7028 block, so `VBATT` stays last (STREAMING_DATA_FORMAT §4.2) |
+| Encoding | int16, little-endian, hundredths of a dB(A) SPL: 4512 is 45.12 dB(A) |
+| No level | `-32768` (`0x8000`): before the first level after the capture starts, and while it is not running |
+| Each value | LAeq over one 128 ms capture block: the mean square of the A-weighted samples |
+
+**What it measures:**
+- **The A-weighting** is IEC 61672's curve as three biquads at 16 kHz. It is
+  within 0.1 dB of the curve from 20 Hz to 7 kHz (`Test/host/test_audio_level.c`).
+  The microphone's and the ADF's own frequency response are not corrected.
+- **The step to dB SPL** is the microphone's offset at the capture's gain.
+  - **From §4's figures:** a 94 dB SPL tone comes out at −14.1 dB against a
+    full-scale sine on the MP23DB01HP at code 6, and at −13.7 dB on the
+    IM68D121JV01 at code 1. So the offsets are 108.1 and 107.7 dB.
+  - **Worked out, not measured:** the offsets come from the datasheets, so the
+    level is **nominal**. It is good for changes and comparisons on one unit,
+    and a few dB out in absolute terms.
+  - **The plastics move it too:** on the bench, +2.3 dB at 1 kHz and −3.8 dB at
+    4 kHz.
+- **The range:** values are clamped to 0-327.67 dB, and 0 means digital silence.
+  The loudest an int16 capture can show is a full-scale square wave, 111.1 dB
+  on the MP23DB01HP; the capture clips near 105 dB SPL (§4).
+
+**When a value applies:**
+- **The first value** comes with the third block, 256 to 384 ms after sensing
+  starts: 318-320 ms in every streamed run on the bench. The first two blocks are
+  the microphone's start-up (§1), and until then packets carry `-32768`.
+  - **A log that starts from rest is slower.** Its start holds the main loop while
+    it opens its files, and the level waits behind it: on the bench the first
+    value came 0.84-0.93 s in.
+  - **After a configuration write** the first log's file opening can take longer
+    still, on cards with small clusters (DEV-1429).
+- **A value describes the last block worked.** That is the 128 ms that ended up
+  to one block before the packet, plus the wait for `TASK_AUDIO_LEVEL`.
+  - **The wait is short.** On the bench, a block's value was in the packets a
+    median of 3.6 ms after the block ended, and 99% within 7.4 ms.
+  - **So the middle of the block** a value describes is 64 to 192 ms before the
+    packet's timestamp, plus that wait.
+  - For a level that matters over seconds this makes no difference.
+  - To place a sharp sound in time, use the WAV (§3.1).
+- **While the main loop is held,** the value holds too.
+  - **What holds it:** a log opening its files mid-stream did, for about a second
+    on the bench.
+  - **When the loop is free again:** the task finds more than 4 blocks waiting,
+    restarts its filter on the newest, and carries on.
+  - **What is lost:** the blocks in between get no value of their own. On the
+    bench that happened once in a 120 s run, at the log's start: six blocks, after
+    which the next value was exact again.
+- **Each value repeats** until the next block: at 1024 Hz, about 131 packets in
+  a row carry the same value.
+
+**How it is worked out:**
+- **`TASK_AUDIO_LEVEL`** runs each completed block through the filter as it
+  arrives, at an estimated 1.5 ms of CPU a block. It sits above the data path,
+  unlike `TASK_AUDIO`, so the level stays current while the card is slow.
+  - The filter's state carries from block to block.
+  - If the task falls more than 4 blocks behind, it restarts the filter on the
+    block before the newest rather than work through old audio.
+- **The sampling interrupt** copies the latest value into each packet. The
+  channel adds no bus to wait for: with no other SPI channel, it completes the
+  packet's SPI stage itself.
+- **The capture** is the recording's, shared (§1).
+
+**For hosts:**
+- **Detecting support:** firmware without the channel clears bit 4, so a host
+  learns whether a unit has it by writing the bit and reading it back.
+- **Older hosts:** one that does not know `0x38` cannot know its width, so it
+  should refuse the stream rather than guess (STREAMING_DATA_FORMAT §5.6).
 
 ## Not yet
 
@@ -427,6 +543,23 @@ rather than restarting the ADF under the recording
   counts real overload too: nine taps on a bare board's SD card cage, which
   drove the WAV to full scale, took one recording's count to 2,106. So it is
   worth keeping, if only as a count.
+
+**The sound level (§8):**
+- Its level checked against a calibrated sound level meter, on each microphone
+  part, bare and in plastics.
+- Its current while the unit only streams, and its CPU time per block.
+
+**Benched** (Shimmer3R, MP23DB01HP, bench-only image that writes a known signal
+into each capture block in the DMA interrupt):
+- **The arithmetic:** in a 120 s stream at 512 Hz, all 928 values matched the
+  same filter worked on a PC to within 0.01 dB.
+- **A log joined mid-stream and stopped while the stream went on:**
+  - the WAV matched the signal sample for sample (942,080 samples, no silence,
+    closed, no fault);
+  - the log's 30,719 records were all in the stream, byte for byte.
+- **Streaming at 1024 Hz with every sensor on:** classic (CRC off) and BLE (CRC
+  1), 60 s each, lost nothing.
+- **The release matrix's four `level_*` rows** passed.
 
 **Hosts:**
 - Byte 233 in the host APIs' configuration models.

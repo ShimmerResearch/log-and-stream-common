@@ -85,7 +85,8 @@ TS_WRAP = 1 << 24
 # a parser that guesses a width produces plausible garbage (§5.6).
 _WIDTH = {**{i: 2 for i in range(0x00, 0x1A)}, 0x1B: 3, 0x1C: 2,
           0x1D: 1, 0x1E: 3, 0x1F: 3, 0x20: 1, 0x21: 3, 0x22: 3,
-          **{i: 2 for i in range(0x23, 0x29)}}
+          **{i: 2 for i in range(0x23, 0x29)},
+          0x38: 2}                         # Shimmer3R's sound level (SHIMMER3R_AUDIO.md §8)
 
 
 class BtError(Exception):

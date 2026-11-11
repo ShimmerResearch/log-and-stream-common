@@ -194,7 +194,7 @@ uint32_t taskList;   // one bit per task
 | 6 | `TASK_BT_RESPOND` | both |
 | 7 | `TASK_RCCENTERR1` | both |
 | 8 | `TASK_RCNODER10` | both |
-| 9 | `TASK_SAMPLE_MPU9150_MAG` | S3 |
+| 9 | `TASK_SAMPLE_MPU9150_MAG` / `TASK_AUDIO_LEVEL` | S3 / S3R. `TASK_AUDIO_LEVEL` is queued by the audio capture's DMA interrupt every 128 ms while the sound level is on, and works out the level the packets carry. It sits above the data path so that level stays current while the card is slow ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8) |
 | 10 | `TASK_SAMPLE_BMPX80_PRESS` | S3 |
 | 11 | `TASK_GATHER_DATA` | both |
 | 12 | `TASK_STOPSENSING` | both |

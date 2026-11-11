@@ -103,6 +103,14 @@ typedef enum TaskId_Tag
   TASK_SAMPLE_MPU9150_MAG = (0x00000001UL << 9U),
   TASK_SAMPLE_BMPX80_PRESS = (0x00000001UL << 10U),
 #endif
+#if defined(SHIMMER3R)
+  /* The sound level of each 128 ms microphone block, for the SOUND_LEVEL
+   * channel (Audio/shimmer_audio.h, DEV-1413). Set by the capture's DMA
+   * interrupt. Up here, unlike TASK_AUDIO, because packets read its result:
+   * it must stay current while the card or the data path is slow. About
+   * 1.5 ms a block. */
+  TASK_AUDIO_LEVEL = (0x00000001UL << 9U),
+#endif
   TASK_GATHER_DATA = (0x00000001UL << 11U),
   TASK_STOPSENSING = (0x00000001UL << 12U),
   TASK_SDLOG_CFG_UPDATE = (0x00000001UL << 13U),

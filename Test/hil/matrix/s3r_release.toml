@@ -10,12 +10,18 @@
 #   audio   byte 233, what the microphone records while logging (SHIMMER3R_AUDIO.md):
 #           1 = fingerprint, 2 = fingerprint and raw audio, 3 = raw audio. 0 when
 #           left out, and every row writes it. Log and both rows only.
+#   sound_level  byte 233 bit 4, the SOUND_LEVEL channel (SHIMMER3R_AUDIO.md §8):
+#           1 = on. 0 when left out, and every row writes it. Any mode.
 
 [sets]
 imu = ["ln_accel", "gyro", "mag", "vbatt"]
 imu_wr = ["ln_accel", "gyro", "mag", "vbatt", "wr_accel"]
 imu_press = ["ln_accel", "gyro", "mag", "vbatt", "pressure"]
 full = ["ln_accel", "gyro", "mag", "vbatt", "wr_accel", "alt_accel", "alt_mag", "pressure", "gsr"]
+# The magnetometer is the only I2C sensor: with the sound level, the SPI stage
+# has no bus at all, and the level alone completes it (SHIMMER3R_AUDIO.md §8)
+mag_only = ["mag"]
+gsr = ["gsr", "vbatt"]
 
 [[row]]
 id = "imu_51p2hz_stream"
@@ -354,3 +360,57 @@ ln_accel_range = 1
 gyro_range = 0
 wr_accel_range = 3
 audio = 2
+
+# The sound level (DEV-1413, SHIMMER3R_AUDIO.md §8). Streaming only, with no
+# SPI sensor and with the IMU; logging alone, joined by a fingerprint session;
+# and the heaviest load, streamed and logged, with raw audio and the
+# fingerprint sharing the level's capture. A log stopped while the stream goes
+# on is a bench step of its own (SHIMMER3R_AUDIO.md §8 "Not yet").
+[[row]]
+id = "level_mag_128hz_stream"
+rate_hz = 128
+sensors = "mag_only"
+mode = "stream"
+crc = 0
+seconds = 20
+ln_accel_range = 0
+gyro_range = 0
+wr_accel_range = 0
+sound_level = 1
+
+[[row]]
+id = "level_imu_512hz_stream"
+rate_hz = 512
+sensors = "imu"
+mode = "stream"
+crc = 1
+seconds = 20
+ln_accel_range = 0
+gyro_range = 0
+wr_accel_range = 0
+sound_level = 1
+
+[[row]]
+id = "level_gsr_128hz_log_fp"
+rate_hz = 128
+sensors = "gsr"
+mode = "log"
+seconds = 30
+ln_accel_range = 0
+gyro_range = 0
+wr_accel_range = 0
+audio = 1
+sound_level = 1
+
+[[row]]
+id = "level_full_1024hz_both_fp_raw"
+rate_hz = 1024
+sensors = "full"
+mode = "both"
+crc = 2
+seconds = 60
+ln_accel_range = 0
+gyro_range = 0
+wr_accel_range = 0
+audio = 2
+sound_level = 1

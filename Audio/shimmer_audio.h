@@ -58,6 +58,13 @@ void ShimAudio_process(void);
 uint8_t ShimAudio_statusBits(void);
 /* GET_AUDIO_STATUS_COMMAND: writes AUDIO_STATUS_LEN bytes, returns it */
 uint8_t ShimAudio_buildStatus(uint8_t *buf);
+/* The sound-level channel (Audio/shimmer_audio_level.h, DEV-1413): its capture
+ * runs while the unit senses, streaming, logging or both, if configuration
+ * byte 233 bit 4 is set. Called when sensing's peripherals start and stop. */
+void ShimAudio_onSensingStart(void);
+void ShimAudio_onSensingStop(void);
+/* TASK_AUDIO_LEVEL */
+void ShimAudio_levelProcess(void);
 #else
 static inline void ShimAudio_onSessionStart(uint64_t dataFileTs)
 {
@@ -74,6 +81,14 @@ static inline void ShimAudio_onSyncTick(void)
 }
 
 static inline void ShimAudio_onSessionStop(void)
+{
+}
+
+static inline void ShimAudio_onSensingStart(void)
+{
+}
+
+static inline void ShimAudio_onSensingStop(void)
 {
 }
 #endif

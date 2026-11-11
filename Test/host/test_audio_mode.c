@@ -2,7 +2,8 @@
  * Host-side test for Configuration/shimmer_audio_mode.c.
  *
  * Configuration byte 233 says whether a Shimmer3R records audio while it logs,
- * and what it keeps (DEV-99). Its rules are safety rules more than decoding: a
+ * and what it keeps (DEV-99), and whether its packets carry the sound level
+ * (bit 4, DEV-1413). Its rules are safety rules more than decoding: a
  * byte that no host meant to write - erased flash, a host that zeroes what it
  * does not know, a value from a newer host - must read as off, so a unit never
  * records audio nobody asked for. And a mode this firmware does not record
@@ -49,6 +50,7 @@ static void test_constants(void)
   expectX("gain mask", AUDIO_MODE_GAIN_MASK, 0x0C);
   expectX("gain shift", AUDIO_MODE_GAIN_SHIFT, 2);
   expectX("must-be-0 bit", AUDIO_MODE_INVALID, 0x80);
+  expectX("sound level bit", AUDIO_SOUND_LEVEL, 0x10);
   expectX("off is always built", AUDIO_MODES_BUILT & 1U, 1);
   expectX("every mode is built, from DEV-99 step 5", AUDIO_MODES_BUILT, 0x0F);
 }
@@ -65,14 +67,14 @@ static void test_correct_every_value(void)
     fixed = ShimAudioMode_correct(raw);
     if (standsAsWritten(raw))
     {
-      /* Bits 4-6 are not used, so they go */
-      expectX("valid built value kept, bits 4-6 cleared", fixed, raw & 0x0FU);
+      /* Bit 4 is the sound level; bits 5-6 are not used, so they go */
+      expectX("valid built value kept, bits 5-6 cleared", fixed, raw & 0x1FU);
     }
     else
     {
       expectX("anything else reads as off", fixed, 0);
     }
-    expectX("never more than bits 0-3", fixed & 0xF0U, 0);
+    expectX("never more than bits 0-4", fixed & 0xE0U, 0);
     expectX("correcting twice changes nothing", ShimAudioMode_correct(fixed), fixed);
   }
 }
@@ -85,6 +87,13 @@ static void test_values_no_host_meant(void)
   expectX("raw audio, bit 7 set", ShimAudioMode_correct(0x83), 0);
   expectX("fingerprint, gain preset 1 (reserved)", ShimAudioMode_correct(0x05), 0);
   expectX("raw audio, gain preset 3 (reserved)", ShimAudioMode_correct(0x0F), 0);
+  expectX("sound level, bit 7 set", ShimAudioMode_correct(0x90), 0);
+  expectX("sound level, gain preset 1 (reserved)", ShimAudioMode_correct(0x14), 0);
+
+  testCase("the sound level stands on its own, with any built mode");
+  expectX("sound level only", ShimAudioMode_correct(0x10), 0x10);
+  expectX("sound level and raw audio", ShimAudioMode_correct(0x13), 0x13);
+  expectX("bits 5-6 go, bit 4 stays", ShimAudioMode_correct(0x71), 0x11);
 }
 
 static void test_queries_apply_the_correction(void)
@@ -105,7 +114,11 @@ static void test_queries_apply_the_correction(void)
         ShimAudioMode_recordsFingerprint(raw), (mode == 1U) || (mode == 2U));
     expectU("raw audio in modes 2 and 3 only",
         ShimAudioMode_recordsRawAudio(raw), (mode == 2U) || (mode == 3U));
+    expectU("sound level is the corrected byte's bit 4",
+        ShimAudioMode_soundLevel(raw), (ShimAudioMode_correct(raw) >> 4) & 1U);
   }
+  expectU("0x10 is the sound level", ShimAudioMode_soundLevel(0x10), 1);
+  expectU("erased flash is not", ShimAudioMode_soundLevel(0xFF), 0);
   expectU("off records no fingerprint", ShimAudioMode_recordsFingerprint(0), 0);
   expectU("off records no raw audio", ShimAudioMode_recordsRawAudio(0), 0);
 }
@@ -126,6 +139,14 @@ static void test_sdlog_cfg_round_trip(void)
   /* atoi() of anything that is not a number */
   expectX("audio_mode=0 from text", ShimAudioMode_withMode(0x02, 0), 0x00);
 
+  testCase("the sound_level key sets bit 4 and nothing else");
+  expectX("sound_level=1", ShimAudioMode_withSoundLevel(0, 1), 0x10);
+  expectX("sound_level=0 keeps the mode", ShimAudioMode_withSoundLevel(0x13, 0), 0x03);
+  expectX("sound_level=1 keeps the mode", ShimAudioMode_withSoundLevel(0x02, 1), 0x12);
+  expectX("audio_mode keeps the sound level", ShimAudioMode_withMode(0x10, 3), 0x13);
+  expectX("sound_level=2 makes the whole byte off",
+      ShimAudioMode_correct(ShimAudioMode_withSoundLevel(0x01, 2)), 0);
+
   testCase("what generate writes, parse reads back");
   for (v = 0; v < 256U; v++)
   {
@@ -133,6 +154,7 @@ static void test_sdlog_cfg_round_trip(void)
     /* The parse starts from ShimConfig_createBlankConfigBytes(), which sets
      * the byte to 0. The gain preset has no key until one is built. */
     parsed = ShimAudioMode_withMode(0, ShimAudioMode_mode(fixed));
+    parsed = ShimAudioMode_withSoundLevel(parsed, ShimAudioMode_soundLevel(fixed));
     expectX("round trip", ShimAudioMode_correct(parsed), fixed);
   }
 }

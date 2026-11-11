@@ -256,6 +256,8 @@ void ShimSens_startSensing(void)
     }
     I2C_startSensing();
     SPI_startSensing();
+    /* The sound level's capture, before the first sample (DEV-1413) */
+    ShimAudio_onSensingStart();
 
 #if defined(SHIMMER3)
     SampleTimerStart();
@@ -444,6 +446,7 @@ void ShimSens_stopPeripherals(void)
   {
     SPI_stopSensing();
   }
+  ShimAudio_onSensingStop();
 
 #if defined(SHIMMER3R)
   Board_enableSensingPower(SENSE_PWR_SENSING, 0);

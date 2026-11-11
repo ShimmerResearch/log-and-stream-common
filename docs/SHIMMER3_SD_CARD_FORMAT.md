@@ -355,7 +355,7 @@ Appendix A and is not repeated here. What follows is the header's own layout.
 | 222-223 | `SDH_TEMP_PRES_EXTRA_CALIB_BYTES` | 2 | BMP280 only |
 | 224 | `SDH_PRESSURE_SENSOR_ID` | 1 | Fitted pressure sensor and how it was identified — see §3.4. `0xFF` before S3R v1.01.018 / S3 v1.01.006 |
 | 225 | `SDH_BUTTON_LOG_MODE` | 1 | Button, logging and TTL input settings: configuration byte 232 as the firmware acted on it (CONFIGURATION_INFOMEM §8.3). `0xFF` from firmware before the field, which reads as 0 by the same rule |
-| 226 | `SDH_AUDIO_MODE` | 1 | Shimmer3R: what the unit records from its microphone alongside this file. Configuration byte 233 as the firmware acted on it (CONFIGURATION_INFOMEM §8.5). `0xFF` on Shimmer3 and from firmware before the field, which reads as 0 (off) by the same rule |
+| 226 | `SDH_AUDIO_MODE` | 1 | Shimmer3R: what the unit records from its microphone alongside this file, and in bit 4 whether its records carry the sound level. Configuration byte 233 as the firmware acted on it (CONFIGURATION_INFOMEM §8.5). `0xFF` on Shimmer3 and from firmware before the field, which reads as 0 (off) by the same rule |
 | 227-250 | — | 24 | Unused (`0xFF`) |
 | 251 | `SDH_INITIAL_TIMESTAMP_4` | 1 | **Most significant of the 5** |
 | 252-255 | `SDH_INITIAL_TIMESTAMP_0..3` | 4 | Lower 4 bytes, LSB order |
@@ -776,7 +776,7 @@ Rates and ranges:
 `accel_alt_range`, `accel_alt_rate`, `accel_ln_range`, `gyro_range`,
 `gyro_samplingrate`, `gsr_range`, `exp_power`
 
-Shimmer3R only: `audio_mode`. This is configuration byte 233's mode, 0-3 (CONFIGURATION_INFOMEM §8.5). A value outside 0-3 makes the whole byte read as 0, as does a file without the key, so a card written by older firmware turns recording off at the next undock.
+Shimmer3R only: `audio_mode` and `sound_level`. `audio_mode` is configuration byte 233's mode, 0-3, and `sound_level` its bit 4, 0 or 1 (CONFIGURATION_INFOMEM §8.5). A value outside its range makes the whole byte read as 0. A file without a key leaves its part 0, so a card written by older firmware turns recording and the sound level off at the next undock.
 
 Pressure precision — one key per part, so the applicable key depends on the
 fitted sensor:

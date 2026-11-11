@@ -45,6 +45,10 @@ CHUNK_CLOCK_TICKS = 8
 # Where the audio sits against the data file (§1): the first sample 0.36-0.48 s
 # after its initial timestamp, and capture stops when logging does.
 FIRST_SAMPLE_S = (0.1, 1.5)
+# With the sound level on, the capture is already running when the log starts
+# and the session joins it at the block then filling (§1), up to 128 ms before
+# the recorder's task opens the files
+FIRST_SAMPLE_JOINED_S = (-0.2, 1.5)
 LAST_SAMPLE_S = (-1.5, 0.5)
 # Sound arrived: a quiet room is about -67 dBFS RMS; a dead microphone or a
 # stuck PDM line leaves nothing after the high-pass filter.
@@ -241,7 +245,8 @@ def audio_dir(data_path: Path) -> Path:
     return Path(*parts[:i], "audio", *parts[i + 1:-1])
 
 
-def check(data_path: Path, data: DataFile, mode: int, status: AudioStatus | None) -> AudioCheck:
+def check(data_path: Path, data: DataFile, mode: int, status: AudioStatus | None,
+          first_window: tuple[float, float] = FIRST_SAMPLE_S) -> AudioCheck:
     """The session's audio files beside data_path (.../data/X/S/000), for a log
     recorded in `mode`, against its data file and the status read after the stop."""
     data_path = Path(data_path)
@@ -253,8 +258,10 @@ def check(data_path: Path, data: DataFile, mode: int, status: AudioStatus | None
         if adir.exists():
             p.append(f"audio off, but {adir} exists")
         return AudioCheck(p, "")
-    if data.audio_mode != mode:
-        p.append(f"data file header byte 226 says audio mode {data.audio_mode}, configured {mode}")
+    # Byte 226 is the whole corrected byte 233: bit 4 is the sound level (§8)
+    if data.audio_mode & 0x03 != mode:
+        p.append(f"data file header byte 226 says audio mode {data.audio_mode & 0x03} "
+                 f"({data.audio_mode:#04x}), configured {mode}")
 
     present = {e.name for e in adir.iterdir()} if adir.is_dir() else set()
     want = ({wav_path.name} if mode in WAV_MODES else set()) | ({afp_path.name} if mode in AFP_MODES else set())
@@ -285,7 +292,7 @@ def check(data_path: Path, data: DataFile, mode: int, status: AudioStatus | None
                      f"header says {wav.count} samples, the file holds {samples}")
         if wav.count2:
             p.append(f"WAV: {wav.count2} samples written as silence after an overrun")
-        p += _clock_checks("WAV", wav.first_ticks, wav.last_ticks, samples, data)
+        p += _clock_checks("WAV", wav.first_ticks, wav.last_ticks, samples, data, first_window)
         x = array("h", raw[HEADER:HEADER + 2 * samples])
         if x:
             mean = sum(x) / len(x)
@@ -343,7 +350,8 @@ def check(data_path: Path, data: DataFile, mode: int, status: AudioStatus | None
             notes.append(f"AFP {len(chunks)} chunks, {records} hashes, audio clock {ppm:+.0f} ppm")
         else:
             notes.append(f"AFP {len(chunks)} chunks, {records} hashes")
-        p += _clock_checks("AFP", chunks[0].ticks if chunks else afp.first_ticks, None, None, data)
+        p += _clock_checks("AFP", chunks[0].ticks if chunks else afp.first_ticks, None, None, data,
+                           first_window)
         if wav is not None and chunks and samples and samples > 1:
             per = (wav.last_ticks - wav.first_ticks) / (samples - 1)
             off = [c.ticks - (wav.first_ticks + c.index * CHUNK_HOP * per) for c in chunks
@@ -362,14 +370,15 @@ def check(data_path: Path, data: DataFile, mode: int, status: AudioStatus | None
     return AudioCheck(p, "; ".join(notes))
 
 
-def _clock_checks(name, first, last, samples, data: DataFile) -> list:
+def _clock_checks(name, first, last, samples, data: DataFile,
+                  first_window: tuple[float, float] = FIRST_SAMPLE_S) -> list:
     """The audio's first sample just after the data file opened, its last at the
     log's end, and the audio clock within MAX_PPM of the Shimmer clock."""
     p = []
     d0 = (first - data.initial_ts) / TICKS
-    if not FIRST_SAMPLE_S[0] <= d0 <= FIRST_SAMPLE_S[1]:
+    if not first_window[0] <= d0 <= first_window[1]:
         p.append(f"{name}: first sample {d0:+.2f} s from the data file's initial timestamp, "
-                 f"expected {FIRST_SAMPLE_S[0]} to {FIRST_SAMPLE_S[1]} s")
+                 f"expected {first_window[0]} to {first_window[1]} s")
     if last == 0:
         # A WAV cut short at stop far behind the capture: its last sample's time is not known
         p.append(f"{name}: no last-sample time (the file was cut short at stop)")

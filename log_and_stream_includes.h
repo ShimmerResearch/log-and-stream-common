@@ -10,6 +10,7 @@
 
 #include "Audio/shimmer_audio.h"
 #include "Audio/shimmer_audio_file.h"
+#include "Audio/shimmer_audio_level.h"
 #include "Battery/shimmer_battery.h"
 #include "Boards/shimmer_boards.h"
 #include "Button/shimmer_button.h"
