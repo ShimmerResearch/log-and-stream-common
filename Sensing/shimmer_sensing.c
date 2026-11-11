@@ -257,19 +257,6 @@ void ShimSens_startSensing(void)
     I2C_startSensing();
     SPI_startSensing();
 
-#if defined(SHIMMER3R)
-    if (ShimConfig_isMicrophoneEnabled())
-    {
-      //TODO remove IF when fully switched from eval board to BGA variant
-#ifdef S3R_NUCLEO
-      MX_MDF1_Init();
-#else
-      MX_ADF1_Init();
-      micStartSensing();
-#endif
-    }
-#endif
-
 #if defined(SHIMMER3)
     SampleTimerStart();
 #else
@@ -460,11 +447,6 @@ void ShimSens_stopPeripherals(void)
 
 #if defined(SHIMMER3R)
   Board_enableSensingPower(SENSE_PWR_SENSING, 0);
-
-  if (ShimConfig_isMicrophoneEnabled())
-  {
-    micStopSensing();
-  }
 #endif
 
   if (ShimConfig_isExpansionBoardPwrEnabled())
@@ -500,14 +482,6 @@ void ShimSens_gatherData(void)
   {
     SPI_pollSensors();
   }
-
-#if defined(SHIMMER3R)
-  //TODO come back to when support is added
-  //if (isMicrophoneEnabled())
-  //{
-  //  micStartSensing();
-  //}
-#endif
 
 #if defined(SHIMMER4_SDK)
   //HAL_Delay(500);
@@ -553,13 +527,31 @@ void ShimSens_saveTimestampToPacket(void)
   packetBuf->dataBuf[sensing.ptr.ts + 2] = (uint8_t) (rtc32 >> 16);
 }
 
+/* Queues the ring's drain from the sampling interrupts. On Shimmer3R, not
+ * while the SD buffers are refusing records: the drain could only stop at once
+ * (ShimSens_saveData's back-pressure), and TASK_SAVEDATA outranks
+ * TASK_SDWRITE. Queued on every sample, it was the task taken on every pass of
+ * the main loop once a pass outlasted a sample period, so the write that frees
+ * a buffer never ran and nothing recovered (DEV-99). The writer queues the
+ * drain again as each buffer is freed. */
+static void ShimSens_queueSaveData(void)
+{
+#if defined(SHIMMER3R) && USE_SD
+  if (shimmerStatus.sdLogging && ShimSdDataFile_isRefusingRecords())
+  {
+    return;
+  }
+#endif
+  ShimTask_set(TASK_SAVEDATA);
+}
+
 uint8_t ShimSens_sampleTimerTriggered(void)
 {
   switch (PktRing_onTick(&sensing.ring))
   {
     case PKT_TICK_FULL:
       //Fail-safe - if any packets are complete and haven't been saved.
-      ShimTask_set(TASK_SAVEDATA);
+      ShimSens_queueSaveData();
       return 1; //Wake MCU
     case PKT_TICK_START:
       /* If packet isn't currently underway, start a new one.
@@ -635,7 +627,7 @@ void ShimSens_stageCompleteCb(uint8_t stage)
 
     if (PktRing_onComplete(&sensing.ring))
     {
-      ShimTask_set(TASK_SAVEDATA);
+      ShimSens_queueSaveData();
     }
   }
 }
@@ -814,11 +806,7 @@ static void ShimSens_flushRingToSd(void)
 
 uint8_t ShimSens_getNumEnabledChannels(void)
 {
-  return sensing.nbrMcuAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans
-#if defined(SHIMMER3R)
-      + ShimConfig_isMicrophoneEnabled()
-#endif
-      ;
+  return sensing.nbrMcuAdcChans + sensing.nbrI2cChans + sensing.nbrSpiChans;
 }
 
 /* Returns 1 if a start was queued, in which case the in-stream status goes to

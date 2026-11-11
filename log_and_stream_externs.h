@@ -67,6 +67,15 @@ extern uint8_t Board_isSdInserted(void);
 extern uint8_t Board_isDocked(void);
 #if defined(SHIMMER3R)
 extern bool Board_isUsbPluggedIn(void);
+/* Audio recording (Audio/shimmer_audio.h), in shimmer3r-firmware's
+ * Shimmer_Driver/hal_AudioRecorder.c */
+extern void PlatAudio_sessionStart(uint8_t mode, uint64_t dataFileTs);
+extern void PlatAudio_fileSplit(uint64_t dataFileTs);
+extern void PlatAudio_syncTick(void);
+extern void PlatAudio_sessionStop(void);
+extern void PlatAudio_process(void);
+extern uint8_t PlatAudio_statusBits(void);
+extern uint8_t PlatAudio_buildStatus(uint8_t *buf);
 #endif
 
 extern void DockUart_init(void);

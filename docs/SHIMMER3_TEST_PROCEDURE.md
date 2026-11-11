@@ -1560,14 +1560,18 @@ confirmed by a plausible timestamp step, and an off-grid stamp would be
 dropped as a misframe instead of judged.
 
 The **release** tier runs a configuration matrix on each platform. On Shimmer3R
-it is the one in `Test/hil/matrix/s3r_release.toml`. There are about 25 rows, chosen so every
+it is the one in `Test/hil/matrix/s3r_release.toml`. There are about 30 rows, chosen so every
 pair of the following appears in at least one row: rate (51.2 to 1024 Hz),
 sensor set, mode (Bluetooth stream; SD log, with the hub port acting as the
 undock; or both together) and Bluetooth CRC mode. Two of them are five-minute
 logs. Each row is its own item, `release.<row>`:
 
 - **Configuration.** The rate, sensor bits and ranges are written as raw
-  InfoMem and must read back exactly. Every enabled sensor's ODR must then
+  InfoMem and must read back exactly. So must "logging starts only by command"
+  (`userButtonEnable` on, byte 232 0): the rows start and stop logging over
+  Bluetooth, and a unit set to log on every undock would already be logging,
+  and recording audio, before the link is up. The unit's own setting comes back
+  with its InfoMem after the matrix. Every enabled sensor's ODR must then
   cover the packet rate, because the firmware raises it (§10.6 of the InfoMem
   document); a part already at its ceiling is accepted there. Sensors the board
   does not have are left out (`rig/s3r_boards.py`).
@@ -1583,6 +1587,33 @@ logs. Each row is its own item, `release.<row>`:
   start or reboot; the other two sources do.
 - **Stream and log together.** Every streamed packet must be in the SD log,
   byte for byte.
+- **Audio** ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md)). Every logging row writes
+  configuration byte 233: the row's `audio` mode, or 0. Five `audio_*` rows record:
+  each mode while logging and while logging and streaming, the heaviest load
+  (1024 Hz, every sensor, mode 2) and a five-minute mode 2 log. On those rows:
+  - status byte 1 must show recording within 5 s of the log starting, and clear
+    within 5 s of the stop. While streaming it is read from the pushed status
+    frames;
+  - after the stop, `GET_AUDIO_STATUS_COMMAND` must say stopped, with no fault,
+    silence, escape-hatch write, write error or skipped chunk;
+  - the session's audio files must be the mode's, paired with the data file
+    (same experiment, session and number; the same initial timestamp, config
+    time, MAC and firmware), closed, and without a fault;
+  - the audio must start 0.1-1.5 s after the data file's initial timestamp and
+    end with the log, and the audio clock must be within 300 ppm of the Shimmer
+    clock;
+  - the fingerprint's chunks must be numbered without a gap, as many as the
+    audio allows less the one or two a stop drops, and each chunk's clock within
+    8 ticks of the line through them all and of the WAV's clock;
+  - the counters in the file headers must equal the status;
+  - the WAV must hold sound: an RMS of at least 1 LSB, which a quiet room passes
+    and a dead microphone does not. The level is reported, not judged.
+
+  A row with audio off must leave no `audio/` directory for its session.
+  Nothing recomputes the fingerprint; the bench recorder's tools do that. A WAV
+  records the bench room, so the test reads it where it lies on the card and
+  then deletes it. A row that fails before the card is read leaves its WAV
+  there.
 
 Two observations are kept as their own items so they do not fail every row
 they touch: `release.sd_log_start` (samples lost in the first second of a log)

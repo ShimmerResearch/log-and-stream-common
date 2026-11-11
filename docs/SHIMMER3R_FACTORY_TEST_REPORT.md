@@ -349,6 +349,24 @@ Shimmer3 cannot reach its card:
   initialisation, or the read, failed, it prints
   ` - CID: unavailable (card not initialised)`.
 
+### 5.6 `S3R_TEST_0026` — microphone
+
+The test runs the PDM microphone through the ADF at decimation 64 and gain −8
+(DEV-1154) for about 0.3 s. It skips the first 64 DMA blocks while the mic
+starts and the filters settle, then gives:
+
+| Report line | Meaning |
+|---|---|
+| `PASS` | Samples arrived and at least one was non-zero |
+| `FAIL: Test buffer is empty` | No samples after the skip, or every sample zero |
+| `FAIL: <ADF error>` (overflow, RSF overrun, clock absence, saturation, DMA) | 500 or more ADF error interrupts after the skip; the line names the error flag. Several flags at once print `FAIL: Unknown Error Code` |
+| `FAIL: Microphone busy recording` | Audio recording owned the microphone, so the test did not run (DEV-99) |
+
+> **Since DEV-99 the capture goes through `Shimmer_Driver/hal_Audio.c`,** which
+> also serves audio recording, one at a time. The steps and results above are
+> unchanged from before. A mic test while a recording runs is refused rather
+> than restarting the ADF under it.
+
 ## 6. Host capture
 
 Over Bluetooth the report arrives as a stream of text chunks, not one message.

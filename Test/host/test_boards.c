@@ -201,11 +201,11 @@ typedef struct
   uint8_t minor;
   uint8_t expected;
   const char *why;
-} Bmp581Case;
+} SrGateCase;
 
 static void test_bmp581_gate(void)
 {
-  static const Bmp581Case cases[] = {
+  static const SrGateCase cases[] = {
     /* IMU, SR31: from 11.2 */
     { SHIMMER3_IMU, 11, 1, 0, "one minor below the line" },
     { SHIMMER3_IMU, 11, 2, 1, "the first board with it" },
@@ -268,6 +268,62 @@ static void test_bmp581_gate(void)
   setBoard(HW_ID_SHIMMER3R, 0xFF, 0xFF, 0xFF);
   expectFalse("an unprogrammed card does not claim a BMP581",
       ShimBrd_isBmp581PresentPerSrNumber());
+}
+
+/*
+ * ShimBrd_isIm68d121PresentPerSrNumber() - the ".3" microphone change.
+ *
+ * Five production lines take the IM68D121 from their ".3" minor. It sets the
+ * audio recorder's gain, and the two microphones are 15 dB apart, so a board on
+ * the wrong side of a boundary records 15 dB too loud or too quiet. Unlike the
+ * BMP581 gate, SR48's rev-7 dev build is NOT included: 7-3 must say no.
+ */
+static void test_im68d121_gate(void)
+{
+  static const SrGateCase cases[] = {
+    { SHIMMER3_IMU, 11, 2, 0, "one minor below the line" },
+    { SHIMMER3_IMU, 11, 3, 1, "the first board with it" },
+    { SHIMMER3_IMU, 12, 0, 1, "a later major keeps it" },
+    { SHIMMER3_IMU, 10, 9, 0, "an earlier major never has it" },
+
+    { EXP_BRD_PROTO3_DELUXE, 4, 2, 0, "one minor below the line" },
+    { EXP_BRD_PROTO3_DELUXE, 4, 3, 1, "the first board with it" },
+
+    { EXP_BRD_EXG_UNIFIED, 8, 2, 0, "one minor below the line" },
+    { EXP_BRD_EXG_UNIFIED, 8, 3, 1, "the first board with it" },
+    { EXP_BRD_EXG_UNIFIED, 9, 0, 1, "a later major keeps it" },
+
+    { EXP_BRD_BR_AMP_UNIFIED, 4, 2, 0, "one minor below the line" },
+    { EXP_BRD_BR_AMP_UNIFIED, 4, 3, 1, "the first board with it" },
+
+    { EXP_BRD_GSR_UNIFIED, 7, 3, 0, "the rev-7 dev line never had it" },
+    { EXP_BRD_GSR_UNIFIED, 8, 2, 0, "one minor below the line" },
+    { EXP_BRD_GSR_UNIFIED, 8, 3, 1, "the first board with it" },
+    { EXP_BRD_GSR_UNIFIED, 9, 0, 1, "a later major keeps it" },
+
+    { EXP_BRD_PROTO3_MINI, 9, 9, 0, "no rule for this board ID" },
+  };
+  unsigned i;
+
+  testCase("test_im68d121_gate");
+  hostStub_reset();
+
+  for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+  {
+    char what[80];
+    setBoard(HW_ID_SHIMMER3R, cases[i].srId, cases[i].major, cases[i].minor);
+    snprintf(what, sizeof(what), "%s: %s",
+        srName(cases[i].srId, cases[i].major, cases[i].minor), cases[i].why);
+    expectU(what, ShimBrd_isIm68d121PresentPerSrNumber() ? 1 : 0, cases[i].expected);
+  }
+
+  setBoard(HW_ID_SHIMMER3, EXP_BRD_GSR_UNIFIED, 8, 3);
+  expectFalse("a Shimmer3 host never reports an IM68D121",
+      ShimBrd_isIm68d121PresentPerSrNumber());
+
+  setBoard(HW_ID_SHIMMER3R, 0xFF, 0xFF, 0xFF);
+  expectFalse("an unprogrammed card reads as the MP23DB01HP",
+      ShimBrd_isIm68d121PresentPerSrNumber());
 }
 
 /*
@@ -566,8 +622,8 @@ static void dumpGateMatrix(void)
   uint8_t major;
   uint8_t minor;
 
-  printf(
-      "# srId,major,minor,bmp581,lis3mdl,adxl371,ads7028,i2c4,boot0default\n");
+  printf("# srId,major,minor,bmp581,lis3mdl,adxl371,ads7028,i2c4,boot0default,"
+         "im68d121\n");
   for (b = 0; b < sizeof(boards) / sizeof(boards[0]); b++)
   {
     for (major = 1; major <= 12; major++)
@@ -575,11 +631,12 @@ static void dumpGateMatrix(void)
       for (minor = 0; minor <= 4; minor++)
       {
         setBoard(HW_ID_SHIMMER3R, boards[b], major, minor);
-        printf("%u,%u,%u,%u,%u,%u,%u,%u,%u\n", boards[b], major, minor,
+        printf("%u,%u,%u,%u,%u,%u,%u,%u,%u,%u\n", boards[b], major, minor,
             ShimBrd_isBmp581PresentPerSrNumber() ? 1 : 0,
             ShimBrd_isLis3mdlPresent() ? 1 : 0, ShimBrd_isAdxl371Present() ? 1 : 0,
             isAds7028Present() ? 1 : 0, ShimBrd_isI2c4Supported() ? 1 : 0,
-            ShimBrd_checkCorrectStateForBoot0() ? 1 : 0);
+            ShimBrd_checkCorrectStateForBoot0() ? 1 : 0,
+            ShimBrd_isIm68d121PresentPerSrNumber() ? 1 : 0);
       }
     }
   }
@@ -601,6 +658,7 @@ int main(int argc, char **argv)
   test_daughter_card_id_partial_writes();
   test_sr_number_comparisons();
   test_bmp581_gate();
+  test_im68d121_gate();
   test_lis3mdl_and_adxl371_gates();
   test_sr48_6_0_special_cases();
   test_ads1292_gates();

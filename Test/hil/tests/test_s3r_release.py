@@ -2,7 +2,8 @@
 
 Each row is one report item, release.<id>. For every row:
 
-1. Configure over USB: rate, sensor set and ranges written as raw InfoMem.
+1. Configure over USB: rate, sensor set, ranges and audio mode written as raw
+   InfoMem, with logging set to start only by command (no undock start).
    Read back, the image must hold exactly that - and every enabled sensor's
    ODR must cover the packet rate, because the firmware is meant to raise it
    (INFOMEM §10.6). A host that wrote only the bitmap and rate, as many do,
@@ -16,7 +17,15 @@ Each row is one report item, release.<id>. For every row:
    and link CRCs, that inquiry and SD header agree with the stored
    configuration, and the signals of a unit lying still (rig/signals.py).
    With both, every streamed packet must be in the log, byte for byte.
-4. The event channel, on every logging row: the SD header carries byte 232
+4. Audio (Shimmer3R, docs/SHIMMER3R_AUDIO.md), on every logging row: with
+   the row's `audio` mode (byte 233, 0 when the row has none), status byte 1
+   must show recording within AUDIO_START_S of the log starting and clear when
+   it stops, GET_AUDIO_STATUS_COMMAND must say the recording stopped cleanly,
+   and the session's audio files must be the mode's, paired with the data file
+   and agreeing with it and with the status (rig/s3r_audio.py). With audio off,
+   no audio directory may appear. A WAV records the bench room, so it is
+   checked where it lies on the card and then deleted.
+5. The event channel, on every logging row: the SD header carries byte 232
    at offset 225. A byte that records an input (button mode 4 or 5, or the
    TTL input) puts an event file beside the data file, at the same path under
    events/, which must pair with the data file, open and close with it, have
@@ -40,7 +49,7 @@ from pathlib import Path
 
 import pytest
 
-from rig import bt, decode, dock, events, s3r_boards, s3r_usb, sdfile, signals
+from rig import bt, decode, dock, events, s3r_audio, s3r_boards, s3r_usb, sdfile, signals
 from rig.s3r_config import S3rConfig, divider_for
 
 try:
@@ -67,6 +76,10 @@ ROWS = _M["row"]
 RATE_TOLERANCE = 1e-3
 MAX_JITTER_FRACTION = 0.25
 LOG_START_S = 1.0               # the window release.sd_log_start owns
+# Recording shows in status byte 1 within a second of logging starting, and
+# stops with it (SHIMMER3R_AUDIO §1, §5). The margin is for the link.
+AUDIO_START_S = 5.0
+AUDIO_STOP_S = 5.0
 
 
 @pytest.fixture(scope="module")
@@ -101,7 +114,11 @@ def _configure(unit, row) -> tuple[S3rConfig, set[str]]:
         cfg.ln_accel_range = row["ln_accel_range"]
         cfg.gyro_range = row["gyro_range"]
         cfg.wr_accel_range = row["wr_accel_range"]
-        # Always written: a unit can hold a byte 232 that starts a log on undock
+        cfg.audio_mode = row.get("audio", 0)    # always written: a unit can hold a mode from before
+        # The rows start and stop logging over Bluetooth. A unit set to log on
+        # undock would be logging, and recording audio, before the link is up.
+        # So byte 232 is always written, with userButtonEnable on: a unit can
+        # hold a byte 232 that starts a log on undock.
         cfg.button_log_mode = row.get("button_log_mode", 0)
         cfg.user_button_enable = 1
         d.write_infomem(cfg.bytes())
@@ -117,9 +134,9 @@ def _configure(unit, row) -> tuple[S3rConfig, set[str]]:
         problems.append(f"divider read back {back.divider}, wrote {cfg.divider}")
     if back.enabled() != want:
         problems.append(f"sensors read back {sorted(back.enabled())}, wrote {sorted(want)}")
-    for f in ("ln_accel_range", "gyro_range", "wr_accel_range"):
-        if getattr(back, f) != row[f]:
-            problems.append(f"{f} read back {getattr(back, f)}, wrote {row[f]}")
+    for f in ("ln_accel_range", "gyro_range", "wr_accel_range", "audio_mode"):
+        if getattr(back, f) != getattr(cfg, f):
+            problems.append(f"{f} read back {getattr(back, f)}, wrote {getattr(cfg, f)}")
     problems += [f"ODR not corrected: {p}" for p in back.odr_shortfalls()]
     assert not problems, "configuration: " + "; ".join(problems)
     return back, SETS[row["sensors"]] & unfitted
@@ -271,6 +288,8 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
         probs += sig
         notes.append(f"{st.packets} pkts, {note}")
     else:
+        audio = cfg.audio_mode
+        astatus = None
         root = s3r_usb.wait_drive(unit.usb_serial, 60)
         before = sdfile.session_dirs(root)
         power.off(unit.hub_port, unit.name)
@@ -283,11 +302,17 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
                 if row["mode"] == "log":
                     link.simple(bt.START_LOGGING)
                     link.wait_status(bt.STATUS_LOGGING, True, 10)
+                    t0 = time.monotonic()
                     if link.silent_s >= 1:
                         notes.append(f"silent {link.silent_s:.1f} s while starting the log")
-                    time.sleep(row["seconds"])
+                    if audio:
+                        probs += _audio_started(link)
+                    time.sleep(max(0.0, row["seconds"] - (time.monotonic() - t0)))
                     link.simple(bt.STOP_LOGGING)
                     link.wait_status(bt.STATUS_LOGGING, False, 15)
+                    if audio:
+                        probs += _audio_stopped(link)
+                        astatus = s3r_audio.audio_status(link.audio_status())
                     st = None
                 else:
                     link.set_crc(row.get("crc", 0))
@@ -297,22 +322,40 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
                     if not hung:
                         link.wait_status(bt.STATUS_SENSING, False, 15)
                         link.set_crc(0)
+                        if audio:
+                            probs += _audio_stopped(link)
+                            astatus = s3r_audio.audio_status(link.audio_status())
                     aside.stop(st, hung)
+                    if audio:
+                        probs += _audio_pushes(st)
             if st is not None and hung:
                 # The first link has gone silent and is now closed; confirm on a
                 # fresh one that sensing really stopped before re-docking.
                 with bt.BtLink(port) as again:
                     again.wait_status(bt.STATUS_SENSING, False, 15)
+                    if audio:
+                        probs += _audio_stopped(again)
+                        astatus = s3r_audio.audio_status(again.audio_status())
         finally:
             power.on(unit.hub_port, unit.name)
         root = s3r_usb.wait_drive(unit.usb_serial, 90)
         path = _new_session(root, before)
-        fc, lp, note = _check_log(path, cfg, inq, row["seconds"], unit, aside)
-        probs += [f"log: {p}" for p in lp]
-        notes.append(f"{fc.records} records, {note}")
-        ep, enote = _check_events(path, root, cfg, fc)
-        probs += [f"events: {p}" for p in ep]
-        notes.append(enote)
+        try:
+            fc, lp, note = _check_log(path, cfg, inq, row["seconds"], unit, aside)
+            probs += [f"log: {p}" for p in lp]
+            notes.append(f"{fc.records} records, {note}")
+            data = s3r_audio.DataFile.from_file(path.read_bytes()[:sdfile.HEAD_S3R],
+                                                fc.ts[0] if fc.ts else 0, fc.span_ticks)
+            ac = s3r_audio.check(path, data, audio, astatus)
+            probs += [f"audio: {p}" for p in ac.problems]
+            notes.append(f"audio mode {audio}: {ac.note}" if audio else "")
+            ep, enote = _check_events(path, root, cfg, fc)
+            probs += [f"events: {p}" for p in ep]
+            notes.append(enote)
+        finally:
+            removed = s3r_audio.remove_raw(path)
+        if removed:
+            notes.append(f"deleted from the card: {', '.join(removed)}")
         if st is not None:
             # Same opening window as the log: start-of-log loss belongs to
             # release.sd_log_start, not to every row that also streams.
@@ -326,6 +369,54 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
         notes.append(f"not fitted on this board, left out: {', '.join(sorted(unfitted))}")
     hil_note("; ".join(n for n in notes if n))
     assert not probs, "; ".join(probs)
+
+
+def _audio_bit(link, want: bool, timeout_s: float):
+    """(seconds, status byte 1) once its recording bit reads `want`, or (None, last byte 1)."""
+    t0 = time.monotonic()
+    while True:
+        s1 = link.status_bytes()[1:2]
+        s1 = s1[0] if s1 else 0
+        if bool(s1 & bt.STATUS1_AUDIO_RECORDING) == want:
+            return time.monotonic() - t0, s1
+        if time.monotonic() - t0 > timeout_s:
+            return None, s1
+        time.sleep(0.2)
+
+
+def _audio_started(link) -> list[str]:
+    took, s1 = _audio_bit(link, True, AUDIO_START_S)
+    out = []
+    if took is None:
+        out.append(f"audio: status byte 1 {s1:#04x}, recording not shown within {AUDIO_START_S:.0f} s "
+                   "of the log starting")
+    if s1 & bt.STATUS1_AUDIO_FAULT:
+        out.append(f"audio: status byte 1 {s1:#04x}, fault bit set while recording")
+    return out
+
+
+def _audio_stopped(link) -> list[str]:
+    took, s1 = _audio_bit(link, False, AUDIO_STOP_S)
+    out = []
+    if took is None:
+        out.append(f"audio: status byte 1 {s1:#04x}, still recording {AUDIO_STOP_S:.0f} s after the log stopped")
+    if s1 & bt.STATUS1_AUDIO_FAULT:
+        out.append(f"audio: status byte 1 {s1:#04x}, fault bit set after the stop")
+    return out
+
+
+def _audio_pushes(st) -> list[str]:
+    """With START_SDBT the link is streaming, so the recording bit is read from
+    the status frames the firmware pushes when it changes (SHIMMER3R_AUDIO §5)."""
+    rec = [t for t, s in st.pushes if len(s) > 1 and s[1] & bt.STATUS1_AUDIO_RECORDING]
+    out = []
+    if not rec or rec[0] > AUDIO_START_S:
+        seen = ", ".join(f"{t:.1f} s: {s.hex()}" for t, s in st.pushes[:6]) or "none"
+        out.append(f"audio: no status push with the recording bit within {AUDIO_START_S:.0f} s of the start "
+                   f"(pushes {seen})")
+    if any(len(s) > 1 and s[1] & bt.STATUS1_AUDIO_FAULT for _, s in st.pushes):
+        out.append("audio: a status push had the fault bit set")
+    return out
 
 
 def _answers_after_stop(link) -> bool:

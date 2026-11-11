@@ -68,6 +68,10 @@ SdWriteBuf sdWrBuf;
  * the file lands on an aligned address; hence the 4 spare bytes. */
 static uint8_t sdWrBatch[SD_WR_BATCH_BUFS * SD_WRITE_BUF_SIZE + 4U]
     __attribute__((aligned(32)));
+/* Set when a record is refused because every buffer is queued, cleared when a
+ * write frees one. Read by the sampling interrupts, which must not queue the
+ * ring's drain meanwhile (ShimSdDataFile_isRefusingRecords). */
+static volatile uint8_t recordRefused;
 #endif
 
 uint8_t fileName[64], dirName[64], expDirName[32];
@@ -206,6 +210,7 @@ static uint8_t ShimSdDataFile_countSessions(void)
  * more entry here, as it is in the SD file transfer's sdFtDeletableRoots. */
 static const char *const sdCompanionRoots[] = {
   "events", /* Events/shimmer_events.c */
+  "audio",  /* Audio/shimmer_audio.h */
 };
 /* Room for a root of up to this many characters in place of "data" */
 #define SD_COMPANION_ROOT_MAX 8U
@@ -279,9 +284,10 @@ uint8_t ShimSdDataFile_setBasedir(void)
 #endif
 
   /* A session's companion files sit at the same path under their own root,
-   * its event files under events/. A host that deletes only data/ leaves them
-   * behind, and a number still used there is not reused, or the new
-   * session's companion files would be written in among the old ones.
+   * its event files under events/ and its audio files under audio/. A host
+   * that deletes only data/ leaves them behind, and a number still used there
+   * is not reused, or the new session's companion files would be written in
+   * among the old ones.
    * Nothing there is a reason to fail: the data files are what matter. */
   for (i = 0; i < sizeof(sdCompanionRoots) / sizeof(sdCompanionRoots[0]); i++)
   {
@@ -371,14 +377,20 @@ void ShimSdDataFile_fileInit(void)
   sensing.isFileCreated = 1;
   /* Start of a logging session: the refusal counters describe this run. */
   SdWrBuf_init(&sdWrBuf);
+#if defined(SHIMMER3R)
+  /* A refusal left over from a session that ended without freeing its
+   * buffers would hold the interrupts off the new session's drain for good */
+  recordRefused = 0;
+#endif
 
-  /* Only queues the event file's open, so the data file's start is no later */
-  ShimEvt_onSessionStart(sdFileCrTs);
+  /* Only queues the companions' opens (event and audio files), so the data
+   * file's start is no later */
+  ShimSdCompanion_onSessionStart(sdFileCrTs);
 }
 
 void ShimSdDataFile_close(void)
 {
-  ShimEvt_onSessionStop();
+  ShimSdCompanion_onSessionStop();
   ShimSdDataFile_closeDataFile();
   //Board_sdPower(0);
   shimmerStatus.sdBadFile = 0;
@@ -560,7 +572,7 @@ void ShimSdDataFile_writeToCard(void)
     ShimSdDataFile_writeSdHeaderToFile();
 
     sensing.newSdFileTsFlag = NEW_SD_FILE_TS_PENDING_UPDATE;
-    ShimEvt_onFileSplit(sdFileCrTs);
+    ShimSdCompanion_onFileSplit(sdFileCrTs);
   }
 
   /* Sync file every minute */
@@ -571,7 +583,7 @@ void ShimSdDataFile_writeToCard(void)
     assert_param(file_status == FR_OK);
 #endif
     sdFileSyncTs = RTC_get64();
-    ShimEvt_onSyncTick();
+    ShimSdCompanion_onSyncTick();
   }
 
   sensing.isSdOperating = 0;
@@ -593,6 +605,7 @@ void ShimSdDataFile_writeToCard(void)
 #if defined(SHIMMER3R)
   /* A buffer is free again: resume a drain that ShimSens_saveData() paused
    * because every buffer was queued (DEV-1098). */
+  recordRefused = 0;
   if (!PktRing_isEmpty(&sensing.ring))
   {
     ShimTask_set(TASK_SAVEDATA);
@@ -647,8 +660,24 @@ uint8_t ShimSdDataFile_getNumberOfFullBuffers(void)
 
 uint8_t ShimSdDataFile_canAcceptRecord(uint16_t len)
 {
+#if defined(SHIMMER3R)
+  if (!SdWrBuf_canAccept(&sdWrBuf, len))
+  {
+    recordRefused = 1;
+    return 0;
+  }
+  return 1;
+#else
   return SdWrBuf_canAccept(&sdWrBuf, len);
+#endif
 }
+
+#if defined(SHIMMER3R)
+uint8_t ShimSdDataFile_isRefusingRecords(void)
+{
+  return recordRefused;
+}
+#endif
 
 uint16_t ShimSdDataFile_getBytesInCurrentSensingBuffer(void)
 {

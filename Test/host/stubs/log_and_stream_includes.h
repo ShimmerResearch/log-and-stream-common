@@ -76,6 +76,7 @@
 #include "RTC/shimmer_rtc.h"
 #include "SDCard/shimmer_sd.h"
 #include "SDCard/shimmer_sd_cfg_file.h"
+#include "SDCard/shimmer_sd_companion.h"
 #include "SDCard/shimmer_sd_data_file.h"
 #include "SDCard/shimmer_sd_header.h"
 #include "SDCard/shimmer_sd_write_buf.h"

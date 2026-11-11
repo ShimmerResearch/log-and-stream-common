@@ -281,9 +281,9 @@ Entry attribute flags:
 Delete is limited to paths under `data/` and the companion roots beside it, in
 any case and with no `..` (`sdFtIsDeletablePath`), so a host bug cannot remove
 `sdlog.cfg` or the calibration file. The roots are the table
-`sdFtDeletableRoots`. Its one companion root today is `events/`, which holds
-the event files; a companion file sits at its data file's path under its own
-root ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §4.1). Listing and
+`sdFtDeletableRoots`. Its companion roots are `events/`, which holds the event
+files, and `audio/`, which holds the audio files ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md));
+a companion file sits at its data file's path under its own root ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §4.1). Listing and
 reading are not limited.
 
 ## 7. Host retrieval flow
