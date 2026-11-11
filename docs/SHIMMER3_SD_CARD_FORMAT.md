@@ -585,16 +585,44 @@ the card.
 The bytes reaching the file are the same either way, sync heads included:
 buffers stay 512 bytes, the unit of the file layout.
 
-On Shimmer3, the buffers set how long a card may stall without costing a
-sample. One buffer takes `recordsPerBlock / sampleRate` to fill — about 46 ms
-at 504 Hz with a 21-byte record — and four of them absorb roughly four times
-that.
+**On Shimmer3 the buffers do not absorb a card stall.** `f_write` runs in the
+main loop and holds it for as long as the card takes, and nothing drains the
+sample ring meanwhile, so the free buffers cannot fill. What absorbs a stall is
+the ring, and only for a channel set whose samples complete without the main
+loop:
+
+- **ADC channels only:** the DMA interrupt completes each sample, so the ring
+  holds about `DATA_BUF_QTY_IN_USE` (6) sample periods.
+- **With an I2C or SPI sensor** (the gyro, for example): the read that completes
+  each sample runs in the main loop, so only one sample is ever in flight. A
+  main-loop stall of more than about one sample period loses a sample per period.
+
+At 1024 Hz both are under 6 ms, and the card and the file system stall for
+longer than that as a matter of course. Measured on a Shimmer3 at 1024 Hz with
+LN accel, gyro and VBatt (DEV-1386), on a card with 4 KB clusters:
+
+| Stall | When | Samples lost |
+| --- | --- | --- |
+| The first two cluster allocations in a new FAT sector | Every 128 clusters (512 KB of data, 30 s here) | 12-14, then 7-8 |
+| The minute's `f_sync` | Every 60 s | 13-16, then 5 at the next allocation |
+| The card's own busy time | Card-dependent: here a run of 3-5 writes of about 100 ms each, every 300 KB or so | 250-460 per run |
+
+The FAT-sector cost comes from FatFs R0.08b keeping one sector of the FAT in
+memory: the allocation that crosses into the next sector writes the old one back
+(to both FAT copies), reads the new one, then goes back for the link in the old
+one, and the allocation after it crosses again. Larger clusters make it rarer: at
+32 KB a crossing comes every 4 MB.
 
 If every buffer is waiting — the card has stalled for longer than the rest take
 to fill — the record is dropped and counted in `sdWrBuf.diag.putsRefusedFull`.
 That counter is cleared when logging starts and never while it runs, so a bench
 run can be read out afterwards. The file then shows a gap of whole sample
 periods at a block boundary; it never shows a partial record.
+
+On Shimmer3 a stall usually costs samples before that point, and silently: a
+sample tick that finds the previous sample still unfinished drops its sample
+(`PKT_TICK_BUSY` in the packet ring), and no counter records it. Those gaps also
+fall on whole sample periods, at any position in a block.
 
 **On Shimmer3R the drain does not get that far.** Before handing a record on, it
 asks `SdWrBuf_canAccept()`; if the buffers would refuse it, the drain stops and
