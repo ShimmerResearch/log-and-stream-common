@@ -636,9 +636,18 @@ pattern of the lower ranges.
 > with a firmware update on its own: it reaches InfoMem and the SD card's
 > calibration file, and the firmware reads both back at every boot and undock.
 > So whenever a dump is rebuilt from either, `ShimCalib_repairLsm303MagDefaults`
-> gives any missing range its default, and replaces a range-0 record that is
-> exactly the old one (range 7's values under a zero timestamp). Any other
-> record is left as it is, so a real calibration, or a host's own block, stays.
+> gives any missing range its default, and replaces a range-0 record whose 21
+> bytes are exactly the old one (range 7's values). Any other record is left as
+> it is, so a real calibration, or a host's own block, stays.
+>
+> The record's timestamp is not part of that test. `SET_INFOMEM` and
+> `SET_MAG_CALIBRATION` stamp the clock on the record they copy from InfoMem,
+> whatever it holds, so a unit configured over Bluetooth on older firmware
+> holds the old default under a real timestamp, in its dump and in its card's
+> file. No calibration produces those 21 bytes: zero offsets, 230 / 230 / 205
+> and the LSM303DLHC's alignment, at a range only the LSM303AH uses. The
+> replacement carries a default's zero timestamp.
+>
 > When the repair changes a dump read from the card, the file is rewritten. A
 > default that does not fit a full dump (§2.4) is not added, and is no change,
 > so the file is not rewritten for it at every boot.

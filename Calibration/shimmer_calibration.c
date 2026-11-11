@@ -897,17 +897,24 @@ void ShimCalib_setDefaultLsm303MagCalib(sc_t *sc1Ptr)
   }
 }
 
-/* Give LSM303 mag range 0 the LSM303AH's seed if its record is exactly the
- * default older firmware gave it (DEV-985, DEV-995): range 7's seed under a
- * zero timestamp. Up to v1.01.009 the seed gave range 0 range 7's values, and
- * that record reaches InfoMem, the SD card's calibration file and any dump a
- * host saves. A record a host or a calibration wrote stays, whatever it holds.
+/* Give LSM303 mag range 0 the LSM303AH's seed if its 21 bytes are exactly the
+ * default older firmware gave it (DEV-985, DEV-995): range 7's seed. Up to
+ * v1.01.009 the seed gave range 0 range 7's values, and that record reaches
+ * InfoMem, the SD card's calibration file and any dump a host saves.
+ *
+ * The timestamp is not looked at. It does not show that someone chose the
+ * values: the firmware stamps the clock on every record it copies from
+ * InfoMem after SET_INFOMEM or SET_MAG_CALIBRATION, so a unit configured over
+ * Bluetooth holds the old default under a real timestamp, in its dump and on
+ * its card. And no calibration gives these bytes: zero offsets, 230 / 230 /
+ * 205 and the LSM303DLHC's alignment, at a range only the LSM303AH uses. The
+ * replacement carries the zero timestamp of a default. Any other record
+ * stays, whatever it holds.
  *
  * Returns 1 if the dump changed. */
 static uint8_t ShimCalib_replaceOldLsm303MagRange0(void)
 {
   sc_t sc1, oldRange0;
-  uint8_t ts;
 
   sc1.id = SC_SENSOR_LSM303_MAG;
   sc1.range = SC_SENSOR_RANGE_LSM303AH_MAG_49G;
@@ -915,13 +922,6 @@ static uint8_t ShimCalib_replaceOldLsm303MagRange0(void)
   if ((ShimCalib_singleSensorRead(&sc1) != 0) || (sc1.data_len != SC_DATA_LEN_LSM303_MAG))
   {
     return 0;
-  }
-  for (ts = 0; ts < SC_TIMESTAMP_LENGTH; ts++)
-  {
-    if (sc1.ts[ts] != 0)
-    {
-      return 0;
-    }
   }
   oldRange0.range = SC_SENSOR_RANGE_LSM303_MAG_8_1G;
   ShimCalib_lsm303MagSeed(&oldRange0);
@@ -942,9 +942,9 @@ static uint8_t ShimCalib_replaceOldLsm303MagRange0(void)
  * undock, so the seed alone would never reach a unit that has run the old
  * firmware.
  *
- * So the old range-0 record is replaced (ShimCalib_replaceOldLsm303MagRange0),
- * and a missing range gets its seed if the dump has room for it. Nothing else
- * is touched.
+ * So the old range-0 record is replaced, with a timestamp or without
+ * (ShimCalib_replaceOldLsm303MagRange0), and a missing range gets its seed if
+ * the dump has room for it. Nothing else is touched.
  *
  * Returns 1 if the dump changed. A seed that did not fit is no change: the
  * callers rewrite the card's file on a change, and a full dump would have them

@@ -1420,10 +1420,10 @@ static void test_lsm303_mag_repair_old_dump(void)
 }
 
 /*
- * What the repair must leave alone: a range-0 record with a timestamp, even if
- * its values match the old default (someone wrote it on purpose), and a
- * range-0 record with no timestamp whose values differ from the old default
- * (a host's block, such as Consensys' own 667 default, or a unit's zeros).
+ * What the repair must leave alone: any range-0 record whose 21 bytes are not
+ * the old default, with a timestamp or without. A calibration one byte away
+ * from the old default, a host's block (such as Consensys' own 667 default),
+ * a unit's zeros.
  */
 static void test_lsm303_mag_repair_keeps_written_blocks(void)
 {
@@ -1432,8 +1432,9 @@ static void test_lsm303_mag_repair_keeps_written_blocks(void)
   testCase("test_lsm303_mag_repair_keeps_written_blocks");
   reset();
   magSeedBlock(block, 230, 205, dlhcMagAlign);
+  block[1] = 1; /* an X offset of 1: no longer the old default */
   putMag(0, block, 0x11);
-  expectU("old values under a timestamp: no change",
+  expectU("one byte off the old values, under a timestamp: no change",
       ShimCalib_repairLsm303MagDefaults(), 0);
   expectTrue("range 0 kept", magIs(0, block));
 
@@ -1508,11 +1509,69 @@ imageMag(uint8_t *image, uint16_t at, uint8_t range, const uint8_t *block, uint8
 }
 
 /*
+ * The old range-0 default under a timestamp. The timestamp does not make it
+ * someone's calibration: up to v1.01.009, as now, SET_INFOMEM and
+ * SET_MAG_CALIBRATION stamp the clock on the record they copy from InfoMem,
+ * whatever it holds. So a unit configured over Bluetooth has the old default
+ * under a real timestamp in its dump and in its card's calibration file, and
+ * the file is read back at every undock and undocked boot. The repair used to
+ * skip it there, and the old values went back into InfoMem.
+ */
+static void test_lsm303_mag_repair_timestamped_old_default(void)
+{
+  uint8_t old0[IMU_LEN], want[IMU_LEN];
+  uint8_t range;
+  uint16_t at;
+  sc_t sc;
+
+  testCase("test_lsm303_mag_repair_timestamped_old_default");
+  reset();
+  magSeedBlock(old0, 230, 205, dlhcMagAlign);
+  putMag(0, old0, 0x11);
+  expectU("in the dump: the repair reports a change",
+      ShimCalib_repairLsm303MagDefaults(), 1);
+  magSeedBlock(want, 667, 667, ahMagAlign);
+  expectTrue("range 0 holds the LSM303AH seed", magIs(0, want));
+  sc.id = SC_SENSOR_LSM303_MAG;
+  sc.range = SC_SENSOR_RANGE_LSM303AH_MAG_49G;
+  sc.data_len = IMU_LEN;
+  ShimCalib_singleSensorRead(&sc);
+  expectTrue("under a default's zero timestamp", allBytes(sc.ts, SC_TIMESTAMP_LENGTH, 0));
+  expectU("a second pass changes nothing", ShimCalib_repairLsm303MagDefaults(), 0);
+
+  /* The card's file as such a unit left it: every range older firmware
+   * seeded, 0 to 6, range 0 stamped. Read back as at an undock. */
+  reset();
+  ShimConfig_getStoredConfig()->magRange = SC_SENSOR_RANGE_LSM303AH_MAG_49G;
+  memset(card.file, 0, sizeof(card.file));
+  at = imageMag(card.file, SC_OFFSET_FIRST_SENSOR, 0, old0, 0x11);
+  for (range = 1; range <= 6; range++)
+  {
+    magSeedBlock(want, dlhcMagSens[range - 1][0], dlhcMagSens[range - 1][1], dlhcMagAlign);
+    at = imageMag(card.file, at, range, want, 0);
+  }
+  setLenField(card.file, at - 2);
+  card.fileLen = at;
+  card.present = 1;
+  expectU("the card's file is read", ShimCalib_file2Ram(), 0);
+  expectTrue("and brings the old range-0 record back", magIs(0, old0));
+  expectU(
+      "from the card: the repair reports a change, so the file is rewritten",
+      ShimCalib_repairLsm303MagDefaults(), 1);
+  magSeedBlock(want, 667, 667, ahMagAlign);
+  expectTrue("range 0 holds the LSM303AH seed", magIs(0, want));
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
+  expectTrue("and so does InfoMem's mag block",
+      memcmp(ShimConfig_getStoredConfig()->magCalib.rawBytes, want, IMU_LEN) == 0);
+}
+
+/*
  * SET_CALIB_DUMP of a dump saved from firmware up to v1.01.009 (DEV-985,
  * DEV-995). Its range-0 mag record is that firmware's default, and it used to
  * go straight on into InfoMem, the SD header and the card, in force until the
- * next boot or undock. The commit replaces it first. A range the dump leaves
- * out stays out, and the same record under a timestamp is someone's and stays.
+ * next boot or undock. The commit replaces it first, with a timestamp or
+ * without (the firmware that built the dump may have stamped it). A range the
+ * dump leaves out stays out.
  */
 static void test_lsm303_mag_dump_write_replaces_old_range0(void)
 {
@@ -1555,7 +1614,9 @@ static void test_lsm303_mag_dump_write_replaces_old_range0(void)
   at = imageMag(image, SC_OFFSET_FIRST_SENSOR, 0, old0, 0x11);
   setLenField(image, at - 2);
   expectU("a timestamped copy commits", ShimCalib_ramWrite(image, (uint8_t) at, 0), 1);
-  expectTrue("and is kept as written", magIs(0, old0));
+  expectTrue("and is replaced too", magIs(0, want));
+  expectTrue("in InfoMem's mag block as well",
+      memcmp(config->magCalib.rawBytes, want, IMU_LEN) == 0);
 }
 
 /* The wide-range accel's default sensitivity per range code. The code goes
@@ -1738,6 +1799,7 @@ int main(void)
   test_lsm303_mag_repair_old_dump();
   test_lsm303_mag_repair_keeps_written_blocks();
   test_lsm303_mag_repair_full_dump();
+  test_lsm303_mag_repair_timestamped_old_default();
   test_lsm303_mag_dump_write_replaces_old_range0();
   test_lsm303_accel_seed_per_part();
   test_lsm303ah_accel_seed_at_boot();

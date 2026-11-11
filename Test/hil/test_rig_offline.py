@@ -2507,15 +2507,15 @@ class S3FleetSeeds(unittest.TestCase):
         def read_calib_dump(self):
             return self.dump
 
-    def mag_dump(self, range0: bytes) -> bytes:
+    def mag_dump(self, range0: bytes, range0_ts: bytes = bytes(8)) -> bytes:
         import struct
-        body = b"".join(struct.pack("<HBB", 32, r, 21) + bytes(8)
+        body = b"".join(struct.pack("<HBB", 32, r, 21) + (range0_ts if r == 0 else bytes(8))
                         + (range0 if r == 0 else self.fleet.mag_seed_block(r)) for r in range(8))
         return (len(body) + 8).to_bytes(2, "little") + bytes(8) + body
 
-    def run_mag_seeds(self, range0: bytes):
+    def run_mag_seeds(self, range0: bytes, range0_ts: bytes = bytes(8)):
         notes = []
-        link = self.Link(self.cfg(0).bytes(), self.mag_dump(range0))
+        link = self.Link(self.cfg(0).bytes(), self.mag_dump(range0, range0_ts))
         with mock.patch.object(self.fleet, "open_bt", lambda unit: link):
             self.fleet.test_mag_seeds(None, None, notes.append)
         return notes
@@ -2523,6 +2523,11 @@ class S3FleetSeeds(unittest.TestCase):
     def test_range_0_in_use_may_not_be_the_old_default(self):
         with self.assertRaises(AssertionError) as cm:
             self.run_mag_seeds(self.fleet.OLD_MAG_RANGE0)
+        self.assertIn("range 0, in use, still holds the default", str(cm.exception))
+
+    def test_a_timestamp_does_not_excuse_the_old_default(self):
+        with self.assertRaises(AssertionError) as cm:
+            self.run_mag_seeds(self.fleet.OLD_MAG_RANGE0, bytes([0x11] * 8))
         self.assertIn("range 0, in use, still holds the default", str(cm.exception))
 
     def test_range_0_in_use_may_be_anyone_s_block(self):

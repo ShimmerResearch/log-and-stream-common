@@ -257,8 +257,9 @@ def test_mag_seeds(unit, booted_docked, hil_note):
     under a zero timestamp is a seed, except the range in use, where InfoMem's
     own block replaces it. That one, and any record with a timestamp, is
     someone's calibration and is not compared. One thing InfoMem's block may
-    not be is the old range-0 default, which the boot replaces: on an LSM303AH
-    board, where range 0 is always in use, that is the check on the repair.
+    not be is the old range-0 default, which the boot replaces whatever its
+    timestamp: on an LSM303AH board, where range 0 is always in use, that is
+    the check on the repair.
     """
     with open_bt(unit) as link:
         cfg = S3Config(link.read_infomem())
@@ -269,15 +270,16 @@ def test_mag_seeds(unit, booted_docked, hil_note):
     wrong, compared = [], []
     for rng in LSM303_MAG_SEEDS:
         rec = records.get((LSM303_MAG_ID, rng))
-        if rec is None or any(rec.ts):
+        if rec is None:
             continue
         block = bytes(rec.data[:21])
-        if rng == in_use:
-            if rng == 0:
-                compared.append("0 (in use: not the old default)")
-                if block == OLD_MAG_RANGE0:
-                    wrong.append(f"range 0, in use, still holds the default up to v1.01.009 gave it "
-                                 f"({describe_mag_block(block)}): the boot did not replace it")
+        if rng == in_use == 0:
+            compared.append("0 (in use: not the old default)")
+            if block == OLD_MAG_RANGE0:
+                wrong.append(f"range 0, in use, still holds the default up to v1.01.009 gave it "
+                             f"({describe_mag_block(block)}): the boot did not replace it")
+            continue
+        if rng == in_use or any(rec.ts):
             continue
         compared.append(str(rng))
         want = mag_seed_block(rng)
