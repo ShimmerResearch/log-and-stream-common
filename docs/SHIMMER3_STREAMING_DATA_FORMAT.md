@@ -41,7 +41,7 @@ logging, so a parser written from this document reads both.
 >   `devices/shimmer3r/channelFormats.ts`, `devices/shimmer3r/streamFraming.ts`.
 > - **Sensor byte order (§3 Encoding column, §5.2, §5.5, §7.4):** read from the
 >   register each driver starts its burst read at and how the packer copies the
->   bytes. Shimmer3 at `shimmer3-firmware` @ `0a6a650` —
+>   bytes. Shimmer3 at `shimmer3-firmware` @ `ac05953` (release v1.01.009) —
 >   `LogAndStream_Shimmer3/i2c.c` (`I2C_pollSensors`) and the drivers under
 >   `Shimmer_Driver/` (`MPU9150`, `ICM20948`, `LSM303DLHC`, `LSM303AHTR`,
 >   `BMPX80`). Shimmer3R at `shimmer3r-firmware` @ `ce1f4fc1` —
@@ -584,7 +584,7 @@ the gyroscope on every board and the magnetometer on first-generation boards:
 | | ICM-20948 (third): from `GYRO_XOUT_H` | **Big-endian** | | |
 | Wide-range accel `0x04`-`0x06` | LSM303DLHC (first), from `OUT_X_L_A` | Little-endian | LIS2DW12, from `OUT_X_L` | Little-endian |
 | | LSM303AHTR (second, third), from `OUT_X_L_A` | Little-endian | | |
-| | ICM-20948 standing in for the LSM303 (third, no LSM fitted): X and Z byte-swapped to little-endian by the packer | Little-endian, **Y axis offset by +255 counts** (below) | | |
+| | ICM-20948 standing in for the LSM303 (third, no LSM fitted): byte-swapped to little-endian by the packer, Y sign-inverted | Little-endian. **Y offset by +255 counts in v1.01.007 and earlier** (below) | | |
 | Magnetometer `0x07`-`0x09` | LSM303DLHC (first), from `OUT_X_H_M` | **Big-endian**, and axis order X, Z, Y (§4.1) | LIS2MDL, from `OUTX_L_REG` | Little-endian |
 | | LSM303AHTR (second, third), from `OUTX_L_REG_M` | Little-endian | | |
 | | ICM-20948's AK09916 (third, no LSM fitted), from `HXL` | Little-endian | | |
@@ -606,15 +606,21 @@ then sign-extend from bit 11. That is the Java driver's `i12*>`. It is not
 present on Shimmer3, where these IDs are the 9-axis chip's own accelerometer,
 a plain big-endian `int16`.
 
-> **On Shimmer3 boards where the ICM-20948 stands in for the LSM303, the
-> wide-range accelerometer's Y axis carries a +255-count offset.** The packer
-> inverts Y's sign to match the LSM303's placement. But it assembles the value
-> from the chip's big-endian bytes as if they were little-endian, negates that,
-> and writes the result high byte first (`shimmer3-firmware`
-> `LogAndStream_Shimmer3/i2c.c`, `I2C_pollSensors`, at the revision pinned
-> above). X and Z are correct.
+> **On Shimmer3 boards where the ICM-20948 stands in for the LSM303, firmware up
+> to v1.01.007 gave the wide-range accelerometer's Y axis a +255-count
+> offset.** The packer inverts Y's sign to match the LSM303's placement. Up to
+> v1.01.007 it assembled the value from the chip's big-endian bytes as if they
+> were little-endian, negated that, and wrote the result high byte first
+> (`shimmer3-firmware` `LogAndStream_Shimmer3/i2c.c`, `I2C_pollSensors`, @
+> `0a6a650`). X and Z were correct.
 >
-> What a host reads is the intended value plus 255, with three exceptions:
+> **Fixed in v1.01.009,** the first public release with the fix
+> (`shimmer3-firmware` PR #129, commit `f43d6be`). The v1.01.008 release
+> candidate also carries it. From then on Y is the negated reading, written
+> little-endian like X and Z, at the revision pinned above.
+>
+> On affected firmware, what a host reads is the intended value plus 255, with
+> three exceptions:
 >
 > - **Intended value exactly 0:** the host reads 0.
 > - **Intended value from -255 to -1:** the host reads it plus 256.
@@ -628,7 +634,7 @@ a plain big-endian `int16`.
 >
 > **Calibration:** a calibration made on affected firmware absorbs the offset
 > into its Y offset term. Such a unit needs its wide-range accelerometer
-> recalibrated once it runs fixed firmware.
+> recalibrated once it runs v1.01.009 or later.
 >
 > **Recovering the intended value exactly:** let `v` be the Y word read
 > little-endian, and let `swap()` exchange its two bytes. The intended value is
@@ -641,11 +647,8 @@ a plain big-endian `int16`.
 > **Checking a unit:** on these boards the alternate accelerometer
 > (`0x14`-`0x16`) carries the same ICM-20948 reading, as raw big-endian words.
 > Wide-range X then equals alternate X in every sample. Wide-range Y plus
-> alternate Y is 255 on affected firmware, and 0 once fixed (apart from the
-> exceptions above).
->
-> **Fix:** shimmer3-firmware PR #129 (DEV-1298). This note will name the first
-> release that carries it.
+> alternate Y is 255 on affected firmware (apart from the exceptions above),
+> and 0 on v1.01.009 or later.
 
 > **On Shimmer3R the magnetometer repeats its last reading when it has no new
 > one.** The LIS2MDL converts at up to 100 Hz, and a packet that finds no fresh

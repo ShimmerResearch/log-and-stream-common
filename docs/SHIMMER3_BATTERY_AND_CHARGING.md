@@ -314,8 +314,11 @@ priority is displayed. The colour mapping, the flash behaviour, and the full
 priority order are in
 [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §4.
 
-In brief: docked shows the charging state continuously; undocked shows the
-charge band as a 0.1 s pulse every 5 seconds.
+In brief: docked, or on USB on Shimmer3R, shows the charging state
+continuously; otherwise the lower LED shows the charge band as a 0.1 s pulse
+every 5 seconds. Both need the device switched on: switched off, it still
+charges but every LED is dark
+([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §1).
 
 `battStatLedFlash` is set **only** for `CHARGING_STATUS_BAD_BATTERY` and
 `CHARGING_STATUS_ERROR`, and is cleared at the top of

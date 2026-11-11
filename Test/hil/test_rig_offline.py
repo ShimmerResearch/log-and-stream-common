@@ -2346,5 +2346,233 @@ class ReleaseTierPicksThePlatform(unittest.TestCase):
         self.assertNotIn("test_s3_release.py", out)
 
 
+def _crc(frame: bytes, n: int) -> bytes:
+    c = dock.crc16(frame)
+    return bytes([c & 0xFF, c >> 8])[:n]
+
+
+class InStreamReplies(unittest.TestCase):
+    """A battery read answered mid-stream is ACK 0x8A 0x94 and three bytes. It
+    frames as a reply between two packets, not as stray bytes, and its place
+    in the stream is kept (st.instream) so a lost sample can be laid at its door."""
+
+    CHANNELS = [0x00, 0x01, 0x02]               # LN accel: 10-byte packets
+    DIVIDER = 128
+
+    class Spp(FakeSpp):
+        def __init__(self, stream, crc):
+            super().__init__(1)
+            self.stream, self.crc = stream, crc
+
+        def write(self, data):
+            ack = bytes([bt.ACK])
+            if data in (bytes([bt.START_STREAMING]), bytes([bt.STOP_STREAMING])):
+                self.buf += ack + _crc(ack, self.crc)
+                if data == bytes([bt.START_STREAMING]):
+                    self.buf += self.stream
+
+    def run_stream(self, reply: bytes, crc: int = 0, skip_after_reply: bool = False):
+        pkts = []
+        for i in range(10):
+            if skip_after_reply and i >= 5:
+                i += 1
+            body = bytes([0]) + (1000 + self.DIVIDER * i).to_bytes(3, "little") + bytes(6)
+            pkts.append(body + _crc(body, crc))
+        frame = reply + _crc(reply, crc) if reply else b""
+        link = bt.BtLink.__new__(bt.BtLink)
+        link.hw, link._nstatus, link.crc_mode = bt.HW_SHIMMER3, 1, crc
+        link.ser = self.Spp(b"".join(pkts[:5]) + frame + b"".join(pkts[5:]), crc)
+        link.ser.timeout = 0.0
+        return link.stream(0.0, bt.Inquiry(self.DIVIDER, self.CHANNELS, 0, b""), keep=True)
+
+    VBATT = bytes([bt.ACK, bt.INSTREAM, bt.VBATT_RSP, 0x10, 0x0A, 0x00])
+    STATUS = bytes([bt.ACK, bt.INSTREAM, bt.STATUS_RSP, 0x20])
+
+    def test_a_battery_reply_frames_between_packets(self):
+        for crc in (0, 1, 2):
+            st = self.run_stream(self.VBATT, crc)
+            self.assertEqual((st.packets, st.resyncs, st.crc_errors), (10, 0, 0), f"CRC mode {crc}")
+            self.assertEqual(st.instream, [(bt.VBATT_RSP, 5)])
+            self.assertEqual((st.status_pushes, st.pushed), (0, []), "a battery reply is not a status frame")
+
+    def test_a_status_frame_is_still_a_status_frame(self):
+        st = self.run_stream(self.STATUS, 1)
+        self.assertEqual((st.packets, st.resyncs, st.status_pushes, st.pushed), (10, 0, 1, [0x20]))
+        self.assertEqual(st.instream, [(bt.STATUS_RSP, 5)])
+
+    def test_the_sample_skipped_at_a_reply_is_laid_at_its_door(self):
+        st = self.run_stream(self.VBATT, 0, skip_after_reply=True)
+        gaps = bt.gap_positions(st.ts, self.DIVIDER)
+        self.assertEqual(gaps, [(5, 1)])
+        mod = _defects_module()
+        if mod is None:
+            self.skipTest("needs pytest")
+        lost = mod.losses_by_reply(gaps, st.instream)
+        self.assertEqual(lost, {bt.VBATT_RSP: 1, bt.STATUS_RSP: 0, None: 0})
+
+    def test_a_gap_away_from_any_reply_is_elsewhere(self):
+        mod = _defects_module()
+        if mod is None:
+            self.skipTest("needs pytest")
+        self.assertEqual(mod.losses_by_reply([(40, 2)], [(bt.VBATT_RSP, 5), (bt.STATUS_RSP, 20)]),
+                         {bt.VBATT_RSP: 0, bt.STATUS_RSP: 0, None: 2})
+
+
+class GapPositions(unittest.TestCase):
+    def test_a_late_stamp_is_not_a_gap(self):
+        ts = [0, 32, 64 + 20, 96, 128]
+        self.assertEqual(bt.gap_positions(ts, 32), [])
+
+    def test_a_skipped_slot_is_found_at_the_packet_after_it(self):
+        ts = [0, 32, 64, 128, 160, 288]
+        self.assertEqual(bt.gap_positions(ts, 32), [(3, 1), (5, 3)])
+
+
+def _defects_module():
+    """tests/test_defects.py, which imports pytest; None without it."""
+    import importlib.util
+    if "_defects" in sys.modules:
+        return sys.modules["_defects"]
+    if importlib.util.find_spec("pytest") is None:
+        return None
+    spec = importlib.util.spec_from_file_location("_defects", HERE / "tests" / "test_defects.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod                     # its dataclass looks itself up there
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class DockArgLengths(unittest.TestCase):
+    """dock_protocol.arg_lengths: which frames it sends, and how it judges the replies."""
+
+    class Link:
+        """Answers as firmware with the DEV-1279 check does, or with data to everything."""
+
+        def __init__(self, checks):
+            self.checks, self.sent = checks, []
+
+        def exchange(self, raw, timeout_s=None):
+            self.sent.append(raw)
+            pyshimmer_card_id = (raw[3], raw[4], raw[2]) == (dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID, 5)
+            if self.checks and not pyshimmer_card_id:
+                return dock.Reply(dock.BAD_ARG)
+            return dock.Reply(dock.CMD_RSP, raw[3], raw[4], b"\x00")
+
+        def request(self, cmd, comp, prop, data=b""):
+            return dock.Reply(dock.CMD_RSP, comp, prop, bytes(7))
+
+    def walk(self, checks):
+        from rig import dock_protocol
+        w = dock_protocol.Walk(self.Link(checks), dock_protocol.S3)
+        dock_protocol.arg_lengths(w)
+        return w
+
+    def test_each_variable_length_get_is_sent_short_and_long(self):
+        w = self.walk(checks=True)
+        lens = [(f[2], f[3], f[4]) for f in w.link.sent]
+        self.assertEqual(lens, [(2, dock.COMP_SHIMMER, dock.PROP_INFOMEM), (4, dock.COMP_SHIMMER, dock.PROP_INFOMEM),
+                                (6, dock.COMP_SHIMMER, dock.PROP_INFOMEM),
+                                (2, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID),
+                                (3, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID),
+                                (6, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID),
+                                (2, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM),
+                                (4, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM),
+                                (6, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_MEM),
+                                (5, dock.COMP_DAUGHTER_CARD, dock.PROP_CARD_ID)])
+        self.assertTrue(all(f[1] == dock.CMD_GET for f in w.link.sent), "only GETs: a short SET writes stale bytes")
+        self.assertEqual(w.failures, [])
+
+    def test_pyshimmer_s_card_id_read_is_sent_as_pyshimmer_sends_it(self):
+        w = self.walk(checks=True)
+        self.assertEqual(w.link.sent[-1][:8], b"\x24\x03\x05\x03\x02\x00\x00\x00")
+
+    def test_an_answer_with_data_is_a_failure(self):
+        w = self.walk(checks=False)
+        self.assertEqual(len(w.failures), 9)
+        self.assertIn("GET INFOMEM with no arguments (LEN 2): RSP, expected BAD_ARG", w.failures[0])
+
+
+def _fleet_module():
+    """tests/test_s3_fleet.py, which imports pytest; None without it."""
+    import importlib.util
+    if "_s3_fleet" in sys.modules:
+        return sys.modules["_s3_fleet"]
+    if importlib.util.find_spec("pytest") is None:
+        return None
+    spec = importlib.util.spec_from_file_location("_s3_fleet", HERE / "tests" / "test_s3_fleet.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@unittest.skipIf(_fleet_module() is None, "needs pytest")
+class S3FleetSeeds(unittest.TestCase):
+    """fleet.mag_seeds and fleet.wr_accel_seeds: which part they assume, and
+    what they make of the record in use."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.fleet = _fleet_module()
+
+    def cfg(self, mag_range):
+        c = s3_config.S3Config(bytes(384))
+        c.put("mag_range", mag_range)
+        return c
+
+    def test_the_inquiry_s_mag_order_names_the_part(self):
+        part = self.fleet.lsm303_part
+        self.assertEqual(part(self.cfg(0), [0x00, 0x07, 0x09, 0x08])[::2], ("LSM303DLHC", True))
+        self.assertEqual(part(self.cfg(0), [0x07, 0x08, 0x09])[::2], ("LSM303AH", True))
+
+    def test_without_the_mag_only_a_range_other_than_0_is_proof(self):
+        part = self.fleet.lsm303_part
+        self.assertEqual(part(self.cfg(1), [0x00, 0x01, 0x02])[::2], ("LSM303DLHC", True))
+        self.assertEqual(part(self.cfg(0), [0x00, 0x01, 0x02])[::2], ("LSM303AH", False))
+
+    class Link:
+        def __init__(self, infomem, dump):
+            self.infomem, self.dump = infomem, dump
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read_infomem(self):
+            return self.infomem
+
+        def read_calib_dump(self):
+            return self.dump
+
+    def mag_dump(self, range0: bytes, range0_ts: bytes = bytes(8)) -> bytes:
+        import struct
+        body = b"".join(struct.pack("<HBB", 32, r, 21) + (range0_ts if r == 0 else bytes(8))
+                        + (range0 if r == 0 else self.fleet.mag_seed_block(r)) for r in range(8))
+        return (len(body) + 8).to_bytes(2, "little") + bytes(8) + body
+
+    def run_mag_seeds(self, range0: bytes, range0_ts: bytes = bytes(8)):
+        notes = []
+        link = self.Link(self.cfg(0).bytes(), self.mag_dump(range0, range0_ts))
+        with mock.patch.object(self.fleet, "open_bt", lambda unit: link):
+            self.fleet.test_mag_seeds(None, None, notes.append)
+        return notes
+
+    def test_range_0_in_use_may_not_be_the_old_default(self):
+        with self.assertRaises(AssertionError) as cm:
+            self.run_mag_seeds(self.fleet.OLD_MAG_RANGE0)
+        self.assertIn("range 0, in use, still holds the default", str(cm.exception))
+
+    def test_a_timestamp_does_not_excuse_the_old_default(self):
+        with self.assertRaises(AssertionError) as cm:
+            self.run_mag_seeds(self.fleet.OLD_MAG_RANGE0, bytes([0x11] * 8))
+        self.assertIn("range 0, in use, still holds the default", str(cm.exception))
+
+    def test_range_0_in_use_may_be_anyone_s_block(self):
+        self.assertIn("0 (in use: not the old default)", self.run_mag_seeds(self.fleet.mag_seed_block(0))[0])
+        self.run_mag_seeds(bytes(range(21)))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
