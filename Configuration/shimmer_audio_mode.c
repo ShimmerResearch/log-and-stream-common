@@ -18,7 +18,7 @@ uint8_t ShimAudioMode_correct(uint8_t raw)
   {
     return 0;
   }
-  return raw & (AUDIO_MODE_MASK | AUDIO_MODE_GAIN_MASK);
+  return raw & (AUDIO_MODE_MASK | AUDIO_MODE_GAIN_MASK | AUDIO_SOUND_LEVEL);
 }
 
 uint8_t ShimAudioMode_mode(uint8_t raw)
@@ -45,6 +45,11 @@ uint8_t ShimAudioMode_recordsRawAudio(uint8_t raw)
   return (mode == AUDIO_MODE_FINGERPRINT_RAW) || (mode == AUDIO_MODE_RAW);
 }
 
+uint8_t ShimAudioMode_soundLevel(uint8_t raw)
+{
+  return (ShimAudioMode_correct(raw) & AUDIO_SOUND_LEVEL) != 0U;
+}
+
 uint8_t ShimAudioMode_withMode(uint8_t raw, int value)
 {
   if ((value < 0) || (value > (int) AUDIO_MODE_MASK))
@@ -52,4 +57,13 @@ uint8_t ShimAudioMode_withMode(uint8_t raw, int value)
     return raw | AUDIO_MODE_INVALID;
   }
   return (uint8_t) ((raw & ~AUDIO_MODE_MASK) | (uint8_t) value);
+}
+
+uint8_t ShimAudioMode_withSoundLevel(uint8_t raw, int value)
+{
+  if ((value < 0) || (value > 1))
+  {
+    return raw | AUDIO_MODE_INVALID;
+  }
+  return value ? (uint8_t) (raw | AUDIO_SOUND_LEVEL) : (uint8_t) (raw & ~AUDIO_SOUND_LEVEL);
 }

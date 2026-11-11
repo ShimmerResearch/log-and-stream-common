@@ -52,4 +52,22 @@ uint8_t ShimAudio_buildStatus(uint8_t *buf)
   return PlatAudio_buildStatus(buf);
 }
 
+void ShimAudio_onSensingStart(void)
+{
+  if (ShimConfig_isSoundLevelEnabled())
+  {
+    PlatAudio_levelStart();
+  }
+}
+
+void ShimAudio_onSensingStop(void)
+{
+  PlatAudio_levelStop();
+}
+
+void ShimAudio_levelProcess(void)
+{
+  PlatAudio_levelProcess();
+}
+
 #endif /* SHIMMER3R */

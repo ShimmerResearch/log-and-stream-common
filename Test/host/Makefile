@@ -65,7 +65,7 @@ INCLUDES := -I . \
 STANDALONE_SUITES := test_swcrc test_packet_ring test_util test_sd_pressure_id \
                      test_leds_phase test_sd_card_id test_autostop \
                      test_event_record test_button_gesture test_button_log_mode \
-                     test_audio_mode test_audio_file
+                     test_audio_mode test_audio_file test_audio_level
 
 # Suites built once per SD write-buffer count. That count is a compile-time
 # constant because the buffers are a fixed array, so covering more than one
@@ -116,6 +116,11 @@ SRC_test_audio_mode := test_audio_mode.c \
                         $(REPO)/Configuration/shimmer_audio_mode.c
 SRC_test_audio_file := test_audio_file.c \
                         $(REPO)/Audio/shimmer_audio_file.c
+SRC_test_audio_level := test_audio_level.c \
+                        $(REPO)/Audio/shimmer_audio_level.c
+# Libraries a suite links, after its sources: the level's log10f and its
+# reference's double maths
+LIBS_test_audio_level := -lm
 SRC_test_sd_data_file := test_sd_data_file.c \
                         $(REPO)/SDCard/shimmer_sd_data_file.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c \
@@ -151,6 +156,7 @@ INC_test_button_log_mode := -I . -I $(REPO)
 INC_test_autostop    := -I . -I $(REPO)
 INC_test_audio_mode := -I . -I $(REPO)
 INC_test_audio_file := -I . -I $(REPO)
+INC_test_audio_level := -I . -I $(REPO)
 
 ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) \
               $(DUAL_PLATFORM_SUITES) $(SD_WRBUF_SUITES)
@@ -181,7 +187,7 @@ $(BUILD):
 
 define STANDALONE_RULE
 $(BUILD)/$(1): $$(SRC_$(1)) | $(BUILD)
-	$$(CC) $$(CFLAGS) $$(INC_$(1)) $$(SRC_$(1)) -o $$@
+	$$(CC) $$(CFLAGS) $$(INC_$(1)) $$(SRC_$(1)) $$(LIBS_$(1)) -o $$@
 endef
 $(foreach s,$(STANDALONE_SUITES),$(eval $(call STANDALONE_RULE,$(s))))
 
@@ -341,6 +347,7 @@ DUAL_COMPILE_MODULES := \
   Configuration/shimmer_button_log_mode.c \
   Configuration/shimmer_audio_mode.c \
   Audio/shimmer_audio_file.c \
+  Audio/shimmer_audio_level.c \
   LEDs/shimmer_leds_phase.c \
   Platform/platform_api.c \
   RTC/shimmer_rtc.c \

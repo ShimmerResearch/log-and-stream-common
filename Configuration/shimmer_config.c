@@ -1284,6 +1284,12 @@ uint8_t ShimConfig_audioMode(void)
                                            AUDIO_MODE_OFF;
 }
 
+uint8_t ShimConfig_isSoundLevelEnabled(void)
+{
+  return ShimBrd_isMicrophoneSupported()
+      && ShimAudioMode_soundLevel(storedConfig.audioMode);
+}
+
 uint8_t ShimConfig_isGSREnabled(void)
 {
   return storedConfig.chEnGsr;

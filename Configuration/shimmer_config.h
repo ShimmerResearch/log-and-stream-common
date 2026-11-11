@@ -533,6 +533,9 @@ uint8_t ShimConfig_doesButtonRecordPresses(void);
 uint8_t ShimConfig_isTtlInputEnabled(void);
 /* Configuration byte 233's mode, corrected (Configuration/shimmer_audio_mode.h) */
 uint8_t ShimConfig_audioMode(void);
+/* Configuration byte 233 bit 4, corrected: the SOUND_LEVEL channel is on
+ * (Audio/shimmer_audio_level.h) */
+uint8_t ShimConfig_isSoundLevelEnabled(void);
 void ShimConfig_setExgConfigForTestSignal(void);
 void ShimConfig_setExgConfigForEcg(void);
 float ShimConfig_freqDiv(float samplingRate);

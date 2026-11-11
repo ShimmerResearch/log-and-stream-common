@@ -1589,9 +1589,11 @@ logs. Each row is its own item, `release.<row>`:
   - the session's audio files must be the mode's, paired with the data file
     (same experiment, session and number; the same initial timestamp, config
     time, MAC and firmware), closed, and without a fault;
-  - the audio must start 0.1-1.5 s after the data file's initial timestamp and
-    end with the log, and the audio clock must be within 300 ppm of the Shimmer
-    clock;
+  - the audio must start 0.1-1.5 s after the data file's initial timestamp,
+    or from 0.2 s before it on a row with the sound level on, whose log joins a
+    capture already running ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §1). It
+    must end with the log, and the audio clock must be within 300 ppm of the
+    Shimmer clock;
   - the fingerprint's chunks must be numbered without a gap, as many as the
     audio allows less the one or two a stop drops, and each chunk's clock within
     8 ticks of the line through them all and of the WAV's clock;
@@ -1604,6 +1606,24 @@ logs. Each row is its own item, `release.<row>`:
   records the bench room, so the test reads it where it lies on the card and
   then deletes it. A row that fails before the card is read leaves its WAV
   there.
+- **The sound level** ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8). Every row
+  writes configuration byte 233 bit 4: the row's `sound_level`, or 0. Four
+  `level_*` rows turn it on:
+  - streaming at 128 Hz with only the magnetometer, so the level alone makes up
+    the packet's SPI stage;
+  - streaming at 512 Hz with the IMU;
+  - logging GSR at 128 Hz with the fingerprint;
+  - streaming and logging at 1024 Hz with every sensor, raw audio and the
+    fingerprint.
+
+  On every row, stream and log alike (`rig/sound_level.py`):
+  - channel `0x38` must be in the packets exactly when the bit is set;
+  - the first level must arrive within 0.5 s, and no sample after it may say
+    "no level" (`-32768`);
+  - every level must be between 20 and 110 dB(A);
+  - the value may change at most once per 128 ms block.
+
+  The level itself is reported, not judged against a meter.
 
 Two observations are kept as their own items so they do not fail every row
 they touch: `release.sd_log_start` (samples lost in the first second of a log)

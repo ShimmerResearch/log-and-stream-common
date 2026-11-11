@@ -76,6 +76,12 @@ extern void PlatAudio_sessionStop(void);
 extern void PlatAudio_process(void);
 extern uint8_t PlatAudio_statusBits(void);
 extern uint8_t PlatAudio_buildStatus(uint8_t *buf);
+/* The sound-level channel (Audio/shimmer_audio_level.h), in
+ * shimmer3r-firmware's Shimmer_Driver/hal_AudioLevel.c. Start and stop are
+ * called whatever the configuration; stop when nothing started is a no-op. */
+extern void PlatAudio_levelStart(void);
+extern void PlatAudio_levelStop(void);
+extern void PlatAudio_levelProcess(void);
 #endif
 
 extern void DockUart_init(void);

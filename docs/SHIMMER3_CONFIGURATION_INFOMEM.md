@@ -219,7 +219,7 @@ generations give a byte different meanings both are shown.
 | 230 | bit 7 `unusedIdx230Bit7`; bit 6 `unusedIdx230Bit6`; bit 5 `unusedIdx230Bit5`; bit 4 `unusedIdx230Bit4`; bit 3 `unusedIdx230Bit3`; bit 2 `unusedIdx230Bit2`; bit 1 `unusedIdx230Bit1`; bit 0 `flagWriteCfgToSd` | `NV_SD_CONFIG_DELAY_FLAG` | `idxSDConfigDelayFlag` | `idxSDConfigDelayFlag` | both |  |
 | 231 | `btSetPin` (uint8_t) | `NV_BT_SET_PIN` | `idxBtFactoryReset` | `idxBtFactoryReset` | both |  |
 | 232 | `buttonLogMode` (uint8_t) | `NV_BUTTON_LOG_MODE` |  |  | both | button, logging and TTL input (§8.3) |
-| 233 | `audioMode` (uint8_t) | `NV_AUDIO_MODE` |  |  | both | audio recording, Shimmer3R (§8.5) |
+| 233 | `audioMode` (uint8_t) | `NV_AUDIO_MODE` |  |  | both | audio recording and the sound level, Shimmer3R (§8.5) |
 | 234 | `unusedIdx234` (uint8_t) |  |  |  | both | reserved |
 | 235 | `unusedIdx235` (uint8_t) |  |  |  | both | reserved |
 | 236 | `unusedIdx236` (uint8_t) |  |  |  | both | reserved |
@@ -566,7 +566,7 @@ Three things matter when writing configuration bytes directly:
 | 230 | `flagWriteCfgToSd` | Bit 0 only |
 | 231 | `btSetPin` | Legacy |
 | 232 | `buttonLogMode` | What the button does and what else starts logging, see §8.3 |
-| 233 | `audioMode` | What a Shimmer3R records from its microphone while logging, see §8.5 |
+| 233 | `audioMode` | What a Shimmer3R records from its microphone while logging, and whether its packets carry the sound level, see §8.5 |
 
 > **Three multi-byte fields here are big-endian, while the sampling rate at
 > bytes 0-1 is little-endian.** `configTime`, `experimentLengthEstimatedInSec`
@@ -736,21 +736,24 @@ never empty; an all-`0xFF` field yields `Shimmer_<mac4>`.
 ### 8.5 Audio recording, byte 233
 
 A Shimmer3R can record from its microphone while it logs to SD (DEV-99). Byte
-233 says whether it does and what it keeps. `Configuration/shimmer_audio_mode.h`
+233 says whether it does and what it keeps, and bit 4 whether its packets
+carry the sound level (DEV-1413). `Configuration/shimmer_audio_mode.h`
 has the rule, and `Test/host/test_audio_mode.c` checks it on all 256 values.
 
 | Bits | Field | Values |
 |---:|---|---|
 | 0-1 | Mode | **0** off. **1** the audio fingerprint only. **2** the fingerprint and the raw 16 kHz audio. **3** the raw audio only |
 | 2-3 | Gain preset | **0** the calibrated default. 1-3 are reserved for presets, should field use need them |
-| 4-6 | — | Unused, and cleared |
+| 4 | Sound level | **1** every data packet carries the `SOUND_LEVEL` channel while the unit senses, streaming, logging or both ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8). Independent of the mode |
+| 5-6 | — | Unused, and cleared |
 | 7 | — | Must be 0 |
 
 - **Anything the firmware cannot act on reads as 0.** That covers bit 7 set
   (erased memory is `0xFF`), a reserved gain preset, and a mode this firmware
   does not record yet. `ShimConfig_checkAndCorrectConfig` writes the corrected
   value back (§10.3), so a host that writes a mode and reads it back learns
-  whether this unit records it.
+  whether this unit records it. The same goes for bit 4: firmware without the
+  sound level clears it.
 - **Which modes are built.** The firmware lists them in `AUDIO_MODES_BUILT`.
   All four are, from DEV-99's fingerprint step on; firmware with raw audio only
   built 0 and 3, and read 1 and 2 back as 0. The recording itself is in
@@ -765,8 +768,8 @@ has the rule, and `Test/host/test_audio_mode.c` checks it on all 256 values.
 - **Setting it.** Over Bluetooth, write the one byte with `SET_INFOMEM_COMMAND`:
   `0x8C 0x01 0xE9 0x00 <value>`. Like every configuration write, this is
   refused while sensing. On the card, sdlog.cfg carries the mode as
-  `audio_mode` on Shimmer3R (SD_CARD_FORMAT §5.3). The gain preset has no key
-  until a preset is built.
+  `audio_mode` and bit 4 as `sound_level` on Shimmer3R (SD_CARD_FORMAT §5.3).
+  The gain preset has no key until a preset is built.
 - **Recorded.** On Shimmer3R the SD header carries the corrected value at
   offset 226 (SD_CARD_FORMAT §3.1).
 
@@ -871,7 +874,7 @@ image being written back on that account alone.
 | `btIntervalSecs` | If `syncEnable`, anything below 54 (`SYNC_INT_C`) becomes 54 |
 | `magRange` (S3) | Forced to 0 unless the wide-range accel is an LSM303DLHC |
 | `buttonLogMode` | Anything the firmware cannot act on becomes 0, and bit 6 is cleared (§8.3) |
-| `audioMode` | Anything the firmware cannot act on becomes 0 (bit 7 set, a reserved gain preset, a mode not built yet), and bits 4-6 are cleared (§8.5) |
+| `audioMode` | Anything the firmware cannot act on becomes 0 (bit 7 set, a reserved gain preset, a mode not built yet), and bits 5-6 are cleared (§8.5) |
 | `userButtonEnable` | While `buttonLogMode`'s button mode is not 0, held at the mode's nearest equivalent (§8.3) |
 
 ### 10.4 Capability gates

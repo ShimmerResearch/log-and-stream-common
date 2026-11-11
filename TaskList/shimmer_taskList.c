@@ -163,6 +163,11 @@ void ShimTask_NORM_manage(void)
       case TASK_GATHER_DATA:
         ShimSens_gatherData();
         break;
+#if defined(SHIMMER3R)
+      case TASK_AUDIO_LEVEL:
+        ShimAudio_levelProcess();
+        break;
+#endif
 #if defined(SHIMMER3)
       case TASK_SAMPLE_MPU9150_MAG:
         MPU9150_startMagMeasurement();

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for rig.s3r_audio: the release rows' checks on a session's audio
-files. Run: python Test/hil/test_hil_audio.py (no hardware, standard library only).
+files, and rig.sound_level's on the sound-level channel. Run:
+python Test/hil/test_hil_audio.py (no hardware, standard library only).
 
 Each case builds a card's audio/ tree in a temporary directory, with files laid
 out as docs/SHIMMER3R_AUDIO.md §3 describes, then breaks one thing.
@@ -16,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from rig import s3r_audio as sa  # noqa: E402
+from rig import sound_level as sl  # noqa: E402
 
 TICKS = 32768
 MAC = bytes.fromhex("D3B415BC0000")
@@ -243,6 +245,63 @@ class DataHeader(unittest.TestCase):
         self.assertEqual((st.mode, st.state, st.seconds, st.chunks), (2, 3, 28, 6))
         with self.assertRaises(ValueError):
             sa.audio_status(raw[:31])
+
+
+def level_series(rate=128.0, seconds=10.0, none_s=0.3, db=(42.0, 47.5)):
+    """The channel as a unit sends it: no level for none_s, then one value per
+    128 ms block, held in every packet until the next"""
+    out = []
+    n = int(rate * seconds)
+    for i in range(n):
+        t = i / rate
+        if t < none_s:
+            out.append(sl.NONE)
+        else:
+            block = int(t / 0.128)
+            out.append(int(round((db[0] + (db[1] - db[0]) * (block % 7) / 6) * 100)))
+    return out
+
+
+class SoundLevel(unittest.TestCase):
+    def test_off_and_absent_is_fine(self):
+        self.assertEqual(sl.check(None, 128.0, False), ([], ""))
+
+    def test_on_needs_the_channel(self):
+        probs, _ = sl.check(None, 128.0, True)
+        self.assertEqual(len(probs), 1)
+
+    def test_off_must_not_send_it(self):
+        probs, _ = sl.check(level_series(), 128.0, False)
+        self.assertEqual(len(probs), 1)
+
+    def test_a_good_series(self):
+        for rate in (51.2, 128.0, 1024.0):
+            probs, note = sl.check(level_series(rate=rate), rate, True)
+            self.assertEqual(probs, [], rate)
+            self.assertIn("42.0-47.5 dB(A)", note)
+
+    def test_late_first_level(self):
+        probs, _ = sl.check(level_series(none_s=0.7), 128.0, True)
+        self.assertTrue(any("first sound level" in p for p in probs), probs)
+
+    def test_no_level_after_the_first(self):
+        v = level_series()
+        v[500] = sl.NONE
+        probs, _ = sl.check(v, 128.0, True)
+        self.assertTrue(any("after the first level" in p for p in probs), probs)
+
+    def test_out_of_range(self):
+        probs, _ = sl.check(level_series(db=(12.0, 15.0)), 128.0, True)
+        self.assertTrue(any("outside" in p for p in probs), probs)
+
+    def test_never_a_level(self):
+        probs, _ = sl.check([sl.NONE] * 500, 128.0, True)
+        self.assertTrue(any("no level" in p for p in probs), probs)
+
+    def test_changes_faster_than_a_block(self):
+        v = [4000 + (i % 2) for i in range(1280)]
+        probs, _ = sl.check(v, 128.0, True)
+        self.assertTrue(any("more than once a 128 ms block" in p for p in probs), probs)
 
 
 if __name__ == "__main__":

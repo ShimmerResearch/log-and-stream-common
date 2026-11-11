@@ -118,6 +118,7 @@ static int cfg_key_is(const char *line, const char *key)
 #define CFG_KEY_BUTTON_MODE        "button_mode"
 #define CFG_KEY_LOG_TRIGGERS       "log_triggers"
 #define CFG_KEY_AUDIO_MODE         "audio_mode"
+#define CFG_KEY_SOUND_LEVEL        "sound_level"
 
 #define CFG_KEY_MAX_EXP_LEN        "max_exp_len"
 #define CFG_KEY_EST_EXP_LEN        "est_exp_len"
@@ -302,6 +303,8 @@ uint8_t ShimSdCfgFile_generate(void)
       CFG_WRITE_INT(&cfgFile, CFG_KEY_ACCEL_ALT_RATE, storedConfig->altAccelRate);
       CFG_WRITE_INT(&cfgFile, CFG_KEY_AUDIO_MODE,
           ShimAudioMode_mode(storedConfig->audioMode));
+      CFG_WRITE_INT(&cfgFile, CFG_KEY_SOUND_LEVEL,
+          ShimAudioMode_soundLevel(storedConfig->audioMode));
 #endif
 
       //trial config
@@ -705,6 +708,11 @@ void ShimSdCfgFile_parse(void)
       {
         storedConfigPtr->audioMode
             = ShimAudioMode_withMode(storedConfigPtr->audioMode, atoi(equals));
+      }
+      else if (cfg_key_is(buffer, CFG_KEY_SOUND_LEVEL))
+      {
+        storedConfigPtr->audioMode
+            = ShimAudioMode_withSoundLevel(storedConfigPtr->audioMode, atoi(equals));
       }
 #endif
       else if (cfg_key_is(buffer, CFG_KEY_RTC_ERROR_ENABLE))
