@@ -61,6 +61,22 @@ read it.
 the firmware checkouts the model may read, and a spending cap
 (`budget_usd`, default 2).
 
+## Checking an open defect
+
+`tests/test_defects.py` holds checks that reproduce defects already filed, one
+report item per ticket (`defect.dev1297_reads_midstream` and so on). Each fails
+while its defect is there, so they carry the `defect` marker, which no release
+tier selects:
+
+```
+python -m pytest Test/hil/tests/test_defects.py -m defect -rA
+python -m pytest Test/hil/tests/test_defects.py -m defect -k dev1297 --unit s3-rn42-615
+```
+
+What a check changes on a unit it puts back before the next one starts. When a
+fix makes its check pass, move the check into its platform's tier, and into
+`required/` if it should gate releases, in the same PR as the fix.
+
 ## Setting up a bench
 
 1. `pip install pytest pyserial tomli bleak` (Python 3.10+; `tomli` only before 3.11; `bleak` for
@@ -114,18 +130,20 @@ plug and unplug.
 | `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial. The drive comes from Get-Disk, or from Win32_DiskDrive when Get-Disk does not list the unit: on one bench Get-Disk has listed no disks at all for minutes, and listed a unit back from a long log minutes late. `wait_usb_settled` waits for both the port and the drive. A docked stream takes the unit's USB away until it stops, and the port can return before the rest of the device. So call `wait_usb_settled` before the first dock exchange after sensing or a re-dock (DEV-1368, TEST_PROCEDURE §10.4). Run those exchanges in `stall_named`: a failure within 35 s of the unit's USB arrival is checked against System event 7011 and, inside a host service stall, raised as `HostServiceStall` naming it. It is still a failure (bench-tools `hil/known_issues.md`) |
 | `rig/usb_throughput.py` | The SD card's write and read rates over USB mass storage, timed around the PC's file cache |
 | `rig/sdfile.py` | Reads a Shimmer3R SD data file and checks its records |
+| `rig/events.py` | The event channel: byte 232 as the firmware keeps it (INFOMEM §8.3), an event file checked against its data file with Extras' `shimmer_event_file.py`, and the Bluetooth record frames and status (TEST_PROCEDURE §5.12) |
 | `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version. USB DFU flashes only a DFU device that appeared after this unit was sent to its bootloader, and only if it is the only one |
 | `rig/base6.py` | Base6 slot mux: which slots are occupied, select one, mask its BSL lines |
 | `rig/msp430_bsl.py` | MSP430 ROM bootloader client (port of Consensys's): erase, write, CRC-verify |
 | `rig/s3_flash.py` | Flashes a Shimmer3 in a Base6 slot, backing up and restoring its InfoMem; restores a unit's InfoMem over the dock after a test |
 | `rig/s3_config.py` | Shimmer3 InfoMem fields the matrix varies, the ODRs a host derives for a rate (Shimmer3 firmware does not raise them), calibration blocks from the dump, and the channel order an inquiry should report |
-| `rig/s3r_config.py` | Shimmer3R InfoMem fields the matrix varies: rate, sensors, ranges, and the ODRs to check |
+| `rig/s3r_config.py` | Shimmer3R InfoMem fields the matrix varies: rate, sensors, ranges, the audio mode, and the ODRs to check |
+| `rig/s3r_audio.py` | A logging session's audio files (`audio/`): paired with the data file, closed cleanly, on the Shimmer clock, and agreeing with the audio status. Deletes the session's WAV once checked |
 | `rig/s3r_boards.py` | Which optional sensors a Shimmer3R board has fitted (ported from Boards/shimmer_boards.c) |
 | `rig/decode.py` | Packets or SD records to per-channel arrays; calibration from a blob, an SD header or InfoMem |
 | `rig/signals.py` | Checks on a resting unit: 1 g, gyro ≈ 0, stuck/staircase/saturated axes, VBatt |
 | `matrix/s3r_release.toml` | The Shimmer3R release matrix: one row per configuration |
 | `matrix/s3_release.toml` | The Shimmer3 release matrix: stream rows, each configured over Bluetooth by InfoMem or by the individual commands |
-| `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (each platform's matrix) or `soak` (long-running, advisory; `HIL_SOAK_SCALE` sets the length) |
+| `tests/` | The tests, marked `smoke` (Shimmer3R), `fleet` (Shimmer3), `release` (each platform's matrix, and the event channel's items), `soak` (long-running, advisory; `HIL_SOAK_SCALE` sets the length) or `defect` (open defects, in no release tier) |
 | `triage.py` | Claude triage of a failed run: advice in `triage.md`, never a verdict |
 | `test_hil_*.py` | Unit tests for the above that need no hardware; run by `make -C Test/host` |
 

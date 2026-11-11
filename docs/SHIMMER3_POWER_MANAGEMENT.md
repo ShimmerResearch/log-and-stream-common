@@ -193,6 +193,17 @@ actually powers, and the one case where it powers nothing, are tabulated in
 `Board_enableSensingPower(SENSE_PWR_SENSING, 1)` is called when sensing starts,
 so the sensor supplies are only up while a trial runs.
 
+### 4.4 Microphone (Shimmer3R)
+
+The microphone is powered only while it is in use: during a factory test, and
+while an SD log records audio (configuration byte 233,
+[SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md)). While audio records, the ADF, its
+PLL3 kernel clock and GPDMA run continuously, with an interrupt every 128 ms.
+All of that runs through Sleep. A Stop mode would halt the capture, which is one
+more reason the firmware does not use one. In the fingerprint modes the CPU also
+analyses the audio, about 0.9 s of work every 4 s at 48 MHz, and the main loop
+does not idle while it does. The current it costs is not measured yet.
+
 ## 5. Low-battery protection
 
 Gated on `lowBatteryAutoStop` (byte 218 bit 0), which is **off by default**.
@@ -242,18 +253,36 @@ A caution from experience rather than from the source:
 - ~~The actual low-power modes used~~ — resolved. **Shimmer3**:
   `__bis_SR_register(LPM3_bits + GIE)` — LPM3, ACLK (32 kHz) running, so the
   sample timer and RTC keep counting (`main.c`). **Shimmer3R**
-  (`platform_sleepWhenNoTask`, `main.c`): if the USB stack is initialised, a
-  bare `__WFI()` (Sleep, SysTick running, for SOF and CDC traffic); otherwise
+  (`platform_sleepWhenNoTask`, `main.c`): if the USB stack is initialised and
+  a host has configured the device, **no sleep at all** — the hook returns at
+  once and the main loop polls USBX (DEV-192, below); if the stack is
+  initialised with no host (a charging-only dock), a bare `__WFI()` (Sleep,
+  SysTick running, for SOF and CDC traffic); otherwise
   `HAL_PWR_EnableSleepOnExit()` followed by `HAL_SuspendTick` +
   `HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI)` +
   `HAL_ResumeTick`. That is **Sleep mode with the main regulator on — never
   Stop**. `Power_StopUntilInterrupt()` exists in `hal_Power.c` but has no
   callers, and its deeper options are commented out. Sleep-on-exit means the
   core returns to sleep after any ISR that does not queue a task
-  (`ShimTask_set` clears the bit). Both paths `WFI` with
+  (`ShimTask_set` clears the bit). Both sleeping paths `WFI` with
   interrupts still masked and unmask straight after it; the second does so
   before `HAL_ResumeTick`, so the tick stays suspended while sleep-on-exit
-  keeps the core asleep. That path used to call
+  keeps the core asleep.
+
+  > **Why a configured USB device is polled (DEV-192).** USBX runs standalone,
+  > and its mass storage class needs several passes of
+  > `ux_device_stack_tasks_run()` per SCSI command, some with no interrupt to
+  > wake the core for: a received CBW is decoded on one pass and acted on on
+  > the next, and a finished transfer is moved on only by the pass after it.
+  > Sleeping after every pass left each of those to the next SysTick, about
+  > 4.8 ms per command whatever its size. That held mass storage reads near
+  > 6.2 MB/s and writes near 6 MB/s at High Speed; polling measured
+  > 10.3-10.5 MB/s read and 7.9 MB/s write on the same unit and card. USBX is
+  > up only while the unit is docked and idle (undocking, logging and
+  > streaming all call `USB_deinit()`), so the polling costs current only on
+  > USB power.
+
+  The sleep-on-exit path used to call
   `Power_SleepUntilInterrupt()`, which is the same three calls, with
   interrupts unmasked.
 - **Current consumption figures.** No numbers appear in the firmware. Nothing

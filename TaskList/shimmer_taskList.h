@@ -103,14 +103,28 @@ typedef enum TaskId_Tag
   TASK_SAMPLE_MPU9150_MAG = (0x00000001UL << 9U),
   TASK_SAMPLE_BMPX80_PRESS = (0x00000001UL << 10U),
 #endif
+#if defined(SHIMMER3R)
+  /* The sound level of each 128 ms microphone block, for the SOUND_LEVEL
+   * channel (Audio/shimmer_audio.h, DEV-1413). Set by the capture's DMA
+   * interrupt. Up here, unlike TASK_AUDIO, because packets read its result:
+   * it must stay current while the card or the data path is slow. About
+   * 1.5 ms a block. */
+  TASK_AUDIO_LEVEL = (0x00000001UL << 9U),
+#endif
   TASK_GATHER_DATA = (0x00000001UL << 11U),
   TASK_STOPSENSING = (0x00000001UL << 12U),
   TASK_SDLOG_CFG_UPDATE = (0x00000001UL << 13U),
   TASK_STARTSENSING = (0x00000001UL << 14U),
-  TASK_SAVEDATA = (0x00000001UL << 15U),
-  TASK_SDWRITE = (0x00000001UL << 16U),
-  TASK_FACTORY_TEST = (0x00000001UL << 17U),
-  TASK_DOCK_OR_USB_STATE_CHANGE = (0x00000001UL << 18U),
+  /* Above the data path on purpose. The sampling interrupts queue
+   * TASK_SAVEDATA, so whenever a pass of the main loop outlasts a sample
+   * period it is pending again by the end of the pass. Below it, a dock or a
+   * USB plug-in waited behind every one of those passes: on the bench a
+   * Shimmer3R whose card had slowed kept logging on its dock for hours
+   * (DEV-99). The task only reads the pins and queues TASK_SETUP_DOCK. */
+  TASK_DOCK_OR_USB_STATE_CHANGE = (0x00000001UL << 15U),
+  TASK_SAVEDATA = (0x00000001UL << 16U),
+  TASK_SDWRITE = (0x00000001UL << 17U),
+  TASK_FACTORY_TEST = (0x00000001UL << 18U),
   TASK_BT_TX_BUF_CLEAR = (0x00000001UL << 19U),
   TASK_BT_TURN_ON_AFTER_BOOT = (0x00000001UL << 20U),
 #if defined(SHIMMER3R)
@@ -137,6 +151,19 @@ typedef enum TaskId_Tag
    * everything else on purpose: data packets are refused while a reply is
    * held, so nothing competes with it for the ring. */
   TASK_BT_REPLY_RETRY = (0x00000001UL << 25U),
+  /* Button edges queued by the interrupt, and the event file's open, split and
+   * sync (Events/shimmer_events.h). Last of all: edges carry their own times,
+   * so waiting costs nothing, and the event file must never delay the data
+   * file. */
+  TASK_EVENT_CHANNEL = (0x00000001UL << 26U),
+#if defined(SHIMMER3R)
+  /* Audio recording's file work (Audio/shimmer_audio.h): moving the capture
+   * ring to the card, opening and splitting its files. Set by the capture's
+   * DMA interrupt every 128 ms. Last: the ring holds 8 s, so audio can wait
+   * behind everything, and the escape hatch in the platform's main loop
+   * writes one block regardless if the ring ever passes half full. */
+  TASK_AUDIO = (0x00000001UL << 27U),
+#endif
 } TaskId_t;
 //return the task id of the current task
 

@@ -236,11 +236,13 @@ diagnostic code:
 
 ### 5.4 LED tests
 
-`FACTORY_TEST_LED_STATES` calls `ShimLeds_testOperationalStates`, which drives
-the LEDs through the operational patterns so an operator can confirm each
-colour and each state renders. It bypasses the normal state machine entirely.
+`FACTORY_TEST_LED_STATES` calls `ShimLeds_testOperationalStates`, which steps
+the device through the operational states so an operator can confirm each
+state renders. It does not drive the LEDs itself: it sets the status flags for
+each state and lets the normal state machine draw it.
 
-`FACTORY_TEST_LEDS` is the simpler exercise. Neither sets a result bit; both
+`FACTORY_TEST_LEDS` is the simpler exercise: `led_test` stops the blink timer
+and lights each LED colour in turn. Neither sets a result bit; both
 are visual checks. See
 [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §7.
 
@@ -346,6 +348,24 @@ Shimmer3 cannot reach its card:
   ` - CID: unavailable (not read since boot, undock to read it)`. If the last
   initialisation, or the read, failed, it prints
   ` - CID: unavailable (card not initialised)`.
+
+### 5.6 `S3R_TEST_0026` — microphone
+
+The test runs the PDM microphone through the ADF at decimation 64 and gain −8
+(DEV-1154) for about 0.3 s. It skips the first 64 DMA blocks while the mic
+starts and the filters settle, then gives:
+
+| Report line | Meaning |
+|---|---|
+| `PASS` | Samples arrived and at least one was non-zero |
+| `FAIL: Test buffer is empty` | No samples after the skip, or every sample zero |
+| `FAIL: <ADF error>` (overflow, RSF overrun, clock absence, saturation, DMA) | 500 or more ADF error interrupts after the skip; the line names the error flag. Several flags at once print `FAIL: Unknown Error Code` |
+| `FAIL: Microphone busy recording` | Audio recording owned the microphone, so the test did not run (DEV-99) |
+
+> **Since DEV-99 the capture goes through `Shimmer_Driver/hal_Audio.c`,** which
+> also serves audio recording, one at a time. The steps and results above are
+> unchanged from before. A mic test while a recording runs is refused rather
+> than restarting the ADF under it.
 
 ## 6. Host capture
 

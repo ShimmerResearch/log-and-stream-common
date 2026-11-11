@@ -32,10 +32,18 @@ void ShimSdDataFile_writeToCard(void);
 void ShimSdDataFile_writeAllBufsToSd(void);
 uint8_t ShimSdDataFile_getNumberOfFullBuffers(void);
 uint8_t ShimSdDataFile_canAcceptRecord(uint16_t len);
+#if defined(SHIMMER3R)
+/* Whether the last record offered was refused and no buffer has been freed
+ * since. Safe to call from an interrupt: it reads one byte. */
+uint8_t ShimSdDataFile_isRefusingRecords(void);
+#endif
 uint16_t ShimSdDataFile_getBytesInCurrentSensingBuffer(void);
 
 uint8_t ShimSdDataFile_isFileStatusOk(void);
 
 uint8_t *ShimSdDataFile_fileNamePtrGet(void);
+/* The open data file's path, "data/<experiment>/<session>/<NNN>"; it changes
+ * at each split */
+const char *ShimSdDataFile_getDataFileName(void);
 
 #endif /* SHIMMER_SD_H_ */

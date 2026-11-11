@@ -492,7 +492,9 @@ void ShimLeds_blinkSetUprLoggingIdle(void)
 
 void ShimLeds_blinkSetLwrState(void)
 {
-  if (shimmerStatus.buttonPressed)
+  /* A disabled button gives no feedback either, so a press does not look as if
+   * it did something */
+  if (shimmerStatus.buttonPressed && !ShimConfig_isButtonDisabled())
   {
     //keep lower green LED on when user button pressed
     ShimLeds_blinkSetLwrBtnPress();
@@ -501,8 +503,12 @@ void ShimLeds_blinkSetLwrState(void)
   {
     ShimLeds_blinkSetLwrRedOn();
   }
-  else if (!shimmerStatus.docked && (shimmerStatus.sdBadFile || !shimmerStatus.sdInserted)
-      && ShimConfig_getStoredConfig()->sdErrorEnable)
+  /* Docked or on USB the card belongs to the dock or the PC, and the charging
+   * colour must show, so a card fault is flagged only when neither is there.
+   * With logging off, a missing card is how the unit is meant to be. */
+  else if (!LogAndStream_isDockedOrUsbIn()
+      && (shimmerStatus.sdBadFile || !shimmerStatus.sdInserted)
+      && ShimConfig_getStoredConfig()->sdErrorEnable && !ShimConfig_isLoggingDisabled())
   {
     ShimLeds_blinkSetLwrErrorSdCard();
   }
@@ -643,7 +649,7 @@ void ShimLeds_blinkSetLwrEnteringBslMode(void)
   if (ShimLeds_isBlinkTimerCnt200ms())
   {
     Board_ledUprSetColourRgb(0, 0, 0);
-    //Toggle upper and lower LEDs purple every 100ms
+    //Upper off. Lower toggles purple every other tick: 200 ms on, 200 off
     if (lastLedToggleLwr)
     {
       Board_ledLwrSetColourRgb(128, 0, 128);

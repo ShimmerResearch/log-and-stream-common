@@ -98,12 +98,15 @@ uint8_t ShimBrd_isLis3mdlPresent(void);
 uint8_t isAds7028Present(void);
 uint8_t ShimBrd_isI2c4Supported(void);
 uint8_t ShimBrd_isBoardSr48_6_0(void);
+uint8_t ShimBrd_isTtlInputSupported(void);
+uint8_t ShimBrd_isMicrophoneSupported(void);
 uint8_t ShimBrd_isI2cOnPPGControlledByAdcChip(void);
 uint8_t ShimBrd_areMcuAdcsUsedForSensing(void);
 
 uint8_t ShimBrd_isBoardSrNumber(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_brd_minor);
 uint8_t ShimBrd_isBoardSrNumberGte(uint8_t exp_brd_id, uint8_t exp_brd_major, uint8_t exp_brd_minor);
 uint8_t ShimBrd_isBmp581PresentPerSrNumber(void);
+uint8_t ShimBrd_isIm68d121PresentPerSrNumber(void);
 uint8_t ShimBrd_isHwId(uint8_t hwIdToCheck);
 uint8_t ShimBrd_isExpBrdId(uint8_t expIdToCheck);
 uint8_t ShimBrd_checkCorrectStateForBoot0(void);

@@ -86,11 +86,12 @@ and the task list.
 |---|---|---|
 | `Battery/` | Charge classification, charging state | [SHIMMER3_BATTERY_AND_CHARGING.md](SHIMMER3_BATTERY_AND_CHARGING.md) |
 | `Boards/` | Board and expansion-board identification | [SHIMMER3_BOARD_REVISIONS.md](SHIMMER3_BOARD_REVISIONS.md) |
-| `Button/` | User button debounce and gestures | |
+| `Button/` | User button debounce and gestures | [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) §2 |
 | `CRC/` | CRC-16 for comms and stored records | |
 | `Calibration/` | Calibration blob and per-sensor blocks | [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) |
 | `Comms/` | Bluetooth, dock UART, SD file transfer | [protocol](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md), [dock](SHIMMER3_DOCK_PROTOCOL.md) |
 | `Configuration/` | The 512-byte configuration image | [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) |
+| `Events/` | Button and TTL input edges queued from their interrupts; the event file beside each data file, and the records sent to a host that opts in over Bluetooth | [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) |
 | `EEPROM/` | CAT24C16 map, branding, radio settings | [SHIMMER3_EEPROM_MEMORY_MAP.md](SHIMMER3_EEPROM_MEMORY_MAP.md) |
 | `GSR/` | GSR range control | [SHIMMER3_GSR_AUTORANGE.md](SHIMMER3_GSR_AUTORANGE.md) |
 | `LEDs/` | Status indication | [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) |
@@ -193,16 +194,16 @@ uint32_t taskList;   // one bit per task
 | 6 | `TASK_BT_RESPOND` | both |
 | 7 | `TASK_RCCENTERR1` | both |
 | 8 | `TASK_RCNODER10` | both |
-| 9 | `TASK_SAMPLE_MPU9150_MAG` | S3 |
+| 9 | `TASK_SAMPLE_MPU9150_MAG` / `TASK_AUDIO_LEVEL` | S3 / S3R. `TASK_AUDIO_LEVEL` is queued by the audio capture's DMA interrupt every 128 ms while the sound level is on, and works out the level the packets carry. It sits above the data path so that level stays current while the card is slow ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8) |
 | 10 | `TASK_SAMPLE_BMPX80_PRESS` | S3 |
 | 11 | `TASK_GATHER_DATA` | both |
 | 12 | `TASK_STOPSENSING` | both |
 | 13 | `TASK_SDLOG_CFG_UPDATE` | both |
 | 14 | `TASK_STARTSENSING` | both |
-| 15 | `TASK_SAVEDATA` | both |
-| 16 | `TASK_SDWRITE` | both |
-| 17 | `TASK_FACTORY_TEST` | both |
-| 18 | `TASK_DOCK_OR_USB_STATE_CHANGE` | both |
+| 15 | `TASK_DOCK_OR_USB_STATE_CHANGE` | both, though only Shimmer3R's dock and USB interrupts queue it. Above the data path: the sampling interrupts queue `TASK_SAVEDATA`, so once a pass of the main loop outlasts a sample period it is pending again by the end of every pass, and a dock below it waited behind all of them (DEV-99) |
+| 16 | `TASK_SAVEDATA` | both; on Shimmer3R the sampling interrupts do not queue it while the SD buffers refuse records ([SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §4.1) |
+| 17 | `TASK_SDWRITE` | both |
+| 18 | `TASK_FACTORY_TEST` | both |
 | 19 | `TASK_BT_TX_BUF_CLEAR` | both |
 | 20 | `TASK_BT_TURN_ON_AFTER_BOOT` | both; SD sync's start callback queues it, so the radio is started from the main loop and not from the sync timer interrupt |
 | 21 | `TASK_JUMP_TO_BOOT_LOADER` / `TASK_BT_MODE_CHECK` | S3R / S3; on Shimmer3 the disconnect handler, which runs in an interrupt, queues the radio check that can stop and start the module |
@@ -210,6 +211,8 @@ uint32_t taskList;   // one bit per task
 | 23 | `TASK_SD_FILE_TRANSFER` | S3R |
 | 24 | `TASK_LED_PHASE_SYNC` | both; queued once a second ([SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) §2.1) |
 | 25 | `TASK_BT_REPLY_RETRY` | both; queued only while a command reply is held because the Bluetooth TX ring is full, and re-arms itself until the reply is out ([SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) §6.3) |
+| 26 | `TASK_EVENT_CHANNEL` | both; queued by every button and TTL edge, by the blink tick while a bounced edge awaits its recheck or a throttled TTL input is due back, by the data file's start, split and one-minute sync, and by a Bluetooth opt-in and each transmit-complete while a record waits for room. Last, because edges carry their own times and the event file must never delay the data file ([SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md)) |
+| 27 | `TASK_AUDIO` | S3R; queued by the audio capture's DMA interrupt every 128 ms and by the data file's start, split and one-minute sync while audio records, and kept queued while the fingerprint analyses a chunk. Last: the capture ring holds 8 s, and the main loop writes one block ahead of the task list if it ever passes half full ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §4) |
 
 > **Bit 25 polls on purpose.** While a reply is held, `TASK_BT_REPLY_RETRY`
 > re-arms itself each time it runs, so the main loop does not sleep until the
@@ -491,7 +494,7 @@ not start and stop logging repeatedly. Dock/USB state changes are debounced at
   | `platform_crcData16` | **no** | **no** | software CRC, 16-bit length (`ShimSwCrc_calc16`) |
   | `platform_isDockUartInitialised` | yes | yes | false |
   | `platform_isUsbUartInitialised` | **no** (no USB) | yes | false |
-  | `platform_sleepWhenNoTask` | yes (LPM3) | yes (Sleep / WFI) | no-op (busy loop) |
+  | `platform_sleepWhenNoTask` | yes (LPM3) | yes (Sleep / WFI; none while a USB host has the device configured, DEV-192) | no-op (busy loop) |
   | `platform_ledTickElapsedRtcTicks` | yes (`main.c`) | yes (`tim.c`) | 0 |
   | `platform_ledTickShift` | yes (`main.c`) | yes (`tim.c`) | no-op |
 

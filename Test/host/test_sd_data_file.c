@@ -292,10 +292,41 @@ FRESULT f_sync(FIL *fp)
   return FR_OK;
 }
 
+/* The session folders already on the card, for the session number: under the
+ * experiment directory (data/test_0 here) and under its companion twins
+ * (events/test_0, audio/test_0). Null lists nothing; a null events or audio
+ * list is no such folder. Every other directory lists nothing. */
+static const char *const *dataSessions;
+static const char *const *eventSessions;
+static const char *const *audioSessions;
+static const char *const *listing;
+static uint32_t listingAt;
+
 FRESULT f_opendir(DIR *dp, const TCHAR *path)
 {
-  (void) path;
   memset(dp, 0, sizeof(*dp));
+  listing = 0;
+  listingAt = 0;
+  if (strcmp(path, "events/test_0") == 0)
+  {
+    if (eventSessions == 0)
+    {
+      return FR_NO_PATH;
+    }
+    listing = eventSessions;
+  }
+  else if (strcmp(path, "audio/test_0") == 0)
+  {
+    if (audioSessions == 0)
+    {
+      return FR_NO_PATH;
+    }
+    listing = audioSessions;
+  }
+  else if (strcmp(path, "data/test_0") == 0)
+  {
+    listing = dataSessions;
+  }
   return FR_OK;
 }
 
@@ -305,11 +336,16 @@ FRESULT f_closedir(DIR *dp)
   return FR_OK;
 }
 
-/* An empty experiment directory: the first entry ends the listing. */
+/* One folder per call; an empty name ends the listing */
 FRESULT f_readdir(DIR *dp, FILINFO *fno)
 {
   (void) dp;
   memset(fno, 0, sizeof(*fno));
+  if (listing != 0 && listing[listingAt] != 0)
+  {
+    strncpy(fno->fname, listing[listingAt++], sizeof(fno->fname) - 1U);
+    fno->fattrib = AM_DIR;
+  }
   return FR_OK;
 }
 
@@ -374,6 +410,46 @@ uint8_t ShimSdHead_sdHeadTextGet(uint8_t *buf, uint16_t offset, uint16_t length)
   memset(buf, 0, length);
   return 1;
 }
+
+/* The event file follows the data file's lifecycle; it has its own suite */
+void ShimEvt_onSessionStart(uint64_t fileOpenTs)
+{
+  (void) fileOpenTs;
+}
+
+void ShimEvt_onFileSplit(uint64_t fileOpenTs)
+{
+  (void) fileOpenTs;
+}
+
+void ShimEvt_onSyncTick(void)
+{
+}
+
+void ShimEvt_onSessionStop(void)
+{
+}
+
+#if defined(SHIMMER3R)
+/* And so does the audio file (Audio/shimmer_audio.h) */
+void ShimAudio_onSessionStart(uint64_t dataFileTs)
+{
+  (void) dataFileTs;
+}
+
+void ShimAudio_onFileSplit(uint64_t dataFileTs)
+{
+  (void) dataFileTs;
+}
+
+void ShimAudio_onSyncTick(void)
+{
+}
+
+void ShimAudio_onSessionStop(void)
+{
+}
+#endif
 
 /* With SD sync on, every buffer starts with a 9-byte head: the sync offset the
  * writer takes from ShimSdSync_myTimeDiffPtrGet() and then resets. Each head
@@ -930,6 +1006,117 @@ static void test_freed_buffer_resumes_the_drain(void)
   session_stop(&s);
 }
 
+/* While the buffers refuse records, the sampling interrupts must not queue the
+ * drain: it outranks the write that frees a buffer, so queued on every sample
+ * it starved that write, and every task below it, for good (DEV-99). The
+ * refusal holds until a write frees a buffer, and a new session starts clear. */
+static void test_refusal_holds_off_the_interrupts(void)
+{
+  Session s;
+  uint32_t i;
+
+  testCase("a refused record holds the interrupts off the drain until a write");
+  rng = 29;
+  session_start(&s, 0, 0);
+  expectU("a session starts accepting", ShimSdDataFile_isRefusingRecords(), 0);
+  /* A stall: every buffer queued, then refused records. */
+  for (i = 0; i < 2000U; i++)
+  {
+    sample(&s);
+  }
+  expectU("a refused record is remembered", ShimSdDataFile_isRefusingRecords(), 1);
+  expectU("asking again changes nothing", ShimSdDataFile_isRefusingRecords(), 1);
+
+  ShimSdDataFile_writeToCard();
+  expectU("a freed buffer clears it", ShimSdDataFile_isRefusingRecords(), 0);
+
+  /* Refuse again, then start a new session without freeing anything. */
+  for (i = 0; i < 2000U; i++)
+  {
+    sample(&s);
+  }
+  expectU("refusing again", ShimSdDataFile_isRefusingRecords(), 1);
+  session_start(&s, 0, 0);
+  expectU("a new session starts clear", ShimSdDataFile_isRefusingRecords(), 0);
+  session_stop(&s);
+}
+
+/* The dock and USB change must outrank the data path: bit order is priority
+ * (ShimTask_NORM_popNext takes the lowest bit). */
+static void test_dock_change_outranks_the_data_path(void)
+{
+  testCase("a dock or USB change outranks saving and writing data");
+  expectTrue("above TASK_SAVEDATA", TASK_DOCK_OR_USB_STATE_CHANGE < TASK_SAVEDATA);
+  expectTrue("above TASK_SDWRITE", TASK_DOCK_OR_USB_STATE_CHANGE < TASK_SDWRITE);
+  expectTrue("data saving still outranks writing", TASK_SAVEDATA < TASK_SDWRITE);
+}
+
+/* A host that deletes data/ alone leaves a session's event files behind under
+ * events/. Its number must not come round again, or the next session's event
+ * files land among the old ones. */
+static void test_session_number_skips_event_folders(void)
+{
+  static const char *const data[] = { "host-001", "other-009", 0 };
+  static const char *const events[] = { "host-001", "host-004", 0 };
+  static const char *const eventsOnly[] = { "host-002", 0 };
+  Session s;
+
+  testCase("a session number still used under events/ is not reused");
+  rng = 29;
+
+  dataSessions = data;
+  eventSessions = 0;
+  session_start(&s, 0, 0);
+  expectStr("no events folder: one past data/",
+      ShimSdDataFile_getDataFileName(), "data/test_0/host-002/000");
+  session_stop(&s);
+
+  eventSessions = events;
+  session_start(&s, 0, 0);
+  expectStr("one past the highest under either",
+      ShimSdDataFile_getDataFileName(), "data/test_0/host-005/000");
+  session_stop(&s);
+
+  /* Consensys' Clear SD: data/ emptied, events/ left */
+  dataSessions = 0;
+  eventSessions = eventsOnly;
+  session_start(&s, 0, 0);
+  expectStr("data/ empty: one past events/", ShimSdDataFile_getDataFileName(),
+      "data/test_0/host-003/000");
+  session_stop(&s);
+
+  dataSessions = 0;
+  eventSessions = 0;
+}
+
+/* The same for audio files under audio/, which Clear SD leaves too */
+static void test_session_number_skips_audio_folders(void)
+{
+  static const char *const data[] = { "host-001", 0 };
+  static const char *const events[] = { "host-009", 0 };
+  static const char *const audio[] = { "host-006", "other-020", 0 };
+  Session s;
+
+  testCase("a session number still used under audio/ is not reused");
+  rng = 31;
+
+  dataSessions = data;
+  audioSessions = audio;
+  session_start(&s, 0, 0);
+  expectStr("one past audio/", ShimSdDataFile_getDataFileName(), "data/test_0/host-007/000");
+  session_stop(&s);
+
+  eventSessions = events;
+  session_start(&s, 0, 0);
+  expectStr("one past the highest of all three",
+      ShimSdDataFile_getDataFileName(), "data/test_0/host-010/000");
+  session_stop(&s);
+
+  dataSessions = 0;
+  eventSessions = 0;
+  audioSessions = 0;
+}
+
 int main(void)
 {
   printf("SD writer (Shimmer3R), NUM_SDWRBUF = %u, record %u B\n\n",
@@ -946,6 +1133,10 @@ int main(void)
   test_sync_heads_survive_batching();
   test_sync_heads_survive_short_writes();
   test_freed_buffer_resumes_the_drain();
+  test_refusal_holds_off_the_interrupts();
+  test_dock_change_outranks_the_data_path();
+  test_session_number_skips_event_folders();
+  test_session_number_skips_audio_folders();
 
   card_reset();
   return hostTestReport("sd_data_file");

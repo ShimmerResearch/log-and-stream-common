@@ -63,6 +63,7 @@ class FirmwareModel:
     unknown_code = BAD_CMD          # what an unhandled component or property gets
     clears_rtc_set_by_bt = True     # SET RWC_CFG_TIME clears InfoMem byte 217 bit 7
     honours_cancel = True           # ENTER_BOOTLOADER 0 cancels a pending reboot
+    checks_arg_len = True           # the LEN check before dispatch (Comms/shimmer_dock_args.c, DEV-1279)
 
     def __init__(self, clock: FakeTime, platform: str = "shimmer3r", card=(48, 6, 0)):
         self.clock = clock
@@ -162,10 +163,29 @@ class FirmwareModel:
             return self._reply(BAD_CRC)
         cmd, comp, prop, data = f[1], f[3], f[4], f[5:n + 3]
         self.frames.append((cmd, comp, prop))
+        if self.checks_arg_len:
+            if not self._arg_len_ok(cmd, comp, prop, n, data):
+                return self._reply(BAD_ARG)
+        else:
+            # Arguments read at fixed offsets whatever LEN says: the frame's own
+            # CRC, then what an earlier frame left in the buffer (zeros here).
+            data = f[5:] + bytes(8)
         handler = getattr(self, f"_{'get' if cmd == dock.CMD_GET else 'set'}_{comp:02x}_{prop:02x}", None)
         if handler is None:
             return self._reply(self.unknown_code)
         handler(comp, prop, n, data)
+
+    def _arg_len_ok(self, cmd, comp, prop, n, d):
+        """ShimDock_isArgLenOk: the LEN each variable-length request must carry."""
+        if cmd == dock.CMD_GET:
+            want = {(1, 6): {5}, (3, 2): {4, 5}, (3, 3): {5}}.get((comp, prop))
+            return want is None or n in want
+        if (comp, prop) == (1, 9) and self.platform == "shimmer3r":
+            return n == 3
+        if comp == dock.COMP_TEST:
+            return n == 2
+        head = {(1, 6): 5, (3, 2): 4, (3, 3): 5}.get((comp, prop))
+        return head is None or (n >= head and n == head + d[0])
 
     def _fixed(self, n, want, comp, prop, value):
         if n != want:
@@ -278,7 +298,7 @@ class Walks(unittest.TestCase):
         infomem, eeprom = bytes(m.infomem), bytes(m.eeprom)
         note, failures = self.run_walk(m)
         self.assertEqual(failures, [])
-        self.assertIn("USB CDC: 9 GETs, 4 SETs, 46 errors, 4 framing", note)
+        self.assertIn("USB CDC: 9 GETs, 4 SETs, 56 errors, 4 framing", note)
         self.assertIn("card SR48-6-0", note)
         self.assertIn("clock -3.2 s", note)
         self.assertIn("pipelined: VER+MAC", note)
@@ -293,13 +313,28 @@ class Walks(unittest.TestCase):
         m.version = (3, 3, 1, 1, 22)
         note, failures = self.run_walk(m)
         self.assertEqual(failures, [])
-        self.assertIn("9 GETs, 3 SETs, 47 errors", note)
+        self.assertIn("9 GETs, 3 SETs, 57 errors", note)
         sets = [f for f in m.frames if f and f[0] == dock.CMD_SET and f[2] == dock.PROP_ENTER_BOOTLOADER]
         self.assertEqual(len(sets), 1, "a Shimmer3 should be sent ENTER_BOOTLOADER once, to be refused")
 
     def test_the_doc_s_old_claim_bad_arg_for_an_unknown_property_is_caught(self):
         _, failures = self.run_walk(self.model(unknown_code=BAD_ARG))
         self.assertTrue(any(f.startswith("GET SHIMMER ENABLE: BAD_ARG, expected BAD_CMD") for f in failures),
+                        failures)
+
+    def test_a_firmware_that_takes_its_crc_for_arguments_is_caught(self):
+        # Before DEV-1279: GET INFOMEM with no arguments read its own CRC as length and offset.
+        _, failures = self.run_walk(self.model(checks_arg_len=False))
+        self.assertTrue(any(f.startswith("GET INFOMEM with no arguments (LEN 2): RSP, expected BAD_ARG")
+                            for f in failures), failures)
+
+    def test_refusing_pyshimmer_s_card_id_read_is_caught(self):
+        m = self.model()
+        strict = m._arg_len_ok
+        m._arg_len_ok = lambda cmd, comp, prop, n, d: (n == 4 if (cmd, comp, prop) == (dock.CMD_GET, 3, 2)
+                                                       else strict(cmd, comp, prop, n, d))
+        _, failures = self.run_walk(m)
+        self.assertTrue(any("as pyshimmer sends it" in f and "BAD_ARG, expected RSP" in f for f in failures),
                         failures)
 
     def test_a_parser_with_no_gap_timeout_is_caught(self):

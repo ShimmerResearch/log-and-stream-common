@@ -47,7 +47,9 @@ channel encodings are identical, only the framing around them differs.
 >   `SD_WR_BATCH_SPLIT_GUARD_TICKS`, failed-write handling),
 >   `Sensing/shimmer_packet_ring.h` (`DATA_BUF_QTY`), `Sensing/shimmer_sensing.c`
 >   (`ShimSens_saveData` back-pressure, `ShimSens_flushRingToSd`). Only §4.1's
->   claims about these were checked at this revision.
+>   claims about these were checked at this revision. The interrupts holding off
+>   the drain during a refusal (`ShimSens_queueSaveData`,
+>   `ShimSdDataFile_isRefusingRecords`) were added by DEV-99.
 > - **When `center=` is written:** `log-and-stream-common` @ `f573f60` —
 >   `ShimSdCfgFile_generate()` in `SDCard/shimmer_sd_cfg_file.c`. Only that
 >   claim was checked at this revision.
@@ -73,18 +75,28 @@ channel encodings are identical, only the framing around them differs.
 
 ## 1. Card layout
 
-A card in service holds up to four things:
+A card in service holds up to five things:
 
 ```
 /
 ├── sdlog.cfg                          text configuration (§5)
 ├── Calibration/
 │   └── calib_<mac4>                   calibration blob (§6)
-└── data/
-    └── <experimentId>_<configTime>/    one directory per trial
-        └── <shimmerName>-<NNNN>/       one directory per logging session
-            ├── 000                     binary data file
-            ├── 001
+├── data/
+│   └── <experimentId>_<configTime>/    one directory per trial
+│       └── <shimmerName>-<NNN>/        one directory per logging session
+│           ├── 000                     binary data file
+│           ├── 001
+│           └── ...
+└── events/                            only when presses are recorded (§1.5)
+    └── <experimentId>_<configTime>/    the same names as under data/
+        └── <shimmerName>-<NNN>/
+            ├── 000                     events for data/.../000
+            └── ...
+└── audio/                             Shimmer3R, when byte 233 records audio (§1.6)
+    └── <experimentId>_<configTime>/    the same names as under data/
+        └── <shimmerName>-<NNN>/
+            ├── 000.WAV                 audio for data/.../000
             └── ...
 ```
 
@@ -112,16 +124,21 @@ when the cards are collected.
 ### 1.2 Session directory
 
 ```
-<experimentDir>/<shimmerName>-<NNNN>
+<experimentDir>/<shimmerName>-<NNN>
 ```
 
 `<shimmerName>` is the 12-character device name from bytes 187-198.
-`<NNNN>` is a four-digit zero-padded counter.
+`<NNN>` is a three-digit zero-padded counter. `ShimUtil_ItoaWith0` keeps only
+the low three digits, so after `-999` the next name is `-000` again; that
+directory already exists, and `f_mkdir` fails.
 
 The counter is chosen by scanning the experiment directory for existing
 directories whose name matches this device's name, taking the highest suffix
-found and adding one. So each time logging starts, a **new** session directory
-appears; nothing is ever appended to an existing one.
+found and adding one. The same experiment directory under `events/` is scanned
+too, because a host that deletes only `data/` leaves a session's event files
+there ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md) §4.1). So each time logging
+starts, a **new** session directory appears, and its event files never land
+among an old session's; nothing is ever appended to an existing one.
 
 > **The scan compares with `strncmp(fname, shimmerName, strlen(fname) - 4)`** —
 > the length is taken from the *directory entry*, not from the device name.
@@ -139,6 +156,48 @@ digits, zero-padded, no extension, incrementing from zero via `fileNum++`.
 > with `%03d` simply produces four digits, so the sequence continues correctly,
 > but tools that assume a fixed-width name will break. At the one-hour rollover
 > of §4.1, reaching 999 takes about 41 days of continuous logging.
+
+### 1.4 Name lengths
+
+The names the firmware creates are short. The longest single name is the
+experiment directory's `<experimentId>_<configTime>`, at 23 characters
+(12 + 1 + 10). The longest path is a data file's: `data/`, that name, the
+16-character session directory, then the file number. That is 49 characters
+with a three-digit file number, and 51 at the five-digit maximum of `fileNum`.
+
+Shimmer3 builds FatFs with `_MAX_LFN` 64, so it handles names of up to 64
+characters. Shimmer3R's FatFs handles up to 255.
+
+> **On Shimmer3, a longer name is seen only by its 8.3 short name.** A
+> directory created on the card with a name over 64 characters reads back as
+> its short name, such as `LONGNA~1`, so the session scan of §1.2 does not
+> match it. Shimmer3 cannot create or open a name that long, but the firmware
+> never needs to.
+
+### 1.5 Event files
+
+In a button mode that records presses (configuration byte 232, button mode 4
+or 5), or with the TTL input on (byte 232 bit 5), each data file gets an event
+file of the same name under `events/` instead of `data/`, recording button
+presses and TTL input edges with their own timestamps. It has its own header
+and 16-byte records, and splits when the data file does: see [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md).
+Its longest path is 53 characters.
+
+Nothing that reads `data/` sees these files, which is why they are not beside
+the data files.
+
+### 1.6 Audio files
+
+On a Shimmer3R whose configuration byte 233 records audio, each data file gets
+audio files of the same number under `audio/`:
+- `.WAV`, in the raw-audio modes 2 and 3: a 16 kHz mono 16-bit PCM WAV whose
+  512-byte header pairs it with its data file and puts its first and last
+  samples on the Shimmer clock. Raw audio is about 115 MB an hour.
+- `.AFP`, in the fingerprint modes 1 and 2: the audio fingerprint's landmark
+  hashes, 5 s of audio every 4 s, each chunk on the Shimmer clock, behind a
+  512-byte header like the WAV's.
+
+They split when the data file does. See [SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md).
 
 ## 2. Data file structure
 
@@ -263,7 +322,7 @@ Appendix A and is not repeated here. What follows is the header's own layout.
 | 3-7 | `SDH_SENSORS0..4` | 5 | Sensor enable bitmaps |
 | 8-14 | `SDH_CONFIG_SETUP_BYTE0..6` | 7 | Setup bytes |
 | 15 | — | 1 | Unused (`0xFF`) |
-| 16-17 | `SDH_TRIAL_CONFIG0/1` | 2 | Trial config bit flags |
+| 16-17 | `SDH_TRIAL_CONFIG0/1` | 2 | Trial config bit flags: copies of configuration bytes 217 and 218 |
 | 18 | `SDH_BROADCAST_INTERVAL` | 1 | Sync broadcast interval, seconds |
 | 19 | `SDH_BT_COMMS_BAUD_RATE` | 1 | Stored, not applied |
 | 20-21 | `SDH_EST_EXP_LEN_MSB/LSB` | 2 | Estimated length, **big-endian** |
@@ -295,7 +354,9 @@ Appendix A and is not repeated here. What follows is the header's own layout.
 | 217-221 | `SDH_DERIVED_CHANNELS_3..7` | 5 | |
 | 222-223 | `SDH_TEMP_PRES_EXTRA_CALIB_BYTES` | 2 | BMP280 only |
 | 224 | `SDH_PRESSURE_SENSOR_ID` | 1 | Fitted pressure sensor and how it was identified — see §3.4. `0xFF` before S3R v1.01.018 / S3 v1.01.006 |
-| 225-250 | — | 26 | Unused (`0xFF`) |
+| 225 | `SDH_BUTTON_LOG_MODE` | 1 | Button, logging and TTL input settings: configuration byte 232 as the firmware acted on it (CONFIGURATION_INFOMEM §8.3). `0xFF` from firmware before the field, which reads as 0 by the same rule |
+| 226 | `SDH_AUDIO_MODE` | 1 | Shimmer3R: what the unit records from its microphone alongside this file, and in bit 4 whether its records carry the sound level. Configuration byte 233 as the firmware acted on it (CONFIGURATION_INFOMEM §8.5). `0xFF` on Shimmer3 and from firmware before the field, which reads as 0 (off) by the same rule |
+| 227-250 | — | 24 | Unused (`0xFF`) |
 | 251 | `SDH_INITIAL_TIMESTAMP_4` | 1 | **Most significant of the 5** |
 | 252-255 | `SDH_INITIAL_TIMESTAMP_0..3` | 4 | Lower 4 bytes, LSB order |
 | **256-276** | `SDH_ALT_ACCEL_CALIBRATION` | 21 | S3R only |
@@ -468,6 +529,13 @@ list the `INQUIRY_RESPONSE` reports, copied from `sensing.cc`.
 **This makes a Shimmer3R data file self-describing.** A parser can slice the
 sample records using the header alone.
 
+> **Before DEV-99, byte 314 could be one too large.** With InfoMem byte 4 bit 6
+> (`chEnMicrophone`) set, the count included the microphone, which had no bytes in
+> the records. The list from byte 315 is copied from the firmware's channel table
+> for that count, so it ended in one extra entry that was not a channel: whatever
+> byte followed the real IDs. Files from such a unit need that last entry dropped.
+> The firmware now clears the bit ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.4).
+
 > **Shimmer3 files are not self-describing.** Those offsets do not exist in the
 > 256-byte header, so channel order must be reconstructed from the sensor
 > enable bitmaps at offsets 3-7 plus the fixed per-bus ordering rules in
@@ -532,6 +600,12 @@ periods at a block boundary; it never shows a partial record.
 asks `SdWrBuf_canAccept()`; if the buffers would refuse it, the drain stops and
 leaves the packets in the sample ring, and `TASK_SDWRITE` restarts the drain
 once a buffer is released. The ring, not the SD buffers, absorbs a stall there.
+Until then the sampling interrupts do not queue the drain either
+(`ShimSdDataFile_isRefusingRecords`). `TASK_SAVEDATA` outranks `TASK_SDWRITE`,
+so queued on every sample it would be the task the main loop took on every
+pass, and the write that frees a buffer would never run. That happened on the
+bench once each pass outlasted a sample period, behind a card that had slowed,
+and the unit then missed its dock (DEV-99).
 
 When logging stops, the partially filled buffer is queued and every queued
 buffer is written before the file is closed. On Shimmer3R the packets still in
@@ -598,6 +672,11 @@ The initial timestamp in the header is therefore captured *before* the header
 is written but *after* the configuration snapshot — the header describes the
 configuration in force at file creation, which cannot change while logging.
 
+`fileInit` runs after the sample timer has started (`ShimSens_startSensing`),
+so the samples taken meanwhile wait in the packet ring. If the file takes longer
+to open than the ring can hold, the rest are lost, as one gap after the first
+sample. What makes it slow is in §7.1.
+
 ## 5. `sdlog.cfg`
 
 A plain-text file at the card root that lets a device be configured by editing
@@ -654,11 +733,14 @@ the read back unchanged.
 | Function | Direction | When |
 |---|---|---|
 | `ShimSdCfgFile_generate` | configuration bytes → file | When the configuration has changed and the file needs refreshing |
-| `ShimSdCfgFile_parse` | file → configuration bytes | On `ShimSdCfgFile_readSdConfiguration` |
+| `ShimSdCfgFile_parse` | file → configuration bytes | On `ShimSdCfgFile_readSdConfiguration`: at boot and at every undock, unless a configuration change is waiting to be written to the card (`flagWriteCfgToSd`), in which case the file is generated instead |
 
 `ShimSdCfgFile_generate` only runs when the device is **not docked**, a card is
 present, and the card is not marked bad — and only when
-`ShimConfig_areConfigBytesValid()` passes.
+`ShimConfig_areConfigBytesValid()` passes. Nor does it run during a logging
+session, while the event file holds the file object
+([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md) §4.5): it then returns 0, and its
+callers leave `flagWriteCfgToSd` set, so the write is done at the next sync.
 
 `ShimSdCfgFile_parse` starts by calling `ShimConfig_createBlankConfigBytes()`,
 so **the file is authoritative, not a patch**. Any setting absent from the file
@@ -694,6 +776,8 @@ Rates and ranges:
 `accel_alt_range`, `accel_alt_rate`, `accel_ln_range`, `gyro_range`,
 `gyro_samplingrate`, `gsr_range`, `exp_power`
 
+Shimmer3R only: `audio_mode` and `sound_level`. `audio_mode` is configuration byte 233's mode, 0-3, and `sound_level` its bit 4, 0 or 1 (CONFIGURATION_INFOMEM §8.5). A value outside its range makes the whole byte read as 0. A file without a key leaves its part 0, so a card written by older firmware turns recording and the sound level off at the next undock.
+
 Pressure precision — one key per part, so the applicable key depends on the
 fitted sensor:
 
@@ -702,11 +786,19 @@ fitted sensor:
 
 Trial and sync:
 
-`user_button_enable`, `rtc_error_enable`, `sd_error_enable`, `iammaster`,
-`sync`, `singletouch`, `low_battery_autostop`, `interval`,
-`bluetoothDisabled`, `max_exp_len`, `est_exp_len`, `node`, `center`,
-`myid`, `Nshimmer`, `shimmername`, `experimentid`, `configtime`,
+`user_button_enable`, `button_mode`, `log_triggers`, `ttl_input_enable`,
+`rtc_error_enable`, `sd_error_enable`, `iammaster`, `sync`, `singletouch`,
+`low_battery_autostop`, `interval`, `bluetoothDisabled`, `max_exp_len`,
+`est_exp_len`, `node`, `center`, `myid`, `Nshimmer`, `shimmername`,
+`experimentid`, `configtime`,
 `derived_channels`
+
+> **`button_mode`, `log_triggers` and `ttl_input_enable` are configuration
+> byte 232** (CONFIGURATION_INFOMEM §8.3): bits 0-2, 3-4 and 5, written as
+> numbers. `button_mode` takes 0-7 and `log_triggers` 0-3; a value outside
+> those ranges makes the whole byte read as 0, as does a file without the keys.
+> So a card written by older firmware puts the unit back to
+> `user_button_enable` deciding, at the next undock.
 
 ExG registers, twenty keys, named after the register:
 
@@ -751,6 +843,48 @@ While the device is docked, or USB is connected on Shimmer3R, the card may be
 presented to the host as mass storage instead of being owned by the firmware.
 Logging cannot start in that state, and the firmware tears the USB stack down
 before taking the card for logging.
+
+### 7.1 Rewriting a file, and FatFs's free-cluster hint
+
+`sdlog.cfg` (`ShimSdCfgFile_generate`) and the calibration file
+(`ShimCalib_ram2File`) are rewritten in place. Each is opened with
+`FA_OPEN_ALWAYS`, written from the start, then cut to length with
+`f_truncate()`. Neither is opened with `FA_CREATE_ALWAYS` (DEV-1429). A file
+that already exists must not be rewritten that way.
+
+**Why:** FatFs looks for a free cluster by reading the FAT upward from a hint.
+That hint is `last_clst` in RAM, and on FAT32 it is also saved in the FSINFO
+sector. Each card read covers one 512-byte FAT sector, which is 128 clusters.
+`FA_CREATE_ALWAYS` on an existing file frees the file's clusters and moves the
+hint back to them. Both FatFs releases do this (R0.08b and R0.12c, "Reuse the
+cluster hole" in `f_open`). These two files are among the first on a card, so
+the next cluster to be allocated is found only after a read through every
+cluster in use. That cluster is the next log's session directory, made after
+sampling has started (§4.3). Before the change, every log after a
+configuration write paid for this, because the configuration write rewrites
+`sdlog.cfg`.
+
+Measured on Shimmer3R, 512 Hz with every sensor on (DEV-1429, 2026-11-11). The
+FAT sectors read were worked out from each card's FAT, and the read cost about
+0.45 ms per sector:
+
+| Card (8 GB) | Clusters in use | FAT sectors read | File open after the first sample | Samples lost |
+| --- | --- | --- | --- | --- |
+| 4 KB clusters, 53% used | 1,032,000 | 8,067 | 4.02 s, against 0.42 s without the rewrite | about 1,074 |
+| 4 KB clusters, 69% used | 1,342,000 | 10,483 | 5.04 s (2026-11-08) | about 1,594 |
+| 32 KB clusters, 55% used | 133,000 | 1,038 | 0.84 s, against 0.35 s | none |
+
+The cost grows with the number of clusters in use, so a well-used card
+formatted with small clusters is the worst case. Shimmer3 reads the FAT over
+SPI and has a smaller packet ring, and the same rewrite has not been measured
+there.
+
+A host that writes to the card while it is mass storage can also leave a low
+hint, because it saves its own value in FSINFO. Windows set it to cluster 1908
+of a well-used card after appending to `sdlog.cfg`, and the next log paid the
+same read once (0.84 s on a 32 KB-cluster card). After creating and deleting a
+file on a card with no free clusters below its used region, Windows left the
+hint where it was. The firmware does not guard against this case.
 
 ## Still unverified / not found in code
 

@@ -65,11 +65,15 @@
  * platforms and seeded on neither, so it is never among the defaults. */
 #define TEST_SENSOR SC_SENSOR_HOST_ECG
 
-/* The sensor whose calibration the config bytes keep in lnAccelCalib. */
+/* The sensor whose calibration the config bytes keep in lnAccelCalib, and the
+ * range configBytesToCalibDump files it under once reset() has zeroed the
+ * config bytes (Shimmer3R's lnAccelRange is then 0). */
 #if defined(SHIMMER3)
 #define LN_ACCEL_SENSOR SC_SENSOR_ANALOG_ACCEL
+#define LN_ACCEL_RANGE  SC_SENSOR_RANGE_ANALOG_ACCEL
 #else
 #define LN_ACCEL_SENSOR SC_SENSOR_LSM6DSV_ACCEL
+#define LN_ACCEL_RANGE  0
 #endif
 
 /* The buffer SET_CALIB_DUMP chunks are staged in. The module keeps it as a
@@ -237,6 +241,12 @@ static struct
   /* Opens for writing, and f_write calls: ShimCalib_ram2File() at work. */
   uint32_t writeOpens;
   uint32_t writes;
+  /* The last write open's mode, and the file pointer at each f_truncate()
+   * (with how many came before the file was closed). */
+  BYTE writeMode;
+  uint32_t truncates;
+  uint32_t truncatesBeforeClose;
+  uint32_t truncatedAt;
   /* Bytes a read was asked to put past the end of the calibration RAM. */
   uint32_t pastRamEnd;
   /* Set when CARD_READ_BUDGET ran out: the read loop would not have ended. */
@@ -288,6 +298,7 @@ FRESULT f_open(FIL *fp, const TCHAR *path, BYTE mode)
   if (mode & FA_WRITE)
   {
     card.writeOpens++; /* ShimCalib_ram2File(), counted but not modelled */
+    card.writeMode = mode;
     return FR_OK;
   }
   if (!card.present)
@@ -362,6 +373,17 @@ FRESULT f_write(FIL *fp, const void *buff, UINT btw, UINT *bw)
   card.writes++;
   fp->fptr += btw;
   *bw = btw;
+  return FR_OK;
+}
+
+FRESULT f_truncate(FIL *fp)
+{
+  card.truncates++;
+  if (card.closes == 0)
+  {
+    card.truncatesBeforeClose++;
+  }
+  card.truncatedAt = (uint32_t) fp->fptr;
   return FR_OK;
 }
 
@@ -1138,6 +1160,627 @@ static void test_file2ram_stat_fails(void)
 }
 #endif
 
+/* What the dump holds for the low-noise accel. Returns 0 if found. */
+static uint8_t readLnAccel(sc_t *sc)
+{
+  sc->id = LN_ACCEL_SENSOR;
+  sc->range = LN_ACCEL_RANGE;
+  sc->data_len = IMU_LEN;
+  return ShimCalib_singleSensorRead(sc);
+}
+
+/*
+ * configBytesToCalibDump promotes a config-byte block into the dump only if
+ * the block is not all 0xFF, InfoMem's erased value. The scan ran from byte 21
+ * down to byte 1 of the 21-byte block: it read the first byte of the block
+ * after it, and never byte 0. lnAccelCalib is followed by gyroCalib, so:
+ *   - an erased block followed by a written one was promoted, and its 21 bytes
+ *     of 0xFF replaced the seed;
+ *   - a block written only in byte 0, followed by an erased one, was not.
+ */
+static void test_config_block_scan(void)
+{
+  gConfigBytes *config;
+  uint8_t seed[IMU_LEN];
+  sc_t sc;
+
+  testCase("test_config_block_scan");
+  reset();
+  config = ShimConfig_getStoredConfig();
+  expectU("gyroCalib starts where lnAccelCalib ends",
+      (unsigned) (config->gyroCalib.rawBytes - config->lnAccelCalib.rawBytes), IMU_LEN);
+  expectU("the seed has a low-noise accel record", readLnAccel(&sc), 0);
+  memcpy(seed, sc.data.raw, IMU_LEN);
+
+  memset(config->lnAccelCalib.rawBytes, 0xFF, IMU_LEN);
+  memset(config->gyroCalib.rawBytes, 0x00, IMU_LEN);
+  ShimCalib_configBytesToCalibDump(LN_ACCEL_SENSOR, 1);
+  expectU("erased block, written block after it: the record is still there",
+      readLnAccel(&sc), 0);
+  expectTrue("and still the seed, not 0xFF", memcmp(sc.data.raw, seed, IMU_LEN) == 0);
+
+  reset();
+  config = ShimConfig_getStoredConfig();
+  memset(config->lnAccelCalib.rawBytes, 0xFF, IMU_LEN);
+  config->lnAccelCalib.rawBytes[0] = 0x12;
+  memset(config->gyroCalib.rawBytes, 0xFF, IMU_LEN);
+  ShimCalib_configBytesToCalibDump(LN_ACCEL_SENSOR, 1);
+  expectU("block written only in byte 0: there is a record", readLnAccel(&sc), 0);
+  expectTrue("and it is the block",
+      memcmp(sc.data.raw, config->lnAccelCalib.rawBytes, IMU_LEN) == 0);
+}
+
+#if defined(SHIMMER3)
+/* Config bytes holding a recognisable alt accel and alt mag block. */
+static gConfigBytes *altBlocks(uint8_t altAccelRange)
+{
+  gConfigBytes *config = ShimConfig_getStoredConfig();
+  unsigned i;
+
+  config->altAccelRange = altAccelRange;
+  for (i = 0; i < IMU_LEN; i++)
+  {
+    config->altAccelCalib.rawBytes[i] = (uint8_t) (0x30 + i);
+    config->altMagCalib.rawBytes[i] = (uint8_t) (0x60 + i);
+  }
+  return config;
+}
+
+/* What GET_ALT_ACCEL/ALT_MAG_CALIBRATION answer: the dump's record under the
+ * range ShimBt_replySingleSensorCalibCmd asks for. Returns 0 if found. */
+static uint8_t readAlt(uint16_t id, uint8_t range, sc_t *sc)
+{
+  sc->id = id;
+  sc->range = range;
+  sc->data_len = IMU_LEN;
+  return ShimCalib_singleSensorRead(sc);
+}
+
+/*
+ * SET_ALT_ACCEL_CALIBRATION / SET_ALT_MAG_CALIBRATION, then the matching GET
+ * (DEV-996). The SET stores the block in the config bytes and hands the
+ * sensor id to configBytesToCalibDump. That had no case for either id on
+ * Shimmer3, so the dump never held them and the GET answered 21 zeros.
+ */
+static void test_alt_blocks_reach_the_dump(void)
+{
+  sc_t sc;
+
+  testCase("test_alt_blocks_reach_the_dump");
+  reset();
+  altBlocks(2);
+  ShimCalib_configBytesToCalibDump(SC_SENSOR_MPU9X50_ICM20948_ACCEL, 0);
+  ShimCalib_configBytesToCalibDump(SC_SENSOR_MPU9X50_ICM20948_MAG, 0);
+
+  expectU("the alt accel block is in the dump under the alt accel range",
+      readAlt(SC_SENSOR_MPU9X50_ICM20948_ACCEL, 2, &sc), 0);
+  expectTrue("as written", isRamp(sc.data.raw, IMU_LEN, 0x30));
+  expectU("the alt mag block is in the dump under range 0",
+      readAlt(SC_SENSOR_MPU9X50_ICM20948_MAG, 0, &sc), 0);
+  expectTrue("as written", isRamp(sc.data.raw, IMU_LEN, 0x60));
+}
+
+/*
+ * The same blocks already in the config bytes at boot, written before a
+ * reset: they reach the dump through initFromConfigBytesAll, so the GET still
+ * answers them after a reboot, with the zero timestamp every block promoted
+ * at boot carries.
+ */
+static void test_alt_blocks_at_boot(void)
+{
+  sc_t sc;
+
+  testCase("test_alt_blocks_at_boot");
+  reset();
+  altBlocks(1);
+  ShimCalib_initFromConfigBytesAll();
+
+  expectU("the alt accel block is in the dump",
+      readAlt(SC_SENSOR_MPU9X50_ICM20948_ACCEL, 1, &sc), 0);
+  expectTrue("as stored", isRamp(sc.data.raw, IMU_LEN, 0x30));
+  expectTrue("with a zero timestamp", allBytes(sc.ts, SC_TIMESTAMP_LENGTH, 0));
+  expectU("and so is the alt mag block",
+      readAlt(SC_SENSOR_MPU9X50_ICM20948_MAG, 0, &sc), 0);
+  expectTrue("as stored", isRamp(sc.data.raw, IMU_LEN, 0x60));
+}
+
+/* An LSM303 mag block as the seed stores it (CALIBRATION §3): bias 0, the
+ * three sensitivities as big-endian int16, then the int8 alignment matrix. */
+static void magSeedBlock(uint8_t *out, uint16_t sxy, uint16_t sz, const int8_t align[9])
+{
+  memset(out, 0, 6);
+  out[6] = sxy >> 8;
+  out[7] = sxy & 0xFF;
+  out[8] = sxy >> 8;
+  out[9] = sxy & 0xFF;
+  out[10] = sz >> 8;
+  out[11] = sz & 0xFF;
+  memcpy(out + 12, align, 9);
+}
+
+/* The LSM303DLHC's gains, codes 1 to 7 (±1.3 to ±8.1 gauss): X/Y, then Z. */
+static const uint16_t dlhcMagSens[7][2] = {
+  { 1100, 980 },
+  { 855, 760 },
+  { 670, 600 },
+  { 450, 400 },
+  { 400, 355 },
+  { 330, 295 },
+  { 230, 205 },
+};
+static const int8_t dlhcMagAlign[9] = { -100, 0, 0, 0, 100, 0, 0, 0, -100 };
+/* The LSM303AH's X and Y are the LSM303DLHC's swapped and negated: a mirror
+ * image, determinant -1, measured on the bench. */
+static const int8_t ahMagAlign[9] = { 0, -100, 0, 100, 0, 0, 0, 0, -100 };
+
+/*
+ * The default LSM303 mag records: one for every range, 0 to 7 (DEV-985,
+ * DEV-995). The seed loop ran 0 to 6 against gain codes 1 to 7, so range 7
+ * (±8.1 gauss) had no record and range 0 fell through to ±8.1 gauss's
+ * 230/230/205. Range 0 is the LSM303AH, the range the configuration forces on
+ * every board without an LSM303DLHC: 667 LSB/gauss on every axis
+ * (1.5 mgauss/LSB) and its own alignment.
+ */
+static void test_lsm303_mag_seed_every_range(void)
+{
+  uint8_t want[IMU_LEN];
+  char what[96];
+  uint8_t range;
+  sc_t sc;
+
+  testCase("test_lsm303_mag_seed_every_range");
+  reset();
+  for (range = 0; range <= SC_SENSOR_RANGE_LSM303_MAG_8_1G; range++)
+  {
+    if (range == SC_SENSOR_RANGE_LSM303AH_MAG_49G)
+    {
+      magSeedBlock(want, 667, 667, ahMagAlign);
+    }
+    else
+    {
+      magSeedBlock(want, dlhcMagSens[range - 1][0], dlhcMagSens[range - 1][1], dlhcMagAlign);
+    }
+    sc.id = SC_SENSOR_LSM303_MAG;
+    sc.range = range;
+    sc.data_len = IMU_LEN;
+    snprintf(what, sizeof(what), "range %u has a default record", (unsigned) range);
+    expectU(what, ShimCalib_singleSensorRead(&sc), 0);
+    snprintf(what, sizeof(what), "range %u holds its part's datasheet seed", (unsigned) range);
+    expectTrue(what, memcmp(sc.data.raw, want, IMU_LEN) == 0);
+    snprintf(what, sizeof(what),
+        "range %u carries the default's zero timestamp", (unsigned) range);
+    expectTrue(what, allBytes(sc.ts, SC_TIMESTAMP_LENGTH, 0));
+  }
+}
+
+/*
+ * A new LSM303AH board, its InfoMem still erased (all 0xFF), at boot: the
+ * configuration forces range 0, no block is promoted, so what
+ * GET_MAG_CALIBRATION answers from the dump is range 0's seed.
+ */
+static void test_lsm303ah_mag_seed_at_boot(void)
+{
+  gConfigBytes *config;
+  uint8_t want[IMU_LEN];
+  sc_t sc;
+
+  testCase("test_lsm303ah_mag_seed_at_boot");
+  reset();
+  config = ShimConfig_getStoredConfig();
+  memset(config, 0xFF, sizeof(*config));
+  config->magRange = SC_SENSOR_RANGE_LSM303AH_MAG_49G;
+  ShimCalib_initFromConfigBytesAll();
+
+  magSeedBlock(want, 667, 667, ahMagAlign);
+  sc.id = SC_SENSOR_LSM303_MAG;
+  sc.range = config->magRange;
+  sc.data_len = IMU_LEN;
+  expectU("the range in use has a record", ShimCalib_singleSensorRead(&sc), 0);
+  expectTrue("the LSM303AH seed: 667 LSB/gauss, the LSM303AH's alignment",
+      memcmp(sc.data.raw, want, IMU_LEN) == 0);
+}
+
+/* Store one LSM303 mag record as given. */
+static void putMag(uint8_t range, const uint8_t *block, uint8_t tsByte)
+{
+  sc_t sc;
+
+  sc.id = SC_SENSOR_LSM303_MAG;
+  sc.range = range;
+  sc.data_len = IMU_LEN;
+  memset(sc.ts, tsByte, sizeof(sc.ts));
+  memcpy(sc.data.raw, block, IMU_LEN);
+  ShimCalib_singleSensorWrite(&sc);
+}
+
+static int magIs(uint8_t range, const uint8_t *block)
+{
+  sc_t sc;
+
+  sc.id = SC_SENSOR_LSM303_MAG;
+  sc.range = range;
+  sc.data_len = IMU_LEN;
+  return (ShimCalib_singleSensorRead(&sc) == 0)
+      && (memcmp(sc.data.raw, block, IMU_LEN) == 0);
+}
+
+/*
+ * A dump older firmware built, as it comes back from the SD card's
+ * calibration file or InfoMem (DEV-985, DEV-995): mag records for ranges 0 to
+ * 6, range 0 holding range 7's values. The repair gives range 0 the LSM303AH
+ * seed and range 7 its own, leaves 1 to 6 alone, and the second pass finds
+ * nothing to do.
+ */
+static void test_lsm303_mag_repair_old_dump(void)
+{
+  uint8_t old0[IMU_LEN], want[IMU_LEN];
+  uint8_t range;
+
+  testCase("test_lsm303_mag_repair_old_dump");
+  reset();
+  ramEmpty();
+  magSeedBlock(old0, 230, 205, dlhcMagAlign);
+  putMag(0, old0, 0);
+  for (range = 1; range <= 6; range++)
+  {
+    magSeedBlock(want, dlhcMagSens[range - 1][0], dlhcMagSens[range - 1][1], dlhcMagAlign);
+    putMag(range, want, 0);
+  }
+
+  expectU("the repair reports a change", ShimCalib_repairLsm303MagDefaults(), 1);
+  magSeedBlock(want, 667, 667, ahMagAlign);
+  expectTrue("range 0 now holds the LSM303AH seed", magIs(0, want));
+  magSeedBlock(want, 230, 205, dlhcMagAlign);
+  expectTrue("range 7 now has its seed", magIs(7, want));
+  magSeedBlock(want, 1100, 980, dlhcMagAlign);
+  expectTrue("range 1 is as it was", magIs(1, want));
+  expectU("a second pass changes nothing", ShimCalib_repairLsm303MagDefaults(), 0);
+}
+
+/*
+ * What the repair must leave alone: any range-0 record whose 21 bytes are not
+ * the old default, with a timestamp or without. A calibration one byte away
+ * from the old default, a host's block (such as Consensys' own 667 default),
+ * a unit's zeros.
+ */
+static void test_lsm303_mag_repair_keeps_written_blocks(void)
+{
+  uint8_t block[IMU_LEN];
+
+  testCase("test_lsm303_mag_repair_keeps_written_blocks");
+  reset();
+  magSeedBlock(block, 230, 205, dlhcMagAlign);
+  block[1] = 1; /* an X offset of 1: no longer the old default */
+  putMag(0, block, 0x11);
+  expectU("one byte off the old values, under a timestamp: no change",
+      ShimCalib_repairLsm303MagDefaults(), 0);
+  expectTrue("range 0 kept", magIs(0, block));
+
+  reset();
+  magSeedBlock(block, 667, 667, dlhcMagAlign);
+  putMag(0, block, 0);
+  expectU("other values, no timestamp: no change", ShimCalib_repairLsm303MagDefaults(), 0);
+  expectTrue("range 0 kept", magIs(0, block));
+
+  reset();
+  memset(block, 0, IMU_LEN);
+  putMag(0, block, 0);
+  expectU("all zeros: no change", ShimCalib_repairLsm303MagDefaults(), 0);
+  expectTrue("range 0 kept", magIs(0, block));
+}
+
+/*
+ * The repair reports a change only when there was one. A dump with no room
+ * left for range 7's record used to report one all the same, and the callers
+ * rewrite the card's calibration file on a change: at every boot and undock,
+ * for nothing. Replacing the old range-0 record needs no room, and counts.
+ */
+static void test_lsm303_mag_repair_full_dump(void)
+{
+  /* Filler up to here, then ranges 0 to 6: 780 + 7 x 33 = 1011 bytes, 13 short
+   * of the RAM, so range 7's 33 do not fit. */
+  const uint16_t fillerEnd = 780;
+  uint8_t old0[IMU_LEN], want[IMU_LEN];
+  uint16_t lenBefore;
+  uint8_t range;
+
+  testCase("test_lsm303_mag_repair_full_dump");
+  reset();
+  ramEmpty();
+  fillTo(ram(), fillerEnd);
+  setLenField(ram(), fillerEnd - 2);
+  for (range = 0; range <= 6; range++)
+  {
+    if (range == SC_SENSOR_RANGE_LSM303AH_MAG_49G)
+    {
+      magSeedBlock(want, 667, 667, ahMagAlign);
+    }
+    else
+    {
+      magSeedBlock(want, dlhcMagSens[range - 1][0], dlhcMagSens[range - 1][1], dlhcMagAlign);
+    }
+    putMag(range, want, 0);
+  }
+  lenBefore = ramLenField();
+  expectU("ranges 0 to 6 take the dump to 1011 bytes", lenBefore + 2U,
+      fillerEnd + 7U * (HDR + IMU_LEN));
+  expectU("no room for range 7: no change reported",
+      ShimCalib_repairLsm303MagDefaults(), 0);
+  expectU("and the dump keeps its length", ramLenField(), lenBefore);
+
+  magSeedBlock(old0, 230, 205, dlhcMagAlign);
+  putMag(0, old0, 0);
+  expectU("the old range-0 record in a full dump is still replaced",
+      ShimCalib_repairLsm303MagDefaults(), 1);
+  magSeedBlock(want, 667, 667, ahMagAlign);
+  expectTrue("with the LSM303AH seed", magIs(0, want));
+}
+
+/* One LSM303 mag record in a dump image at `at`. Returns where the next goes. */
+static uint16_t
+imageMag(uint8_t *image, uint16_t at, uint8_t range, const uint8_t *block, uint8_t tsByte)
+{
+  putRecord(image, at, SC_SENSOR_LSM303_MAG, range, IMU_LEN, 0);
+  memset(image + at + SC_OFFSET_SENSOR_TIMESTAMP, tsByte, SC_TIMESTAMP_LENGTH);
+  memcpy(image + at + HDR, block, IMU_LEN);
+  return (uint16_t) (at + HDR + IMU_LEN);
+}
+
+/*
+ * The old range-0 default under a timestamp. The timestamp does not make it
+ * someone's calibration: up to v1.01.009, as now, SET_INFOMEM and
+ * SET_MAG_CALIBRATION stamp the clock on the record they copy from InfoMem,
+ * whatever it holds. So a unit configured over Bluetooth has the old default
+ * under a real timestamp in its dump and in its card's calibration file, and
+ * the file is read back at every undock and undocked boot. The repair used to
+ * skip it there, and the old values went back into InfoMem.
+ */
+static void test_lsm303_mag_repair_timestamped_old_default(void)
+{
+  uint8_t old0[IMU_LEN], want[IMU_LEN];
+  uint8_t range;
+  uint16_t at;
+  sc_t sc;
+
+  testCase("test_lsm303_mag_repair_timestamped_old_default");
+  reset();
+  magSeedBlock(old0, 230, 205, dlhcMagAlign);
+  putMag(0, old0, 0x11);
+  expectU("in the dump: the repair reports a change",
+      ShimCalib_repairLsm303MagDefaults(), 1);
+  magSeedBlock(want, 667, 667, ahMagAlign);
+  expectTrue("range 0 holds the LSM303AH seed", magIs(0, want));
+  sc.id = SC_SENSOR_LSM303_MAG;
+  sc.range = SC_SENSOR_RANGE_LSM303AH_MAG_49G;
+  sc.data_len = IMU_LEN;
+  ShimCalib_singleSensorRead(&sc);
+  expectTrue("under a default's zero timestamp", allBytes(sc.ts, SC_TIMESTAMP_LENGTH, 0));
+  expectU("a second pass changes nothing", ShimCalib_repairLsm303MagDefaults(), 0);
+
+  /* The card's file as such a unit left it: every range older firmware
+   * seeded, 0 to 6, range 0 stamped. Read back as at an undock. */
+  reset();
+  ShimConfig_getStoredConfig()->magRange = SC_SENSOR_RANGE_LSM303AH_MAG_49G;
+  memset(card.file, 0, sizeof(card.file));
+  at = imageMag(card.file, SC_OFFSET_FIRST_SENSOR, 0, old0, 0x11);
+  for (range = 1; range <= 6; range++)
+  {
+    magSeedBlock(want, dlhcMagSens[range - 1][0], dlhcMagSens[range - 1][1], dlhcMagAlign);
+    at = imageMag(card.file, at, range, want, 0);
+  }
+  setLenField(card.file, at - 2);
+  card.fileLen = at;
+  card.present = 1;
+  expectU("the card's file is read", ShimCalib_file2Ram(), 0);
+  expectTrue("and brings the old range-0 record back", magIs(0, old0));
+  expectU(
+      "from the card: the repair reports a change, so the file is rewritten",
+      ShimCalib_repairLsm303MagDefaults(), 1);
+  magSeedBlock(want, 667, 667, ahMagAlign);
+  expectTrue("range 0 holds the LSM303AH seed", magIs(0, want));
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(1);
+  expectTrue("and so does InfoMem's mag block",
+      memcmp(ShimConfig_getStoredConfig()->magCalib.rawBytes, want, IMU_LEN) == 0);
+}
+
+/*
+ * SET_CALIB_DUMP of a dump saved from firmware up to v1.01.009 (DEV-985,
+ * DEV-995). Its range-0 mag record is that firmware's default, and it used to
+ * go straight on into InfoMem, the SD header and the card, in force until the
+ * next boot or undock. The commit replaces it first, with a timestamp or
+ * without (the firmware that built the dump may have stamped it). A range the
+ * dump leaves out stays out.
+ */
+static void test_lsm303_mag_dump_write_replaces_old_range0(void)
+{
+  static uint8_t image[RAM_MAX];
+  uint8_t old0[IMU_LEN], want[IMU_LEN];
+  gConfigBytes *config;
+  uint16_t at;
+  sc_t sc;
+
+  testCase("test_lsm303_mag_dump_write_replaces_old_range0");
+  reset();
+  config = ShimConfig_getStoredConfig();
+  config->magRange = SC_SENSOR_RANGE_LSM303AH_MAG_49G;
+  magSeedBlock(old0, 230, 205, dlhcMagAlign);
+  memset(image, 0, sizeof(image));
+  at = imageMag(image, SC_OFFSET_FIRST_SENSOR, 0, old0, 0);
+  magSeedBlock(want, 1100, 980, dlhcMagAlign);
+  at = imageMag(image, at, 1, want, 0);
+  setLenField(image, at - 2);
+  expectU("the old dump commits in one chunk",
+      ShimCalib_ramWrite(image, (uint8_t) at, 0), 1);
+
+  magSeedBlock(want, 667, 667, ahMagAlign);
+  expectTrue("range 0 holds the LSM303AH seed", magIs(0, want));
+  expectTrue("and so does InfoMem's mag block",
+      memcmp(config->magCalib.rawBytes, want, IMU_LEN) == 0);
+  expectTrue("and the SD header's",
+      memcmp(ShimSdHead_getSdHeadText() + SDH_MAG_CALIBRATION, want, IMU_LEN) == 0);
+  sc.id = SC_SENSOR_LSM303_MAG;
+  sc.range = SC_SENSOR_RANGE_LSM303_MAG_8_1G;
+  sc.data_len = IMU_LEN;
+  expectU("range 7, which the dump left out, is still out",
+      ShimCalib_singleSensorRead(&sc), 1);
+  expectU("and the length field is the host's", ramLenField(), at - 2U);
+
+  reset();
+  config = ShimConfig_getStoredConfig();
+  config->magRange = SC_SENSOR_RANGE_LSM303AH_MAG_49G;
+  memset(image, 0, sizeof(image));
+  at = imageMag(image, SC_OFFSET_FIRST_SENSOR, 0, old0, 0x11);
+  setLenField(image, at - 2);
+  expectU("a timestamped copy commits", ShimCalib_ramWrite(image, (uint8_t) at, 0), 1);
+  expectTrue("and is replaced too", magIs(0, want));
+  expectTrue("in InfoMem's mag block as well",
+      memcmp(config->magCalib.rawBytes, want, IMU_LEN) == 0);
+}
+
+/* The wide-range accel's default sensitivity per range code. The code goes
+ * into the part's own full-scale field as it is, so the LSM303AH's run ±2,
+ * 16, 4, 8 g and the LSM303DLHC's ±2, 4, 8, 16 g. */
+static const uint16_t ahAccelSens[4] = { 1671, 209, 836, 418 };
+static const uint16_t dlhcAccelSens[4] = { 1631, 815, 408, 135 };
+
+/* The LSM303 accel block the seed stores for one range on one part. */
+static void accelSeedBlock(uint8_t *out, uint8_t isLsm303ah, uint8_t range)
+{
+  if (isLsm303ah)
+  {
+    magSeedBlock(out, ahAccelSens[range], ahAccelSens[range], ahMagAlign);
+  }
+  else
+  {
+    magSeedBlock(out, dlhcAccelSens[range], dlhcAccelSens[range], dlhcMagAlign);
+  }
+}
+
+static int accelIs(uint8_t range, const uint8_t *block)
+{
+  sc_t sc;
+
+  sc.id = SC_SENSOR_LSM303_ACCEL;
+  sc.range = range;
+  sc.data_len = IMU_LEN;
+  return (ShimCalib_singleSensorRead(&sc) == 0)
+      && (memcmp(sc.data.raw, block, IMU_LEN) == 0);
+}
+
+/* Power-on with the given wide-range accel detected, as detectI2cSlaves()
+ * leaves it before the configuration and calibration load. */
+static void resetWithWrAccel(uint8_t wrAccelInUse)
+{
+  ShimBrd_setWrAccelAndMagInUse(wrAccelInUse);
+  reset();
+}
+
+/*
+ * The default wide-range accel records are the fitted part's. Up to v1.01.009
+ * every board got the LSM303DLHC's, so on an LSM303AH board range 0 was 2.4%
+ * out, ranges 1 to 3 (±16, 4, 8 g there) 2 to 4 times out, and X and Y were
+ * swapped. A board without an LSM303DLHC gets the LSM303AH's: the
+ * ICM-20948 that stands in for one is run at the same full scale per code.
+ */
+static void test_lsm303_accel_seed_per_part(void)
+{
+  static const struct
+  {
+    uint8_t wrAccelInUse;
+    uint8_t isLsm303ah;
+    const char *name;
+  } parts[] = {
+    { WR_ACCEL_AND_MAG_LSM303DLHC_IN_USE, 0, "LSM303DLHC" },
+    { WR_ACCEL_AND_MAG_LSM303AHTR_IN_USE, 1, "LSM303AH" },
+    { WR_ACCEL_AND_MAG_ICM20948_IN_USE, 1, "ICM-20948 for the LSM303AH" },
+  };
+
+  uint8_t want[IMU_LEN];
+  char what[96];
+  unsigned p;
+  uint8_t range;
+  sc_t sc;
+
+  testCase("test_lsm303_accel_seed_per_part");
+  for (p = 0; p < sizeof(parts) / sizeof(parts[0]); p++)
+  {
+    resetWithWrAccel(parts[p].wrAccelInUse);
+    for (range = 0; range < SC_SENSOR_RANGE_MAX_LSM303_ACCEL; range++)
+    {
+      accelSeedBlock(want, parts[p].isLsm303ah, range);
+      snprintf(what, sizeof(what), "%s: range %u holds the part's seed",
+          parts[p].name, (unsigned) range);
+      expectTrue(what, accelIs(range, want));
+      sc.id = SC_SENSOR_LSM303_ACCEL;
+      sc.range = range;
+      sc.data_len = IMU_LEN;
+      ShimCalib_singleSensorRead(&sc);
+      snprintf(what, sizeof(what), "%s: range %u has the default's zero timestamp",
+          parts[p].name, (unsigned) range);
+      expectTrue(what, allBytes(sc.ts, SC_TIMESTAMP_LENGTH, 0));
+    }
+  }
+  ShimBrd_setWrAccelAndMagInUse(WR_ACCEL_AND_MAG_NONE_IN_USE);
+}
+
+/*
+ * A new LSM303AH board, its InfoMem still erased, at boot, set to ±16 g
+ * (code 1): no block is promoted, so the seed is what reaches the config bytes
+ * and the SD header, and so what GET_WR_ACCEL_CALIBRATION answers.
+ */
+static void test_lsm303ah_accel_seed_at_boot(void)
+{
+  gConfigBytes *config;
+  uint8_t want[IMU_LEN];
+
+  testCase("test_lsm303ah_accel_seed_at_boot");
+  resetWithWrAccel(WR_ACCEL_AND_MAG_LSM303AHTR_IN_USE);
+  config = ShimConfig_getStoredConfig();
+  memset(config, 0xFF, sizeof(*config));
+  config->wrAccelRange = SC_SENSOR_RANGE_LSM303AH_ACCEL_16G;
+  ShimCalib_initFromConfigBytesAll();
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderSingleSensor(SC_SENSOR_LSM303_ACCEL, 0);
+
+  accelSeedBlock(want, 1, SC_SENSOR_RANGE_LSM303AH_ACCEL_16G);
+  expectTrue(
+      "the config bytes hold the LSM303AH's ±16 g seed: 209, its own alignment",
+      memcmp(config->wrAccelCalib.rawBytes, want, IMU_LEN) == 0);
+  expectTrue("and so does the SD header",
+      memcmp(ShimSdHead_getSdHeadText() + SDH_WR_ACCEL_CALIBRATION, want, IMU_LEN) == 0);
+  ShimBrd_setWrAccelAndMagInUse(WR_ACCEL_AND_MAG_NONE_IN_USE);
+}
+#endif
+
+/*
+ * ram2File, how the file is opened. It is rewritten in place - FA_OPEN_ALWAYS,
+ * the dump written over it, then cut to the dump's length - and never opened
+ * FA_CREATE_ALWAYS. FatFs truncates a file opened that way and moves its
+ * next-free-cluster hint back to the file's first cluster, one of the first on
+ * the card. The next log's session folder, made after sampling has started,
+ * then waits on a read of the FAT through every cluster in use: seconds on a
+ * well-used card, at the first log start after every configuration change
+ * (DEV-1429). sdlog.cfg is written the same way (ShimSdCfgFile_generate()).
+ */
+static void test_ram2file_rewrites_in_place(void)
+{
+  const uint16_t len = 300;
+
+  testCase("test_ram2file_rewrites_in_place");
+  reset();
+  setLenField(ram(), len);
+
+  ShimCalib_ram2File();
+  expectU("the file is opened for writing once", card.writeOpens, 1);
+  expectStr("the file named for the MAC", card.path, "/Calibration/calib_5A1C");
+  expectU("in place: FA_OPEN_ALWAYS, not FA_CREATE_ALWAYS",
+      card.writeMode & (FA_OPEN_ALWAYS | FA_CREATE_ALWAYS | FA_CREATE_NEW), FA_OPEN_ALWAYS);
+  expectTrue("the dump is written", card.writes > 0);
+  expectU("then cut once", card.truncates, 1);
+  expectU("before the file is closed", card.truncatesBeforeClose, 1);
+  expectU("at the dump's end, length field included", card.truncatedAt, len + 2U);
+  expectU("and the file is closed", card.closes, 1);
+}
+
 #if defined(SHIMMER3R)
 /*
  * dump to config bytes and SD header, a sensor with no slot. On Shimmer3R the
@@ -1192,8 +1835,23 @@ int main(void)
 #if defined(SHIMMER3R)
   test_file2ram_stat_fails();
 #endif
+  test_config_block_scan();
+  test_ram2file_rewrites_in_place();
 #if defined(SHIMMER3R)
   test_dump_to_config_unknown_sensor();
+#endif
+#if defined(SHIMMER3)
+  test_alt_blocks_reach_the_dump();
+  test_alt_blocks_at_boot();
+  test_lsm303_mag_seed_every_range();
+  test_lsm303ah_mag_seed_at_boot();
+  test_lsm303_mag_repair_old_dump();
+  test_lsm303_mag_repair_keeps_written_blocks();
+  test_lsm303_mag_repair_full_dump();
+  test_lsm303_mag_repair_timestamped_old_default();
+  test_lsm303_mag_dump_write_replaces_old_range0();
+  test_lsm303_accel_seed_per_part();
+  test_lsm303ah_accel_seed_at_boot();
 #endif
 
   return hostTestReport("shimmer_calibration (" PLATFORM_NAME ")");

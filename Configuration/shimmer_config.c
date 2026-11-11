@@ -809,6 +809,7 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
 {
   uint8_t settingCorrected = 0;
   uint8_t i = 0;
+  uint8_t buttonLogMode, userButtonEnable, audioMode;
 
   if (storedConfig.chEnGsr
 #if defined(SHIMMER3)
@@ -900,7 +901,47 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
   }
 #endif
 
+  /* Byte 232 keeps only what this firmware acts on, so a host reading it back
+   * sees what the unit will do (docs/SHIMMER3_CONFIGURATION_INFOMEM.md 8.3) */
+  buttonLogMode = ShimBtnLogMode_correct(storedConfig.buttonLogMode);
+#if defined(SHIMMER3R)
+  /* SR48-6-0's button is wired to BOOT0, whose interrupt is used for dock
+   * detection, so there are no button edges to record */
+  if (ShimBrd_isBoardSr48_6_0())
+  {
+    buttonLogMode = ShimBtnLogMode_withoutPressRecording(buttonLogMode);
+  }
+#endif
+  if (!ShimBrd_isTtlInputSupported())
+  {
+    buttonLogMode = ShimBtnLogMode_withTtlInput(buttonLogMode, 0);
+  }
+  if (buttonLogMode != storedConfig.buttonLogMode)
+  {
+    storedConfig.buttonLogMode = buttonLogMode;
+    settingCorrected = 1;
+  }
+
+  /* Byte 233 likewise keeps only an audio mode this unit records
+   * (docs/SHIMMER3_CONFIGURATION_INFOMEM.md 8.5) */
+  audioMode = ShimBrd_isMicrophoneSupported() ?
+      ShimAudioMode_correct(storedConfig.audioMode) :
+      0;
+  if (audioMode != storedConfig.audioMode)
+  {
+    storedConfig.audioMode = audioMode;
+    settingCorrected = 1;
+  }
+
 #if IS_SUPPORTED_SINGLE_TOUCH
+  /* The sync centre's press starts every node, so single touch needs a press
+   * that can start logging */
+  if (storedConfig.singleTouchStart && !ShimBtnLogMode_allowsSingleTouch(buttonLogMode))
+  {
+    storedConfig.singleTouchStart = 0;
+    settingCorrected = 1;
+  }
+
   //the button always works for singletouch mode
   //sync always works for singletouch mode
   if (storedConfig.singleTouchStart
@@ -913,6 +954,18 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
 #else
   storedConfig.singleTouchStart = 0;
 #endif //IS_SUPPORTED_SINGLE_TOUCH
+
+  /* Hosts and firmware that know only byte 217 go by userButtonEnable, and a
+   * full configuration write from such a host keeps it while writing 0 to byte
+   * 232. Hold it at the mode's nearest equivalent, so that falling back to it
+   * never adds an undock start */
+  userButtonEnable = ShimBtnLogMode_nearestUserButtonEnable(
+      buttonLogMode, storedConfig.userButtonEnable);
+  if (userButtonEnable != storedConfig.userButtonEnable)
+  {
+    storedConfig.userButtonEnable = userButtonEnable;
+    settingCorrected = 1;
+  }
 
   if (ShimBrd_areADS1292RClockLinesTied() && !(storedConfig.exgADS1292rRegsCh1.config2 & 0x08))
   {
@@ -1063,6 +1116,17 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
   }
 #endif //SHIMMER3R
 
+#if defined(SHIMMER3R)
+  /* Byte 4 bit 6 was chEnMicrophone. It sent no data but added a channel to the count
+   * in the inquiry response and the SD header, so a host sizing packets from that count
+   * misread every packet. Cleared, as on Shimmer3 where the bit is unused (§10.4). */
+  if (storedConfig.unusedIdx4Bit6)
+  {
+    storedConfig.unusedIdx4Bit6 = 0;
+    settingCorrected = 1;
+  }
+#endif
+
   uint8_t *macIdBytesPtr = ShimBt_macIdBytesPtrGet();
   for (i = 0; i < 6; i++)
   {
@@ -1073,6 +1137,11 @@ uint8_t ShimConfig_checkAndCorrectConfig(void)
       break;
     }
   }
+
+  /* Every configuration write comes through here. Byte 232 may have turned
+   * the TTL input on or off while a host takes the event stream, so the event
+   * channel re-arms it to match. */
+  ShimEvt_onConfigChanged();
 
   return settingCorrected;
 }
@@ -1166,12 +1235,60 @@ void ShimConfig_checkBtModeFromConfig(void)
   }
 }
 
-#if defined(SHIMMER3R)
-uint8_t ShimConfig_isMicrophoneEnabled(void)
+uint8_t ShimConfig_doesPressToggleLogging(void)
 {
-  return storedConfig.chEnMicrophone;
+  return ShimBtnLogMode_doesPressToggleLogging(
+      storedConfig.buttonLogMode, storedConfig.userButtonEnable);
 }
+
+uint8_t ShimConfig_doesUndockStartLogging(void)
+{
+  return ShimBtnLogMode_doesUndockStartLogging(
+      storedConfig.buttonLogMode, storedConfig.userButtonEnable,
+#if IS_SUPPORTED_SINGLE_TOUCH
+      storedConfig.singleTouchStart
+#else
+      0
 #endif
+  );
+}
+
+uint8_t ShimConfig_isLoggingDisabled(void)
+{
+  return ShimBtnLogMode_isLoggingDisabled(storedConfig.buttonLogMode);
+}
+
+uint8_t ShimConfig_isButtonDisabled(void)
+{
+  return ShimBtnLogMode_isButtonDisabled(storedConfig.buttonLogMode);
+}
+
+uint8_t ShimConfig_isDoublePress(void)
+{
+  return ShimBtnLogMode_isDoublePress(storedConfig.buttonLogMode);
+}
+
+uint8_t ShimConfig_doesButtonRecordPresses(void)
+{
+  return ShimBtnLogMode_recordsPresses(storedConfig.buttonLogMode);
+}
+
+uint8_t ShimConfig_isTtlInputEnabled(void)
+{
+  return ShimBtnLogMode_isTtlInputEnabled(storedConfig.buttonLogMode);
+}
+
+uint8_t ShimConfig_audioMode(void)
+{
+  return ShimBrd_isMicrophoneSupported() ? ShimAudioMode_mode(storedConfig.audioMode) :
+                                           AUDIO_MODE_OFF;
+}
+
+uint8_t ShimConfig_isSoundLevelEnabled(void)
+{
+  return ShimBrd_isMicrophoneSupported()
+      && ShimAudioMode_soundLevel(storedConfig.audioMode);
+}
 
 uint8_t ShimConfig_isGSREnabled(void)
 {
@@ -1196,6 +1313,10 @@ void ShimConfig_loadSensorConfigAndCalib(void)
 
   ShimCalib_init();
   ShimCalib_initFromConfigBytesAll();
+#if defined(SHIMMER3)
+  //InfoMem may hold the LSM303 mag default older firmware gave range 0 (DEV-995)
+  ShimCalib_repairLsm303MagDefaults();
+#endif
 
   //Read storedConfig from SD cfg file or update it from RAM if RAM is newer
   if (!shimmerStatus.docked && LogAndStream_checkSdInSlot())
@@ -1207,8 +1328,10 @@ void ShimConfig_loadSensorConfigAndCalib(void)
     }
     if (ShimConfig_getFlagWriteCfgToSd())
     { //info > sdcard
-      ShimSdCfgFile_generate();
-      ShimConfig_setFlagWriteCfgToSd(0, 1);
+      if (ShimSdCfgFile_generate())
+      {
+        ShimConfig_setFlagWriteCfgToSd(0, 1);
+      }
       if (!ShimSdDataFile_isFileStatusOk())
       {
         shimmerStatus.sdlogReady = 0;
@@ -1227,6 +1350,13 @@ void ShimConfig_loadSensorConfigAndCalib(void)
       //fail, i.e. no such file. use current DumpRam to generate a file
       ShimCalib_ram2File();
     }
+#if defined(SHIMMER3)
+    else if (ShimCalib_repairLsm303MagDefaults())
+    {
+      //the file held older firmware's LSM303 mag defaults (DEV-985, DEV-995)
+      ShimCalib_ram2File();
+    }
+#endif
   }
 
   //TODO should this only be called if calib dump file is available?
@@ -1252,8 +1382,13 @@ void ShimConfig_createBlankConfigBytes(void)
   /* Copy MAC ID directly from BT module */
   memcpy(&storedConfig.macAddr[0], ShimBt_macIdBytesPtrGet(), 6);
 
+  /* 0, not 0xFF: the sdlog.cfg parse starts from here and sets its fields
+   * one key at a time */
+  storedConfig.buttonLogMode = 0;
+  storedConfig.audioMode = 0;
+
   /* Reset unused bytes */
-  memset(&storedConfig.rawBytes[NV_BT_SET_PIN + 1], 0xFF, 24);
+  memset(&storedConfig.rawBytes[NV_AUDIO_MODE + 1], 0xFF, 22);
 
   /* Reset node addresses */
   memset(&storedConfig.rawBytes[NV_CENTER], 0xFF, 128);

@@ -29,6 +29,8 @@ The documents a host application needs to talk to a device or read its data.
 | [SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md) | The wired protocol over the dock UART and Shimmer3R USB-C. A different protocol, not a subset |
 | [SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) | Live data packets: layout, the channel registry, per-platform channel order, encodings, raw-to-physical conversion |
 | [SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) | The on-card layout: directory structure, the binary file header, sample records, `sdlog.cfg`, the calibration file |
+| [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) | Button event markers and the TTL input: the gestures, the timer capture, and the event file recorded beside each data file |
+| [SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) | Shimmer3R audio recording while logging: the modes, the WAV and the fingerprint file beside each data file and their layouts, capture and analysis timing, the status bits and command |
 | [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) | The 512-byte configuration image: full byte map, validation rules, defaults, and the InfoMem-to-SD-header mapping |
 | [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) | Calibration in both its shapes, the 21-byte kinematic block, default seeds, and the conversion maths |
 | [SHIMMER3R_SD_FILE_TRANSFER.md](SHIMMER3R_SD_FILE_TRANSFER.md) | Retrieving logged files over Bluetooth (Shimmer3R only) |
@@ -88,11 +90,11 @@ something that "should work".
 | ExG millivolts exactly 2x too large in 16-bit mode | The 16-bit word is bits 22:7 of the 24-bit conversion, so the denominator needs a factor of 2 — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.5 |
 | Shimmer3R ADC or battery millivolts 4x too small | The channel is 12-bit at 3.0 V; the div-by-four belongs to the MCU's own VBAT debug channel — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.2, [battery](SHIMMER3_BATTERY_AND_CHARGING.md) §1 |
 | Skin temperature does not stream although its bit is set | GSR wins the shared ADC input when the channel list is built — [InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.2 |
-| Uncalibrated magnetometer reads about 5x high on a Shimmer3 | LSM303AH boards are clamped to mag range 0, whose default seed carries the wrong sensitivities — [calibration](SHIMMER3_CALIBRATION.md) §6.1 |
-| `GET_ALT_ACCEL_CALIBRATION` returns 21 zeros after a successful write | On Shimmer3 those two blocks are write-only — [calibration](SHIMMER3_CALIBRATION.md) §4.1 |
+| Uncalibrated magnetometer reads about 3x high, X and Y swapped, on a Shimmer3 | LSM303AH boards are clamped to mag range 0, whose default seed up to v1.01.009 carries the LSM303DLHC's ±8.1 Ga values; later firmware seeds and repairs it (DEV-995) — [calibration](SHIMMER3_CALIBRATION.md) §6.1 |
+| `GET_ALT_ACCEL_CALIBRATION` returns 21 zeros after a successful write | On Shimmer3 up to v1.01.009 those two blocks are write-only; later firmware answers them (DEV-996) — [calibration](SHIMMER3_CALIBRATION.md) §4.1 |
 | VBATT is not the last channel on a Shimmer3R | An SR48-6.0 uses the MCU ADCs, which are configured first — [streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §4.2 |
 | GSR values out by a large constant factor | The range-pin reversal flag — [GSR](SHIMMER3_GSR_AUTORANGE.md) §2 |
-| Solid red LED and no battery indication | The host `TOGGLE_LED` override, never cleared by the firmware — [LEDs](SHIMMER3_LED_FEEDBACK.md) §4 |
+| Solid red LED and no battery indication | The host `TOGGLE_LED` override, which stays until the host sends it again or the device resets — [LEDs](SHIMMER3_LED_FEEDBACK.md) §4 |
 | A newer command gets no response at all | Older firmware ignores unknown opcodes rather than NACKing — [versioning](SHIMMER3_RELEASE_AND_VERSIONING.md) §6 |
 | `sdlog.cfg` edit reset unrelated settings | Parsing starts from a blank configuration; the file is authoritative — [SD card](SHIMMER3_SD_CARD_FORMAT.md) §5.2 |
 | A Shimmer3 file is missing a run of consecutive samples at roughly every block boundary | Older Shimmer3 firmware had one SD write buffer and dropped records while it waited for the card — [SD card](SHIMMER3_SD_CARD_FORMAT.md) §4.1 |

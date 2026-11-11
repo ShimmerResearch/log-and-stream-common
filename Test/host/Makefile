@@ -63,7 +63,9 @@ INCLUDES := -I . \
 # Suites that need no stub platform at all - the modules under them include
 # nothing but the C library.
 STANDALONE_SUITES := test_swcrc test_packet_ring test_util test_sd_pressure_id \
-                     test_leds_phase test_sd_card_id test_autostop
+                     test_leds_phase test_sd_card_id test_autostop \
+                     test_event_record test_button_gesture test_button_log_mode \
+                     test_audio_mode test_audio_file test_audio_level
 
 # Suites built once per SD write-buffer count. That count is a compile-time
 # constant because the buffers are a fixed array, so covering more than one
@@ -77,12 +79,14 @@ SD_WRBUF_COUNTS := 1 2 4 32
 
 # Suites built once, against the stub platform, as Shimmer3R. test_sd_data_file
 # is Shimmer3R-only by nature: the writer's batching, alignment offset, split
-# guard and short-write recovery exist only there.
-SINGLE_PLATFORM_SUITES := test_crc test_sd_data_file
+# guard and short-write recovery exist only there. test_events drives the event
+# file through a fake FatFs, whose types the stubs give as Shimmer3R's.
+SINGLE_PLATFORM_SUITES := test_crc test_sd_data_file test_events
 
 # Suites built twice, once per platform. See the note above.
 DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards test_bt_reply \
-                        test_calibration test_platform_seam
+                        test_calibration test_platform_seam test_dock_args \
+                        test_leds
 
 PLATFORMS := SHIMMER3 SHIMMER3R
 
@@ -97,7 +101,33 @@ SRC_test_sd_card_id  := test_sd_card_id.c $(REPO)/SDCard/shimmer_sd_card_id.c
 SRC_test_sd_write_buf := test_sd_write_buf.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c
 SRC_test_leds_phase  := test_leds_phase.c $(REPO)/LEDs/shimmer_leds_phase.c
+SRC_test_event_record := test_event_record.c $(REPO)/Events/shimmer_event_record.c \
+                        $(REPO)/CRC/shimmer_swCrc.c
+SRC_test_button_gesture := test_button_gesture.c \
+                        $(REPO)/Button/shimmer_button_gesture.c
+SRC_test_events      := test_events.c $(REPO)/Events/shimmer_events.c \
+                        $(REPO)/Events/shimmer_event_record.c \
+                        $(REPO)/Button/shimmer_button.c \
+                        $(REPO)/Button/shimmer_button_gesture.c \
+                        $(REPO)/Configuration/shimmer_button_log_mode.c
+SRC_test_button_log_mode := test_button_log_mode.c \
+                        $(REPO)/Configuration/shimmer_button_log_mode.c
+SRC_test_leds        := test_leds.c $(REPO)/LEDs/shimmer_leds.c \
+                        $(REPO)/LEDs/shimmer_leds_phase.c \
+                        $(REPO)/Configuration/shimmer_button_log_mode.c
+# test_leds links the real LEDs/shimmer_leds.c, so host_stubs.c must leave out
+# its own ShimLeds_* stand-ins. Per-suite defines go in DEFS_<suite>.
+DEFS_test_leds       := -DHOST_TEST_LINKS_LEDS
 SRC_test_autostop    := test_autostop.c $(REPO)/Sensing/shimmer_autostop.c
+SRC_test_audio_mode := test_audio_mode.c \
+                        $(REPO)/Configuration/shimmer_audio_mode.c
+SRC_test_audio_file := test_audio_file.c \
+                        $(REPO)/Audio/shimmer_audio_file.c
+SRC_test_audio_level := test_audio_level.c \
+                        $(REPO)/Audio/shimmer_audio_level.c
+# Libraries a suite links, after its sources: the level's log10f and its
+# reference's double maths
+LIBS_test_audio_level := -lm
 SRC_test_sd_data_file := test_sd_data_file.c \
                         $(REPO)/SDCard/shimmer_sd_data_file.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c \
@@ -109,8 +139,10 @@ SRC_test_rtc         := test_rtc.c $(REPO)/RTC/shimmer_rtc.c
 SRC_test_battery     := test_battery.c $(REPO)/Battery/shimmer_battery.c
 SRC_test_boards      := test_boards.c $(REPO)/Boards/shimmer_boards.c
 SRC_test_bt_reply    := test_bt_reply.c $(REPO)/Comms/shimmer_bt_reply.c
+SRC_test_dock_args   := test_dock_args.c $(REPO)/Comms/shimmer_dock_args.c
 SRC_test_calibration := test_calibration.c \
-                        $(REPO)/Calibration/shimmer_calibration.c
+                        $(REPO)/Calibration/shimmer_calibration.c \
+                        $(REPO)/Boards/shimmer_boards.c
 # The library's weak defaults come FIRST, ahead of the test file and of
 # host_stubs.c (which the rule appends). That is the link order in which a weak
 # override loses to the default - see test_platform_seam.c.
@@ -127,7 +159,13 @@ INC_test_sd_write_buf := -I . -I $(REPO)
 INC_test_sd_pressure_id := -I . -I $(REPO)
 INC_test_sd_card_id  := -I . -I $(REPO)
 INC_test_leds_phase  := -I . -I $(REPO)
+INC_test_event_record := -I . -I $(REPO)
+INC_test_button_gesture := -I . -I $(REPO)
+INC_test_button_log_mode := -I . -I $(REPO)
 INC_test_autostop    := -I . -I $(REPO)
+INC_test_audio_mode := -I . -I $(REPO)
+INC_test_audio_file := -I . -I $(REPO)
+INC_test_audio_level := -I . -I $(REPO)
 
 ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) \
               $(DUAL_PLATFORM_SUITES) $(SD_WRBUF_SUITES)
@@ -158,7 +196,7 @@ $(BUILD):
 
 define STANDALONE_RULE
 $(BUILD)/$(1): $$(SRC_$(1)) | $(BUILD)
-	$$(CC) $$(CFLAGS) $$(INC_$(1)) $$(SRC_$(1)) -o $$@
+	$$(CC) $$(CFLAGS) $$(INC_$(1)) $$(SRC_$(1)) $$(LIBS_$(1)) -o $$@
 endef
 $(foreach s,$(STANDALONE_SUITES),$(eval $(call STANDALONE_RULE,$(s))))
 
@@ -170,7 +208,7 @@ $(foreach s,$(SINGLE_PLATFORM_SUITES),$(eval $(call SINGLE_RULE,$(s))))
 
 define DUAL_RULE
 $(BUILD)/$(1).$(2): $$(SRC_$(1)) host_stubs.c | $(BUILD)
-	$$(CC) $$(CFLAGS) -D$(2) $$(INCLUDES) $$(SRC_$(1)) host_stubs.c -o $$@
+	$$(CC) $$(CFLAGS) -D$(2) $$(DEFS_$(1)) $$(INCLUDES) $$(SRC_$(1)) host_stubs.c -o $$@
 endef
 $(foreach s,$(DUAL_PLATFORM_SUITES),\
   $(foreach p,$(PLATFORMS),$(eval $(call DUAL_RULE,$(s),$(p)))))
@@ -245,10 +283,14 @@ test: build
 	  failed="$$failed test_hil_midstream.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_signals.py; then \
 	  failed="$$failed test_hil_signals.py"; fi; \
+	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_audio.py; then \
+	  failed="$$failed test_hil_audio.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_usb_throughput.py; then \
 	  failed="$$failed test_hil_usb_throughput.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_dock.py; then \
 	  failed="$$failed test_hil_dock.py"; fi; \
+	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_events.py; then \
+	  failed="$$failed test_hil_events.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_rig_offline.py; then \
 	  failed="$$failed test_rig_offline.py"; fi; \
 	if ! $(PYTHON) check_weak_decls.py; then \
@@ -297,7 +339,7 @@ $(SD_WRBUF_SUITES): %: $(foreach n,$(SD_WRBUF_COUNTS),$(BUILD)/%.n$(n))
 # ADDING TO THE LIST is the goal, not the exception. A module qualifies as soon
 # as it compiles for both without a new stub; the ones missing today
 # (Comms/, SDCard/, SDSync/, Sensing/shimmer_sensing.c, Configuration/,
-# TaskList/, GSR/, LEDs/, EEPROM/) each need one or two more headers under
+# TaskList/, GSR/, EEPROM/) each need one or two more headers under
 # stubs/Shimmer_Driver - FileX, RN4X, ADXL371, gpio.h - or,
 # for EEPROM/, the BAUD_* enum out of Comms/shimmer_bt_uart.h. Each one added
 # brings its subsystem within reach of a host test as well.
@@ -305,10 +347,18 @@ DUAL_COMPILE_MODULES := \
   Battery/shimmer_battery.c \
   Boards/shimmer_boards.c \
   Button/shimmer_button.c \
+  Button/shimmer_button_gesture.c \
   CRC/shimmer_crc.c \
   CRC/shimmer_swCrc.c \
   Calibration/shimmer_calibration.c \
   Comms/shimmer_bt_reply.c \
+  Events/shimmer_event_record.c \
+  Configuration/shimmer_button_log_mode.c \
+  Configuration/shimmer_audio_mode.c \
+  Audio/shimmer_audio_file.c \
+  Audio/shimmer_audio_level.c \
+  Comms/shimmer_dock_args.c \
+  LEDs/shimmer_leds.c \
   LEDs/shimmer_leds_phase.c \
   Platform/platform_api.c \
   RTC/shimmer_rtc.c \
@@ -366,8 +416,10 @@ hil-gate:
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_timing.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_midstream.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_signals.py
+	@$(PYTHON) $(REPO)/Test/hil/test_hil_audio.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_usb_throughput.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_dock.py
+	@$(PYTHON) $(REPO)/Test/hil/test_hil_events.py
 	@$(PYTHON) $(REPO)/Test/hil/test_rig_offline.py
 
 # No compiler, no binary: every header in the repository, read as text. The

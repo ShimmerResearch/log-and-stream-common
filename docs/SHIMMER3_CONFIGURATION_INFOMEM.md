@@ -166,7 +166,7 @@ generations give a byte different meanings both are shown.
 | 0–1 | `samplingRateTicks` (uint16_t) | `NV_SAMPLING_RATE` | `idxShimmerSamplingRate` | `idxSamplingRate` | both |  |
 | 2 | `bufferSize` (uint8_t) | `NV_BUFFER_SIZE` | `idxBufferSize` | `idxBufferSize` | both |  |
 | 3 | **S3:** bit 7 `chEnLnAccel`; bit 6 `chEnGyro`; bit 5 `chEnMag`; bit 4 `chEnExg1_24Bit`; bit 3 `chEnExg2_24Bit`; bit 2 `chEnGsr`; bit 1 `chEnExtADC7`; bit 0 `chEnExtADC6`<br>**S3R:** bit 7 `chEnLnAccel`; bit 6 `chEnGyro`; bit 5 `chEnMag`; bit 4 `chEnExg1_24Bit`; bit 3 `chEnExg2_24Bit`; bit 2 `chEnGsr`; bit 1 `chEnExtADC0`; bit 0 `chEnExtADC1` | `NV_SENSORS0` | `idxSensors0` | `idxSensors0` | differs |  |
-| 4 | **S3:** bit 7 `chEnBridgeAmp`; bit 6 `unusedIdx4Bit6`; bit 5 `chEnVBattery`; bit 4 `chEnWrAccel`; bit 3 `chEnExtADC15`; bit 2 `chEnIntADC1`; bit 1 `chEnIntADC12`; bit 0 `chEnIntADC13`<br>**S3R:** bit 7 `chEnBridgeAmp`; bit 6 `chEnMicrophone`; bit 5 `chEnVBattery`; bit 4 `chEnWrAccel`; bit 3 `chEnExtADC2`; bit 2 `chEnIntADC3`; bit 1 `chEnIntADC0`; bit 0 `chEnIntADC1` | `NV_SENSORS1` | `idxSensors1` | `idxSensors1` | differs |  |
+| 4 | **S3:** bit 7 `chEnBridgeAmp`; bit 6 `unusedIdx4Bit6`; bit 5 `chEnVBattery`; bit 4 `chEnWrAccel`; bit 3 `chEnExtADC15`; bit 2 `chEnIntADC1`; bit 1 `chEnIntADC12`; bit 0 `chEnIntADC13`<br>**S3R:** bit 7 `chEnBridgeAmp`; bit 6 `unusedIdx4Bit6` (was `chEnMicrophone`, cleared since DEV-99: §10.4); bit 5 `chEnVBattery`; bit 4 `chEnWrAccel`; bit 3 `chEnExtADC2`; bit 2 `chEnIntADC3`; bit 1 `chEnIntADC0`; bit 0 `chEnIntADC1` | `NV_SENSORS1` | `idxSensors1` | `idxSensors1` | differs |  |
 | 5 | **S3:** bit 7 `chEnIntADC14`; bit 6 `chEnAltAccel`; bit 5 `chEnAltMag`; bit 4 `chEnExg1_16Bit`; bit 3 `chEnExg2_16Bit`; bit 2 `chEnPressureAndTemperature`; bit 1 `chEnMPU9x50temp`; bit 0 `unusedIdx5Bit0`<br>**S3R:** bit 7 `chEnIntADC2`; bit 6 `chEnAltAccel`; bit 5 `chEnAltMag`; bit 4 `chEnExg1_16Bit`; bit 3 `chEnExg2_16Bit`; bit 2 `chEnPressureAndTemperature`; bit 1 `unusedIdx5Bit1`; bit 0 `unusedIdx5Bit0` | `NV_SENSORS2` | `idxSensors2` | `idxSensors2` | differs |  |
 | 6 | bits 7-4 `wrAccelRate`; bits 3-2 `wrAccelRange`; bit 1 `wrAccelLpModeLsb`; bit 0 `wrAccelHrMode` | `NV_CONFIG_SETUP_BYTE0` | `idxConfigSetupByte0` | `idxConfigSetupByte0` | both |  |
 | 7 | `gyroRate` (uint8_t) | `NV_CONFIG_SETUP_BYTE1` | `idxConfigSetupByte1` |  | both |  |
@@ -218,8 +218,8 @@ generations give a byte different meanings both are shown.
 | 224–229 | `macAddr` (uint8_t[6]) | `NV_MAC_ADDRESS` | `idxMacAddress` | `idxMacAddress` | both |  |
 | 230 | bit 7 `unusedIdx230Bit7`; bit 6 `unusedIdx230Bit6`; bit 5 `unusedIdx230Bit5`; bit 4 `unusedIdx230Bit4`; bit 3 `unusedIdx230Bit3`; bit 2 `unusedIdx230Bit2`; bit 1 `unusedIdx230Bit1`; bit 0 `flagWriteCfgToSd` | `NV_SD_CONFIG_DELAY_FLAG` | `idxSDConfigDelayFlag` | `idxSDConfigDelayFlag` | both |  |
 | 231 | `btSetPin` (uint8_t) | `NV_BT_SET_PIN` | `idxBtFactoryReset` | `idxBtFactoryReset` | both |  |
-| 232 | `unusedIdx232` (uint8_t) |  |  |  | both | reserved |
-| 233 | `unusedIdx233` (uint8_t) |  |  |  | both | reserved |
+| 232 | `buttonLogMode` (uint8_t) | `NV_BUTTON_LOG_MODE` |  |  | both | button, logging and TTL input (§8.3) |
+| 233 | `audioMode` (uint8_t) | `NV_AUDIO_MODE` |  |  | both | audio recording and the sound level, Shimmer3R (§8.5) |
 | 234 | `unusedIdx234` (uint8_t) |  |  |  | both | reserved |
 | 235 | `unusedIdx235` (uint8_t) |  |  |  | both | reserved |
 | 236 | `unusedIdx236` (uint8_t) |  |  |  | both | reserved |
@@ -523,10 +523,11 @@ Bytes 175-186 are `NV_MPL_GYRO_CALIBRATION`, a 12-byte legacy MPL block, now
 > §2 already lists `idxMPLAccelCalibration` alongside the ADXL371 name. This
 > table said S3R and the byte map said both; the byte map was right.
 >
-> On Shimmer3 the pair is effectively **write-only**: the value reaches these
-> bytes and the SD header, but never the calibration dump, so the matching
-> `GET_ALT_*_CALIBRATION` command answers with 21 zeros. Read them back from
-> here instead — see
+> On Shimmer3 up to LogAndStream v1.01.009 the pair is effectively
+> **write-only**: the value reaches these bytes and the SD header, but never the
+> calibration dump, so the matching `GET_ALT_*_CALIBRATION` command answers with
+> 21 zeros. On those versions read them back from here instead. Later firmware
+> also keeps them in the dump, and the `GET` answers them (DEV-996). See
 > [SHIMMER3_CALIBRATION.md](SHIMMER3_CALIBRATION.md) §4.1.
 
 The internal layout of a 21-byte block — three big-endian `int16` biases, three
@@ -565,6 +566,8 @@ Three things matter when writing configuration bytes directly:
 | 224-229 | `macAddr` | 6 bytes |
 | 230 | `flagWriteCfgToSd` | Bit 0 only |
 | 231 | `btSetPin` | Legacy |
+| 232 | `buttonLogMode` | What the button does and what else starts logging, see §8.3 |
+| 233 | `audioMode` | What a Shimmer3R records from its microphone while logging, and whether its packets carry the sound level, see §8.5 |
 
 > **Three multi-byte fields here are big-endian, while the sampling rate at
 > bytes 0-1 is little-endian.** `configTime`, `experimentLengthEstimatedInSec`
@@ -603,7 +606,7 @@ Three things matter when writing configuration bytes directly:
 |---:|---|---|
 | 7 | `rtcSetByBt` | The real-world clock was set over Bluetooth this session |
 | 6 | `btPinSetup` | Legacy. Always forced to 0 (§10) |
-| 5 | `userButtonEnable` | Button starts/stops logging. Default 1 |
+| 5 | `userButtonEnable` | Button starts/stops logging. Default 1. With it 0 and `singleTouchStart` 0, logging also starts on every undock with a card in; on Shimmer3R, unplugging USB-C counts as an undock (`ShimSens_startLoggingIfUndockStartEnabled`). Ignored while byte 232's button mode is not 0, and then held at that mode's nearest equivalent (§8.3) |
 | 4 | `rtcErrorEnable` | Signal an unset clock through the LEDs |
 | 3 | `bluetoothDisable` | Default 0 |
 | 2 | `syncEnable` | Multi-device SD sync |
@@ -626,11 +629,152 @@ Three things matter when writing configuration bytes directly:
 Bits 6, 5, 3, 2 and 1 are unused. Both `tcxo` and `singleTouchStart` are forced
 off at validation on hardware that does not support them (§10).
 
-### 8.3 Defaults for the string fields
+> **Older hosts write byte 218's unused bits, so they stay unused.** Bits 2 and
+> 3 come from `SET_TRIAL_CONFIG_COMMAND`, which stores byte 218 as sent.
+>
+> - **Bit 2.** The Java driver's `ShimmerBluetooth.combineTrialConfig()` always
+>   sets it, for a "monitor" flag that no firmware reads, so every
+>   `writeTrial()` stores a 1 there. The C# API sends back whatever it last
+>   read. A unit last configured that way may hold a 1 in bit 2 today.
+> - **Bit 3.** The Java and C# APIs put the expansion-power setting there.
+>
+> The same Java call clears bits 0, 1, 5 and 6, which it does not pack, and the
+> Java driver's full configuration write zeroes the byte before setting bits
+> 0, 4 and 7. A host should read byte 218, change only the bits it means to,
+> and write it back. New settings go in byte 232 (§8.3) instead, where a host
+> that does not know them leaves the byte alone or writes 0.
+>
+> Bits 5 and 6 held the accelerometer's high-resolution and low-power flags in
+> the SDLog firmware that came before LogAndStream.
+
+### 8.3 Button, logging and TTL input, byte 232
+
+Byte 217 cannot say either of two things a deployment may need. Clearing
+`userButtonEnable` turns the button off but also makes every undock start
+logging, and no bit turns logging off. Byte 232 says both, and also turns the
+TTL input on.
+
+| Bits | Field | Values |
+|---:|---|---|
+| 0-2 | Button mode | **0** legacy: `userButtonEnable` decides, as before this byte existed. **1** disabled: a press does nothing, and the LED gives no feedback while it is held. **2** single press: a press starts and stops logging. **3** double press: a double press starts and stops logging. **4** double press, presses recorded: the same, and every press and release is recorded in the event channel ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md)). **5** presses recorded: every press and release is recorded, and a press never starts or stops logging. 6-7 are reserved |
+| 3-4 | Log triggers | Read only when the button mode is not 0. **0** a host command only. **1** a host command, or leaving the dock (on Shimmer3R, unplugging USB-C counts). **2** nothing: SD logging is off. 3 is reserved |
+| 5 | TTL input | **1** records the TTL input's edges ([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md)). Read whatever the button mode, and cleared on hardware without the input (§10.4) |
+| 6 | — | Unused, and cleared |
+| 7 | — | Must be 0 |
+
+Every value the firmware keeps, and what it does:
+
+| Value | A press | Logging starts on | `userButtonEnable` held at |
+|---|---|---|---|
+| `0x00` | As `userButtonEnable` | As `userButtonEnable`: a host command, plus an undock when it is 0 | Unchanged |
+| `0x01` | Nothing | A host command | 1 |
+| `0x09` | Nothing | A host command or an undock | 0 |
+| `0x11` | Nothing | Nothing: logging is off | 1 |
+| `0x02` | Starts and stops logging | A host command or a press | 1 |
+| `0x0A` | Starts and stops logging | A host command, a press or an undock | 1 |
+| `0x12` | Nothing, but the LED shows the press | Nothing: logging is off | 1 |
+| `0x03` | A double press starts and stops logging | A host command or a double press | 1 |
+| `0x0B` | A double press starts and stops logging | A host command, a double press or an undock | 1 |
+| `0x13` | Nothing, but the LED shows the press | Nothing: logging is off | 1 |
+| `0x04` | Recorded; a double press starts and stops logging | A host command or a double press | 1 |
+| `0x0C` | Recorded; a double press starts and stops logging | A host command, a double press or an undock | 1 |
+| `0x14` | Recorded, for a Bluetooth host that has opted in; nothing else | Nothing: logging is off | 1 |
+| `0x05` | Recorded; nothing else | A host command | 1 |
+| `0x0D` | Recorded; nothing else | A host command or an undock | 0 |
+| `0x15` | Recorded, for a Bluetooth host that has opted in; nothing else | Nothing: logging is off | 1 |
+
+Each also stands with bit 5 set, `0x20` added, which turns the TTL input on.
+`0x20` alone is the TTL input on with the button as `userButtonEnable` says.
+
+- **Anything the firmware cannot act on reads as 0.** With bit 7 set the whole
+  byte reads as 0, TTL input off. Otherwise a reserved button mode or log
+  trigger, or log triggers under button mode 0, clear bits 0-4 and leave the
+  TTL input as it is.
+  `ShimConfig_checkAndCorrectConfig` writes the corrected value back (§10.3),
+  so reading the byte back shows what the unit will do. That is also how a
+  host tells whether the firmware supports a value it wrote. Erased memory is
+  `0xFF`, which reads as 0.
+- **0 is what a host that does not know the byte leaves there.** A full
+  configuration write from the Java driver builds its image from zeros, so it
+  writes 0; hosts that start from the bytes they read keep the byte as it was.
+  `ShimConfig_createBlankConfigBytes` sets it to 0, so the defaults and an
+  sdlog.cfg without the keys below give 0 too.
+- **Logging off is enforced where every start is checked:**
+  `ShimSens_checkStartLoggingConditions`. The button, leaving the dock, a
+  Bluetooth command and a single-touch sync start all pass through it. So
+  logging off wins over a button mode that would start logging (`0x12`).
+  `START_LOGGING_COMMAND` and `START_SDBT_COMMAND` are NACKed and start
+  nothing, as they are with no card in (BT_COMMUNICATION_PROTOCOL §6.1), so a
+  host streams with `START_STREAMING_COMMAND`. Firmware before DEV-1431 ACKs
+  both; there `START_LOGGING_COMMAND` does nothing and `START_SDBT_COMMAND`
+  streams only. Streaming is unaffected. The SD-card error flash is not shown, since an empty slot is
+  then expected (LED_FEEDBACK §4.3).
+- **`userButtonEnable` follows the mode.** While the button mode is not 0 the
+  firmware ignores `userButtonEnable`, and the correction holds it at the
+  nearest equivalent in the table. It is 0 only where a press cannot start
+  logging and leaving the dock does. Firmware without this byte, or a host that
+  writes byte 217 back with 0 in byte 232, then falls back to behaviour that
+  never adds an undock start.
+- **Single touch needs a press that can start logging.** In a build with
+  `IS_SUPPORTED_SINGLE_TOUCH`, the correction clears `singleTouchStart` unless
+  the button mode is 0, or is one that starts logging (2, 3 or 4) with logging
+  on. Single touch still suppresses the undock start. No LogAndStream release
+  is built with it, so each clears `singleTouchStart` whatever this byte holds
+  (§10.4), and a host should not expect the bit to read back.
+- **Setting it.** Over Bluetooth, write the one byte with `SET_INFOMEM_COMMAND`:
+  `0x8C 0x01 0xE8 0x00 <value>`. Like every configuration write, this is
+  refused while sensing. A host writing the whole image should keep this byte
+  as read unless it means to change it. On the card, sdlog.cfg carries it as
+  `button_mode`, `log_triggers` and `ttl_input_enable` (SD_CARD_FORMAT §5.3). The card's file is
+  read back at every undock, so a file without the keys sets the byte to 0.
+- **Recorded.** The SD header carries the corrected value at offset 225
+  (SD_CARD_FORMAT §3.1).
+
+### 8.4 Defaults for the string fields
 
 `ShimConfig_parseShimmerNameFromConfigBytes` scans for printable characters and,
 finding none at index 0, resets the name to the default. A name is therefore
 never empty; an all-`0xFF` field yields `Shimmer_<mac4>`.
+
+### 8.5 Audio recording, byte 233
+
+A Shimmer3R can record from its microphone while it logs to SD (DEV-99). Byte
+233 says whether it does and what it keeps, and bit 4 whether its packets
+carry the sound level (DEV-1413). `Configuration/shimmer_audio_mode.h`
+has the rule, and `Test/host/test_audio_mode.c` checks it on all 256 values.
+
+| Bits | Field | Values |
+|---:|---|---|
+| 0-1 | Mode | **0** off. **1** the audio fingerprint only. **2** the fingerprint and the raw 16 kHz audio. **3** the raw audio only |
+| 2-3 | Gain preset | **0** the calibrated default. 1-3 are reserved for presets, should field use need them |
+| 4 | Sound level | **1** every data packet carries the `SOUND_LEVEL` channel while the unit senses, streaming, logging or both ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8). Independent of the mode |
+| 5-6 | — | Unused, and cleared |
+| 7 | — | Must be 0 |
+
+- **Anything the firmware cannot act on reads as 0.** That covers bit 7 set
+  (erased memory is `0xFF`), a reserved gain preset, and a mode this firmware
+  does not record yet. `ShimConfig_checkAndCorrectConfig` writes the corrected
+  value back (§10.3), so a host that writes a mode and reads it back learns
+  whether this unit records it. The same goes for bit 4: firmware without the
+  sound level clears it.
+- **Which modes are built.** The firmware lists them in `AUDIO_MODES_BUILT`.
+  All four are, from DEV-99's fingerprint step on; firmware with raw audio only
+  built 0 and 3, and read 1 and 2 back as 0. The recording itself is in
+  [SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md).
+- **Shimmer3 has no microphone.** The byte is always 0 there (§10.4).
+- **0 is what a host that does not know the byte leaves there.** The Java
+  driver builds a full configuration write from zeros, so it writes 0, and
+  hosts that start from the bytes they read keep the byte as it was.
+  `ShimConfig_createBlankConfigBytes` sets it to 0.
+- **Raw audio records speech.** Hosts should ask for confirmation before
+  setting mode 2 or 3. Everyone near the device needs to know it is recording.
+- **Setting it.** Over Bluetooth, write the one byte with `SET_INFOMEM_COMMAND`:
+  `0x8C 0x01 0xE9 0x00 <value>`. Like every configuration write, this is
+  refused while sensing. On the card, sdlog.cfg carries the mode as
+  `audio_mode` and bit 4 as `sound_level` on Shimmer3R (SD_CARD_FORMAT §5.3).
+  The gain preset has no key until a preset is built.
+- **Recorded.** On Shimmer3R the SD header carries the corrected value at
+  offset 226 (SD_CARD_FORMAT §3.1).
 
 ## 9. Sync node table
 
@@ -732,15 +876,22 @@ image being written back on that account alone.
 | `gsrRange` | Greater than 4 becomes `GSR_AUTORANGE` |
 | `btIntervalSecs` | If `syncEnable`, anything below 54 (`SYNC_INT_C`) becomes 54 |
 | `magRange` (S3) | Forced to 0 unless the wide-range accel is an LSM303DLHC |
+| `buttonLogMode` | Anything the firmware cannot act on becomes 0, and bit 6 is cleared (§8.3) |
+| `audioMode` | Anything the firmware cannot act on becomes 0 (bit 7 set, a reserved gain preset, a mode not built yet), and bits 5-6 are cleared (§8.5) |
+| `userButtonEnable` | While `buttonLogMode`'s button mode is not 0, held at the mode's nearest equivalent (§8.3) |
 
 ### 10.4 Capability gates
 
 | Field | Rule |
 |---|---|
 | `tcxo` | Forced to 0 where `IS_SUPPORTED_TCXO` is false |
-| `singleTouchStart` | Forced to 0 where `IS_SUPPORTED_SINGLE_TOUCH` is false. Where supported, setting it also forces `userButtonEnable` and `syncEnable` on — single-touch needs both |
+| `singleTouchStart` | Forced to 0 where `IS_SUPPORTED_SINGLE_TOUCH` is false, and where `buttonLogMode` leaves no press that can start logging (§8.3). Where supported, setting it also forces `userButtonEnable` and `syncEnable` on — single-touch needs both |
+| `buttonLogMode` | On a Shimmer3R SR48-6-0 board, whose button drives BOOT0 and is used for dock detection, press recording is taken out: button mode 4 becomes 3 and 5 becomes 1 |
+| `buttonLogMode` bit 5 | The TTL input, forced to 0 where `ShimBrd_isTtlInputSupported()` is false: a Shimmer3R SR48-6-0 board |
+| `audioMode` | Forced to 0 where `ShimBrd_isMicrophoneSupported()` is false: every Shimmer3 |
 | `exgADS1292rRegsCh1.config2` bit 3 | Forced to 1 where the ADS1292R clock lines are tied |
 | `btPinSetup` | Always forced to 0 — the Bluetooth driver no longer needs it |
+| `unusedIdx4Bit6` (byte 4 bit 6) | Shimmer3R: forced to 0. Until DEV-99 it was `chEnMicrophone`. Setting it started the microphone at each log start but stored and sent no audio, and it added one to the channel count in the inquiry response and in SD header byte 314 (`SDH_NUM_ENABLED_CHANNELS`) with no matching channel ID, so a host that sized packets from that count misread every packet. Audio recording is configured separately (DEV-99). On Shimmer3 the bit is unused and not touched |
 
 ### 10.5 MAC address
 
@@ -943,8 +1094,8 @@ need it; otherwise switch it off.
 
 `ShimConfig_setDefaultConfig` starts from `ShimConfig_createBlankConfigBytes`
 — all zeros, then all six calibration blocks to `0xFF`, the MAC copied from the
-Bluetooth module, bytes 232-255 to `0xFF`, and the whole 128-byte sync page to
-`0xFF` — and then applies:
+Bluetooth module, byte 232 to 0, bytes 233-255 to `0xFF`, and the whole
+128-byte sync page to `0xFF` — and then applies:
 
 | Setting | Default |
 |---|---|
@@ -966,6 +1117,7 @@ Bluetooth module, bytes 232-255 to `0xFF`, and the whole 128-byte sync page to
 | Config time | 0 |
 | Trial ID, shimmer count | 0 |
 | Button, RTC error, SD error | Enabled |
+| Button and logging mode | 0: `userButtonEnable` decides (§8.3) |
 | Bluetooth | Enabled |
 | Sync broadcast interval | 54 s |
 | Max experiment length | 0 (auto-stop disabled) |
@@ -1072,6 +1224,8 @@ in a written file.
 | 120 | `NV_DERIVED_CHANNELS_5` | 219 | `SDH_DERIVED_CHANNELS_5` |
 | 121 | `NV_DERIVED_CHANNELS_6` | 220 | `SDH_DERIVED_CHANNELS_6` |
 | 122 | `NV_DERIVED_CHANNELS_7` | 221 | `SDH_DERIVED_CHANNELS_7` |
+| 232 | `NV_BUTTON_LOG_MODE` | 225 | `SDH_BUTTON_LOG_MODE` (the value as corrected, §8.3) |
+| 233 | `NV_AUDIO_MODE` | 226 | `SDH_AUDIO_MODE` (the value as corrected, §8.5). Shimmer3R only |
 
 > Note the reordering: the two ExG banks are contiguous in both layouts but the
 > derived-channel bytes are split 40-42 / 217-221 in the header against
@@ -1134,10 +1288,12 @@ file-creation time:
 
 ## Still unverified / not found in code
 
-- **Bytes 232-255.** `ShimConfig_createBlankConfigBytes` fills them with `0xFF`
-  via `memset(&rawBytes[NV_BT_SET_PIN + 1], 0xFF, 24)`, and the struct names
-  them `unusedIdx232` through `unusedIdx255`. Whether any historical firmware
-  used them is not determinable from the current source.
+- ~~Bytes 232-255~~ — resolved. Shimmer3 firmware from 2016 and 2017 reserved
+  a 22-byte pressure-calibration block here (`NV_TEMP_PRES_CALIBRATION`, at 231
+  and then at 232), but no code ever wrote it, and no host layout mapped anything
+  past byte 231. Byte 232 now holds the button, logging and TTL input settings (§8.3).
+  `ShimConfig_createBlankConfigBytes` blanks 233-255 to `0xFF`, and the struct
+  names them `unusedIdx233` through `unusedIdx255`.
 - ~~Byte 132 / `NV_CONFIG_SETUP_BYTE6`~~ — confirmed unused: allocated,
   transferred and mirrored to the SD header, but no field on either platform
   reads or writes it. Treat it as reserved.

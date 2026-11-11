@@ -29,10 +29,15 @@ INQUIRY, INQUIRY_RSP = 0x01, 0x02
 GET_DEVICE_VERSION, DEVICE_VERSION_RSP = 0x3F, 0x25
 GET_FW_VERSION, FW_VERSION_RSP = 0x2E, 0x2F
 GET_STATUS, STATUS_RSP = 0x72, 0x71
+# The battery read: answered in the in-stream wrapper, ACK 0x8A 0x94, then the
+# 3 bytes of battStatusRaw (ADC value, then the charger status), streaming or not.
+GET_VBATT, VBATT_RSP, VBATT_BYTES = 0x95, 0x94, 3
 SET_CRC = 0x8B
 START_STREAMING, STOP_STREAMING = 0x07, 0x20
 START_LOGGING, STOP_LOGGING = 0x92, 0x93
 START_SDBT, STOP_SDBT = 0x70, 0x97
+# Shimmer3R audio (docs/SHIMMER3R_AUDIO.md §5): the reply is 32 bytes.
+GET_AUDIO_STATUS, AUDIO_STATUS_RSP, AUDIO_STATUS_LEN = 0xBC, 0xBD, 32
 
 # Configuration over Bluetooth, the way a host writes it (§7.5, §7.6, §7.8).
 GET_INFOMEM, INFOMEM_RSP, SET_INFOMEM = 0x8E, 0x8D, 0x8C
@@ -56,9 +61,18 @@ SETTINGS = {
     "alt_accel_range": (0x4F, 0x50, 0x51),
 }
 WRITE_ACK_S = 3.0               # a write's ACK follows the flash erase and write
+# One sensor's 21-byte calibration block (§7.6): name -> (SET, response, GET).
+# The GET answers from the calibration dump, for the sensor's current range.
+CALIBRATION_CMDS = {
+    "ln_accel": (0x11, 0x12, 0x13), "gyro": (0x14, 0x15, 0x16), "mag": (0x17, 0x18, 0x19),
+    "wr_accel": (0x1A, 0x1B, 0x1C), "alt_accel": (0xA9, 0xAA, 0xAB), "alt_mag": (0xAF, 0xB0, 0xB1),
+}
+CALIB_BLOCK = 21
 
 STATUS_DOCKED, STATUS_SENSING, STATUS_LOGGING, STATUS_STREAMING = 0x01, 0x02, 0x08, 0x10
 STATUS_SD_INSERTED, STATUS_SD_BAD_FILE = 0x20, 0x40
+# Status byte 1, Shimmer3R: bit 0 usbPluggedIn, then the audio bits (SHIMMER3R_AUDIO §5).
+STATUS1_AUDIO_RECORDING, STATUS1_AUDIO_FAULT = 0x02, 0x04
 
 HW_SHIMMER3, HW_SHIMMER3R = 3, 10
 # Shimmer3R LogAndStream sends two status bytes from v1.00.024, one before it
@@ -71,7 +85,8 @@ TS_WRAP = 1 << 24
 # a parser that guesses a width produces plausible garbage (§5.6).
 _WIDTH = {**{i: 2 for i in range(0x00, 0x1A)}, 0x1B: 3, 0x1C: 2,
           0x1D: 1, 0x1E: 3, 0x1F: 3, 0x20: 1, 0x21: 3, 0x22: 3,
-          **{i: 2 for i in range(0x23, 0x29)}}
+          **{i: 2 for i in range(0x23, 0x29)},
+          0x38: 2}                         # Shimmer3R's sound level (SHIMMER3R_AUDIO.md §8)
 
 
 class BtError(Exception):
@@ -119,6 +134,10 @@ class StreamStats:
     resyncs: int = 0            # bytes skipped to find a packet boundary
     status_pushes: int = 0
     pushed: list = field(default_factory=list)  # status byte 0 of each in-stream status frame, in order
+    pushes: list = field(default_factory=list)  # (seconds after the start, all status bytes) of each
+    # Every in-stream frame, status and battery alike: (response opcode, packets
+    # framed before it), so a caller can tell which samples sit either side.
+    instream: list = field(default_factory=list)
     acks: int = 0               # bare ACKs mid-stream: commands sent with actions=
     events: list = field(default_factory=list)  # (label, packets so far, seconds) per action sent
     first_ts: int | None = None
@@ -180,6 +199,19 @@ def classify_step(st, d: int, period: int) -> None:
         st.max_jitter_ticks = max(st.max_jitter_ticks, off)
 
 
+def gap_positions(ts: list[int], period: int) -> list[tuple[int, int]]:
+    """Where a kept stream (stream(keep=True)) lost samples: (index of the packet
+    after the gap, samples lost), judged on the grid exactly as classify_step
+    judges the whole stream."""
+    scratch, out = StreamStats(), []
+    for i in range(1, len(ts)):
+        before = scratch.missing
+        classify_step(scratch, ts_step(ts[i], ts[i - 1]), period)
+        if scratch.missing > before:
+            out.append((i, scratch.missing - before))
+    return out
+
+
 class BtLink:
     def __init__(self, port: str | None = None, connect_timeout_s: float = 10.0, *, ser=None):
         # Opening an SPP port is what makes Windows page the device; it can take
@@ -189,6 +221,7 @@ class BtLink:
         self.hw: int | None = None
         self.crc_mode = 0
         self._nstatus: int | None = None
+        self.silent_s = 0.0             # the last wait_status's unanswered stretch
         # Until the constructor returns there is no link to close, so if the
         # first exchange fails the port is closed here: left open, it would
         # hold the COM port against every later connection.
@@ -282,7 +315,11 @@ class BtLink:
         return self._nstatus
 
     def status(self, timeout_s: float = 3.0) -> int:
-        """Status byte 0 (byte 1, Shimmer3R's usbPluggedIn, is read and dropped).
+        """Status byte 0. status_bytes() has Shimmer3R's byte 1 as well."""
+        return self.status_bytes(timeout_s)[0]
+
+    def status_bytes(self, timeout_s: float = 3.0) -> bytes:
+        """Every status byte this unit sends: one, or two on Shimmer3R (§5.3).
 
         The reply is found by its frame, ACK 0x8A 0x71, rather than assumed to
         be the next byte: after a stop at a high rate a stale data packet can
@@ -302,8 +339,13 @@ class BtLink:
             if i >= 0 and len(buf) >= i + 3 + n:
                 time.sleep(0.05)
                 self.ser.reset_input_buffer()     # its CRC, if a mode is on
-                return buf[i + 3]
+                return bytes(buf[i + 3:i + 3 + n])
         raise BtError(f"no status reply within {timeout_s:.0f} s (got {bytes(buf[:24]).hex()})")
+
+    def audio_status(self) -> bytes:
+        """GET_AUDIO_STATUS_COMMAND's 32-byte reply (SHIMMER3R_AUDIO §5); rig/s3r_audio.py reads it."""
+        self.command(GET_AUDIO_STATUS, rsp=AUDIO_STATUS_RSP)
+        return self._read(AUDIO_STATUS_LEN)
 
     def inquiry(self) -> Inquiry:
         self.command(INQUIRY, rsp=INQUIRY_RSP)
@@ -383,6 +425,18 @@ class BtLink:
             self.command(SET_CALIB_DUMP, bytes([len(chunk)]) + at.to_bytes(2, "little") + chunk,
                          ack_timeout_s=WRITE_ACK_S)
 
+    def get_calibration(self, name: str) -> bytes:
+        """One sensor's calibration block, as GET_<sensor>_CALIBRATION answers it."""
+        _, rsp, get = CALIBRATION_CMDS[name]
+        self.command(get, rsp=rsp)
+        return self._read(CALIB_BLOCK)
+
+    def set_calibration(self, name: str, block: bytes) -> None:
+        """SET_<sensor>_CALIBRATION: stored in InfoMem and the SD header before the ACK."""
+        if len(block) != CALIB_BLOCK:
+            raise BtError(f"a calibration block is {CALIB_BLOCK} bytes, not {len(block)}")
+        self.command(CALIBRATION_CMDS[name][0], bytes(block), ack_timeout_s=WRITE_ACK_S)
+
     def set_sampling_divider(self, ticks: int) -> None:
         """SET_SAMPLING_RATE: a divider of the 32768 Hz clock, not a frequency (§7.8)."""
         if not 1 <= ticks <= 0xFFFF:
@@ -409,9 +463,31 @@ class BtLink:
         return self._read(1)[0]
 
     def wait_status(self, mask: int, want: bool, timeout_s: float = 10.0) -> int:
+        """Poll status until the bits are as wanted, for up to timeout_s.
+
+        A unit can be silent for seconds while it opens a log: the session's
+        number comes from a scan of its trial folder, and the folder is made,
+        before the file opens (about 4 s in a folder of 531 sessions). A query
+        it leaves unanswered is asked again until timeout_s, so only a unit
+        silent for all of it fails. How long it was silent is kept in
+        silent_s for the caller's notes.
+        """
         end = time.monotonic() + timeout_s
+        self.silent_s, quiet_since = 0.0, None
         while True:
-            s = self.status()
+            asked = time.monotonic()
+            try:
+                s = self.status()
+            except BtError as e:
+                if quiet_since is None:
+                    quiet_since = asked
+                if time.monotonic() > end:
+                    raise BtError(f"no status for {time.monotonic() - quiet_since:.0f} s: {e}") from e
+                self.quiesce(quiet_s=0.3, max_s=3.0)   # a late reply to the query given up on
+                continue
+            if quiet_since is not None:
+                self.silent_s = max(self.silent_s, time.monotonic() - quiet_since)
+                quiet_since = None
             if bool(s & mask) == want:
                 return s
             if time.monotonic() > end:
@@ -456,13 +532,15 @@ class BtLink:
         after the start), .label and .bytes() (rig/midstream.py's Action). Each
         is recorded in st.events with the packet count when it went out. Their
         replies are counted, not matched: a bare ACK at a frame boundary in
-        st.acks, an in-stream status frame's status byte in st.pushed.
+        st.acks, an in-stream status frame's status byte in st.pushed, and
+        every in-stream frame (status or battery) in st.instream.
         """
         inq = inq or self.inquiry()
         crc_n = getattr(self, "crc_mode", 0)
         body = 4 + sum(channel_width(c, self.hw) for c in inq.channels)
         plen = body + crc_n
         push_len = 3 + self.status_len() + crc_n  # [ACK][0x8A][0x71][status...][CRC]; asked before the start
+        vbatt_len = 3 + VBATT_BYTES + crc_n       # [ACK][0x8A][0x94][3 bytes][CRC]
         st = StreamStats()
         self.command(start_op)
         if crc_n:
@@ -535,15 +613,23 @@ class BtLink:
                             st.rows.append(bytes(buf[4:body]))
                         del buf[:plen]
                     elif buf[0] == ACK and len(buf) >= 2 and buf[1] == INSTREAM:
-                        if len(buf) < push_len:
+                        # Its length follows from the response opcode: a battery
+                        # reply, or anything else framed as a status frame.
+                        if len(buf) < 3:
+                            break
+                        n = vbatt_len if buf[2] == VBATT_RSP else push_len
+                        if len(buf) < n:
                             break
                         # The CRC covers the whole frame, ACK included (§3.3).
-                        if crc_n and not _crc_ok(buf[:push_len - crc_n], buf[push_len - crc_n:push_len]):
+                        if crc_n and not _crc_ok(buf[:n - crc_n], buf[n - crc_n:n]):
                             st.crc_errors += 1
                         else:
-                            st.status_pushes += 1
-                            st.pushed.append(buf[3])
-                        del buf[:push_len]
+                            st.instream.append((buf[2], st.packets))
+                            if buf[2] != VBATT_RSP:
+                                st.status_pushes += 1
+                                st.pushed.append(buf[3])
+                                st.pushes.append((round(now - t0, 3), bytes(buf[3:n - crc_n])))
+                        del buf[:n]
                     elif buf[0] == ACK and stop_t is None and len(buf) >= 2:
                         # A bare ACK at a frame boundary while streaming: the
                         # reply to a command sent with actions=.

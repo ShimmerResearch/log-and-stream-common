@@ -40,10 +40,26 @@ extern void SampleTimerStop(void);
 
 extern void saveBtError(uint8_t btError);
 extern void resetLatestBtError(void);
+
+/* Timer_A0 is shared by SD sync (CCR1) and the TTL input capture (CCR4):
+ * it runs while either uses it (5xx_HAL/hal_TA0.c) */
+#define TA0_USER_SD_SYNC 0x01U
+#define TA0_USER_TTL     0x02U
+extern void TA0_start(uint8_t user);
+extern void TA0_stop(uint8_t user);
+/* TA0IV_TACCR4, from TIMER0_A1_ISR. Returns 1 if the MCU should wake. */
+extern uint8_t TA0_captureIsr(void);
 #endif //SHIMMER3
 
 extern void Board_setExpansionBrdPower(uint8_t state);
 extern uint8_t Board_isBtnPressed(void);
+/* The TTL input (Events/shimmer_events.h): arm or disarm its timer capture,
+ * and read its level now. Arming pulls the input down; disarmed, it floats. */
+extern void Board_evtTtlArm(uint8_t enable);
+/* Interrupt context, from the flood throttle: stop taking edges until the next
+ * Board_evtTtlArm(1), changing nothing but the capture interrupt's enable */
+extern void Board_evtTtlPause(void);
+extern uint8_t Board_evtTtlLevel(void);
 extern void Board_sd2Pc(void);
 extern void Board_sd2Mcu(void);
 extern void Board_dockDetectN(uint8_t state);
@@ -51,6 +67,21 @@ extern uint8_t Board_isSdInserted(void);
 extern uint8_t Board_isDocked(void);
 #if defined(SHIMMER3R)
 extern bool Board_isUsbPluggedIn(void);
+/* Audio recording (Audio/shimmer_audio.h), in shimmer3r-firmware's
+ * Shimmer_Driver/hal_AudioRecorder.c */
+extern void PlatAudio_sessionStart(uint8_t mode, uint64_t dataFileTs);
+extern void PlatAudio_fileSplit(uint64_t dataFileTs);
+extern void PlatAudio_syncTick(void);
+extern void PlatAudio_sessionStop(void);
+extern void PlatAudio_process(void);
+extern uint8_t PlatAudio_statusBits(void);
+extern uint8_t PlatAudio_buildStatus(uint8_t *buf);
+/* The sound-level channel (Audio/shimmer_audio_level.h), in
+ * shimmer3r-firmware's Shimmer_Driver/hal_AudioLevel.c. Start and stop are
+ * called whatever the configuration; stop when nothing started is a no-op. */
+extern void PlatAudio_levelStart(void);
+extern void PlatAudio_levelStop(void);
+extern void PlatAudio_levelProcess(void);
 #endif
 
 extern void DockUart_init(void);

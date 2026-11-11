@@ -36,9 +36,10 @@ DOC = os.path.join(REPO, "docs", "SHIMMER3_BOARD_REVISIONS.md")
 # matrix that the firmware hook writes.
 #
 #   test_boards --dump prints:
-#     srId,major,minor,bmp581,lis3mdl,adxl371,ads7028,i2c4,boot0default
+#     srId,major,minor,bmp581,lis3mdl,adxl371,ads7028,i2c4,boot0default,im68d121
 GATE_COLUMN = {
     "BMP581 replaces BMP390": 3,
+    "IM68D121JV01 replaces MP23DB01HP microphone": 9,
 }
 
 # Board family prefixes, as the document writes them (SR31-11-2), mapped to the

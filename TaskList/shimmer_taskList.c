@@ -163,6 +163,11 @@ void ShimTask_NORM_manage(void)
       case TASK_GATHER_DATA:
         ShimSens_gatherData();
         break;
+#if defined(SHIMMER3R)
+      case TASK_AUDIO_LEVEL:
+        ShimAudio_levelProcess();
+        break;
+#endif
 #if defined(SHIMMER3)
       case TASK_SAMPLE_MPU9150_MAG:
         MPU9150_startMagMeasurement();
@@ -191,8 +196,10 @@ void ShimTask_NORM_manage(void)
         {
           shimmerStatus.configuring = 1;
           ShimConfig_readRam();
-          ShimSdCfgFile_generate();
-          ShimConfig_setFlagWriteCfgToSd(0, 1);
+          if (ShimSdCfgFile_generate())
+          {
+            ShimConfig_setFlagWriteCfgToSd(0, 1);
+          }
           shimmerStatus.configuring = 0;
         }
         break;
@@ -222,6 +229,14 @@ void ShimTask_NORM_manage(void)
       case TASK_BT_REPLY_RETRY:
         ShimBtReply_retry();
         break;
+      case TASK_EVENT_CHANNEL:
+        ShimEvt_process();
+        break;
+#if defined(SHIMMER3R)
+      case TASK_AUDIO:
+        ShimAudio_process();
+        break;
+#endif
 
       case TASK_BT_TURN_ON_AFTER_BOOT:
         InitialiseBtAfterBoot();

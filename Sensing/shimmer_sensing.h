@@ -132,6 +132,12 @@
 #define EXG_ADS1292R_2_CH2_16BIT 0x26
 #define STRAIN_HIGH              0x27
 #define STRAIN_LOW               0x28
+#if defined(SHIMMER3R)
+/* The sound level (Audio/shimmer_audio_level.h): int16 little-endian,
+ * hundredths of a dB(A) SPL, AUDIO_LEVEL_NONE for none. 0x29-0x37 are
+ * SHIMMER4_SDK's below, so the first ID free everywhere. */
+#define SOUND_LEVEL 0x38
+#endif
 #if defined(SHIMMER4_SDK)
 #define STC3100_CH_1    0x29
 #define STC3100_CH_2    0x2A
@@ -180,6 +186,9 @@ typedef struct
   uint8_t intADC2;
   uint8_t intADC3;
   uint8_t batteryAnalog;
+#if defined(SHIMMER3R)
+  uint8_t soundLevel; /* 0 when the channel is off */
+#endif
 } DATAPTRTypeDef;
 
 typedef enum
@@ -257,7 +266,7 @@ void ShimSens_stepDone(void);
 void ShimSens_saveData(void);
 
 uint8_t ShimSens_getNumEnabledChannels(void);
-void ShimSens_startLoggingIfUndockStartEnabled(void);
+uint8_t ShimSens_startLoggingIfUndockStartEnabled(void);
 
 uint8_t ShimSens_checkAutostopLoggingCondition(void);
 void ShimSens_currentExperimentLengthReset(void);

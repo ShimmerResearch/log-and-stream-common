@@ -133,7 +133,11 @@
 #define NV_MAC_ADDRESS                      (128 + 96) //6bytes
 #define NV_SD_CONFIG_DELAY_FLAG             (128 + 102)
 #define NV_BT_SET_PIN                       (128 + 103)
-//#define NV_TEMP_PRES_CALIBRATION            (128 + 104) //+22 bytes, till 128+125
+/* Button and logging mode, Configuration/shimmer_button_log_mode.h. Firmware
+ * from 2017 reserved 232-253 for pressure calibration but never wrote it */
+#define NV_BUTTON_LOG_MODE                  (128 + 104)
+/* Audio recording mode, Configuration/shimmer_audio_mode.h (DEV-99) */
+#define NV_AUDIO_MODE                       (128 + 105)
 
 #define NV_CENTER                           (128 + 128 + 0)
 #define NV_NODE0                            (128 + 128 + 6)
@@ -222,9 +226,9 @@ typedef union
     uint8_t chEnVBattery : 1;
 #if defined(SHIMMER4_SDK)
     uint8_t chEnPpgApp : 1;
-#elif defined(SHIMMER3R)
-    uint8_t chEnMicrophone : 1;
 #else
+    /* S3R: chEnMicrophone until DEV-99. It never carried data, only an extra count in
+     * the inquiry response and the SD header; the firmware now clears it (§10.4). */
     uint8_t unusedIdx4Bit6 : 1;
 #endif
     uint8_t chEnBridgeAmp : 1; //S3 = IntADC13 & IntADC14, S3R = IntADC1 & IntADC2
@@ -392,12 +396,15 @@ typedef union
     //SDTrialConfig1
     uint8_t lowBatteryAutoStop : 1;
     uint8_t unusedIdx218Bit1   : 1;
-    uint8_t unusedIdx218Bit2   : 1;
-    uint8_t unusedIdx218Bit3   : 1;
-    uint8_t tcxo               : 1;
-    uint8_t unusedIdx218Bit5   : 1;
-    uint8_t unusedIdx218Bit6   : 1;
-    uint8_t singleTouchStart   : 1;
+    /* Bits 2 and 3 are written by older hosts' SET_TRIAL_CONFIG: the Java
+     * driver always sets bit 2, and Java and C# put expansion power in bit 3.
+     * Keep them unused (docs/SHIMMER3_CONFIGURATION_INFOMEM.md section 8.2) */
+    uint8_t unusedIdx218Bit2 : 1;
+    uint8_t unusedIdx218Bit3 : 1;
+    uint8_t tcxo             : 1;
+    uint8_t unusedIdx218Bit5 : 1;
+    uint8_t unusedIdx218Bit6 : 1;
+    uint8_t singleTouchStart : 1;
 
     uint8_t btIntervalSecs;
     uint8_t experimentLengthEstimatedInSecMsb; //Used for SD Sync (min = 1)
@@ -418,8 +425,12 @@ typedef union
     uint8_t unusedIdx230Bit7 : 1;
 
     uint8_t btSetPin;
-    uint8_t unusedIdx232;
-    uint8_t unusedIdx233;
+    /* What the user button does, what else starts logging, and whether the
+     * TTL input is recorded. Read it through
+     * ShimConfig_doesPressToggleLogging() and the other queries beside it,
+     * never directly: they apply its validity rule */
+    uint8_t buttonLogMode;
+    uint8_t audioMode;
     uint8_t unusedIdx234;
     uint8_t unusedIdx235;
     uint8_t unusedIdx236;
@@ -513,13 +524,22 @@ uint8_t ShimConfig_configByteMagRateGet(void);
 void ShimConfig_configByteAltMagRateSet(uint8_t value);
 uint8_t ShimConfig_configByteAltMagRateGet(void);
 uint8_t ShimConfig_checkAndCorrectConfig(void);
+uint8_t ShimConfig_doesPressToggleLogging(void);
+uint8_t ShimConfig_doesUndockStartLogging(void);
+uint8_t ShimConfig_isLoggingDisabled(void);
+uint8_t ShimConfig_isButtonDisabled(void);
+uint8_t ShimConfig_isDoublePress(void);
+uint8_t ShimConfig_doesButtonRecordPresses(void);
+uint8_t ShimConfig_isTtlInputEnabled(void);
+/* Configuration byte 233's mode, corrected (Configuration/shimmer_audio_mode.h) */
+uint8_t ShimConfig_audioMode(void);
+/* Configuration byte 233 bit 4, corrected: the SOUND_LEVEL channel is on
+ * (Audio/shimmer_audio_level.h) */
+uint8_t ShimConfig_isSoundLevelEnabled(void);
 void ShimConfig_setExgConfigForTestSignal(void);
 void ShimConfig_setExgConfigForEcg(void);
 float ShimConfig_freqDiv(float samplingRate);
 void ShimConfig_checkBtModeFromConfig(void);
-#if defined(SHIMMER3R)
-uint8_t ShimConfig_isMicrophoneEnabled(void);
-#endif
 uint8_t ShimConfig_isGSREnabled(void);
 uint8_t ShimConfig_isExpansionBoardPwrEnabled(void);
 void ShimConfig_loadSensorConfigAndCalib(void);

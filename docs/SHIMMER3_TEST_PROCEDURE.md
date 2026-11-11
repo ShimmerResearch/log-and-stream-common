@@ -205,6 +205,7 @@ What the suites cover today:
 | `test_packet_ring` | `Sensing/shimmer_packet_ring.c` | ×1 | The sample ring's interleavings, including the DEV-1023 field fault |
 | `test_autostop` | `Sensing/shimmer_autostop.c` | ×1 | The max_exp_len auto-stop: the stop time, and that doubled, missed or drifting checks, a clock set mid-log and the 32-bit clock wrap move it by a second at most (DEV-1417) |
 | `test_leds_phase` | `LEDs/shimmer_leds_phase.c` | ×1 | The LED frame arithmetic, and the phase lock run closed loop against a blink timer 3% slow to 3% fast: each whole-second tick comes once a second (DEV-1417) |
+| `test_leds` | `LEDs/shimmer_leds.c` | ×2 | The lower LED's priority order (button, host override, SD-card error, battery or charging), drawn through a recording LED driver; the SD-card error shown only out of the dock and off USB |
 | `test_util` | `Util/shimmer_util.c` | ×1 | SD directory naming, config-file 64-bit values, config-file sample rate round trip (every divider), BT response lengths, MAC byte order |
 | `test_rtc` | `RTC/shimmer_rtc.c` | ×2 | Every day from 2000 to 2099 round-trips; leap years; date validation |
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
@@ -462,7 +463,7 @@ differs, and the difference matters for what you are looking for:
 | Platform | When the baud ladder is exhausted | What you see |
 |---|---|---|
 | **Shimmer3** | `while (1) { __bis_SR_register(LPM3_bits + GIE); }` — the boot never completes | **The unit is halted.** No Bluetooth, no logging, no dock response. Yellow at 5 Hz, because the blink timer still runs on ACLK |
-| **Shimmer3R** | `break` — boot continues without the radio | The unit comes up and logs, but has no Bluetooth. Yellow at 5 Hz |
+| **Shimmer3R** | `break` — boot continues without the radio | The unit comes up and logs, but has no Bluetooth. **No LED pattern:** the boot sets `BOOT_STAGE_CONFIGURATION` straight after, so the yellow flash is overwritten before it is drawn |
 
 > `shimmer3-firmware` `LogAndStream_Shimmer3/main.c:300-321`;
 > `shimmer3r-firmware` `LogAndStream_Shimmer3R/Core/Src/main.c:732-739`;
@@ -471,7 +472,9 @@ differs, and the difference matters for what you are looking for:
 > The Shimmer3R behaviour is the friendlier one and the Shimmer3 behaviour is
 > the one that generates support calls — but **the Shimmer3R case is easier to
 > miss**, because a unit that boots and logs looks fine until someone tries to
-> connect to it. Check for the LED pattern on both, not just for "it booted".
+> connect to it, and it shows no LED pattern to warn you. On Shimmer3 check for
+> the yellow flash; on Shimmer3R connect to the unit, rather than checking only
+> that it booted.
 
 Two modules on Shimmer3, one on Shimmer3R, and **six recognised firmware
 versions on the RN4678 alone**:
@@ -615,12 +618,13 @@ documented cause:
 
 | # | Check | The trap |
 |---|---|---|
-| 5.4.2a | Uncalibrated magnetometer magnitude is plausible | LSM303AH boards are clamped to mag range 0, whose default seed carries the wrong sensitivities — reads ~5× high ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
+| 5.4.2a | Uncalibrated magnetometer magnitude is plausible | LSM303AH boards are clamped to mag range 0, whose default seed up to v1.01.009 carries the LSM303DLHC's ±8.1 Ga values — reads ~3× high. A unit's own hard-iron offset can swamp it at rest, so check while rotating the unit, or read the seed itself (`fleet.mag_seeds`) ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
 | 5.4.2b | Calibration bias and sensitivity read back correctly | They are **big-endian**, unlike most of the config (§3.1) |
 | 5.4.2c | Low-noise and wide-range accel calibrations are not swapped | The SD header order is not the InfoMem order (§4.2) |
 | 5.4.2d | ExG millivolts in 16-bit mode | The 16-bit word is bits 22:7 of the 24-bit conversion — the denominator needs a factor of 2 ([streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.5) |
 | 5.4.2e | Shimmer3R ADC / battery millivolts | 12-bit at 3.0 V; the divide-by-four belongs to the MCU's own VBAT debug channel, not these (§7.2) |
 | 5.4.2f | Gyro range on Shimmer3R | The range's high bit lives in config byte 130 — getting it wrong is a 16× error ([InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §4.1) |
+| 5.4.2g | Uncalibrated wide-range accel reads about 1 g at rest, on the right axes | Up to v1.01.009 LSM303AH boards carry the LSM303DLHC's default seed, and their range codes run ±2/16/4/8 g, not ±2/4/8/16 g: 2.4 % high at code 0, 2 to 4 times out at codes 1-3, X and Y swapped. A unit updated from those versions keeps the old records in InfoMem and on its SD card until its calibration is rewritten. Read the seed itself with `fleet.wr_accel_seeds` ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
 
 Axis identity is a firmware question here, not a hardware one: rotate the unit
 through six orientations only to establish **which emitted channel is which
@@ -977,6 +981,43 @@ non-zero delta names which mechanism to chase.
 | 5.11.1 | Reset the counters, stream + log overnight, read them back | All four still zero |
 | 5.11.2 | Repeat on one unit per radio firmware from §5.1 | As above — this is where a bad radio build shows itself |
 
+### 5.12 The event channel and byte 232
+
+Configuration byte 232 sets what the user button does, what may start logging,
+and whether the TTL input is recorded
+([INFOMEM](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.3). The event channel records
+the button's presses and the TTL input's edges in an event file beside each
+data file, and live to a Bluetooth host that opts in
+([EVENT_CHANNEL](SHIMMER3_EVENT_CHANNEL.md)).
+
+The rig's release tier covers every step that needs no hand on the button and
+nothing on the input (§10.4). The rest are a person's, and so is the sign-off,
+`gate4.event_channel`: the steps marked "by hand", walked on each platform, and
+the rig's items passed, or walked by hand where the release tier was not run.
+A Shimmer3 logs only undocked and the Base6 cannot undock one, so its logging
+steps are all by hand.
+
+| # | Step | Expected | Covered by |
+|---|---|---|---|
+| 5.12.1 | Write byte 232 values of every kind, with `userButtonEnable` on and off, and read them back | Kept or corrected as §8.3 says; `userButtonEnable` held at the mode's equivalent; `singleTouchStart` cleared | `release.evt_config` |
+| 5.12.2 | Log with an input recorded (`0x24`, `0x20`, `0x05`) and nobody touching anything | SD header byte 225 is byte 232; an event file at the data file's path under `events/`, paired with it, opening and closing with it, a heartbeat at least every two minutes, no edges. With nothing recorded, no event file | Shimmer3R: the matrix's `events_*` rows. Shimmer3: by hand |
+| 5.12.3 | `0x11`: undock, then send `START_LOGGING` | Nothing logs; the command is NACKed (ACKed before DEV-1431) | Shimmer3R: `release.evt_log_triggers`. Shimmer3: by hand |
+| 5.12.4 | `0x09` and `0x01`: undock | `0x09` starts a log; `0x01` does not, but `START_LOGGING` does | As 5.12.3 |
+| 5.12.5 | Delete only `data/` from a card (as Consensys' Clear SD does), then log | The new session is numbered past the event file still on the card | Shimmer3R: `release.evt_session_number`. Shimmer3: by hand |
+| 5.12.6 | Over Bluetooth, set `0x24` with a one-byte `SET_INFOMEM`, opt in, opt out, reconnect | The initial state as one frame at sequence 0; the status agrees and the TTL input is armed; nothing more while nothing is connected; the opt-out disarms it; a new connection starts opted out | `release.evt_bt_stream` |
+| 5.12.7 | Button modes 2 to 5: single press, double press, presses recorded | As §8.3's table: the press or double press starts and stops logging, a double press within its limits (EVENT_CHANNEL §2.3), every press and release recorded in modes 4 and 5 and none in 2 and 3. The LED shows a held press | By hand |
+| 5.12.8 | Mode 1 (`0x01`) and logging off (`0x11`), with an empty card slot | A press does nothing and the LED stays dark; no SD error flash with logging off | By hand |
+| 5.12.9 | TTL input (pin 10 of the external connector, level-shifted from 5 V) from a pulse generator, the same signal into an analogue channel at 1024 Hz | Every edge in the event file and over Bluetooth, timed within a sample of the analogue edge; the shortest pulse caught, about 61 µs on Shimmer3 and 0.2 µs on Shimmer3R | By hand |
+| 5.12.10 | More than 32 TTL edges in 100 ms | Capture pauses for 1 s; the records count what was dropped | By hand |
+| 5.12.11 | Log across the hourly split with an input recorded | The old event file ends with a final record, the new one opens with reason 2 and carries on the sequence numbers | By hand |
+| 5.12.12 | `test_event_stream.py --stream` at the highest rate the unit streams | Frames arrive; the data stream loses nothing | By hand |
+| 5.12.13 | Shimmer3R: plug and unplug USB-C with the TTL input armed, and after it is disarmed | Detected each time: PE9 shares EXTI9 with VBUS | By hand |
+| 5.12.14 | Each dock the unit is sold with, TTL input armed and opted in | Note the input's level. Edges mean the dock drives pin 10 (EVENT_CHANNEL §3.1) | By hand |
+
+Two bench tools in `Extras/python_scripts/`: `Bluetooth commands/test_event_stream.py`
+opts in and checks the live records, and `Shimmer_common/shimmer_event_file.py`
+checks an event file against its data file. The rig uses the second.
+
 ---
 
 ## 6. Gate 5 — host-side and Consensys compatibility
@@ -1137,6 +1178,7 @@ case earns a permanent place here.
 | BMP581 SR48 window | A plain `>= 7.2` wrongly claims SR48-8-0 and 8-1 | `test_boards` — both layers catch it |
 | DEV-1363 | A host connects to a unit that is already logging, and its `INQUIRY` costs the log 100 ms of samples | `smoke.sd_inquiry_midlog` on Shimmer3R, on the required list — plus §5.6.7 by hand on Shimmer3 |
 | DEV-1417 | A Shimmer3R's `max_exp_len` auto-stop ended a 7-minute log 3% early: the LED phase lock counted seconds twice when TIM6 ran fast | `test_autostop`, `test_leds_phase` (closed loop) — plus §5.6.8 |
+| SD error on USB | A Shimmer3R on USB-C, out of the dock and with no card, flashed the SD-card error instead of its charging colour: the error was gated on the dock alone | `test_leds` |
 
 **When a fault escapes, add its case here and a test for it in the same PR.** A
 regression list that only grows by hand stops growing.
@@ -1161,6 +1203,7 @@ is what has to be true before you trigger it.
 - [ ] **§5.1 boot matrix** walked — one unit per radio firmware, banner strings recorded
 - [ ] §5.4 walked on the models the release's changes actually touch (§5.4.5), rows recorded
 - [ ] Rest of §5 walked on at least one unit, results recorded
+- [ ] **§5.12 event channel** walked on each platform: the button and TTL steps by hand, the rest by the release tier or by hand
 - [ ] **§6.4 host stack** exercised against the release candidate, with the *shipping* host versions
 - [ ] **§6.4.5** — a recording from the previous release still imports
 - [ ] **§6.5** version skew walked in both directions
@@ -1241,7 +1284,10 @@ roughly the order of return.
    defines `main()`.
 2. Include `host_test.h` for the assertion helpers.
 3. Add it to `SRC_test_<module>` and one of the suite lists in
-   `Test/host/Makefile`. CI picks it up with no workflow change.
+   `Test/host/Makefile`. CI picks it up with no workflow change. A
+   dual-platform suite that needs its own define sets `DEFS_test_<module>`:
+   `test_leds` links the real `LEDs/shimmer_leds.c`, so it passes
+   `-DHOST_TEST_LINKS_LEDS` to drop `host_stubs.c`'s stand-ins for it.
 4. If it should be built for both platforms, put it in
    `DUAL_PLATFORM_SUITES`. Prefer that where the module has any `#if
    defined(SHIMMER3...)` in it at all.
@@ -1442,6 +1488,8 @@ flash.
 | `fleet.boot_identity` | Hardware 3, LogAndStream identifier, the candidate's version, and a radio banner on the shipped list |
 | `fleet.config_roundtrip` | The configuration reads back exactly as written |
 | `fleet.dock_protocol` | `smoke.dock_protocol` over the Base6's UART, on each unit. `ENTER_BOOTLOADER` is Shimmer3R only, so a Shimmer3 must answer it `BAD_CMD` |
+| `fleet.mag_seeds` | The calibration dump holds an LSM303 mag record for every range, 0 to 7, and each default among them (zero timestamp, not the range in use) holds its part's values: the LSM303AH's at 0, the LSM303DLHC's at 1-7. Range 0 in use, as on every LSM303AH board, may hold any block but the default up to v1.01.009 gave it, which the boot replaces ([calibration](SHIMMER3_CALIBRATION.md) §6.1). Resets the unit through its slot first, so the dump is the one a docked boot builds; writes nothing |
+| `fleet.wr_accel_seeds` | The calibration dump holds an LSM303 wide-range accel record for every range, 0 to 3, and each default among them (zero timestamp, not the range in use) holds the fitted part's values: the LSM303AH's (codes ±2/16/4/8 g) or the LSM303DLHC's ([calibration](SHIMMER3_CALIBRATION.md) §6.1). The part is the one the firmware found: the inquiry's mag channel order when the mag is enabled (X, Z, Y on an LSM303DLHC), else the mag range, which the firmware moves to 0 on any board without an LSM303DLHC. Range 0 with the mag off is not proof, and a failure then says so. Resets the unit through its slot first, because an updated unit that booted undocked holds its SD card's old records; writes nothing |
 | `fleet.reboot` | Five resets through the RST line; every boot answers the dock with the same radio banner (§5.1.5) |
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |
@@ -1512,14 +1560,18 @@ confirmed by a plausible timestamp step, and an off-grid stamp would be
 dropped as a misframe instead of judged.
 
 The **release** tier runs a configuration matrix on each platform. On Shimmer3R
-it is the one in `Test/hil/matrix/s3r_release.toml`. There are about 22 rows, chosen so every
+it is the one in `Test/hil/matrix/s3r_release.toml`. There are about 30 rows, chosen so every
 pair of the following appears in at least one row: rate (51.2 to 1024 Hz),
 sensor set, mode (Bluetooth stream; SD log, with the hub port acting as the
 undock; or both together) and Bluetooth CRC mode. Two of them are five-minute
 logs. Each row is its own item, `release.<row>`:
 
 - **Configuration.** The rate, sensor bits and ranges are written as raw
-  InfoMem and must read back exactly. Every enabled sensor's ODR must then
+  InfoMem and must read back exactly. So must "logging starts only by command"
+  (`userButtonEnable` on, byte 232 0): the rows start and stop logging over
+  Bluetooth, and a unit set to log on every undock would already be logging,
+  and recording audio, before the link is up. The unit's own setting comes back
+  with its InfoMem after the matrix. Every enabled sensor's ODR must then
   cover the packet rate, because the firmware raises it (§10.6 of the InfoMem
   document); a part already at its ceiling is accepted there. Sensors the board
   does not have are left out (`rig/s3r_boards.py`).
@@ -1535,6 +1587,54 @@ logs. Each row is its own item, `release.<row>`:
   start or reboot; the other two sources do.
 - **Stream and log together.** Every streamed packet must be in the SD log,
   byte for byte.
+- **Audio** ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md)). Every logging row writes
+  configuration byte 233: the row's `audio` mode, or 0. Five `audio_*` rows record:
+  each mode while logging and while logging and streaming, the heaviest load
+  (1024 Hz, every sensor, mode 2) and a five-minute mode 2 log. On those rows:
+  - status byte 1 must show recording within 5 s of the log starting, and clear
+    within 5 s of the stop. While streaming it is read from the pushed status
+    frames;
+  - after the stop, `GET_AUDIO_STATUS_COMMAND` must say stopped, with no fault,
+    silence, escape-hatch write, write error or skipped chunk;
+  - the session's audio files must be the mode's, paired with the data file
+    (same experiment, session and number; the same initial timestamp, config
+    time, MAC and firmware), closed, and without a fault;
+  - the audio must start 0.1-1.5 s after the data file's initial timestamp,
+    or from 0.2 s before it on a row with the sound level on, whose log joins a
+    capture already running ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §1). It
+    must end with the log, and the audio clock must be within 300 ppm of the
+    Shimmer clock;
+  - the fingerprint's chunks must be numbered without a gap, as many as the
+    audio allows less the one or two a stop drops, and each chunk's clock within
+    8 ticks of the line through them all and of the WAV's clock;
+  - the counters in the file headers must equal the status;
+  - the WAV must hold sound: an RMS of at least 1 LSB, which a quiet room passes
+    and a dead microphone does not. The level is reported, not judged.
+
+  A row with audio off must leave no `audio/` directory for its session.
+  Nothing recomputes the fingerprint; the bench recorder's tools do that. A WAV
+  records the bench room, so the test reads it where it lies on the card and
+  then deletes it. A row that fails before the card is read leaves its WAV
+  there.
+- **The sound level** ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8). Every row
+  writes configuration byte 233 bit 4: the row's `sound_level`, or 0. Four
+  `level_*` rows turn it on:
+  - streaming at 128 Hz with only the magnetometer, so the level alone makes up
+    the packet's SPI stage;
+  - streaming at 512 Hz with the IMU;
+  - logging GSR at 128 Hz with the fingerprint;
+  - streaming and logging at 1024 Hz with every sensor, raw audio and the
+    fingerprint.
+
+  On every row, stream and log alike (`rig/sound_level.py`):
+  - channel `0x38` must be in the packets exactly when the bit is set;
+  - the first level must arrive within 0.5 s on a stream, or 1.5 s in a log's
+    file, since a log's start holds it back (SHIMMER3R_AUDIO.md §8);
+  - no sample after it may say "no level" (`-32768`);
+  - every level must be between 20 and 110 dB(A);
+  - the value may change at most once per 128 ms block.
+
+  The level itself is reported, not judged against a meter.
 
 Two observations are kept as their own items so they do not fail every row
 they touch: `release.sd_log_start` (samples lost in the first second of a log)
@@ -1597,6 +1697,25 @@ The checks after the stream are the Shimmer3R tier's:
   without one.
 
 `release.stop_ack` is kept apart as on Shimmer3R.
+
+**The event channel** (§5.12) is in the release tier on both platforms
+(`Test/hil/rig/events.py`). On Shimmer3R every row writes byte 232, 0 unless
+the row sets `button_log_mode`, with `userButtonEnable` on, so no row's undock
+starts a log before the row does. It must read back as INFOMEM §8.3 keeps it.
+Every logging row checks the SD header's copy at byte 225. Three rows,
+`events_*`, log with an input recorded. Their event file is read with
+`shimmer_event_file.py` and must pair with the data file, open and close with
+it, have a heartbeat at least every two minutes, and hold no edges, since
+nothing touches the button or the input. A row whose byte records nothing must
+leave no event file. Four items of their own are in
+`Test/hil/tests/test_event_channel.py`:
+
+| Item | Platforms | Checks |
+|---|---|---|
+| `release.evt_config` | Both | 19 values of byte 232, each written with `singleTouchStart` set: kept, reserved, invalid and legacy, with `userButtonEnable` on and off. Each must read back as §8.3 keeps it, `userButtonEnable` held at the mode's equivalent and `singleTouchStart` cleared. Shimmer3R writes the whole image over the USB dock; Shimmer3 writes one byte at a time over Bluetooth, as §8.3 tells a host to. SR48-6-0's rules apply on that board |
+| `release.evt_bt_stream` | Both | `0x24` written with a one-byte `SET_INFOMEM`, then BT protocol §7.15: the opt-out probe is ACKed and brings nothing; the opt-in brings the initial state as one CRC-checked frame at sequence 0; the status shows the stream on, the TTL input armed and nothing lost; nothing more arrives in 10 s; the opt-out disarms; a second opt-in starts at sequence 0 again; a new connection starts opted out. The initial state must show the input low on Shimmer3R. In a Base6 the input is the dock's pin 10, so there its level is noted, and an edge fails with that named |
+| `release.evt_log_triggers` | Shimmer3R | Undocked by the hub port: `0x11` NACKs `START_LOGGING` and puts no session on the card; `0x09` starts a log on the undock; `0x01` does not, and `START_LOGGING` then does |
+| `release.evt_session_number` | Shimmer3R | A short log with presses recorded, its `data/` session folder deleted over USB, then another: the second must be numbered past the first, whose event folder is still there |
 
 Run release-tier rows with STM32CubeIDE and Consensys closed. The suite warns
 when they are open. On USB arrival the IDE pages every Bluetooth COM port,

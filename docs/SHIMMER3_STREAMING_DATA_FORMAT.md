@@ -41,7 +41,7 @@ logging, so a parser written from this document reads both.
 >   `devices/shimmer3r/channelFormats.ts`, `devices/shimmer3r/streamFraming.ts`.
 > - **Sensor byte order (§3 Encoding column, §5.2, §5.5, §7.4):** read from the
 >   register each driver starts its burst read at and how the packer copies the
->   bytes. Shimmer3 at `shimmer3-firmware` @ `0a6a650` —
+>   bytes. Shimmer3 at `shimmer3-firmware` @ `ac05953` (release v1.01.009) —
 >   `LogAndStream_Shimmer3/i2c.c` (`I2C_pollSensors`) and the drivers under
 >   `Shimmer_Driver/` (`MPU9150`, `ICM20948`, `LSM303DLHC`, `LSM303AHTR`,
 >   `BMPX80`). Shimmer3R at `shimmer3r-firmware` @ `ce1f4fc1` —
@@ -339,6 +339,8 @@ before the next run, or they will come back:_
   from the web SDK's Shimmer3R table, which says nothing about Shimmer3, and
   Shimmer3 sends several of these big-endian. The corrected cells are read from
   the drivers (§5.2, §5.5)._
+- _**The `0x38` row** (`SOUND_LEVEL`, DEV-1413) was added by hand. Its Java
+  and SDK columns are blank until those hosts name the channel._
 - _**Java type string** on the alternate-accelerometer rows is `i12*>`, as the
   driver spells it. An earlier hand edit dropped the `>` as an extractor
   artefact. It is not: `i12*>` is the driver's big-endian, left-justified
@@ -406,6 +408,7 @@ the `r` form (`i16r`, `u16r`, `u24r`) is the driver's big-endian decoder.
 | `0x26` | `EXG_ADS1292R_2_CH2_16BIT` | `EXG_ADS1292R_2_CH2_16BIT` | `EXG_ADS1292R_2_CH2_16BIT` | 2 | i16 be | i16r | `EXG_ADS1292R_2_CH2_16BIT` | `Exg2_CH2_16Bit` |  |
 | `0x27` | `STRAIN_HIGH` | `STRAIN_HIGH` | `STRAIN_HIGH` | 2 |  | u12 | `BridgeAmpHigh` |  | SDK_MISSING |
 | `0x28` | `STRAIN_LOW` | `STRAIN_LOW` | `STRAIN_LOW` | 2 |  | u12 | `BridgeAmpLow` |  | SDK_MISSING |
+| `0x38` | `SOUND_LEVEL` | — | `SOUND_LEVEL` | 2 | i16 le |  |  |  | S3R only (§5.7) |
 
 ## 4. Channel order rules
 
@@ -480,17 +483,18 @@ the SPI block.
 | 7 | SPI | `X_ALT_MAG`, `Y_ALT_MAG`, `Z_ALT_MAG` | 6 |
 | 8 | SPI | ExG chip 1: status, CH1, CH2 | 7 (24-bit) or 5 (16-bit) |
 | 9 | SPI | ExG chip 2: status, CH1, CH2 | 7 (24-bit) or 5 (16-bit) |
-| 10 | SPI (ADS7028) | `INTERNAL_ADC_0` | 2 |
-| 11 | SPI (ADS7028) | `STRAIN_HIGH`, `STRAIN_LOW` | 4 |
-| 12 | SPI (ADS7028) | `INTERNAL_ADC_1` | 2 |
-| 13 | SPI (ADS7028) | `INTERNAL_ADC_2` | 2 |
-| 14 | SPI (ADS7028) | `GSR_RAW` **or** `INTERNAL_ADC_3` | 2 |
-| 15 | SPI (ADS7028) | `EXTERNAL_ADC_0` | 2 |
-| 16 | SPI (ADS7028) | `EXTERNAL_ADC_1` | 2 |
-| 17 | SPI (ADS7028) | `EXTERNAL_ADC_2` | 2 |
-| 18 | SPI (ADS7028) | `VBATT` | 2 |
+| 10 | SPI (written by the firmware, no bus) | `SOUND_LEVEL`, configuration byte 233 bit 4 (§5.7) | 2 |
+| 11 | SPI (ADS7028) | `INTERNAL_ADC_0` | 2 |
+| 12 | SPI (ADS7028) | `STRAIN_HIGH`, `STRAIN_LOW` | 4 |
+| 13 | SPI (ADS7028) | `INTERNAL_ADC_1` | 2 |
+| 14 | SPI (ADS7028) | `INTERNAL_ADC_2` | 2 |
+| 15 | SPI (ADS7028) | `GSR_RAW` **or** `INTERNAL_ADC_3` | 2 |
+| 16 | SPI (ADS7028) | `EXTERNAL_ADC_0` | 2 |
+| 17 | SPI (ADS7028) | `EXTERNAL_ADC_1` | 2 |
+| 18 | SPI (ADS7028) | `EXTERNAL_ADC_2` | 2 |
+| 19 | SPI (ADS7028) | `VBATT` | 2 |
 
-The table above is the **usual** Shimmer3R layout, not the only one. Rows 10-18
+The table above is the **usual** Shimmer3R layout, not the only one. Rows 11-19
 exist only while `isAds7028Present()` holds — the daughter-card id must be
 programmed, the hardware id must be Shimmer3R, and the board must not be an
 SR48-6.0 (`Boards/shimmer_boards.c:279-283`); the block is also skipped when no
@@ -580,7 +584,7 @@ the gyroscope on every board and the magnetometer on first-generation boards:
 | | ICM-20948 (third): from `GYRO_XOUT_H` | **Big-endian** | | |
 | Wide-range accel `0x04`-`0x06` | LSM303DLHC (first), from `OUT_X_L_A` | Little-endian | LIS2DW12, from `OUT_X_L` | Little-endian |
 | | LSM303AHTR (second, third), from `OUT_X_L_A` | Little-endian | | |
-| | ICM-20948 standing in for the LSM303 (third, no LSM fitted): X and Z byte-swapped to little-endian by the packer | Little-endian, **Y axis offset by +255 counts** (below) | | |
+| | ICM-20948 standing in for the LSM303 (third, no LSM fitted): byte-swapped to little-endian by the packer, Y sign-inverted | Little-endian. **Y offset by +255 counts in v1.01.007 and earlier** (below) | | |
 | Magnetometer `0x07`-`0x09` | LSM303DLHC (first), from `OUT_X_H_M` | **Big-endian**, and axis order X, Z, Y (§4.1) | LIS2MDL, from `OUTX_L_REG` | Little-endian |
 | | LSM303AHTR (second, third), from `OUTX_L_REG_M` | Little-endian | | |
 | | ICM-20948's AK09916 (third, no LSM fitted), from `HXL` | Little-endian | | |
@@ -602,15 +606,21 @@ then sign-extend from bit 11. That is the Java driver's `i12*>`. It is not
 present on Shimmer3, where these IDs are the 9-axis chip's own accelerometer,
 a plain big-endian `int16`.
 
-> **On Shimmer3 boards where the ICM-20948 stands in for the LSM303, the
-> wide-range accelerometer's Y axis carries a +255-count offset.** The packer
-> inverts Y's sign to match the LSM303's placement. But it assembles the value
-> from the chip's big-endian bytes as if they were little-endian, negates that,
-> and writes the result high byte first (`shimmer3-firmware`
-> `LogAndStream_Shimmer3/i2c.c`, `I2C_pollSensors`, at the revision pinned
-> above). X and Z are correct.
+> **On Shimmer3 boards where the ICM-20948 stands in for the LSM303, firmware up
+> to v1.01.007 gave the wide-range accelerometer's Y axis a +255-count
+> offset.** The packer inverts Y's sign to match the LSM303's placement. Up to
+> v1.01.007 it assembled the value from the chip's big-endian bytes as if they
+> were little-endian, negated that, and wrote the result high byte first
+> (`shimmer3-firmware` `LogAndStream_Shimmer3/i2c.c`, `I2C_pollSensors`, @
+> `0a6a650`). X and Z were correct.
 >
-> What a host reads is the intended value plus 255, with three exceptions:
+> **Fixed in v1.01.009,** the first public release with the fix
+> (`shimmer3-firmware` PR #129, commit `f43d6be`). The v1.01.008 release
+> candidate also carries it. From then on Y is the negated reading, written
+> little-endian like X and Z, at the revision pinned above.
+>
+> On affected firmware, what a host reads is the intended value plus 255, with
+> three exceptions:
 >
 > - **Intended value exactly 0:** the host reads 0.
 > - **Intended value from -255 to -1:** the host reads it plus 256.
@@ -624,7 +634,7 @@ a plain big-endian `int16`.
 >
 > **Calibration:** a calibration made on affected firmware absorbs the offset
 > into its Y offset term. Such a unit needs its wide-range accelerometer
-> recalibrated once it runs fixed firmware.
+> recalibrated once it runs v1.01.009 or later.
 >
 > **Recovering the intended value exactly:** let `v` be the Y word read
 > little-endian, and let `swap()` exchange its two bytes. The intended value is
@@ -637,11 +647,8 @@ a plain big-endian `int16`.
 > **Checking a unit:** on these boards the alternate accelerometer
 > (`0x14`-`0x16`) carries the same ICM-20948 reading, as raw big-endian words.
 > Wide-range X then equals alternate X in every sample. Wide-range Y plus
-> alternate Y is 255 on affected firmware, and 0 once fixed (apart from the
-> exceptions above).
->
-> **Fix:** shimmer3-firmware PR #129 (DEV-1298). This note will name the first
-> release that carries it.
+> alternate Y is 255 on affected firmware (apart from the exceptions above),
+> and 0 on v1.01.009 or later.
 
 > **On Shimmer3R the magnetometer repeats its last reading when it has no new
 > one.** The LIS2MDL converts at up to 100 Hz, and a packet that finds no fresh
@@ -723,6 +730,23 @@ inquiry response, not from the channel list in isolation.
 > produce wrong data. Pressure at 3 bytes is the common case that exposes it:
 > every channel after pressure shifts by one byte. Treat an unrecognised ID as
 > fatal (§8).
+
+### 5.7 Sound level — 2 bytes, signed, Shimmer3R only
+
+`SOUND_LEVEL` (`0x38`) is the A-weighted level at the microphone: an int16,
+little-endian, in hundredths of a dB(A) SPL. Divide by 100.
+- **`-32768` (`0x8000`) is no level.** The capture is still starting, or is not
+  running. It starts in the first 256-384 ms of sensing, or about a second when
+  a log starts from rest. Report it as missing, not as −327.68 dB.
+- **It is nominal**, not measured against a calibrated meter.
+- **Each value covers 128 ms of audio** and repeats until the next one.
+- **It lags its packet:** the middle of the 128 ms it describes is 64 to 192 ms
+  before the packet's timestamp.
+
+[SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8 has the details. The channel is on
+while configuration byte 233 bit 4 is set
+([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.5).
+Firmware that predates it never sends `0x38`.
 
 ## 6. Configuration snapshot needed for conversion
 

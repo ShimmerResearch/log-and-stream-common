@@ -1,7 +1,7 @@
 """Build and read Shimmer3R configurations in the 512-byte InfoMem image.
 
-Only the fields the release matrix varies: sampling rate, sensor enables and
-the ranges of the kinematic sensors. Everything else in the image - trial
+Only the fields the release matrix varies: sampling rate, sensor enables, the
+ranges of the kinematic sensors and the audio mode. Everything else in the image - trial
 config, names, calibration blocks - is carried through from what the unit
 already holds. Byte and bit positions are those of
 docs/SHIMMER3_CONFIGURATION_INFOMEM.md §2-§4, Shimmer3R column.
@@ -17,7 +17,7 @@ from __future__ import annotations
 SENSOR_BITS = {
     "ln_accel": (3, 7), "gyro": (3, 6), "mag": (3, 5), "exg1_24": (3, 4), "exg2_24": (3, 3),
     "gsr": (3, 2), "ext_adc0": (3, 1), "ext_adc1": (3, 0),
-    "bridge_amp": (4, 7), "mic": (4, 6), "vbatt": (4, 5), "wr_accel": (4, 4), "ext_adc2": (4, 3),
+    "bridge_amp": (4, 7), "vbatt": (4, 5), "wr_accel": (4, 4), "ext_adc2": (4, 3),
     "int_adc3": (4, 2), "int_adc0": (4, 1), "int_adc1": (4, 0),
     "int_adc2": (5, 7), "alt_accel": (5, 6), "alt_mag": (5, 5), "exg1_16": (5, 4), "exg2_16": (5, 3),
     "pressure": (5, 2),
@@ -101,6 +101,32 @@ class S3rConfig:
         self.b[8] = (self.b[8] & 0xFC) | (code & 0x3)
         self.b[130] = (self.b[130] & 0xFB) | (((code >> 2) & 1) << 2)
 
+    # --- audio ---------------------------------------------------------------
+
+    # Byte 233 (§8.5): bits 0-1 the mode, bit 4 the sound level, the rest zero.
+    # Each setter writes the whole byte: gain preset 0 (the default) and bit 7
+    # clear, so a value the firmware acts on reads back exactly as written.
+
+    def _byte233(self) -> int:
+        b = self.b[233]
+        return 0 if b & 0x80 else b & 0x13      # erased (0xFF) or invalid: nothing to keep
+
+    @property
+    def audio_mode(self) -> int:
+        return self.b[233] & 0x03
+
+    @audio_mode.setter
+    def audio_mode(self, mode: int):
+        self.b[233] = (self._byte233() & 0x10) | (mode & 0x03)
+
+    @property
+    def sound_level(self) -> int:
+        return (self.b[233] >> 4) & 1
+
+    @sound_level.setter
+    def sound_level(self, on: int):
+        self.b[233] = (self._byte233() & 0x03) | (0x10 if on else 0)
+
     # --- ODRs, for checking the firmware's correction ------------------------
 
     def odrs_hz(self) -> dict[str, float]:
@@ -143,3 +169,29 @@ class S3rConfig:
             if not hz >= need:                   # also catches NaN
                 out.append(f"{part} ODR {hz} Hz below {need:.1f} Hz")
         return out
+
+    # --- the button, logging and the TTL input (§8.3) ------------------------
+
+    @property
+    def button_log_mode(self) -> int:           # byte 232; rig/events.py reads it
+        return self.b[232]
+
+    @button_log_mode.setter
+    def button_log_mode(self, value: int):
+        self.b[232] = value & 0xFF
+
+    @property
+    def user_button_enable(self) -> int:        # byte 217 bit 5
+        return (self.b[217] >> 5) & 1
+
+    @user_button_enable.setter
+    def user_button_enable(self, on: int):
+        self.b[217] = (self.b[217] & 0xDF) | ((on & 1) << 5)
+
+    @property
+    def single_touch(self) -> int:              # byte 218 bit 7; no release keeps it
+        return (self.b[218] >> 7) & 1
+
+    @single_touch.setter
+    def single_touch(self, on: int):
+        self.b[218] = (self.b[218] & 0x7F) | ((on & 1) << 7)
