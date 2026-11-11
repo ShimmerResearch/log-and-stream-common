@@ -22,6 +22,10 @@
 #include "LSM6DSV/lsm6dsv-pid/lsm6dsv_reg.h"
 #include "hal_Infomem.h"
 
+/* The real aggregate includes the board HAL too, and LEDs/shimmer_leds.c takes
+ * its LED driver from it on Shimmer3R. stubs/hal_Board.h has the prototypes. */
+#include "hal_Board.h"
+
 /* __NOP() is a CMSIS intrinsic on Shimmer3R and a macro over __no_operation()
  * on Shimmer3 (see log_and_stream_definitions.h). Button/shimmer_button.c uses
  * it in its debounce path. A host has neither, and an empty statement is the

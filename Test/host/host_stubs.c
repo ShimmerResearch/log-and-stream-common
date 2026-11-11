@@ -145,6 +145,16 @@ uint8_t *ShimSdHead_getSdHeadText(void)
   return stubSdHeadText;
 }
 
+/* The real accessor's body, over the same array. */
+uint8_t ShimSdHead_sdHeadTextGetByte(uint16_t offset)
+{
+  if (offset > SD_HEAD_SIZE - 1)
+  {
+    return 0;
+  }
+  return stubSdHeadText[offset];
+}
+
 /* --- SDCard/shimmer_sd.h -------------------------------------------------- */
 
 FRESULT ShimSd_setFileTimestamp(char *path)
@@ -213,8 +223,10 @@ void HAL_Delay(uint32_t Delay)
 
 /* --- LEDs/shimmer_leds.h --------------------------------------------------- *
  * Overriding the real ShimLeds_setRtcErrorFlash() rather than linking
- * LEDs/shimmer_leds.c: that module needs the RN4X and PWM headers, and all a
- * test needs to know is what the caller asked for. */
+ * LEDs/shimmer_leds.c, for the suites that only need to know what the caller
+ * asked for. test_leds links the real module instead and is built with
+ * -DHOST_TEST_LINKS_LEDS, which drops these two so they do not collide. */
+#if !defined(HOST_TEST_LINKS_LEDS)
 void ShimLeds_setRtcErrorFlash(uint8_t state)
 {
   stubRtcErrorFlash = state;
@@ -224,6 +236,7 @@ uint8_t ShimLeds_getRtcErrorFlash(void)
 {
   return stubRtcErrorFlash;
 }
+#endif
 
 /* --- EEPROM/shimmer_eeprom.h ---------------------------------------------- */
 
