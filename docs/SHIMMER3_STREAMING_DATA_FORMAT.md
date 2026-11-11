@@ -732,9 +732,9 @@ inquiry response, not from the channel list in isolation.
 
 `SOUND_LEVEL` (`0x38`) is the A-weighted level at the microphone: an int16,
 little-endian, in hundredths of a dB(A) SPL. Divide by 100.
-- **`-32768` (`0x8000`) is no level.** The capture is still starting (the first
-  256-384 ms of sensing) or is not running. Report it as missing, not as
-  −327.68 dB.
+- **`-32768` (`0x8000`) is no level.** The capture is still starting, or is not
+  running. It starts in the first 256-384 ms of sensing, or about a second when
+  a log starts from rest. Report it as missing, not as −327.68 dB.
 - **It is nominal**, not measured against a calibrated meter.
 - **Each value covers 128 ms of audio** and repeats until the next one.
 - **It lags its packet:** the middle of the 128 ms it describes is 64 to 192 ms

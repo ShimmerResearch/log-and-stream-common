@@ -284,6 +284,13 @@ class SoundLevel(unittest.TestCase):
         probs, _ = sl.check(level_series(none_s=0.7), 128.0, True)
         self.assertTrue(any("first sound level" in p for p in probs), probs)
 
+    def test_a_log_may_start_later(self):
+        # A log's file opening holds the level back (SHIMMER3R_AUDIO.md section 8)
+        probs, _ = sl.check(level_series(none_s=0.93), 128.0, True, sl.FIRST_BY_S_LOG)
+        self.assertEqual(probs, [])
+        probs, _ = sl.check(level_series(none_s=1.8), 128.0, True, sl.FIRST_BY_S_LOG)
+        self.assertTrue(any("first sound level" in p for p in probs), probs)
+
     def test_no_level_after_the_first(self):
         v = level_series()
         v[500] = sl.NONE

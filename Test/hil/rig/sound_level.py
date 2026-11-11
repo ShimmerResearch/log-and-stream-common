@@ -13,16 +13,21 @@ CHANNEL = 0x38
 NONE = -32768
 BLOCK_S = 0.128
 # The first level comes with the third block: 256 to 384 ms after sensing
-# starts, plus the task's wait
+# starts, plus the task's wait. A log's start holds the main loop while it opens
+# its files, and the level waits behind it: on the bench a log started from rest
+# gave its first level 0.84-0.93 s in (SHIMMER3R_AUDIO.md section 8).
 FIRST_BY_S = 0.5
+FIRST_BY_S_LOG = 1.5
 # A quiet bench room reads about 40-51 dB(A); the microphones' self-noise
 # about 26. The loudest an int16 capture can show is 111.1 dB(A).
 LOW_DB, HIGH_DB = 20.0, 110.0
 
 
-def check(values, rate_hz: float, enabled: bool) -> tuple[list[str], str]:
+def check(values, rate_hz: float, enabled: bool,
+          first_by_s: float = FIRST_BY_S) -> tuple[list[str], str]:
     """values: the channel's samples in order, or None when the packets have no
-    0x38. Returns (problems, note)."""
+    0x38. first_by_s: FIRST_BY_S for a stream, FIRST_BY_S_LOG for a log's file.
+    Returns (problems, note)."""
     if values is None:
         return (["sound level on (byte 233 bit 4), but no channel 0x38 in the packets"] if enabled else [], "")
     if not enabled:
@@ -34,8 +39,8 @@ def check(values, rate_hz: float, enabled: bool) -> tuple[list[str], str]:
     if first is None:
         return ([f"all {len(v)} samples say no level (-32768)"], "")
     probs = []
-    if first / rate_hz > FIRST_BY_S:
-        probs.append(f"first sound level {first / rate_hz:.2f} s in, expected within {FIRST_BY_S} s")
+    if first / rate_hz > first_by_s:
+        probs.append(f"first sound level {first / rate_hz:.2f} s in, expected within {first_by_s} s")
     gaps = sum(1 for x in v[first:] if x == NONE)
     if gaps:
         probs.append(f"{gaps} samples say no level (-32768) after the first level")

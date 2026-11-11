@@ -1618,8 +1618,9 @@ logs. Each row is its own item, `release.<row>`:
 
   On every row, stream and log alike (`rig/sound_level.py`):
   - channel `0x38` must be in the packets exactly when the bit is set;
-  - the first level must arrive within 0.5 s, and no sample after it may say
-    "no level" (`-32768`);
+  - the first level must arrive within 0.5 s on a stream, or 1.5 s in a log's
+    file, since a log's start holds it back (SHIMMER3R_AUDIO.md §8);
+  - no sample after it may say "no level" (`-32768`);
   - every level must be between 20 and 110 dB(A);
   - the value may change at most once per 128 ms block.
 

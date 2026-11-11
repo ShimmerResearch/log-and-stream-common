@@ -204,7 +204,8 @@ def _check_log(path: Path, cfg: S3rConfig, inq, seconds, unit, aside):
     aside.log_start(_start_loss(fc.ts, h.divider))
     chans = decode.split_channels(fc.rows, h.channels, bt.HW_SHIMMER3R)
     sig, note = signals.check_rest(chans, calibs, cfg.rate_hz)
-    lp, lnote = sound_level.check(chans.get(sound_level.CHANNEL), cfg.rate_hz, cfg.sound_level)
+    lp, lnote = sound_level.check(chans.get(sound_level.CHANNEL), cfg.rate_hz, cfg.sound_level,
+                                  sound_level.FIRST_BY_S_LOG)
     sig += [f"sound level: {p}" for p in lp]
     return fc, probs + sig, "; ".join(n for n in (note, lnote) if n)
 

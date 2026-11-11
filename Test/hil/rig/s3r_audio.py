@@ -258,8 +258,10 @@ def check(data_path: Path, data: DataFile, mode: int, status: AudioStatus | None
         if adir.exists():
             p.append(f"audio off, but {adir} exists")
         return AudioCheck(p, "")
-    if data.audio_mode != mode:
-        p.append(f"data file header byte 226 says audio mode {data.audio_mode}, configured {mode}")
+    # Byte 226 is the whole corrected byte 233: bit 4 is the sound level (§8)
+    if data.audio_mode & 0x03 != mode:
+        p.append(f"data file header byte 226 says audio mode {data.audio_mode & 0x03} "
+                 f"({data.audio_mode:#04x}), configured {mode}")
 
     present = {e.name for e in adir.iterdir()} if adir.is_dir() else set()
     want = ({wav_path.name} if mode in WAV_MODES else set()) | ({afp_path.name} if mode in AFP_MODES else set())

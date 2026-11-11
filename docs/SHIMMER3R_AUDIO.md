@@ -432,10 +432,20 @@ saw the same writes.
 
 The factory test S3R_TEST_0026 captures through the same driver, at its own
 settings (decimation 64, gain −8). It runs one capture at a time. A factory test
-while a recording or the sound level (§8) holds the microphone reports
+while a recording or the sound level (§8) holds the microphone would report
 `FAIL: Microphone busy recording`, whichever it is,
-rather than restarting the ADF under the recording
+rather than restart the ADF under the recording
 ([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §5.6).
+
+In practice neither route can start one while the unit senses, so the check is
+a safeguard:
+- **Bluetooth** refuses `SET_FACTORY_TEST` while sensing
+  (`ShimBt_isCmdBlockedWhileSensing`).
+- **A docked Shimmer3R's USB is down while it senses,** so its dock UART is not
+  there either.
+
+On the bench, with the sound level on and the unit streaming docked, both were
+tried: no test ran until the stream stopped.
 
 ## 8. The sound level
 
@@ -477,14 +487,29 @@ every data packet: the A-weighted level at the microphone, in nominal dB SPL.
 
 **When a value applies:**
 - **The first value** comes with the third block, 256 to 384 ms after sensing
-  starts. The first two blocks are the microphone's start-up (§1), and until
-  then packets carry `-32768`.
+  starts: 318-320 ms in every streamed run on the bench. The first two blocks are
+  the microphone's start-up (§1), and until then packets carry `-32768`.
+  - **A log that starts from rest is slower.** Its start holds the main loop while
+    it opens its files, and the level waits behind it: on the bench the first
+    value came 0.84-0.93 s in.
+  - **After a configuration write** the first log's file opening can take longer
+    still, on cards with small clusters (DEV-1429).
 - **A value describes the last block worked.** That is the 128 ms that ended up
-  to one block before the packet, plus the wait for `TASK_AUDIO_LEVEL`: normally
-  a few milliseconds, longer while the card is slow. So the middle of the block
-  a value describes is 64 to 192 ms before the packet's timestamp.
+  to one block before the packet, plus the wait for `TASK_AUDIO_LEVEL`.
+  - **The wait is short.** On the bench, a block's value was in the packets a
+    median of 3.6 ms after the block ended, and 99% within 7.4 ms.
+  - **So the middle of the block** a value describes is 64 to 192 ms before the
+    packet's timestamp, plus that wait.
   - For a level that matters over seconds this makes no difference.
   - To place a sharp sound in time, use the WAV (§3.1).
+- **While the main loop is held,** the value holds too.
+  - **What holds it:** a log opening its files mid-stream did, for about a second
+    on the bench.
+  - **When the loop is free again:** the task finds more than 4 blocks waiting,
+    restarts its filter on the newest, and carries on.
+  - **What is lost:** the blocks in between get no value of their own. On the
+    bench that happened once in a 120 s run, at the log's start: six blocks, after
+    which the next value was exact again.
 - **Each value repeats** until the next block: at 1024 Hz, about 131 packets in
   a row carry the same value.
 
@@ -523,6 +548,18 @@ every data packet: the A-weighted level at the microphone, in nominal dB SPL.
 - Its level checked against a calibrated sound level meter, on each microphone
   part, bare and in plastics.
 - Its current while the unit only streams, and its CPU time per block.
+
+**Benched** (Shimmer3R, MP23DB01HP, bench-only image that writes a known signal
+into each capture block in the DMA interrupt):
+- **The arithmetic:** in a 120 s stream at 512 Hz, all 928 values matched the
+  same filter worked on a PC to within 0.01 dB.
+- **A log joined mid-stream and stopped while the stream went on:**
+  - the WAV matched the signal sample for sample (942,080 samples, no silence,
+    closed, no fault);
+  - the log's 30,719 records were all in the stream, byte for byte.
+- **Streaming at 1024 Hz with every sensor on:** classic (CRC off) and BLE (CRC
+  1), 60 s each, lost nothing.
+- **The release matrix's four `level_*` rows** passed.
 
 **Hosts:**
 - Byte 233 in the host APIs' configuration models.
