@@ -615,12 +615,13 @@ documented cause:
 
 | # | Check | The trap |
 |---|---|---|
-| 5.4.2a | Uncalibrated magnetometer magnitude is plausible | LSM303AH boards are clamped to mag range 0, whose default seed carries the wrong sensitivities — reads ~5× high ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
+| 5.4.2a | Uncalibrated magnetometer magnitude is plausible | LSM303AH boards are clamped to mag range 0, whose default seed up to v1.01.009 carries the LSM303DLHC's ±8.1 Ga values — reads ~3× high. A unit's own hard-iron offset can swamp it at rest, so check while rotating the unit, or read the seed itself (`fleet.mag_seeds`) ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
 | 5.4.2b | Calibration bias and sensitivity read back correctly | They are **big-endian**, unlike most of the config (§3.1) |
 | 5.4.2c | Low-noise and wide-range accel calibrations are not swapped | The SD header order is not the InfoMem order (§4.2) |
 | 5.4.2d | ExG millivolts in 16-bit mode | The 16-bit word is bits 22:7 of the 24-bit conversion — the denominator needs a factor of 2 ([streaming](SHIMMER3_STREAMING_DATA_FORMAT.md) §7.5) |
 | 5.4.2e | Shimmer3R ADC / battery millivolts | 12-bit at 3.0 V; the divide-by-four belongs to the MCU's own VBAT debug channel, not these (§7.2) |
 | 5.4.2f | Gyro range on Shimmer3R | The range's high bit lives in config byte 130 — getting it wrong is a 16× error ([InfoMem](SHIMMER3_CONFIGURATION_INFOMEM.md) §4.1) |
+| 5.4.2g | Uncalibrated wide-range accel reads about 1 g at rest, on the right axes | Up to v1.01.009 LSM303AH boards carry the LSM303DLHC's default seed, and their range codes run ±2/16/4/8 g, not ±2/4/8/16 g: 2.4 % high at code 0, 2 to 4 times out at codes 1-3, X and Y swapped. A unit updated from those versions keeps the old records in InfoMem and on its SD card until its calibration is rewritten. Read the seed itself with `fleet.wr_accel_seeds` ([calibration](SHIMMER3_CALIBRATION.md) §6.1) |
 
 Axis identity is a firmware question here, not a hardware one: rotate the unit
 through six orientations only to establish **which emitted channel is which
@@ -1442,6 +1443,8 @@ flash.
 | `fleet.boot_identity` | Hardware 3, LogAndStream identifier, the candidate's version, and a radio banner on the shipped list |
 | `fleet.config_roundtrip` | The configuration reads back exactly as written |
 | `fleet.dock_protocol` | `smoke.dock_protocol` over the Base6's UART, on each unit. `ENTER_BOOTLOADER` is Shimmer3R only, so a Shimmer3 must answer it `BAD_CMD` |
+| `fleet.mag_seeds` | The calibration dump holds an LSM303 mag record for every range, 0 to 7, and each default among them (zero timestamp, not the range in use) holds its part's values: the LSM303AH's at 0, the LSM303DLHC's at 1-7. Range 0 in use, as on every LSM303AH board, may hold any block but the default up to v1.01.009 gave it, which the boot replaces ([calibration](SHIMMER3_CALIBRATION.md) §6.1). Resets the unit through its slot first, so the dump is the one a docked boot builds; writes nothing |
+| `fleet.wr_accel_seeds` | The calibration dump holds an LSM303 wide-range accel record for every range, 0 to 3, and each default among them (zero timestamp, not the range in use) holds the fitted part's values: the LSM303AH's (codes ±2/16/4/8 g) or the LSM303DLHC's ([calibration](SHIMMER3_CALIBRATION.md) §6.1). The part is the one the firmware found: the inquiry's mag channel order when the mag is enabled (X, Z, Y on an LSM303DLHC), else the mag range, which the firmware moves to 0 on any board without an LSM303DLHC. Range 0 with the mag off is not proof, and a failure then says so. Resets the unit through its slot first, because an updated unit that booted undocked holds its SD card's old records; writes nothing |
 | `fleet.reboot` | Five resets through the RST line; every boot answers the dock with the same radio banner (§5.1.5) |
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |

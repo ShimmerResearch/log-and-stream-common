@@ -2453,5 +2453,87 @@ class DockArgLengths(unittest.TestCase):
         self.assertIn("GET INFOMEM with no arguments (LEN 2): RSP, expected BAD_ARG", w.failures[0])
 
 
+def _fleet_module():
+    """tests/test_s3_fleet.py, which imports pytest; None without it."""
+    import importlib.util
+    if "_s3_fleet" in sys.modules:
+        return sys.modules["_s3_fleet"]
+    if importlib.util.find_spec("pytest") is None:
+        return None
+    spec = importlib.util.spec_from_file_location("_s3_fleet", HERE / "tests" / "test_s3_fleet.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@unittest.skipIf(_fleet_module() is None, "needs pytest")
+class S3FleetSeeds(unittest.TestCase):
+    """fleet.mag_seeds and fleet.wr_accel_seeds: which part they assume, and
+    what they make of the record in use."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.fleet = _fleet_module()
+
+    def cfg(self, mag_range):
+        c = s3_config.S3Config(bytes(384))
+        c.put("mag_range", mag_range)
+        return c
+
+    def test_the_inquiry_s_mag_order_names_the_part(self):
+        part = self.fleet.lsm303_part
+        self.assertEqual(part(self.cfg(0), [0x00, 0x07, 0x09, 0x08])[::2], ("LSM303DLHC", True))
+        self.assertEqual(part(self.cfg(0), [0x07, 0x08, 0x09])[::2], ("LSM303AH", True))
+
+    def test_without_the_mag_only_a_range_other_than_0_is_proof(self):
+        part = self.fleet.lsm303_part
+        self.assertEqual(part(self.cfg(1), [0x00, 0x01, 0x02])[::2], ("LSM303DLHC", True))
+        self.assertEqual(part(self.cfg(0), [0x00, 0x01, 0x02])[::2], ("LSM303AH", False))
+
+    class Link:
+        def __init__(self, infomem, dump):
+            self.infomem, self.dump = infomem, dump
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read_infomem(self):
+            return self.infomem
+
+        def read_calib_dump(self):
+            return self.dump
+
+    def mag_dump(self, range0: bytes, range0_ts: bytes = bytes(8)) -> bytes:
+        import struct
+        body = b"".join(struct.pack("<HBB", 32, r, 21) + (range0_ts if r == 0 else bytes(8))
+                        + (range0 if r == 0 else self.fleet.mag_seed_block(r)) for r in range(8))
+        return (len(body) + 8).to_bytes(2, "little") + bytes(8) + body
+
+    def run_mag_seeds(self, range0: bytes, range0_ts: bytes = bytes(8)):
+        notes = []
+        link = self.Link(self.cfg(0).bytes(), self.mag_dump(range0, range0_ts))
+        with mock.patch.object(self.fleet, "open_bt", lambda unit: link):
+            self.fleet.test_mag_seeds(None, None, notes.append)
+        return notes
+
+    def test_range_0_in_use_may_not_be_the_old_default(self):
+        with self.assertRaises(AssertionError) as cm:
+            self.run_mag_seeds(self.fleet.OLD_MAG_RANGE0)
+        self.assertIn("range 0, in use, still holds the default", str(cm.exception))
+
+    def test_a_timestamp_does_not_excuse_the_old_default(self):
+        with self.assertRaises(AssertionError) as cm:
+            self.run_mag_seeds(self.fleet.OLD_MAG_RANGE0, bytes([0x11] * 8))
+        self.assertIn("range 0, in use, still holds the default", str(cm.exception))
+
+    def test_range_0_in_use_may_be_anyone_s_block(self):
+        self.assertIn("0 (in use: not the old default)", self.run_mag_seeds(self.fleet.mag_seed_block(0))[0])
+        self.run_mag_seeds(bytes(range(21)))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -134,14 +134,24 @@ typedef struct shimmer_calib_t
 #define SC_DATA_LEN_MPU9X50_ICM20948_ACCEL            SC_DATA_LEN_STD_IMU_CALIB
 #define SC_SENSOR_RANGE_MPU9X50_ICM20948_MAG          0
 #define SC_DATA_LEN_MPU9X50_ICM20948_MAG              SC_DATA_LEN_STD_IMU_CALIB
-//LSM303DLHC Accel Range
+//LSM303 Accel range: wrAccelRange, written as it is into the part's full-scale
+//field, so the two parts number it differently.
+//LSM303DLHC (CTRL_REG4_A FS[1:0])
 #define SC_SENSOR_RANGE_LSM303_ACCEL_2G               0x00
 #define SC_SENSOR_RANGE_LSM303_ACCEL_4G               0x01
 #define SC_SENSOR_RANGE_LSM303_ACCEL_8G               0x02
 #define SC_SENSOR_RANGE_LSM303_ACCEL_16G              0x03
+//LSM303AH (CTRL1_A FS[1:0]); also what the ICM-20948 is set to when it stands
+//in for a missing LSM303AH
+#define SC_SENSOR_RANGE_LSM303AH_ACCEL_2G             0x00
+#define SC_SENSOR_RANGE_LSM303AH_ACCEL_16G            0x01
+#define SC_SENSOR_RANGE_LSM303AH_ACCEL_4G             0x02
+#define SC_SENSOR_RANGE_LSM303AH_ACCEL_8G             0x03
 #define SC_SENSOR_RANGE_MAX_LSM303_ACCEL              4
 #define SC_DATA_LEN_LSM303_ACCEL                      SC_DATA_LEN_STD_IMU_CALIB
-//LSM303DLHC Mag gain
+//LSM303 Mag range: 0 is the LSM303AH's only range, the one the configuration
+//forces on a board without an LSM303DLHC; 1 to 7 are the LSM303DLHC's gains.
+#define SC_SENSOR_RANGE_LSM303AH_MAG_49G              0x00 //+/-49.152 Gauss, LSM303AH
 #define SC_SENSOR_RANGE_LSM303_MAG_1_3G               0x01 //+/-1.3 Gauss
 #define SC_SENSOR_RANGE_LSM303_MAG_1_9G               0x02 //+/-1.9 Gauss
 #define SC_SENSOR_RANGE_LSM303_MAG_2_5G               0x03 //+/-2.5 Gauss
@@ -149,7 +159,7 @@ typedef struct shimmer_calib_t
 #define SC_SENSOR_RANGE_LSM303_MAG_4_7G               0x05 //+/-4.7 Gauss
 #define SC_SENSOR_RANGE_LSM303_MAG_5_6G               0x06 //+/-5.6 Gauss
 #define SC_SENSOR_RANGE_LSM303_MAG_8_1G               0x07 //+/-8.1 Gauss
-#define SC_SENSOR_RANGE_MAX_LSM303_MAG                7
+#define SC_SENSOR_RANGE_MAX_LSM303_MAG                8    //ranges 0 to 7
 #define SC_DATA_LEN_LSM303_MAG                        SC_DATA_LEN_STD_IMU_CALIB
 //BMP180 Temperature/Pressure Range
 #define SC_SENSOR_RANGE_BMP180                        0
@@ -187,6 +197,7 @@ void ShimCalib_setDefaultKionixCalib(sc_t *sc1Ptr);
 void ShimCalib_setDefaultMpu9X50Icm20948GyroCalib(sc_t *sc1Ptr);
 void ShimCalib_setDefaultLsm303AccelCalib(sc_t *sc1Ptr);
 void ShimCalib_setDefaultLsm303MagCalib(sc_t *sc1Ptr);
+uint8_t ShimCalib_repairLsm303MagDefaults(void);
 #elif defined(SHIMMER3R)
 void ShimCalib_setDefaultLsm6dsvAccelCalib(sc_t *sc1Ptr);
 void ShimCalib_setDefaultLsm6dsvGyroCalib(sc_t *sc1Ptr);

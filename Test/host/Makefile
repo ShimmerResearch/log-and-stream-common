@@ -111,7 +111,8 @@ SRC_test_boards      := test_boards.c $(REPO)/Boards/shimmer_boards.c
 SRC_test_bt_reply    := test_bt_reply.c $(REPO)/Comms/shimmer_bt_reply.c
 SRC_test_dock_args   := test_dock_args.c $(REPO)/Comms/shimmer_dock_args.c
 SRC_test_calibration := test_calibration.c \
-                        $(REPO)/Calibration/shimmer_calibration.c
+                        $(REPO)/Calibration/shimmer_calibration.c \
+                        $(REPO)/Boards/shimmer_boards.c
 # The library's weak defaults come FIRST, ahead of the test file and of
 # host_stubs.c (which the rule appends). That is the link order in which a weak
 # override loses to the default - see test_platform_seam.c.

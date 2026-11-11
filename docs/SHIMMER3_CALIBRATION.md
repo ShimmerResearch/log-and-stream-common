@@ -317,13 +317,20 @@ The firmware applies the same rule in the other direction:
 `ShimCalib_singleSensorToCalibDump` scans the configuration-byte block and only
 promotes it into the dump if at least one byte differs from `0xFF`.
 
-> **Known defect in that scan.** The loop is
-> `for (byte_cnt = data_len; byte_cnt > 0; byte_cnt--)`, indexing
-> `configBytePtr[21]` down to `configBytePtr[1]` for a 21-byte block. It reads
-> one byte **past** the block and never examines byte **0**. A block whose only
-> non-`0xFF` byte is its first (bias X high byte) is therefore misclassified as
-> absent, and the validity decision depends on one byte of whatever follows the
-> block in the configuration-byte array.
+> **Up to Shimmer3 v1.01.009 and Shimmer3R v1.01.025 that scan checked the
+> wrong bytes.** The loop ran `for (byte_cnt = data_len; byte_cnt > 0; byte_cnt--)`,
+> so for a 21-byte block it looked at `configBytePtr[21]` down to
+> `configBytePtr[1]`. It read one byte **past** the block, the first byte of the
+> next block in §4.1's table, and never looked at byte **0**. Two things followed:
+>
+> - An erased block followed by a written one was taken as written, and its 21
+>   bytes of `0xFF` replaced the default seed in the dump. From there they
+>   reached InfoMem, the SD header and the calibration file, where hosts read
+>   them as "no calibration" (above).
+> - A block whose only non-`0xFF` byte is its first (bias X high byte), followed
+>   by an erased block, was taken as absent.
+>
+> The scan now covers bytes 0 to 20 and nothing else.
 
 ## 4. Where calibration blocks live
 
@@ -512,7 +519,7 @@ is what a host sees on a device that has never been calibrated:
 
 | | Records | Length field | Blob on the wire |
 |---|---:|---:|---:|
-| Shimmer3 | 16 — analog accel x1, gyro x4, LSM303 accel x4, LSM303 mag x7 | 536 | **538 B** |
+| Shimmer3 | 17 — analog accel x1, gyro x4, LSM303 accel x4, LSM303 mag x8 | 569 | **571 B** |
 | Shimmer3R | 20 — LSM6DSV accel x4, gyro x6, LIS2DW12 x4, ADXL371 x1, LIS3MDL x4, LIS2MDL x1 | 668 | **670 B** |
 
 Each record is 33 bytes (12-byte header + 21-byte payload), the header is 10
@@ -540,47 +547,146 @@ actually applies.
 | | | 1 (±500 dps) | 0 | 6550 |
 | | | 2 (±1000 dps) | 0 | 3280 |
 | | | 3 (±2000 dps) | 0 | 1640 |
-| LSM303 wide-range accel | 31 | 0 (±2 g) | 0 | 1631 |
+| LSM303 wide-range accel, LSM303DLHC board | 31 | 0 (±2 g) | 0 | 1631 |
 | | | 1 (±4 g) | 0 | 815 |
 | | | 2 (±8 g) | 0 | 408 |
 | | | 3 (±16 g) | 0 | 135 |
-| LSM303 mag | 32 | **0 (no range — see below)** | 0 | 230 / 230 / 205 |
+| LSM303 wide-range accel, any other board (LSM303AH) | 31 | 0 (±2 g) | 0 | 1671 |
+| | | 1 (±16 g) | 0 | 209 |
+| | | 2 (±4 g) | 0 | 836 |
+| | | 3 (±8 g) | 0 | 418 |
+| LSM303 mag | 32 | 0 (LSM303AH, ±49.152 Ga) | 0 | 667 / 667 / 667 |
 | | | 1 (±1.3 Ga) | 0 | 1100 / 1100 / 980 |
 | | | 2 (±1.9 Ga) | 0 | 855 / 855 / 760 |
 | | | 3 (±2.5 Ga) | 0 | 670 / 670 / 600 |
 | | | 4 (±4.0 Ga) | 0 | 450 / 450 / 400 |
 | | | 5 (±4.7 Ga) | 0 | 400 / 400 / 355 |
 | | | 6 (±5.6 Ga) | 0 | 330 / 330 / 295 |
-| | | 7 (±8.1 Ga) | — | **never seeded** |
+| | | 7 (±8.1 Ga) | 0 | 230 / 230 / 205 |
 
-Where three sensitivity values are given they are X / Y / Z; the LSM303
-magnetometer is the only sensor with an anisotropic default. Note that the ±16 g
-accelerometer default of 135 does not follow the halving pattern of the lower
-ranges.
+Where three sensitivity values are given they are X / Y / Z. Note that the
+LSM303DLHC's ±16 g accelerometer default of 135 does not follow the halving
+pattern of the lower ranges.
 
-> **The magnetometer's range-0 record carries the ±8.1 Ga sensitivities, and it
-> is the record an LSM303AH board actually uses.** The range constants run 1-7
-> (`Calibration/shimmer_calibration.h:141-147`) while the seed loop runs
-> `range < SC_SENSOR_RANGE_MAX_LSM303_MAG`, i.e. 0-6
-> (`Calibration/shimmer_calibration.c:585`). Code 0 matches none of the
-> comparisons and falls into the final `else`, which is commented as the ±8.1 Ga
-> case; code 7 is never written. That would be harmless if code 0 were unused —
-> but `ShimConfig_checkAndCorrectConfig` forces `magRange = 0` on every Shimmer3
+> **The wide-range accel's range codes are different full scales on the two
+> parts.** The firmware writes `wrAccelRange` into the part's own full-scale
+> field as it is. The LSM303DLHC's (`CTRL_REG4_A` `FS[1:0]`) runs ±2, 4, 8, 16 g;
+> the LSM303AH's (`CTRL1_A` `FS[1:0]`, datasheet §8.3) runs ±2, **16**, 4, 8 g.
+> The firmware's own ICM-20948 path, which stands in for a missing LSM303AH,
+> maps the codes the same way (`i2c.c` in the Shimmer3 firmware), and so does
+> every host API: Java's `SensorLSM303AH.ListofLSM303AccelRangeConfigValues` is
+> `{0, 2, 3, 1}` for ±2, 4, 8, 16 g. The `SC_SENSOR_RANGE_LSM303AH_ACCEL_*`
+> constants name the LSM303AH's codes.
+>
+> The seed follows the part `detectI2cSlaves()` found at boot: the LSM303DLHC's
+> records on an LSM303DLHC board, the LSM303AH's on any other, which is the same
+> test that forces `magRange = 0`. The LSM303AH's sensitivities are 0.061 /
+> 0.122 / 0.244 / 0.488 mg/digit at ±2 / 4 / 8 / 16 g (datasheet DocID027766
+> Rev 6, §2.1 Table 3, `LA_So`, typical values), so 1671 / 836 / 418 / 209 LSB
+> per m/s², as the Java driver has them. An ICM-20948 standing in for the
+> LSM303AH is set to the same full scale per code, and its sensitivities
+> (16384 / 8192 / 4096 / 2048 LSB/g) are within 0.1 % of those.
+>
+> **Up to v1.01.009 every board got the LSM303DLHC's records.** On an LSM303AH
+> board, with the range codes in a different order, an uncalibrated
+> wide-range accelerometer therefore read 2.4 % high at ±2 g, about a quarter of
+> the true value at ±16 g (815 where 209 is right), about twice it at ±4 g (408
+> for 836), and about three times it at ±8 g (135 for 418). X and Y were also
+> swapped (below). The host APIs take a device's block whatever its
+> timestamp, and fall back to their own defaults only for an all-`0x00` or
+> all-`0xFF` block (§3.3), so they showed those values.
+>
+> **A unit updated from v1.01.009 or earlier keeps the old records.** Unlike
+> the mag's (below), nothing repairs them. They are in InfoMem, for the range in
+> use, and in the SD card's calibration file, for every range, and the firmware
+> reads both back at every boot and undock (§8). So the new seed reaches only a
+> fresh dump: a unit that never stored one, or one whose calibration is reset.
+> `RESET_CALIBRATION_VALUE_COMMAND` does that, but it discards every sensor's
+> calibration, factory calibration included
+> ([BT protocol](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) §7.6). Writing the
+> wide-range accel's block with `SET_WR_ACCEL_CALIBRATION_COMMAND`, or a whole
+> dump with `SET_CALIB_DUMP_COMMAND`, touches only what it writes. Docked, the firmware builds its
+> dump from the seed and InfoMem without reading the card, so the ranges not in
+> use show the new seed there even on an updated unit.
+>
+> **So an updated unit's dump depends on how it last booted.** After a docked
+> boot it holds the new seed for the ranges not in use and InfoMem's old block
+> for the one in use; after an undocked boot, the card's old records for all
+> four. Docking does not rebuild the dump, so a unit that booted undocked and
+> was then docked still shows the card's. A host that reads the dump in one
+> state and the unit's data in the other can see the wide-range accel's
+> defaults change. `fleet.wr_accel_seeds` resets the unit through its slot
+> first, so that what it reads is the seed.
+
+> **Mag range 0 is the LSM303AH; 1 to 7 are the LSM303DLHC's gain codes.**
+> `ShimConfig_checkAndCorrectConfig` forces `magRange = 0` on every Shimmer3
 > whose wide-range accelerometer is **not** an LSM303DLHC, i.e. on every
-> LSM303AH board (`Configuration/shimmer_config.c:927-933`). Such a device
-> therefore selects a default whose sensitivity is roughly a factor of five too
-> small for the range in force, and an uncalibrated magnetometer reads about
-> five times high. Writing a real calibration for range 0 fixes it; the
-> off-by-one itself is listed under *Still unverified* as a firmware defect. The
-> `magRange` clamp is cross-referenced in
+> LSM303AH board (`Configuration/shimmer_config.c`). Range 0's default is the
+> LSM303AH's own: 1.5 mgauss/LSB on every axis (LSM303AH datasheet DocID027766
+> Rev 6, §2.1 Table 3, `M_So`, a typical value), so 667 LSB/gauss, with the
+> LSM303AH's alignment below. The `magRange` clamp is cross-referenced in
 > [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.3.
+>
+> **Up to v1.01.009 the seed was off by one (DEV-985, DEV-995).** The loop ran
+> 0-6 against gain codes 1-7: range 0 fell into the final `else` and got
+> ±8.1 Ga's 230 / 230 / 205 and the LSM303DLHC's alignment, and range 7 got no
+> record. So an uncalibrated LSM303AH board read about 2.9 times high on X and
+> Y and 3.25 times on Z, with X and Y swapped, and
+> `GET_MAG_CALIBRATION` at ±8.1 Ga read 21 zeros. That record does not go away
+> with a firmware update on its own: it reaches InfoMem and the SD card's
+> calibration file, and the firmware reads both back at every boot and undock.
+> So whenever a dump is rebuilt from either, `ShimCalib_repairLsm303MagDefaults`
+> gives any missing range its default, and replaces a range-0 record whose 21
+> bytes are exactly the old one (range 7's values). Any other record is left as
+> it is, so a real calibration, or a host's own block, stays.
+>
+> The record's timestamp is not part of that test. `SET_INFOMEM` and
+> `SET_MAG_CALIBRATION` stamp the clock on the record they copy from InfoMem,
+> whatever it holds, so a unit configured over Bluetooth on older firmware
+> holds the old default under a real timestamp, in its dump and in its card's
+> file. No calibration produces those 21 bytes: zero offsets, 230 / 230 / 205
+> and the LSM303DLHC's alignment, at a range only the LSM303AH uses. The
+> replacement carries a default's zero timestamp.
+>
+> When the repair changes a dump read from the card, the file is rewritten. A
+> default that does not fit a full dump (§2.4) is not added, and is no change,
+> so the file is not rewritten for it at every boot.
+>
+> A host can bring the old record back too, by writing with
+> `SET_CALIB_DUMP_COMMAND` a dump it saved from older firmware. So when such a
+> write completes, the old range-0 record is replaced the same way before the
+> dump reaches InfoMem, the SD header and the card. Ranges the host's dump
+> leaves out stay out until the next boot or undock adds them.
 
 Alignment matrices, Shimmer3:
 
 | Sensor | Matrix (row-major) |
 |---|---|
 | Analog accel, gyro | `[0, -1, 0, -1, 0, 0, 0, 0, -1]` |
-| LSM303 accel, LSM303 mag | `[-1, 0, 0, 0, 1, 0, 0, 0, -1]` |
+| LSM303 accel on an LSM303DLHC board; LSM303 mag ranges 1-7 (LSM303DLHC) | `[-1, 0, 0, 0, 1, 0, 0, 0, -1]` |
+| LSM303 accel on any other board; LSM303 mag range 0 (LSM303AH) | `[0, -1, 0, 1, 0, 0, 0, 0, -1]` |
+
+> **The LSM303AH's X and Y are the LSM303DLHC's swapped and negated.** Its
+> matrix is therefore a mirror image of the LSM303DLHC's (determinant −1,
+> against +1), not a turn of it, and was measured, not inferred. On two
+> LSM303AH boards standing in a Base6, the wide-range accelerometer's gravity
+> matched the low-noise accelerometer's through this matrix (cosine 0.97 and
+> 0.98) and not through the LSM303DLHC's (0.12 and 0.20). Standing alone
+> pins only one axis, so one of the boards was also tilted fore and aft and
+> left and right: of the 48 ways to permute and sign the three axes, only this
+> matrix fitted all three orientations (cosine 0.97, 0.95, 0.98). Its
+> rotation-only twin, with the sign of the second row flipped, fell to 0.56 on
+> the left-right tilt. The LSM303AH's accelerometer and magnetometer share one
+> frame (datasheet Figure 2), so the measurement holds for the magnetometer,
+> and the firmware takes both seeds from one place
+> (`ShimCalib_lsm303Align`). It is also the Java driver's
+> `SensorLSM303AH.DefaultAlignmentLSM303AH`. Applied as §7 applies it, the
+> LSM303DLHC's matrix on an LSM303AH board swaps X and Y.
+>
+> On a board where an ICM-20948 stands in for the LSM303AH, the firmware negates
+> the ICM-20948's Y axis "to match LSM303 chip placement" before packing it.
+> Whether that lands in the LSM303AH's frame has not been measured; the seed
+> assumes it does.
 
 ### 6.2 Shimmer3R
 
@@ -843,13 +949,14 @@ Two divergences are worth knowing about:
   toward zero, while sensitivity and alignment are rounded before their cast.
   The TypeScript SDK reproduces this deliberately (`Math.trunc` for offset,
   `Math.round` for the others) so the two agree byte-for-byte.
-- **Java carries two different range-code tables for what looks like the same
-  part.** `SensorLSM303AH` and `SensorLSM303DLHC` both declare
-  `ListofLSM303AccelRangeConfigValues`, with *different* values — `{0, 2, 3, 1}`
-  and `{0, 1, 2, 3}` respectively. Porting the wrong one silently selects the
-  wrong full-scale range and produces calibrated output wrong by a factor of
-  four. Take range codes from the firmware, not from a Java table, when the two
-  disagree.
+- **Java carries two different range-code tables for the two wide-range
+  accelerometers, and both are right.** `SensorLSM303AH` and `SensorLSM303DLHC`
+  both declare `ListofLSM303AccelRangeConfigValues`, with *different* values —
+  `{0, 2, 3, 1}` and `{0, 1, 2, 3}` respectively, for ±2, 4, 8, 16 g. The
+  firmware writes the code into each part's own full-scale field, and the two
+  parts number their full scales differently (§6.1). Using the LSM303DLHC's
+  table on an LSM303AH selects the wrong calibration set, wrong by up to a
+  factor of four. The firmware's own seed did exactly that up to v1.01.009.
 
 ## Still unverified / not found in code
 
@@ -871,14 +978,11 @@ Two divergences are worth knowing about:
   `case` label that returns its length; there is no writer. A record with this
   ID in a blob came from a host, and the firmware would store and echo it
   without using it.
-- **Shimmer3 magnetometer range code 0** — *partly resolved.*
-  `SC_SENSOR_RANGE_MAX_LSM303_MAG` is 7 and the seed loop runs `range < 7`, i.e.
-  codes 0-6, but the value assignments are keyed to codes 1-7. Code 0 therefore
-  receives the final `else` branch (the ±8.1 Ga sensitivities) and code 7 is
-  never seeded at all. What is now known is that code 0 is **not** unreachable:
-  `ShimConfig_checkAndCorrectConfig` forces `magRange = 0` on every
-  non-LSM303DLHC Shimmer3 (`Configuration/shimmer_config.c:927-933`), so
-  LSM303AH boards use precisely the mis-seeded record — see the callout in
-  §6.1. What is still unresolved is whether the off-by-one belongs in the loop
-  bound or in the constants, and therefore what the intended default for an
-  LSM303AH is; it has been raised as a firmware defect.
+- ~~Shimmer3 magnetometer range code 0~~ — resolved (DEV-985, DEV-995): code 0
+  is the LSM303AH's only range and 1-7 are the LSM303DLHC's gains, so both the
+  loop bound and range 0's values were wrong. The seed now covers 0-7, with the
+  LSM303AH's datasheet sensitivity and measured alignment at 0 — see §6.1.
+- ~~Shimmer3 wide-range accel defaults on an LSM303AH board~~ — resolved: the
+  seed is now the fitted part's, with the LSM303AH's range-code order — see §6.1.
+  Still unmeasured: the alignment on a board where an ICM-20948 stands in for the
+  LSM303AH.
