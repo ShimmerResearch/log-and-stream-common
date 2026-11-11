@@ -501,7 +501,10 @@ void ShimLeds_blinkSetLwrState(void)
   {
     ShimLeds_blinkSetLwrRedOn();
   }
-  else if (!shimmerStatus.docked && (shimmerStatus.sdBadFile || !shimmerStatus.sdInserted)
+  /* Docked or on USB the card belongs to the dock or the PC, and the charging
+   * colour must show, so a card fault is flagged only when neither is there. */
+  else if (!LogAndStream_isDockedOrUsbIn()
+      && (shimmerStatus.sdBadFile || !shimmerStatus.sdInserted)
       && ShimConfig_getStoredConfig()->sdErrorEnable)
   {
     ShimLeds_blinkSetLwrErrorSdCard();

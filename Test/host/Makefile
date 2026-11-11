@@ -82,7 +82,8 @@ SINGLE_PLATFORM_SUITES := test_crc test_sd_data_file
 
 # Suites built twice, once per platform. See the note above.
 DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards test_bt_reply \
-                        test_calibration test_platform_seam test_dock_args
+                        test_calibration test_platform_seam test_dock_args \
+                        test_leds
 
 PLATFORMS := SHIMMER3 SHIMMER3R
 
@@ -97,6 +98,11 @@ SRC_test_sd_card_id  := test_sd_card_id.c $(REPO)/SDCard/shimmer_sd_card_id.c
 SRC_test_sd_write_buf := test_sd_write_buf.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c
 SRC_test_leds_phase  := test_leds_phase.c $(REPO)/LEDs/shimmer_leds_phase.c
+SRC_test_leds        := test_leds.c $(REPO)/LEDs/shimmer_leds.c \
+                        $(REPO)/LEDs/shimmer_leds_phase.c
+# test_leds links the real LEDs/shimmer_leds.c, so host_stubs.c must leave out
+# its own ShimLeds_* stand-ins. Per-suite defines go in DEFS_<suite>.
+DEFS_test_leds       := -DHOST_TEST_LINKS_LEDS
 SRC_test_autostop    := test_autostop.c $(REPO)/Sensing/shimmer_autostop.c
 SRC_test_sd_data_file := test_sd_data_file.c \
                         $(REPO)/SDCard/shimmer_sd_data_file.c \
@@ -172,7 +178,7 @@ $(foreach s,$(SINGLE_PLATFORM_SUITES),$(eval $(call SINGLE_RULE,$(s))))
 
 define DUAL_RULE
 $(BUILD)/$(1).$(2): $$(SRC_$(1)) host_stubs.c | $(BUILD)
-	$$(CC) $$(CFLAGS) -D$(2) $$(INCLUDES) $$(SRC_$(1)) host_stubs.c -o $$@
+	$$(CC) $$(CFLAGS) -D$(2) $$(DEFS_$(1)) $$(INCLUDES) $$(SRC_$(1)) host_stubs.c -o $$@
 endef
 $(foreach s,$(DUAL_PLATFORM_SUITES),\
   $(foreach p,$(PLATFORMS),$(eval $(call DUAL_RULE,$(s),$(p)))))
@@ -299,7 +305,7 @@ $(SD_WRBUF_SUITES): %: $(foreach n,$(SD_WRBUF_COUNTS),$(BUILD)/%.n$(n))
 # ADDING TO THE LIST is the goal, not the exception. A module qualifies as soon
 # as it compiles for both without a new stub; the ones missing today
 # (Comms/, SDCard/, SDSync/, Sensing/shimmer_sensing.c, Configuration/,
-# TaskList/, GSR/, LEDs/, EEPROM/) each need one or two more headers under
+# TaskList/, GSR/, EEPROM/) each need one or two more headers under
 # stubs/Shimmer_Driver - FileX, RN4X, ADXL371, gpio.h - or,
 # for EEPROM/, the BAUD_* enum out of Comms/shimmer_bt_uart.h. Each one added
 # brings its subsystem within reach of a host test as well.
@@ -312,6 +318,7 @@ DUAL_COMPILE_MODULES := \
   Calibration/shimmer_calibration.c \
   Comms/shimmer_bt_reply.c \
   Comms/shimmer_dock_args.c \
+  LEDs/shimmer_leds.c \
   LEDs/shimmer_leds_phase.c \
   Platform/platform_api.c \
   RTC/shimmer_rtc.c \

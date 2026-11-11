@@ -205,6 +205,7 @@ What the suites cover today:
 | `test_packet_ring` | `Sensing/shimmer_packet_ring.c` | ×1 | The sample ring's interleavings, including the DEV-1023 field fault |
 | `test_autostop` | `Sensing/shimmer_autostop.c` | ×1 | The max_exp_len auto-stop: the stop time, and that doubled, missed or drifting checks, a clock set mid-log and the 32-bit clock wrap move it by a second at most (DEV-1417) |
 | `test_leds_phase` | `LEDs/shimmer_leds_phase.c` | ×1 | The LED frame arithmetic, and the phase lock run closed loop against a blink timer 3% slow to 3% fast: each whole-second tick comes once a second (DEV-1417) |
+| `test_leds` | `LEDs/shimmer_leds.c` | ×2 | The lower LED's priority order (button, host override, SD-card error, battery or charging), drawn through a recording LED driver; the SD-card error shown only out of the dock and off USB |
 | `test_util` | `Util/shimmer_util.c` | ×1 | SD directory naming, config-file 64-bit values, config-file sample rate round trip (every divider), BT response lengths, MAC byte order |
 | `test_rtc` | `RTC/shimmer_rtc.c` | ×2 | Every day from 2000 to 2099 round-trips; leap years; date validation |
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
@@ -1140,6 +1141,7 @@ case earns a permanent place here.
 | BMP581 SR48 window | A plain `>= 7.2` wrongly claims SR48-8-0 and 8-1 | `test_boards` — both layers catch it |
 | DEV-1363 | A host connects to a unit that is already logging, and its `INQUIRY` costs the log 100 ms of samples | `smoke.sd_inquiry_midlog` on Shimmer3R, on the required list — plus §5.6.7 by hand on Shimmer3 |
 | DEV-1417 | A Shimmer3R's `max_exp_len` auto-stop ended a 7-minute log 3% early: the LED phase lock counted seconds twice when TIM6 ran fast | `test_autostop`, `test_leds_phase` (closed loop) — plus §5.6.8 |
+| SD error on USB | A Shimmer3R on USB-C, out of the dock and with no card, flashed the SD-card error instead of its charging colour: the error was gated on the dock alone | `test_leds` |
 
 **When a fault escapes, add its case here and a test for it in the same PR.** A
 regression list that only grows by hand stops growing.
@@ -1244,7 +1246,10 @@ roughly the order of return.
    defines `main()`.
 2. Include `host_test.h` for the assertion helpers.
 3. Add it to `SRC_test_<module>` and one of the suite lists in
-   `Test/host/Makefile`. CI picks it up with no workflow change.
+   `Test/host/Makefile`. CI picks it up with no workflow change. A
+   dual-platform suite that needs its own define sets `DEFS_test_<module>`:
+   `test_leds` links the real `LEDs/shimmer_leds.c`, so it passes
+   `-DHOST_TEST_LINKS_LEDS` to drop `host_stubs.c`'s stand-ins for it.
 4. If it should be built for both platforms, put it in
    `DUAL_PLATFORM_SUITES`. Prefer that where the module has any `#if
    defined(SHIMMER3...)` in it at all.

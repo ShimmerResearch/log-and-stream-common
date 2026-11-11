@@ -18,7 +18,9 @@ two generations' very different LED hardware.
 >   `LogAndStream_dockedStateChange`, `LogAndStream_setBootStage`),
 >   `Comms/shimmer_bt_uart.c` (the LED commands and the status byte),
 >   `Configuration/shimmer_config.c` (Bluetooth disable), and
->   `Test/shimmer_test_leds_states.c` (the operational-state test).
+>   `Test/shimmer_test_leds_states.c` (the operational-state test). §4's
+>   SD-error condition postdates `e8bc116`: it was changed to test for USB as
+>   well as the dock, and `Test/host/test_leds.c` pins it.
 > - **Platform firmware:** `shimmer3-firmware` @ `7d86034` — `main.c` (boot
 >   stages, the Bluetooth baud ladder, the blink timer,
 >   `triggerShimmerErrorState`), `hal_FactoryTest.c`, `hal_CAT24C16.c`.
@@ -57,6 +59,13 @@ are driven by two independent state machines:
 
 That split is the single most useful thing to know: **the upper LED is
 activity, the lower LED is health.**
+
+> **Switched off, the LEDs show nothing, even while the device charges.** This
+> firmware drives them, and the power switch turns the whole device off. A
+> switched-off device in the dock, or a Shimmer3R on USB-C, still charges, but
+> shows no charging colour until it is switched on. Charging feedback therefore
+> depends on the switch being on, which a user who has only ever seen a
+> charger's own light may not expect.
 
 ### 1.1 Hardware differs completely between generations
 
@@ -319,7 +328,7 @@ documented here is the live path.
 |---:|---|---|
 | 1 | `buttonPressed` | Solid green (§4.1) |
 | 2 | `toggleLedRedCmd` | Solid red (§4.2) |
-| 3 | Undocked **and** (bad SD file or no card) **and** `sdErrorEnable` | SD error flash (§4.3) |
+| 3 | Neither docked nor on USB **and** (bad SD file or no card) **and** `sdErrorEnable` | SD error flash (§4.3) |
 | 4 | *otherwise* | Battery / charging status (§4.4) |
 
 > **Button feedback outranks every error and the battery display.** While the
@@ -372,14 +381,16 @@ Green flashing at 5 Hz — on during `...200ms`, off otherwise.
 > is that it *flashes* at 5 Hz, where a healthy battery indication is a brief
 > pulse every 5 seconds.
 
-Requires all three of: undocked, a card fault (`sdBadFile` or `!sdInserted`),
-and `sdErrorEnable` set in configuration byte 217 bit 0. With that bit clear
-there is no card-error indication at all.
+Requires all three of: neither docked nor on USB
+(`!LogAndStream_isDockedOrUsbIn()`), a card fault (`sdBadFile` or
+`!sdInserted`), and `sdErrorEnable` set in configuration byte 217 bit 0. With
+that bit clear there is no card-error indication at all.
 
-> **"Undocked" means out of the dock; USB does not count.** The test is
-> `!docked` alone. A Shimmer3R on USB-C but out of the dock, with no card or a
-> bad file, shows this green flash instead of its charging colour (§4.4).
-> Docked, no card error is shown at all.
+> **Docked or on USB, no card error is shown.** The card then belongs to the
+> dock or, on a Shimmer3R on USB-C, to the PC, and the lower LED shows the
+> charging colour instead (§4.4). Earlier firmware tested the dock alone, so a
+> Shimmer3R on USB-C but out of the dock, with no card or a bad file, flashed
+> this error and hid its charging colour.
 
 ### 4.4 Battery and charging
 
@@ -387,7 +398,8 @@ The default state. What it shows depends on whether the device is drawing
 power:
 
 **Docked or USB connected** (`LogAndStream_isDockedOrUsbIn`; Shimmer3 has no
-USB, so for it this means docked) — the charging state, continuously:
+USB, so for it this means docked) — the charging state, continuously, provided
+the device is switched on (§1):
 
 | Charging status | Colour | Flashing |
 |---|---|---|
@@ -541,7 +553,8 @@ Two more LED drivers exist but do not run in a release build:
 
 **Upper LED**
 
-"Fast" is 5 Hz, 0.1 s on and 0.1 s off. "On USB" applies to Shimmer3R only.
+"Fast" is 5 Hz, 0.1 s on and 0.1 s off. "On USB" applies to Shimmer3R only. A
+switched-off device shows nothing at all, charging or not (§1).
 
 | What you see | What it means |
 |---|---|
@@ -568,8 +581,8 @@ Two more LED drivers exist but do not run in a release build:
 | Red solid, docked or on USB | Charging — or the host override, which looks the same |
 | Yellow solid, docked or on USB | Charging suspended |
 | Red fast, docked or on USB | Bad battery or charger error |
-| Nothing, docked or on USB | Charging status not known yet. Normal for a moment after docking or plugging in |
-| Green fast, out of the dock | SD card missing or bad file (on Shimmer3R, also while on USB) |
+| Nothing, docked or on USB | Charging status not known yet: normal for a moment after docking or plugging in. Or the device is switched off, and charging unseen (§1) |
+| Green fast, undocked and not on USB | SD card missing or bad file |
 | Brief green / yellow / red blip every 5 s, undocked and not on USB | Battery high / mid / low |
 
 **At power-on**
@@ -601,9 +614,6 @@ Two more LED drivers exist but do not run in a release build:
   probably never seen and the unit runs with no radio. If the pattern was meant
   to show, that is a firmware fault, not a documentation one. Whether the yellow
   is ever visible has not been checked on a bench.
-- **Whether the SD error should treat USB like the dock.** The test is `!docked`
-  only (§4.3); no decision is recorded on whether a Shimmer3R on USB should
-  show its charging colour instead.
 - **Whether the Shimmer3R SPI trap flashes or freezes** (§7.3), and whether the
   Shimmer3 RN42 v6.30 pattern draws as described: it is called while the radio's
   version reply is parsed, and whether anything else interrupts it has not been
