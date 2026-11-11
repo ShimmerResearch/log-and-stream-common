@@ -348,8 +348,11 @@ and every unsolicited status push
 
 The firmware pushes a status frame whenever either bit changes. A connected host
 sees recording start within a second of logging starting, and sees it stop and
-any fault, without polling. Firmware before DEV-99 sends zero in these bits, so gate
-them on the firmware version.
+any fault, without polling. Releases before `LogAndStream_Shimmer3R_v1.01.026`,
+the first with audio, send zero in these bits, so gate them on the firmware
+version: v1.01.026 or later. The development builds with audio from before that
+release report v1.01.025, the release they were cut from. On that version, ask
+with `GET_AUDIO_STATUS_COMMAND`, which firmware without audio leaves unanswered.
 
 **`GET_AUDIO_STATUS_COMMAND`** (`0xBC`) is answered with `AUDIO_STATUS_RESPONSE`
 (`0xBD`) and 32 bytes:
@@ -526,8 +529,10 @@ every data packet: the A-weighted level at the microphone, in nominal dB SPL.
 - **The capture** is the recording's, shared (§1).
 
 **For hosts:**
-- **Detecting support:** firmware without the channel clears bit 4, so a host
-  learns whether a unit has it by writing the bit and reading it back.
+- **Detecting support:** `LogAndStream_Shimmer3R_v1.01.026` is the first
+  release with the channel. Firmware without it clears bit 4, so a host learns
+  whether a unit has it by writing the bit and reading it back, which also
+  answers for the development builds before that release.
 - **Older hosts:** one that does not know `0x38` cannot know its width, so it
   should refuse the stream rather than guess (STREAMING_DATA_FORMAT §5.6).
 
