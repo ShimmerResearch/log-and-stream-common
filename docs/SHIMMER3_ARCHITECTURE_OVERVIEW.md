@@ -195,7 +195,7 @@ uint32_t taskList;   // one bit per task
 | 7 | `TASK_RCCENTERR1` | both |
 | 8 | `TASK_RCNODER10` | both |
 | 9 | `TASK_SAMPLE_MPU9150_MAG` / `TASK_AUDIO_LEVEL` | S3 / S3R. `TASK_AUDIO_LEVEL` is queued by the audio capture's DMA interrupt every 128 ms while the sound level is on, and works out the level the packets carry. It sits above the data path so that level stays current while the card is slow ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8) |
-| 10 | `TASK_SAMPLE_BMPX80_PRESS` | S3 |
+| 10 | `TASK_SAMPLE_BMPX80_PRESS` / `TASK_SD_SYNC_TICK` | S3 / S3R. `TASK_SD_SYNC_TICK` runs SD sync's one-second schedule. RTC alarm B's interrupt only counts each tick and queues the task, because that interrupt is shared with the sample timer (DEV-1466, [SHIMMER3_SD_SYNC.md](SHIMMER3_SD_SYNC.md) §6.3). On Shimmer3 the schedule still runs in the sync timer interrupt |
 | 11 | `TASK_GATHER_DATA` | both |
 | 12 | `TASK_STOPSENSING` | both |
 | 13 | `TASK_SDLOG_CFG_UPDATE` | both |
@@ -205,7 +205,7 @@ uint32_t taskList;   // one bit per task
 | 17 | `TASK_SDWRITE` | both |
 | 18 | `TASK_FACTORY_TEST` | both |
 | 19 | `TASK_BT_TX_BUF_CLEAR` | both |
-| 20 | `TASK_BT_TURN_ON_AFTER_BOOT` | both; SD sync's start callback queues it, so the radio is started from the main loop and not from the sync timer interrupt |
+| 20 | `TASK_BT_TURN_ON_AFTER_BOOT` | both; SD sync's start callback queues it, so the radio is started from the main loop and not from the sync tick |
 | 21 | `TASK_JUMP_TO_BOOT_LOADER` / `TASK_BT_MODE_CHECK` | S3R / S3; on Shimmer3 the disconnect handler, which runs in an interrupt, queues the radio check that can stop and start the module |
 | 22 | `TASK_WRITE_RADIO_DETAILS` | S3 |
 | 23 | `TASK_SD_FILE_TRANSFER` | S3R |

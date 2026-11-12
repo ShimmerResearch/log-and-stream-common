@@ -27,7 +27,10 @@ firmware's only use of it is to phase its LEDs with the centre's (§7).
 >   was read at `shimmer3-firmware` @ `ac30299`, where the callback is
 >   `ShimTask_setInitialiseBluetooth` and `BtStop()` clears a queued
 >   `TASK_BT_TURN_ON_AFTER_BOOT`. Shimmer3R already queues the start at
->   `a8f105e5`.
+>   `a8f105e5`. §6.3's Shimmer3R tick task was read from DEV-1466's change:
+>   `Core/Src/rtc.c` (`RTC_setupAndStartSdSyncAlarm`,
+>   `HAL_RTCEx_AlarmBEventCallback`, `RTC_takeSdSyncTicks`) and
+>   `TaskList/shimmer_taskList.c` (`TASK_SD_SYNC_TICK`).
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =
 > Shimmer3R (STM32U5). LogAndStream only. All times are in 32768 Hz ticks
@@ -331,18 +334,32 @@ below the limit, so a node in active conversation keeps its window open.
 
 ### 6.3 Starting and stopping the radio
 
-The schedule runs in the sync timer's interrupt: `TIMER0_A1_ISR` on S3, the
-RTC alarm B callback on S3R. The radio is not handled the same way in both
-directions:
+Where the schedule runs differs:
+
+- **S3:** in the sync timer's interrupt, `TIMER0_A1_ISR`.
+- **S3R:** in `TASK_SD_SYNC_TICK`, from the main loop. RTC alarm B fires on
+  every whole second while the sync timer runs. Its callback only counts the
+  tick and queues the task, which runs `ShimSdSync_handleSyncTimerTriggers()`
+  once per counted tick. Stopping the timer drops any tick not yet run.
+
+On S3R the schedule used to run in the alarm B callback itself (DEV-1466). That
+interrupt is shared with the sample timer, which stamps each sample when its
+own callback runs. On a tick that stopped the radio or opened a connection, the
+callback held the sample timer off for 6-8 ticks. A sample due in that time was
+stamped that much late
+([SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1).
+
+The radio is not handled the same way in both directions:
 
 - **Start is queued.** `ShimSdSync_startBtForSync` calls the start callback.
   On both platforms that callback only queues `TASK_BT_TURN_ON_AFTER_BOOT`, and
   `InitialiseBtAfterBoot()` runs from the main loop. On S3 the timer interrupt
   wakes the main loop when it has queued anything.
-- **Stop is immediate.** The stop callback is `BtStop()`, called in the
-  interrupt. It hands the TX-buffer reset to `TASK_BT_TX_BUF_CLEAR`. On S3,
-  `BtStop()` also drops a start that is still queued, so a start requested
-  before a stop cannot run after it.
+- **Stop is immediate.** The stop callback is `BtStop()`, called from the
+  schedule: in the interrupt on S3, in the task on S3R. It hands the TX-buffer
+  reset to `TASK_BT_TX_BUF_CLEAR` in both cases. On S3, `BtStop()` also drops a
+  start that is still queued, so a start requested before a stop cannot run
+  after it.
 
 > **The queued start waits only for the main loop.** It sits behind any
 > higher-priority task, such as an SD write, which normally means milliseconds.
