@@ -110,6 +110,13 @@ typedef enum TaskId_Tag
    * it must stay current while the card or the data path is slow. About
    * 1.5 ms a block. */
   TASK_AUDIO_LEVEL = (0x00000001UL << 9U),
+  /* SD sync's one-second tick (SDSync/shimmer_sd_sync.h). The RTC's Alarm B
+   * interrupt only counts the tick and queues this, because that interrupt is
+   * shared with the sample timer and any work in it delays sample stamps
+   * (DEV-1466). Above the data path so a slow card does not hold the sync
+   * schedule back; a tick that does stop or connect the radio takes a few
+   * hundred microseconds. */
+  TASK_SD_SYNC_TICK = (0x00000001UL << 10U),
 #endif
   TASK_GATHER_DATA = (0x00000001UL << 11U),
   TASK_STOPSENSING = (0x00000001UL << 12U),

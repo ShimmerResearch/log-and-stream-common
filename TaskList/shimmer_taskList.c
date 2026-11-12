@@ -167,6 +167,9 @@ void ShimTask_NORM_manage(void)
       case TASK_AUDIO_LEVEL:
         ShimAudio_levelProcess();
         break;
+      case TASK_SD_SYNC_TICK:
+        ShimSdSync_handleSyncTimerTriggers(RTC_takeSdSyncTicks());
+        break;
 #endif
 #if defined(SHIMMER3)
       case TASK_SAMPLE_MPU9150_MAG:
