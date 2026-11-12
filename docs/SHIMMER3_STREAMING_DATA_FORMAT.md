@@ -27,7 +27,11 @@ logging, so a parser written from this document reads both.
 >   `TIMER0_B1_ISR`, `SampleTimerNextCompare`, `SampleTimerStart`). Shimmer3R
 >   at `shimmer3r-firmware` @ `c8c69e71` — `Core/Src/rtc.c` (`RTC_wakeUpSet`,
 >   `HAL_RTCEx_WakeUpTimerEventCallback`), which `Sensing/shimmer_sensing.c`
->   starts with `samplingRateTicks`. The figures for older Shimmer3 firmware
+>   starts with `samplingRateTicks`. The Shimmer3R battery-alarm delay at
+>   `shimmer3r-firmware` @ `cfa1193e` (v1.01.026) — `Core/Src/stm32u5xx_it.c`
+>   (`RTC_IRQHandler`), `Core/Src/rtc.c` (`HAL_RTC_AlarmAEventCallback`,
+>   `RTC_setNextRtcAlarmA`) — with its figures measured on that build, and the
+>   fix at `cdd7b783`. The figures for older Shimmer3 firmware
 >   are bench measurements, not read from code: 1024 Hz streams over RN42
 >   v6.15 with the link overloaded, on `shimmer3-firmware` @ `d82c9ef`, which
 >   still re-armed from the counter, gave a mean of 32.0006 ticks per period
@@ -297,6 +301,22 @@ your port against that file.
 >   and the odd settings measured ran 0.15% to 3.1% fast. `INQUIRY_RESPONSE` and
 >   the SD header still report the configured value, so a host must take the
 >   rate from the timestamps, or from `32768 / (2 × floor(samplingRateTicks / 2))`.
+> - **Shimmer3R v1.01.026 and earlier** can stamp one sample up to 13 ticks
+>   (0.4 ms) late each time the battery-read alarm fires: every 2 s docked,
+>   every 60 s undocked, always on a whole second of the clock. The alarm
+>   shares the sample timer's interrupt, which ran the alarm's handler first,
+>   and the handler took about 13 ticks. A sample due in that time was stamped
+>   when the handler finished, at about 13 ticks past the second. The grid
+>   itself does not move: the next step is short by the same amount. Only a
+>   grid with a sample due in those 13 ticks is affected, and the grid's place
+>   against the second differs from one session to the next, so at 1024 Hz
+>   most sessions show nothing and some show a late stamp at every alarm. At
+>   4096 Hz every grid is affected, and the sample after the late one is lost
+>   too. Measured on a docked unit on v1.01.026: steps of 41 then 23 ticks at
+>   1024 Hz, and 15 then 9 at 4096 Hz, at every even second. Later firmware
+>   services the sample timer first and keeps the alarm handler short
+>   (DEV-1464, DEV-1369). On the same unit with that change, 4096 Hz streams
+>   had no stamp off the grid in two minutes docked (60 alarms).
 >
 > A step of about two or more whole periods is a missing sample, not jitter.
 > The stamps alone do not say why it is missing: a slot the firmware skipped
