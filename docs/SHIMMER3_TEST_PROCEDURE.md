@@ -1416,6 +1416,42 @@ release like any other (§10.2, rule 3) unless it is accepted:
 result, as a sign-off's waiver does (§10.1). Setup and layout are in
 `Test/hil/README.md`.
 
+**Every Shimmer3R starts the run from one configuration** (DEV-1463). The smoke
+and soak tests set only what they measure, the sensors and the sampling rate,
+and keep the rest of InfoMem as they find it. Without a baseline, the rest is
+whatever the unit's last bench session left. On the v1.01.026 run that was:
+- the sound-level channel on one unit, which failed both throughput items
+  before they measured anything;
+- audio recording on three of four units, so their logs ran under a different
+  SD load from the fourth's;
+- a byte 232 trigger mode on two units, and low-battery auto-stop on two.
+
+So before its first test, the suite writes `rig/baseline.py`'s configuration
+to every Shimmer3R it tests, over the dock, and reads it back. That
+configuration is the firmware's own default (`ShimConfig_setDefaultConfig`, as
+v1.01.026 writes it for `RESET_TO_DEFAULT_CONFIGURATION`). It is 51.2 Hz with
+low-noise accel, gyro, mag and VBatt, the default ranges and ExG registers,
+the button on, no auto-stop, and bytes 232 and 233 at 0.
+- **Kept from the unit:** what describes the unit rather than configures it.
+  That is its calibration blocks, Shimmer name, MAC, Bluetooth baud and PIN
+  bytes, and the TCXO bit.
+- **Defined in the suite, not sent as `0x5A`:** a run has to start from the
+  same bytes whichever release it tests. `0x5A` also renames the unit and
+  zeroes its baud byte.
+- **A read-back that differs stops the run.** The calibration the firmware
+  recomputes for the configured ranges, and `flagWriteCfgToSd`, are allowed
+  to differ.
+- **The unit is reset only if its own configuration had SD sync or
+  `bluetoothDisable` set**, the one setting the firmware reads at boot.
+- **The unit's own InfoMem goes back at the end of the run.**
+- **The report's `run.unit_config` names the baseline and a hash of its
+  bytes.**
+- **`--keep-unit-config` turns the baseline off**, for an experiment that
+  needs a unit's own configuration, and the report says so.
+
+Shimmer3 units keep their own configuration until a Shimmer3 baseline is
+captured. Each test still restores what it found, which is now the baseline.
+
 **A Shimmer3R's USB goes away while it senses.** With USB-C in,
 `ShimSens_startSensing()` tears the unit's USB device down, CDC port and drive
 together, and the stop brings it back with `USB_init()`. So every docked

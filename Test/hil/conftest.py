@@ -34,6 +34,7 @@ sys.path.insert(0, str(HERE))
 
 import hil_gate  # noqa: E402
 import hil_report  # noqa: E402
+from rig import baseline as rig_baseline  # noqa: E402
 from rig import config as rig_config  # noqa: E402
 from rig import host as rig_host  # noqa: E402
 from rig.power import HubPower, ManualPower  # noqa: E402
@@ -50,6 +51,9 @@ def pytest_addoption(parser):
                      "report never passes an item for a unit it did not test (default: every unit)")
     g.addoption("--manual-power", action="store_true",
                 help="prompt the operator to dock/undock even if the rig has a hub")
+    g.addoption("--keep-unit-config", action="store_true",
+                help="start each unit from its own configuration instead of the baseline "
+                     "(rig/baseline.py); the report records which (default: the baseline)")
     g.addoption("--waive", action="append", default=[], metavar="ITEM=ISSUE",
                 help="accept a known failure or gap of ITEM under issue ISSUE (e.g. "
                      "smoke.sd_log=ABC-123): the key goes into the item's result if it does not "
@@ -156,9 +160,22 @@ def power(rig, pytestconfig):
 DOCK_ROUTE = {"shimmer3r": {"usb", "programmer:shimmer3r"}, "shimmer3": {"dock"}}
 
 
+def _baseline_for(config):
+    """rig/baseline.py's image for a unit, or None when the run keeps each unit's own configuration."""
+    if config.getoption("--keep-unit-config"):
+        return None
+    return lambda unit, infomem: rig_baseline.image(unit.platform, infomem)
+
+
 @pytest.fixture(scope="session", autouse=True)
-def _bt_on(request):
-    """Bluetooth on for every unit this run tests over Bluetooth (rig/btmode.py).
+def _bench_config(request):
+    """Every unit starts the run from the baseline configuration, with Bluetooth on
+    (rig/baseline.py, rig/btmode.py).
+
+    The baseline is written to every unit the run tests whose platform has one
+    (Shimmer3R); a unit of another platform, or every unit with
+    --keep-unit-config, keeps its own configuration and only has SD sync and
+    bluetoothDisable cleared when its tests need Bluetooth.
 
     Session-scoped and autouse, so it runs before any test module opens a dock
     or Base6 port and finishes after they have all closed theirs. A unit's
@@ -168,19 +185,22 @@ def _bt_on(request):
     """
     from rig.btmode import BtMode, bench_routes
 
-    # Only units a Bluetooth test will actually run against: one the bench
-    # cannot serve is reported not_covered by pytest_runtest_setup, and
-    # reaching for its dock here would fail the run before that. The fixture
-    # also needs its own route to change InfoMem and reset the unit
-    # (DOCK_ROUTE), which a Bluetooth-only test does not declare
-    # (smoke.bt_stream needs only "bt"). A unit without it is left as it is,
-    # and its Bluetooth tests run against whatever it is set to.
+    # Only units a test will actually run against: one the bench cannot serve
+    # is reported not_covered by pytest_runtest_setup, and reaching for its
+    # dock here would fail the run before that. The fixture also needs its own
+    # route to change InfoMem and reset the unit (DOCK_ROUTE), which a
+    # Bluetooth-only test does not declare (smoke.bt_stream needs only "bt"). A
+    # unit without it is left as it is, and its tests run against whatever it
+    # is set to.
+    baseline = _baseline_for(request.config)
     units = {}
     only = request.config.getoption("--unit")
     for item in request.session.items:
         item_id, needs = _item(item)
         unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
-        if not (item_id and unit is not None and "bt" in needs and (not only or unit.name == only)):
+        if not (item_id and unit is not None and (not only or unit.name == only)):
+            continue
+        if "bt" not in needs and not (baseline and rig_baseline.name(unit.platform)):
             continue
         route = DOCK_ROUTE.get(unit.platform, set())
         if not _missing(request.config, unit, needs | route):
@@ -200,7 +220,7 @@ def _bt_on(request):
         if getattr(tr._tw, "width_of_current_line", 0):
             tr.write("\n")
         tr.write_line(f"hil: {m}")
-    mode = BtMode(*bench_routes(request.getfixturevalue("rig")), log=log)
+    mode = BtMode(*bench_routes(request.getfixturevalue("rig")), log=log, baseline=baseline)
     try:
         for unit in units.values():
             mode.enable(unit)
@@ -393,6 +413,9 @@ def pytest_sessionfinish(session, exitstatus):
                if rig else [],
                "unit_filter": cfg.getoption("--unit") or "",
                "interference": getattr(cfg, "_hil_interference", []),
+               "unit_config": ("each unit's own (--keep-unit-config)" if cfg.getoption("--keep-unit-config")
+                               else rig_baseline.name(cand["platform"])
+                               or "each unit's own (no baseline for this platform)"),
                "image_sha256": cand.get("image_sha256"), "host": os.environ.get("COMPUTERNAME", ""),
                "hardware": hil_report.hardware(
                    rig_host.describe(), rig.kit() if rig else {},

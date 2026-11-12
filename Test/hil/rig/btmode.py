@@ -19,6 +19,13 @@ firmware decides whether the radio is on when it boots
   Shimmer3R  SWD reset when an ST-Link reaches the unit, else ENTER_BOOTLOADER
              over the dock and a start from the ST bootloader (flash.restart),
              which can miss the jump and leave the unit for a hand reset (DEV-1316)
+
+Given a `baseline` (rig/baseline.py, DEV-1463), enable() writes the unit's whole
+baseline configuration instead of clearing two bits, for every unit the run
+tests, Bluetooth or not; the baseline has SD sync and bluetoothDisable clear.
+The unit is reset only when its own configuration had either set, since the
+radio's mode is the one thing the firmware reads at boot; the same goes for
+restore().
 """
 
 from __future__ import annotations
@@ -26,6 +33,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
+from . import baseline as baseline_cfg
 from .dock import INFOMEM_SIZE
 from .s3_flash import _masked
 
@@ -53,11 +61,14 @@ class BtMode:
 
     `access(unit)` is a context manager yielding a DockLink to the unit, and
     `reset(unit)` reboots it into its application; both are injected so the
-    bookkeeping can be tested without hardware.
+    bookkeeping can be tested without hardware. `baseline(unit, infomem)`
+    returns the configuration to start the run from, or None to keep the
+    unit's own (rig/baseline.py).
     """
     access: object
     reset: object
     log: object = print
+    baseline: object = None
     saved: dict = field(default_factory=dict)      # unit name -> (unit, original InfoMem)
 
     def enable(self, unit) -> None:
@@ -71,13 +82,28 @@ class BtMode:
                 # read-back of the same short length would pass as restored.
                 raise BtModeError(f"{unit.name}: InfoMem read gave {len(original)} bytes, "
                                   f"expected {INFOMEM_SIZE}; nothing was changed")
-            if not blocks_bt(original):
+            target = self.baseline(unit, original) if self.baseline else None
+            if target is None and not blocks_bt(original):
                 self.saved[unit.name] = (unit, None)
                 return
             # Saved before the write: if the write, the reset or anything after
             # them fails, restore() still puts the original back.
             self.saved[unit.name] = (unit, original)
-            d.write_infomem(unblocked(original), offset=SYNC_CFG_OFFSET)
+            if target is None:
+                d.write_infomem(unblocked(original), offset=SYNC_CFG_OFFSET)
+            else:
+                d.write_infomem(target)
+                back = bytes(d.read_infomem())
+                diff = baseline_cfg.differences(target, back)
+                if diff:
+                    # The firmware corrected something it was given: the run
+                    # would not start from the baseline it records.
+                    raise BtModeError(f"{unit.name}: the baseline configuration read back different "
+                                      f"at offsets {diff[:20]}")
+                changed = [i for i, (a, b) in enumerate(zip(original, target)) if a != b]
+                if not blocks_bt(original):
+                    self.log(f"{unit.name}: baseline configuration written ({len(changed)} bytes changed)")
+                    return
         self.reset(unit)
         with self.access(unit) as d:
             now = d.read_infomem(SYNC_CFG_OFFSET, 1)[0]
@@ -86,7 +112,8 @@ class BtMode:
             # (ShimConfig_checkAndCorrectConfig).
             raise BtModeError(f"{unit.name}: byte {SYNC_CFG_OFFSET} reads {now:#04x} after clearing "
                               f"SD sync and bluetoothDisable - is singleTouchStart set?")
-        self.log(f"{unit.name}: SD sync / bluetoothDisable cleared for the run "
+        self.log(f"{unit.name}: {'baseline configuration written; ' if target is not None else ''}"
+                 f"SD sync / bluetoothDisable cleared for the run "
                  f"(byte {SYNC_CFG_OFFSET} {original[SYNC_CFG_OFFSET]:#04x} -> {now:#04x})")
 
     def restore(self) -> list[str]:
@@ -99,7 +126,11 @@ class BtMode:
                 with self.access(unit) as d:
                     d.write_infomem(original)
                     back = bytes(d.read_infomem())
-                self.reset(unit)
+                if blocks_bt(original):
+                    # Only the radio's mode waits for a boot. A unit given a
+                    # baseline without one was never reset, and a Shimmer3R
+                    # reset without an ST-Link can strand it (DEV-1316).
+                    self.reset(unit)
                 # Byte for byte, as promised, but for the bit the firmware sets
                 # itself on every config write (s3_flash.SELF_SET_BITS).
                 diff = [i for i, (a, b) in enumerate(zip(_masked(original), _masked(back))) if a != b]
