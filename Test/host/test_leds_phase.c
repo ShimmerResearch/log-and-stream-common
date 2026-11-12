@@ -92,6 +92,42 @@ static void test_ticks_past_mid_tenth(void)
       (uint64_t) ShimLedsPhase_ticksPastMidTenth(1791331200ULL * TICKS_PER_SEC + 1638ULL), 0);
 }
 
+/* Both helpers avoid 64-bit division and multiplication, which are slow
+ * enough on the MSP430 to cost Shimmer3 a sample a second (DEV-1386). They
+ * must still give exactly what the plain 64-bit formula gives, anywhere in the
+ * range a clock can hold. */
+static void test_matches_the_64_bit_formula(void)
+{
+  uint64_t x = 0x9E3779B97F4A7C15ULL;
+  unsigned i, bad = 0;
+
+  testCase("frame tenth and phase error match the 64-bit formula");
+  for (i = 0; i < 200000U; i++)
+  {
+    uint64_t t;
+    int32_t fifths;
+
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    /* Mostly readings up to 2^48 ticks (272 years), some anywhere a product
+     * by 5 still fits */
+    t = (i & 7U) ? (x >> 16) : (x / 5U);
+    if (i < SAMPLE_COUNT)
+    {
+      t = sampleTicks[i];
+    }
+    fifths = (int32_t) ((t * 5U) & (LED_PHASE_FIFTHS_PER_TENTH - 1U));
+    if (ShimLedsPhase_frameTenth(t) != (uint16_t) (((t * 5U) >> 14) % 600U)
+        || ShimLedsPhase_ticksPastMidTenth(t)
+            != (int16_t) ((fifths - (int32_t) LED_PHASE_MID_TENTH_FIFTHS) / 5))
+    {
+      bad++;
+    }
+  }
+  expectU("readings that disagree", bad, 0);
+}
+
 static void test_to_centre_time(void)
 {
   /* Sign byte, then the magnitude LSB first - the layout ShimSdSync_rcFindSmallest
@@ -431,6 +467,7 @@ int main(void)
   test_frame_tenth_boundaries();
   test_frame_tenth_is_continuous();
   test_ticks_past_mid_tenth();
+  test_matches_the_64_bit_formula();
   test_to_centre_time();
   test_node_and_centre_agree();
   test_patterns();

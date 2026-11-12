@@ -20,6 +20,9 @@
  * is a pure function of the frame tenth. */
 #define LED_PHASE_TENTHS_PER_FRAME 600U
 
+/* 2^32 % 600, for reducing a tenth count in 32-bit halves */
+#define LED_PHASE_2POW32_MOD_FRAME 496UL
+
 /* One tenth is 3276.8 ticks. Working in fifths of a tick makes it exactly
  * 16384, so the tenth index is a shift and the position within it a mask. */
 #define LED_PHASE_FIFTHS_PER_TENTH 16384U
