@@ -1242,6 +1242,18 @@ class SdFileTrailing(unittest.TestCase):
         self.assertEqual((sc.records, sc.missing, sc.dupes), (10, 0, 0))
         self.assertEqual(sc.joins, [("001", 128)])
 
+    def test_a_record_three_quarters_late_is_jitter_with_no_gap_time(self):
+        import tempfile
+        stamps = [1 + 128 * i for i in range(8)]
+        stamps[3] += 96                                      # 3/4 of the 128-tick period late
+        del stamps[5]                                        # and a real loss: slot 5 skipped
+        with tempfile.TemporaryDirectory() as d:
+            sd_file(d, 0, stamps=stamps)
+            sc = sdfile.check_session(Path(d))
+        self.assertEqual((sc.records, sc.gaps, sc.missing, sc.dupes), (7, 1, 1, 0))
+        self.assertEqual((sc.jitter, sc.max_jitter_ticks), (1, 96))
+        self.assertEqual(sc.gap_times_s, [round(128 * 6 / 32768, 1)])
+
     def test_a_header_claiming_more_channels_than_a_shimmer3r_has_is_refused(self):
         raw = bytearray(sdfile.HEAD_S3R)
         raw[30:32] = sdfile.HW_SHIMMER3R.to_bytes(2, "big")
@@ -2536,6 +2548,11 @@ class GapPositions(unittest.TestCase):
     def test_a_skipped_slot_is_found_at_the_packet_after_it(self):
         ts = [0, 32, 64, 128, 160, 288]
         self.assertEqual(bt.gap_positions(ts, 32), [(3, 1), (5, 3)])
+
+    def test_a_stamp_three_quarters_late_is_not_a_gap(self):
+        # 4096 Hz: 22 is the slot of 16, 6 ticks late, as the stamp at 24 shows.
+        self.assertEqual(bt.gap_positions([0, 8, 22, 24, 32], 8), [])
+        self.assertEqual(bt.gap_positions([0, 8, 24, 32, 46, 48], 8), [(2, 1)])
 
 
 def _defects_module():

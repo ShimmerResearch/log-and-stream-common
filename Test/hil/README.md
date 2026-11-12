@@ -275,6 +275,16 @@ not a lost sample and a duplicate. That includes one exactly half a period
 late, which a bench run showed. Smoke tests fail on any loss or duplicate, and
 on jitter beyond a quarter period.
 
+A stamp three quarters of a period late or more is first counted in the next
+slot, with its own slot lost. If the next stamp lands in that same slot, the
+first is counted again as late for the slot it skipped: jitter, with no loss
+and no duplicate. At 4096 Hz the DEV-1464 battery alarm stamped one sample 6
+ticks late in an 8-tick period, and the next on time. Without this, each alarm
+read as a lost sample and a duplicate. Only the stamp just before can be
+revised. `classify_step` returns how late it now counts, so the callers that
+report each step (`rig/midstream.py`, `rig/sdfile.py`, `bt.gap_positions`)
+take back what they reported for it.
+
 The `sd_start_midstream` items (`rig/midstream.py`) look for two more things,
 because a log start mid-stream can re-phase the stream:
 
