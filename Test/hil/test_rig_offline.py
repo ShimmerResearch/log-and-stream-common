@@ -892,6 +892,116 @@ class BtMode(unittest.TestCase):
         d.write_infomem = write_setting_flag
         self.assertEqual(mode.restore(), [])
 
+    # --- with a baseline (DEV-1463) ---
+
+    def with_baseline(self, byte217):
+        from rig import baseline
+        mode, d, original, resets = self.bench(byte217)
+        mode.baseline = lambda unit, im: baseline.image("shimmer3r", im)
+        return mode, d, original, resets, baseline.image("shimmer3r", original)
+
+    def test_the_baseline_is_written_whole_without_a_reset(self):
+        mode, d, original, resets, want = self.with_baseline(0x11)
+        mode.enable(self.Unit("s3r"))
+        self.assertEqual(bytes(d.im), want)
+        self.assertEqual(resets, [])                       # Bluetooth was on: nothing waits for a boot
+        self.assertEqual(mode.restore(), [])
+        self.assertEqual(bytes(d.im), original)
+        self.assertEqual(resets, [])
+
+    def test_a_unit_with_bluetooth_blocked_is_reset_both_ways(self):
+        mode, d, original, resets, want = self.with_baseline(0x15)
+        mode.enable(self.Unit("s3r"))
+        self.assertEqual(bytes(d.im), want)
+        self.assertEqual(d.im[217], 0x31)
+        self.assertEqual(mode.restore(), [])
+        self.assertEqual(bytes(d.im), original)
+        self.assertEqual(resets, ["s3r", "s3r"])
+
+    def test_a_baseline_the_firmware_corrects_stops_the_run_and_is_still_restored(self):
+        from rig import btmode
+        mode, d, original, _, _ = self.with_baseline(0x11)
+        real = d.write_infomem
+
+        def write_correcting(data, offset=0):
+            real(data, offset)
+            d.im[233] = 0x00 if len(data) == 1 else 0x55   # not the 0 written
+        d.write_infomem = write_correcting
+        with self.assertRaises(btmode.BtModeError) as e:
+            mode.enable(self.Unit("s3r"))
+        self.assertIn("233", str(e.exception))
+        d.write_infomem = real
+        self.assertEqual(mode.restore(), [])
+        self.assertEqual(bytes(d.im), original)
+
+    def test_a_platform_without_a_baseline_keeps_its_own_configuration(self):
+        mode, d, original, resets = self.bench(0x11)
+        from rig import baseline
+        mode.baseline = lambda unit, im: baseline.image("shimmer3", im)
+        mode.enable(self.Unit("s3"))
+        self.assertEqual(bytes(d.im), original)
+        self.assertEqual(resets, [])
+
+
+class Baseline(unittest.TestCase):
+    """rig/baseline.py: the configuration every Shimmer3R starts a run from (DEV-1463)."""
+
+    def unit_image(self):
+        im = bytearray(range(256)) * 2
+        im[218] = 0x11                                     # tcxo and lowBatteryAutoStop
+        im[232], im[233] = 0x35, 0x12                      # what a bench session leaves behind
+        return bytes(im)
+
+    def test_the_unit_keeps_its_identity_and_calibration(self):
+        from rig import baseline
+        u = self.unit_image()
+        b = baseline.image("shimmer3r", u)
+        for start, end in [(30, 31), (34, 118), (133, 175), (187, 199), (224, 230), (231, 232), (384, 512)]:
+            self.assertEqual(b[start:end], u[start:end], f"{start}-{end - 1}")
+        self.assertEqual(b[218], 0x10)                     # tcxo kept, auto-stop on low battery not
+
+    def test_everything_else_is_the_firmwares_default(self):
+        from rig import baseline
+        b = baseline.image("shimmer3r", self.unit_image())
+        self.assertEqual(int.from_bytes(b[0:2], "little"), 640)        # 51.2 Hz
+        self.assertEqual(bytes(b[3:6]), bytes([0xE0, 0x20, 0x00]))     # LN accel, gyro, mag, VBatt
+        self.assertEqual(bytes(b[6:10]), bytes([0x51, 0x05, 0x0E, 0x08]))
+        self.assertEqual(bytes(b[10:20]), bytes([0x02, 0x80, 0x10, 0, 0, 0, 0, 0, 0, 0x02]))
+        self.assertEqual(bytes(b[20:30]), bytes(b[10:20]))
+        self.assertEqual(bytes(b[199:215]), b"DefaultTrial\0\0\0\0")
+        self.assertEqual((b[217], b[219]), (0x31, 54))
+        self.assertEqual(bytes(b[220:224]), bytes([0, 1, 0, 0]))      # estimated 1 s, auto-stop off
+        self.assertEqual((b[232], b[233]), (0, 0))                     # no triggers, audio or sound level
+        self.assertEqual(set(b[234:384]), {0xFF})
+
+    def test_the_same_bytes_whichever_unit(self):
+        from rig import baseline
+        a = baseline.image("shimmer3r", self.unit_image())
+        b = baseline.image("shimmer3r", bytes(512))
+        kept = {i for s, e in baseline.KEEP for i in range(s, e)} | {218}
+        self.assertEqual([i for i in range(512) if a[i] != b[i] and i not in kept], [])
+
+    def test_firmware_owned_bytes_are_not_differences(self):
+        from rig import baseline
+        b = baseline.image("shimmer3r", self.unit_image())
+        back = bytearray(b)
+        back[61] ^= 0xFF                                   # gyro calibration, rewritten for the range
+        back[230] |= 0x01                                  # flagWriteCfgToSd
+        self.assertEqual(baseline.differences(b, bytes(back)), [])
+        back[232] = 0x24
+        self.assertEqual(baseline.differences(b, bytes(back)), [232])
+
+    def test_a_short_image_is_refused(self):
+        from rig import baseline
+        with self.assertRaises(ValueError):
+            baseline.image("shimmer3r", bytes(300))
+
+    def test_only_shimmer3r_has_one(self):
+        from rig import baseline
+        self.assertIsNone(baseline.image("shimmer3", bytes(512)))
+        self.assertIsNone(baseline.name("shimmer3"))
+        self.assertTrue(baseline.name("shimmer3r").startswith("shimmer3r-defaults-v1.01.026 sha256:"))
+
 
 class PushedStatusFrame(unittest.TestCase):
     """A status frame the firmware pushes as a query goes out lands where the

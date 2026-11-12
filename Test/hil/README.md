@@ -94,16 +94,33 @@ fix makes its check pass, move the check into its platform's tier, and into
    hardware ID contains the unit's MAC. `smoke.ble_throughput` needs no
    pairing at all: it connects over BLE by the unit's MAC, through bleak, and
    needs the unit not connected to any other host.
-4. Units configured for SD sync, or with Bluetooth disabled, keep their radio
-   off. The run handles that itself (`rig/btmode.py`): before the first test,
-   each unit whose tests need Bluetooth has those two bits of InfoMem byte 217
-   cleared and is reset, and after the last its InfoMem is written back byte
-   for byte and it is reset again. The read-back must match everywhere but
-   byte 230 bit 0, `flagWriteCfgToSd`, which the firmware sets itself on
-   every configuration write; that bit differing is expected, not a failed
-   restore. A Shimmer3 is reset through its Base6 slot;
-   a Shimmer3R through its ST-Link if `rig.toml` names one, otherwise through
-   the ST bootloader. A unit that cannot be put back fails the run.
+4. The run sets each unit's configuration up itself, and puts the unit's own
+   back after the last test (`rig/btmode.py`). A unit that cannot be put back
+   fails the run.
+   - **Every Shimmer3R starts from the baseline** (`rig/baseline.py`,
+     DEV-1463): the firmware's default configuration, with the unit's own
+     calibration, name, MAC, Bluetooth baud and PIN bytes, and TCXO bit. It is
+     written over the dock before the first test and read back; a byte the
+     firmware changed stops the run.
+     - Without it, a test inherits whatever the unit's last bench session left
+       in InfoMem: a trigger mode in byte 232, audio or the sound level in
+       byte 233, other ranges, an auto-stop.
+     - `run.unit_config` in the report names the baseline.
+     - `--keep-unit-config` starts each unit from its own configuration
+       instead, for an experiment that needs it.
+   - **Units configured for SD sync, or with Bluetooth disabled, keep their
+     radio off.** For each unit whose tests need Bluetooth, those two bits of
+     InfoMem byte 217 are cleared. The baseline has both clear already. The
+     unit is then reset, because the firmware reads them only at boot, and
+     reset again after its InfoMem is written back. A unit whose own
+     configuration had neither set is never reset.
+   - **The restore is checked byte for byte.** The read-back must match
+     everywhere but byte 230 bit 0, `flagWriteCfgToSd`, which the firmware
+     sets itself on every configuration write. That bit differing is
+     expected, not a failed restore.
+   - **How a unit is reset.** A Shimmer3 through its Base6 slot. A Shimmer3R
+     through its ST-Link if `rig.toml` names one, otherwise through the ST
+     bootloader.
 5. Close STM32CubeIDE and Consensys before a release run. The suite warns if
    they are open: the IDE pages every Bluetooth COM port when USB devices
    arrive, which distorts Bluetooth timing for most of a minute.
