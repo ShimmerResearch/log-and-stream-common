@@ -103,6 +103,9 @@ void ShimSdSync_nodeT1(uint8_t val);
 uint8_t ShimSdSync_rcFindSmallest(void);
 
 void ShimSdSync_handleSyncTimerTrigger(void);
+#if defined(SHIMMER3R)
+void ShimSdSync_handleSyncTimerTriggers(uint32_t ticks);
+#endif
 void ShimSdSync_handleSyncTimerTriggerCenter(void);
 void ShimSdSync_handleSyncTimerTriggerNode(void);
 void ShimSdSync_startBtForSync(void);

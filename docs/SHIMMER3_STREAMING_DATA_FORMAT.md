@@ -31,7 +31,10 @@ logging, so a parser written from this document reads both.
 >   `shimmer3r-firmware` @ `cfa1193e` (v1.01.026) — `Core/Src/stm32u5xx_it.c`
 >   (`RTC_IRQHandler`), `Core/Src/rtc.c` (`HAL_RTC_AlarmAEventCallback`,
 >   `RTC_setNextRtcAlarmA`) — with its figures measured on that build, and the
->   fix at `cdd7b783`. The figures for older Shimmer3 firmware
+>   fix at `cdd7b783`. The Shimmer3R SD-sync alarm delay in the same files
+>   (`HAL_RTCEx_AlarmBEventCallback`, `RTC_setupAndStartSdSyncAlarm`), with
+>   `SDSync/shimmer_sd_sync.c`, measured on v1.01.026 and on `cdd7b783`, and
+>   fixed by DEV-1466. The figures for older Shimmer3 firmware
 >   are bench measurements, not read from code: 1024 Hz streams over RN42
 >   v6.15 with the link overloaded, on `shimmer3-firmware` @ `d82c9ef`, which
 >   still re-armed from the counter, gave a mean of 32.0006 ticks per period
@@ -317,6 +320,26 @@ your port against that file.
 >   services the sample timer first and keeps the alarm handler short
 >   (DEV-1464, DEV-1369). On the same unit with that change, 4096 Hz streams
 >   had no stamp off the grid in two minutes docked (60 alarms).
+> - **Shimmer3R with SD sync on, v1.01.026 and earlier** can also stamp a
+>   sample up to about 8 ticks (0.25 ms) late just after a whole second. SD
+>   sync's one-second alarm shares the sample timer's interrupt, and its
+>   handler ran the sync schedule. On the seconds where that schedule stopped
+>   the radio or opened a connection, the handler took 6-8 ticks. That happens
+>   every 4-7 s on the centre and every 9-11 s on a node. As with the battery
+>   alarm, the grid does not move, and only a grid with a sample due in those
+>   ticks is affected.
+>
+>   Measured while logging at 4096 Hz with sync on: four 3-minute logs per
+>   build on a centre and a node.
+>   - **v1.01.026:** 109 late stamps on the centre and 65 on the node, up to
+>     8 ticks late.
+>   - **DEV-1464's change (sample timer first):** 139 and 40, up to 5 ticks
+>     late.
+>   - **Later firmware (DEV-1466),** which runs the sync schedule from a task
+>     and leaves the alarm's handler only to count the second: 25 and 1, each
+>     1-2 ticks late, about 1 ms after the second.
+>
+>   The same logs with sync off had none.
 >
 > A step of about two or more whole periods is a missing sample, not jitter.
 > The stamps alone do not say why it is missing: a slot the firmware skipped

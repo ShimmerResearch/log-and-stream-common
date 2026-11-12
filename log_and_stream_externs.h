@@ -107,6 +107,9 @@ extern void RTC_setAlarmRebootToBootloader(uint8_t secondsFromNow);
 extern void RTC_setAlarmBattRead(void);
 extern void RTC_wakeUpOff(void);
 extern void RTC_wakeUpSet(uint16_t period);
+/* SD sync's one-second ticks counted by Alarm B's interrupt since the last
+ * call, for TASK_SD_SYNC_TICK */
+extern uint32_t RTC_takeSdSyncTicks(void);
 #endif
 
 extern void manageReadBatt(uint8_t isBlockingRead);
