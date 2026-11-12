@@ -139,6 +139,19 @@ uint8_t ShimSens_checkStartLoggingConditions(void)
 #endif
 }
 
+/* Whether a host's log start (START_LOGGING_COMMAND, START_SDBT_COMMAND) is
+ * refused with a NACK: no log is running and ShimSens_checkStartLoggingConditions()
+ * will not start one (logging off in byte 232, no SD card, a bad file, the card
+ * not ready, docked or on USB). Firmware before DEV-1431 ACKed such a start and
+ * did nothing, START_SDBT then streaming alone, so a host could not tell. A
+ * start sent while a log is already running is not refused: START_SDBT then
+ * adds the stream to it. Return 1 to refuse, 0 otherwise.
+ */
+uint8_t ShimSens_isLogStartRefused(void)
+{
+  return !shimmerStatus.sdLogging && !ShimSens_checkStartLoggingConditions();
+}
+
 /* Check if the conditions are met to start streaming to BT.
  * Return 1 if conditions are met, 0 otherwise.
  */

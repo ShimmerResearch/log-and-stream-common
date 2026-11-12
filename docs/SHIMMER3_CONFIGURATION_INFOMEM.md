@@ -703,9 +703,11 @@ Each also stands with bit 5 set, `0x20` added, which turns the TTL input on.
   `ShimSens_checkStartLoggingConditions`. The button, leaving the dock, a
   Bluetooth command and a single-touch sync start all pass through it. So
   logging off wins over a button mode that would start logging (`0x12`).
-  `START_LOGGING_COMMAND` is still acknowledged and does nothing, as it does
-  with no card in; `START_SDBT_COMMAND` starts streaming only. Streaming is
-  unaffected. The SD-card error flash is not shown, since an empty slot is
+  `START_LOGGING_COMMAND` and `START_SDBT_COMMAND` are NACKed and start
+  nothing, as they are with no card in (BT_COMMUNICATION_PROTOCOL §6.1), so a
+  host streams with `START_STREAMING_COMMAND`. Firmware before DEV-1431 ACKs
+  both; there `START_LOGGING_COMMAND` does nothing and `START_SDBT_COMMAND`
+  streams only. Streaming is unaffected. The SD-card error flash is not shown, since an empty slot is
   then expected (LED_FEEDBACK §4.3).
 - **`userButtonEnable` follows the mode.** While the button mode is not 0 the
   firmware ignores `userButtonEnable`, and the correction holds it at the
