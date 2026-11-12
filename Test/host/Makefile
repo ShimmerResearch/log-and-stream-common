@@ -279,6 +279,8 @@ test: build
 	  failed="$$failed test_hil_report.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_timing.py; then \
 	  failed="$$failed test_hil_timing.py"; fi; \
+	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_framing.py; then \
+	  failed="$$failed test_hil_framing.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_midstream.py; then \
 	  failed="$$failed test_hil_midstream.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_signals.py; then \
@@ -414,6 +416,7 @@ hil-gate:
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_gate.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_report.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_timing.py
+	@$(PYTHON) $(REPO)/Test/hil/test_hil_framing.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_midstream.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_signals.py
 	@$(PYTHON) $(REPO)/Test/hil/test_hil_audio.py

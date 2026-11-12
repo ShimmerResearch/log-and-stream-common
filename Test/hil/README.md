@@ -286,5 +286,30 @@ because a log start mid-stream can re-phase the stream:
 The grid is moved at each move found, before the steps are sorted as above, so
 one move is reported once, not as jitter on every stamp after it.
 
+## Which bytes are packets
+
+A stream is framed by length: a packet is a 0x00, then the stamp and the
+channels, and the next frame starts with 0x00 or an ACK. A 0x00 can also be a
+data byte, so each frame is confirmed before it is accepted (`rig/bt.py`,
+`BtLink.stream`). With a link CRC on, the CRC confirms it. Without one, the
+stamps do, through `_stamps_frame`:
+
+- **In step**, straight after a packet: a stamp a plausible number of periods
+  on is a packet. So is one off the grid when the next frame is back on the
+  old grid and the one after that follows it: a late stamp, judged as jitter
+  above (DEV-1464: one stamp 9-13 ticks late at each battery alarm).
+- **Searching**, after bytes that did not frame: a candidate needs its step
+  and the two frames after it, each a step of at most `CONFIRM_MAX_PERIODS`
+  periods on. With its step alone, the search once accepted a false frame
+  inside the data, and the rest of the stream then failed to frame: 380 KB
+  of a 90 s capture.
+
+Bytes that do not frame are counted in `resyncs`, and the first few are kept
+in `misframes`. A packet one byte short shows as `plen - 1` of them. Three
+things still misframe without a CRC: a moved grid, and a late stamp within
+two packets of a reply or of the stream's end. The `sd_start_midstream` items
+run with the CRC on for the first. `test_hil_framing.py` replays streams
+captured on the bench (`testdata/`).
+
 `run_rc.py` expects every unit it flashes to be docked (on USB) when it starts,
 as the tests do, and stops before flashing anything if one is not.
