@@ -202,6 +202,7 @@ def check_session(session_dir: Path) -> SessionCheck:
                    key=lambda p: int(p.name))
     sc = SessionCheck(files=[p.name for p in files])
     last = None
+    gap_logged = False             # the last stamp's gap went into gap_times_s
     for f in files:
         raw_head = f.read_bytes()[:HEAD_S3R]
         h = read_header(raw_head)
@@ -222,7 +223,10 @@ def check_session(session_dir: Path) -> SessionCheck:
                 gaps_before = sc.gaps
                 sc.span_ticks += d
                 classify_step(sc, d, sc.header.divider)
-                if sc.gaps != gaps_before and len(sc.gap_times_s) < 200:
+                if sc.gaps < gaps_before and gap_logged:
+                    sc.gap_times_s.pop()          # the gap before was a late stamp (classify_step)
+                gap_logged = sc.gaps > gaps_before and len(sc.gap_times_s) < 200
+                if gap_logged:
                     sc.gap_times_s.append(round(sc.span_ticks / 32768, 1))
             last = ts
             first_in_file = False

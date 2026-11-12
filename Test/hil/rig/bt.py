@@ -164,7 +164,7 @@ def ts_step(ts: int, last: int) -> int:
     return d - TS_WRAP if d >= TS_WRAP // 2 else d
 
 
-def classify_step(st, d: int, period: int) -> None:
+def classify_step(st, d: int, period: int) -> int | None:
     """Sort one timestamp step (signed, from ts_step) into lost samples,
     duplicates and jitter. Feed the steps in order.
 
@@ -180,11 +180,40 @@ def classify_step(st, d: int, period: int) -> None:
     successor is stamped on time or a little early is still a loss. A stamp
     that lands in a slot already taken, or before it, is a duplicate. Shared
     with sdfile.py.
+
+    A stamp three quarters of a period late or more, counted in the next slot
+    with the slot before it empty, can still be a late stamp. The next stamp
+    shows which. If that one lands in the same slot, the stamp before it was
+    late for the slot it skipped: at 4096 Hz (8 ticks), the DEV-1464 alarm
+    stamped one sample 6 ticks late and the next on time. That stamp is then
+    counted again, in the earlier slot: the lost sample is taken back, the
+    next stamp is not a duplicate, and the late one is jitter. Only the stamp
+    just before can be revised. The return value says when it is: how many
+    ticks late it now counts, so that a caller reporting each step can amend
+    the one before. Otherwise None.
     """
     cum = getattr(st, "_cum", 0) + d
     prev = getattr(st, "_slot", 0)
     slot = (cum + period // 4) // period
+    undo, st._undo = getattr(st, "_undo", None), None
+    revised = None
+    if undo is not None and slot == prev:
+        counts, pd, pcum, pprev = undo
+        st.gaps, st.missing, st.max_gap_ticks, st.jitter, st.max_jitter_ticks = counts
+        prev -= 1
+        _place(st, pd, pcum, prev, pprev, period)
+        revised = pcum - prev * period
+    elif slot - prev >= 2 and cum < slot * period:
+        # Early for its slot, with a slot skipped: what to revise it from.
+        st._undo = ((st.gaps, st.missing, st.max_gap_ticks, st.jitter, st.max_jitter_ticks), d, cum, prev)
+    _place(st, d, cum, slot, prev, period)
     st._cum, st._slot = cum, max(prev, slot)
+    return revised
+
+
+def _place(st, d: int, cum: int, slot: int, prev: int, period: int) -> None:
+    """Count one stamp, `cum` ticks from the first, placed in `slot`, the last
+    slot taken being `prev`."""
     step = slot - prev
     if step <= 0:
         st.dupes += 1
@@ -209,6 +238,10 @@ def gap_positions(ts: list[int], period: int) -> list[tuple[int, int]]:
         classify_step(scratch, ts_step(ts[i], ts[i - 1]), period)
         if scratch.missing > before:
             out.append((i, scratch.missing - before))
+        elif scratch.missing < before:           # the gap before was a late stamp (classify_step)
+            j, n = out.pop()
+            if n + scratch.missing - before:
+                out.append((j, n + scratch.missing - before))
     return out
 
 

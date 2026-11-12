@@ -152,10 +152,25 @@ def analyse(ts: list[int], period: int, max_jitter: int | None = None) -> Grid:
     back = dict(g.backward)
     shift = dict(g.shifts)
     st = g.stats
+    texts_at: dict[int, list[str]] = {}
+    before_prev = None
     for i in range(1, len(cum)):
         d = (cum[i] - anchor[i]) - (cum[i - 1] - anchor[i - 1])
         before = (st.gaps, st.missing, st.dupes, st.jitter, st.max_jitter_ticks)
-        bt.classify_step(st, d, period)
+        revised = bt.classify_step(st, d, period)
+        if revised is not None and i - 1 in texts_at:
+            # The stamp before was late for the slot it skipped, not a sample
+            # lost after all (classify_step): its issue is rewritten.
+            g.issues = [x for x in g.issues if x[0] != i - 1]
+            amended = [t for t in texts_at.pop(i - 1) if "samples lost" not in t]
+            lost = st.missing - before_prev[1]
+            if lost:
+                amended.append(f"{lost} samples lost (step {cum[i - 1] - cum[i - 2]} ticks)")
+            if revised > max_jitter:
+                amended.append(f"stamp {revised} ticks off its slot")
+            if amended:
+                texts_at[i - 1] = amended
+                g.issues.append((i - 1, ", ".join(amended)))
         texts = []
         if i in back:
             texts.append(f"stamp {-back[i]} ticks behind the one before")
@@ -171,6 +186,8 @@ def analyse(ts: list[int], period: int, max_jitter: int | None = None) -> Grid:
                 texts.append(f"stamp {off} ticks off its slot")
         if texts:
             g.issues.append((i, ", ".join(texts)))
+            texts_at[i] = texts
+        before_prev = before
     return g
 
 
