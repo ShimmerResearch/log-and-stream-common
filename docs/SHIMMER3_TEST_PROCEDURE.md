@@ -1472,7 +1472,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
 | `smoke.sd_start_midstream` | Undocked, six 2 s SD logs started and stopped inside one 256 Hz stream, link CRC on. Odd cycles send `START_LOGGING` alone; even ones send `SET_RWC` first, as the reference host does before every log start. The stream's stamps must never step back or sideways: no stamp at or behind the one before, no move of the sampling grid, no lost or duplicate samples, jitter within a quarter period. Each problem is reported with the cycle it followed, and with how many clock-set and plain starts disturbed the stream. A status query must show logging, and the card must hold one new session per cycle |
 | `smoke.sd_inquiry_midlog` | §5.6.7, the DEV-1363 regression case (§7), and the one smoke item on the required list. 1024 Hz with every sensor the board has fitted; undocked, `START_LOGGING`, then `INQUIRY` every 0.25 s for 60 s, then stop and re-dock. The new session must have no lost or duplicate samples, jitter within a quarter period, and its whole 60 s; every inquiry must report the layout the log started with. A gap of `TIMEOUT_100_MS / divider + 2` samples (104 at 1024 Hz, a 3,360-tick step) is named as the packet ring's fail-safe. The note says how many inquiries went out. A clean log after fewer than 120 is `not_covered`: v1.01.024 lost samples on about one inquiry in 17, so fewer could miss it by luck. InfoMem is saved to disk and put back |
-| `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt |
+| `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt. Lost samples are the figure, not a defect, but every byte must frame, no stamp may repeat or step back, and none may be more than a quarter period off its slot |
 | `smoke.ble_throughput` | As `smoke.bt_throughput`, over BLE (the IF820's CYSPP service, data as notifications), against this unit's BLE baseline. `not_covered` when the unit's EEPROM has BLE off (`bleEnabled`, EEPROM memory map §4.2) |
 
 The **fleet** tier is §5.1 made automatic: Shimmer3, one unit per radio
@@ -1556,8 +1556,9 @@ read as a counter wrap, so every later sample lands 512 s late. A forward step
 is not proof of lost samples: setting the clock can step the counter, and the
 stamps cannot tell the two apart. Either way it is reported as a step off the
 grid. The stream runs with link CRC on, because without it a frame is
-confirmed by a plausible timestamp step, and an off-grid stamp would be
-dropped as a misframe instead of judged.
+confirmed by its timestamps. A single late stamp is still confirmed by the
+packets after it, back on the grid, but a grid that moves would be dropped as
+misframes instead of judged (`Test/hil/README.md`, "Which bytes are packets").
 
 The **release** tier runs a configuration matrix on each platform. On Shimmer3R
 it is the one in `Test/hil/matrix/s3r_release.toml`. There are about 30 rows, chosen so every
@@ -1577,8 +1578,9 @@ logs. Each row is its own item, `release.<row>`:
   does not have are left out (`rig/s3r_boards.py`).
 - **Timing and framing.** No lost or duplicate samples, jitter within a quarter
   period, and the rate measured on the device clock. Every frame is confirmed
-  before it is accepted: its CRC when a mode is on, a plausible timestamp step
-  when not.
+  before it is accepted: its CRC when a mode is on, its timestamps when not. A
+  stamp off the grid with the packets after it back on it is a late stamp,
+  failed as jitter, not as bytes that did not frame (DEV-1464).
 - **Signals at rest.** LN and WR accel read |a| ≈ 1 g, the gyro mean is ≈ 0,
   no axis is stuck, staircased or saturated, and VBatt is 3.0-4.3 V.
   Calibration comes from where a host would take it: `GET_ALL_CALIBRATION` for

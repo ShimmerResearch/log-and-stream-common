@@ -547,8 +547,11 @@ class BtLink:
             self._read(crc_n)                    # the ACK's own CRC
         buf = bytearray()
         last_ts = None
+        grid_ts = None              # the last stamp accepted on the grid: what the next steps from
+        in_step = True              # nothing skipped since the last packet: buf[0] is a boundary
         t0 = time.monotonic()
         stop_t = None               # set once the stop command has gone out
+        final = False
         pending = sorted(actions or [], key=lambda a: a.t)
         old_timeout = self.ser.timeout
         try:
@@ -574,16 +577,18 @@ class BtLink:
                     final = not chunk or now - stop_t > 5.0
                 while buf:
                     if buf[0] == 0x00:
-                        need = plen + (0 if stop_t is not None and final else 1)
+                        ending = stop_t is not None and final
+                        need = plen + (0 if ending else 1)
                         if len(buf) < need:              # +1: peek at the next frame's first byte
                             break
-                        ts = buf[1] | (buf[2] << 8) | (buf[3] << 16)
+                        ts = _stamp(buf, 0)
                         # A 0x00 is not proof of a packet boundary. Confirm it: the
                         # next frame must start with 0x00 or an ACK; with a CRC on,
-                        # the CRC must match; without one, the timestamp must step
-                        # by a plausible number of periods. A frame that fails is
-                        # re-searched a byte later and counted - it means bytes the
-                        # parser did not expect arrived (and are kept for diagnosis).
+                        # the CRC must match; without one, the timestamps must
+                        # (_stamps_frame). A frame that fails is re-searched a byte
+                        # later and counted - it means bytes the parser did not
+                        # expect arrived (and are kept for diagnosis).
+                        on_grid = True
                         if len(buf) > plen and buf[plen] not in (0x00, ACK):
                             ok = False
                         elif crc_n:
@@ -591,11 +596,15 @@ class BtLink:
                             if not ok:
                                 st.crc_errors += 1
                         else:
-                            ok = last_ts is None or _plausible_step((ts - last_ts) % TS_WRAP, inq.divider)
+                            on_grid = grid_ts is None or _plausible_step((ts - grid_ts) % TS_WRAP, inq.divider)
+                            ok = _stamps_frame(buf, plen, grid_ts, inq.divider, on_grid, in_step, ending)
+                            if ok is None:               # the next frame decides; it has not all arrived
+                                break
                         if not ok:
                             st.resyncs += 1
                             if len(st.misframes) < 3:
                                 st.misframes.append(bytes(buf[:plen + 8]).hex())
+                            in_step = False
                             del buf[:1]
                             continue
                         if last_ts is None:
@@ -605,6 +614,9 @@ class BtLink:
                             st.deltas[d] = st.deltas.get(d, 0) + 1
                             classify_step(st, d, inq.divider)
                         last_ts = ts
+                        if on_grid:
+                            grid_ts = ts                 # a late stamp leaves the grid where it was
+                        in_step = True
                         st.packets += 1
                         if stop_t is not None:
                             st.after_stop += 1
@@ -650,6 +662,7 @@ class BtLink:
                         st.resyncs += 1
                         if len(st.misframes) < 3:
                             st.misframes.append(bytes(buf[:plen + 8]).hex())
+                        in_step = False
                         del buf[:1]
                 if stop_t is not None and final:
                     break
@@ -688,6 +701,74 @@ def _plausible_step(d: int, period: int) -> bool:
     """A step of 1..(10 s) worth of ticks, within a quarter period of a whole number of periods."""
     k = round(d / period)
     return 1 <= k and d <= 10 * TICKS_PER_S and abs(d - k * period) <= period // 4
+
+
+def _stamp(buf, at: int) -> int:
+    """The 24-bit timestamp of the frame at buf[at]."""
+    return buf[at + 1] | (buf[at + 2] << 8) | (buf[at + 3] << 16)
+
+
+# A frame that needs confirming is confirmed by the two frames after it, each a
+# plausible step of at most this many periods on: the next sample, or one after
+# a few lost to a saturated link.
+CONFIRM_MAX_PERIODS = 16
+
+
+def _near_step(d: int, period: int) -> bool:
+    return _plausible_step(d, period) and round(d / period) <= CONFIRM_MAX_PERIODS
+
+
+def _stamps_frame(buf, plen: int, grid_ts: int | None, period: int, on_grid: bool,
+                  in_step: bool, ending: bool) -> bool | None:
+    """Without a link CRC: whether the 0x00 at buf[0], whose byte plen on is
+    0x00 or an ACK, starts a packet, judged by timestamps. grid_ts is the last
+    stamp accepted on the sampling grid; on_grid, whether this one steps a
+    plausible number of periods from it. None: the frames after it decide, and
+    they have not all arrived yet (never while `ending`, when no more will).
+
+    In step - the bytes before buf[0] were a packet, perhaps with replies after
+    it, and nothing was skipped since - a frame is a packet when its stamp
+    steps a plausible number of periods from grid_ts. A frame stamped off the
+    grid is a packet too when the two frames after it confirm it: the first
+    back on the old grid and stamped after it, the second a near step on. That
+    is a sample stamped late (DEV-1464), and classify_step judges it as jitter.
+    Rejected, it would count a whole packet as stray bytes, and the search
+    through those bytes could accept a false frame.
+
+    Out of step - searching after bytes that did not frame - a plausible step
+    from grid_ts is not enough. Inside the data, a 0x00 whose byte plen on is
+    also 0x00, with three bytes after it that happen to step plausibly, passes
+    it: in one 1024 Hz capture, 4 of the 45 searches after a late stamp
+    accepted one. Every real packet then steps off the false stamp and is
+    rejected: 380 KB of a 90 s stream. So the two frames after it must confirm
+    it too, each a near step on. In a false frame's place they hold the same
+    bytes of the next packets, which seldom climb by whole periods, twice
+    running and by little. A wider step is no test: when the period divides
+    256, a false stamp whose low byte barely changes steps whole periods
+    whenever a higher byte changes.
+
+    Either way a reply in place of those frames leaves the frame unconfirmed.
+    At the end of the stream, where they may never come, the single step
+    decides, as it always did.
+    """
+    if in_step and on_grid:
+        return True
+    if not in_step and not on_grid:
+        return False
+    if len(buf) < 3 * plen + (0 if ending else 1):
+        return on_grid if ending else None
+    for at in (plen, 2 * plen):
+        if buf[at] != 0x00:
+            return False                 # a reply, not a frame
+    if len(buf) > 3 * plen and buf[3 * plen] not in (0x00, ACK):
+        return False                     # the second is not whole
+    ts, s1, s2 = _stamp(buf, 0), _stamp(buf, plen), _stamp(buf, 2 * plen)
+    if not _near_step((s2 - s1) % TS_WRAP, period):
+        return False
+    if in_step:                          # off the grid: the next frame is back on it
+        dn = (s1 - grid_ts) % TS_WRAP
+        return _plausible_step(dn, period) and ts_step(ts, grid_ts) < dn
+    return _near_step((s1 - ts) % TS_WRAP, period)
 
 
 PORT_RELEASE_WAIT_S = 30.0

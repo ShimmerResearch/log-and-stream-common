@@ -191,11 +191,12 @@ def figures(rate: DataRate, st: bt.StreamStats, inq: bt.Inquiry) -> dict[str, fl
 
 
 STREAM_COVERAGE = 0.9
+MAX_JITTER_FRACTION = 0.25       # of a period, as the stream items judge it
 
 
 def defects(rate: DataRate, st: bt.StreamStats, inq: bt.Inquiry) -> list[str]:
     """What fails whatever the baseline: lost test packets, misframing, a stop
-    not obeyed, a stream whose stamps do not span it.
+    not obeyed, a stream whose stamps do not span it, stamps off the grid.
 
     Samples lost between packets are not here: the load outruns the link by
     design, and how much arrives is the figure judged against the baseline.
@@ -203,6 +204,11 @@ def defects(rate: DataRate, st: bt.StreamStats, inq: bt.Inquiry) -> list[str]:
     gap at all, and samples_per_s would read it as everything delivered. So
     its stamps must cover STREAM_COVERAGE of the stream time; the bench's
     runs cover 99% or more (19.87 of 20.0 s on the RN42 v6.15 at its worst).
+
+    A stamp more than a quarter period off its slot is a defect whatever the
+    load: the device stamps a sample when it takes it, not when the link has
+    room. The parser used to reject such a packet, so it failed here as bytes
+    that did not frame (DEV-1464); now it is accepted, and judged here.
     """
     out = []
     if rate.packets == 0:
@@ -228,6 +234,9 @@ def defects(rate: DataRate, st: bt.StreamStats, inq: bt.Inquiry) -> list[str]:
         out.append(f"stream: {st.resyncs} bytes did not frame as packets{first}")
     if st.dupes:
         out.append(f"stream: {st.dupes} duplicate or backwards stamps")
+    if st.max_jitter_ticks > MAX_JITTER_FRACTION * inq.divider:
+        out.append(f"stream: stamp jitter up to {st.max_jitter_ticks} ticks (period {inq.divider}), "
+                   f"in {st.jitter} of {st.packets} stamps")
     return out
 
 
