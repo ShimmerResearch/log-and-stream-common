@@ -193,7 +193,7 @@ uint32_t taskList;   // one bit per task
 | 2 | `TASK_DOCK_PROCESS_CMD` | both |
 | 3 | `TASK_DOCK_RESPOND` | both |
 | 4 | `TASK_BT_PROCESS_CMD` | both |
-| 5 | `TASK_USB_PROCESS_CMD` / `TASK_BT_CMD_STEP` | S3R / S3. On Shimmer3, the RN4x driver's next set-up or connect step (`BT_runCommandStep()`). The Bluetooth receive interrupt queues it when the module's reply arrives, instead of sending the next command itself, which held the sample timer back by up to 6 ticks on the RN4678 units measured (DEV-1486). Above the data path so that logging does not slow a radio start. The bit was `TASK_CFGCH`, which nothing set |
+| 5 | `TASK_USB_PROCESS_CMD` / `TASK_BT_CMD_STEP` | S3R / S3. On Shimmer3, the RN4x driver's next set-up or connect step (`BT_runCommandStep()`). The Bluetooth receive interrupt queues it when the module's reply arrives, instead of sending the next command itself, which held the sample timer back by up to 6 ticks on the RN4678 units measured (DEV-1486). Above the data path so that logging does not slow a radio start. At boot the task loop is not running yet, so the platform's wait for the radio runs a queued step itself (`BT_runQueuedCommandStep()` in `InitialiseBt()`). The bit was `TASK_CFGCH`, which nothing set |
 | 6 | `TASK_BT_RESPOND` | both |
 | 7 | `TASK_RCCENTERR1` | both |
 | 8 | `TASK_RCNODER10` | both |
