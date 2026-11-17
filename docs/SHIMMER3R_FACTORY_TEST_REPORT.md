@@ -16,8 +16,8 @@ the result bitmask.
 > **Shimmer3R focus.** The shared harness in `Test/shimmer_test.c` builds for
 > both generations, but the test bodies and the `S3R_TEST_*` registry are in
 > the Shimmer3R platform repository. Shimmer3's equivalents were not read for
-> this document, except for the SD card identity lines, which both print
-> (§5.5).
+> this document, except for the SD card identity lines (§5.5) and the CAT24C16
+> line (§5.7), which both print.
 
 **Source references:**
 
@@ -389,6 +389,15 @@ data there. See
 > so every `FAIL` line other than `Read failed` left test data in bytes 16-143.
 > A unit tested on older firmware that ever failed `0023` may still hold it.
 > The old firmware also wrote the same pattern on all three passes.
+
+**Shimmer3** runs the same test (`shimmer3-firmware`
+`Shimmer_Driver/CAT24C16/CAT24C16.c`) and, from DEV-1495, prints the same
+lines in its `I2C:` block. They have no test ID, because Shimmer3 has no test
+registry (see the last section): ` - FAIL: CAT24C16 - Write failed`, and so on.
+Its passes write an incrementing pattern rather than a random one, and each
+pass's differs from the last. Before DEV-1495 it printed only
+`PASS: CAT24C16` or `FAIL: CAT24C16`, and a failed test left test data in
+bytes 16-143, as on Shimmer3R before DEV-1494.
 
 ## 6. Host capture
 
