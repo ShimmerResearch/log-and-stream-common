@@ -367,6 +367,29 @@ starts and the filters settle, then gives:
 > unchanged from before. A mic test while a recording runs is refused rather
 > than restarting the ADF under it.
 
+### 5.7 `S3R_TEST_0023` — CAT24C16 EEPROM
+
+`CAT24C16_test()` uses EEPROM bytes 16-143 as scratch. It backs them up,
+writes a different random pattern over them three times, reading each back,
+then writes the backup back and reads that back too. Those bytes are host
+offsets 0-127 of the daughter-card memory commands, so a host may have stored
+data there. See
+[SHIMMER3_EEPROM_MEMORY_MAP.md](SHIMMER3_EEPROM_MEMORY_MAP.md) §2.1.
+
+| Report line | Meaning |
+|---|---|
+| `PASS: CAT24C16` | Every pass read back what it wrote, and the backup is back |
+| `FAIL: CAT24C16 - Read failed` | The backup could not be read. Nothing was written |
+| `FAIL: CAT24C16 - Write failed` | A test write failed. The backup is back |
+| `FAIL: CAT24C16 - Read-back failed` | A read-back failed. The backup is back |
+| `FAIL: CAT24C16 - Read-back mismatch` | A read-back differed from what was written. The backup is back |
+| `… - bytes 16-143 not restored` | Added to any of the above, or on its own after `CAT24C16`, when the backup could not be written back in three tries. Those bytes now hold test data |
+
+> **Before DEV-1494 a failed test returned without putting the backup back**,
+> so every `FAIL` line other than `Read failed` left test data in bytes 16-143.
+> A unit tested on older firmware that ever failed `0023` may still hold it.
+> The old firmware also wrote the same pattern on all three passes.
+
 ## 6. Host capture
 
 Over Bluetooth the report arrives as a stream of text chunks, not one message.
