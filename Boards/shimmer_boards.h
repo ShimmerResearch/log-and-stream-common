@@ -12,7 +12,7 @@
 
 #include "EEPROM/shimmer_eeprom.h"
 
-#include "CAT24C16/CAT24C16.h"
+#include "EEPROM/cat24c16.h"
 
 #ifndef __weak
 #define __weak __attribute__((weak))

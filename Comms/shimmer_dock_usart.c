@@ -23,7 +23,7 @@
 #include "../5xx_HAL/hal_RTC.h"
 #include "../5xx_HAL/hal_UCA0.h"
 #include "../5xx_HAL/hal_UartA0.h"
-#include "../CAT24C16/CAT24C16.h"
+#include "EEPROM/cat24c16.h"
 #elif defined(SHIMMER3R)
 #include "stm32u5xx_hal_uart.h"
 #include "ux_device_cdc_acm.h"

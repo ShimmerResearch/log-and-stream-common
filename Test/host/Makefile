@@ -63,7 +63,7 @@ INCLUDES := -I . \
 # Suites that need no stub platform at all - the modules under them include
 # nothing but the C library.
 STANDALONE_SUITES := test_swcrc test_packet_ring test_util test_sd_pressure_id \
-                     test_leds_phase test_sd_card_id test_autostop \
+                     test_leds_phase test_sd_card_id test_autostop test_cat24c16 \
                      test_event_record test_button_gesture test_button_log_mode \
                      test_audio_mode test_audio_file test_audio_level
 
@@ -98,6 +98,7 @@ SRC_test_util        := test_util.c $(REPO)/Util/shimmer_util.c
 SRC_test_sd_pressure_id := test_sd_pressure_id.c \
                         $(REPO)/SDCard/shimmer_sd_pressure_id.c
 SRC_test_sd_card_id  := test_sd_card_id.c $(REPO)/SDCard/shimmer_sd_card_id.c
+SRC_test_cat24c16    := test_cat24c16.c $(REPO)/EEPROM/cat24c16.c
 SRC_test_sd_write_buf := test_sd_write_buf.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c
 SRC_test_leds_phase  := test_leds_phase.c $(REPO)/LEDs/shimmer_leds_phase.c
@@ -166,6 +167,7 @@ INC_test_autostop    := -I . -I $(REPO)
 INC_test_audio_mode := -I . -I $(REPO)
 INC_test_audio_file := -I . -I $(REPO)
 INC_test_audio_level := -I . -I $(REPO)
+INC_test_cat24c16    := -I . -I $(REPO)
 
 ALL_SUITES := $(STANDALONE_SUITES) $(SINGLE_PLATFORM_SUITES) \
               $(DUAL_PLATFORM_SUITES) $(SD_WRBUF_SUITES)
@@ -341,9 +343,9 @@ $(SD_WRBUF_SUITES): %: $(foreach n,$(SD_WRBUF_COUNTS),$(BUILD)/%.n$(n))
 # ADDING TO THE LIST is the goal, not the exception. A module qualifies as soon
 # as it compiles for both without a new stub; the ones missing today
 # (Comms/, SDCard/, SDSync/, Sensing/shimmer_sensing.c, Configuration/,
-# TaskList/, GSR/, EEPROM/) each need one or two more headers under
-# stubs/Shimmer_Driver - FileX, RN4X, ADXL371, gpio.h - or,
-# for EEPROM/, the BAUD_* enum out of Comms/shimmer_bt_uart.h. Each one added
+# TaskList/, GSR/, EEPROM/shimmer_eeprom.c) each need one or two more headers
+# under stubs/Shimmer_Driver - FileX, RN4X, ADXL371, gpio.h - or, for
+# shimmer_eeprom.c, the BAUD_* enum out of Comms/shimmer_bt_uart.h. Each one added
 # brings its subsystem within reach of a host test as well.
 DUAL_COMPILE_MODULES := \
   Battery/shimmer_battery.c \
@@ -360,6 +362,7 @@ DUAL_COMPILE_MODULES := \
   Audio/shimmer_audio_file.c \
   Audio/shimmer_audio_level.c \
   Comms/shimmer_dock_args.c \
+  EEPROM/cat24c16.c \
   LEDs/shimmer_leds.c \
   LEDs/shimmer_leds_phase.c \
   Platform/platform_api.c \

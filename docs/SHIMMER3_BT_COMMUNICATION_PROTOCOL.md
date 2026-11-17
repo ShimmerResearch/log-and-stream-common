@@ -2678,7 +2678,7 @@ card memory* commands address everything above it, with host offset 0 mapping to
 absolute byte 16.
 
 > `EEPROM/shimmer_eeprom.h:15-31`; `CAT24C16_TOTAL_SIZE` 2048 and
-> `CAT24C16_PAGE_SIZE` 16 from the platform `CAT24C16/CAT24C16.h`.
+> `CAT24C16_PAGE_SIZE` 16 from `EEPROM/cat24c16.h`.
 > The `+ 16` offset is applied at `Comms/shimmer_bt_uart.c:2350` (read) and
 > inside `ShimEeprom_writeDaughterCardMem` (write).
 

@@ -92,7 +92,7 @@ and the task list.
 | `Comms/` | Bluetooth, dock UART, SD file transfer | [protocol](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md), [dock](SHIMMER3_DOCK_PROTOCOL.md) |
 | `Configuration/` | The 512-byte configuration image | [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) |
 | `Events/` | Button and TTL input edges queued from their interrupts; the event file beside each data file, and the records sent to a host that opts in over Bluetooth | [SHIMMER3_EVENT_CHANNEL.md](SHIMMER3_EVENT_CHANNEL.md) |
-| `EEPROM/` | CAT24C16 map, branding, radio settings | [SHIMMER3_EEPROM_MEMORY_MAP.md](SHIMMER3_EEPROM_MEMORY_MAP.md) |
+| `EEPROM/` | CAT24C16 map, branding, radio settings, and the CAT24C16 driver itself | [SHIMMER3_EEPROM_MEMORY_MAP.md](SHIMMER3_EEPROM_MEMORY_MAP.md) |
 | `GSR/` | GSR range control | [SHIMMER3_GSR_AUTORANGE.md](SHIMMER3_GSR_AUTORANGE.md) |
 | `LEDs/` | Status indication | [SHIMMER3_LED_FEEDBACK.md](SHIMMER3_LED_FEEDBACK.md) |
 | `Platform/` | The platform abstraction | §3 |
