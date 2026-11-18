@@ -27,9 +27,13 @@ firmware's only use of it is to phase its LEDs with the centre's (§7).
 >   was read at `shimmer3-firmware` @ `ac30299`, where the callback is
 >   `ShimTask_setInitialiseBluetooth` and `BtStop()` clears a queued
 >   `TASK_BT_TURN_ON_AFTER_BOOT`. Shimmer3R already queues the start at
->   `a8f105e5`. §6.3's queued set-up and connect steps on Shimmer3 (DEV-1486)
->   were read from the DEV-1486 branches: `Shimmer_Driver/RN4X/RN4X.c` there,
->   and `ShimBt_dmaConversionDone` and `ShimBt_stopCommon` here.
+>   `a8f105e5`. §6.3's Shimmer3R tick task was read from DEV-1466's change:
+>   `Core/Src/rtc.c` (`RTC_setupAndStartSdSyncAlarm`,
+>   `HAL_RTCEx_AlarmBEventCallback`, `RTC_takeSdSyncTicks`) and
+>   `TaskList/shimmer_taskList.c` (`TASK_SD_SYNC_TICK`). §6.3's queued set-up
+>   and connect steps on Shimmer3 (DEV-1486) were read from the DEV-1486
+>   branches: `Shimmer_Driver/RN4X/RN4X.c` in `shimmer3-firmware`, and
+>   `ShimBt_dmaConversionDone` and `ShimBt_stopCommon` here.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =
 > Shimmer3R (STM32U5). LogAndStream only. All times are in 32768 Hz ticks
@@ -333,27 +337,41 @@ below the limit, so a node in active conversation keeps its window open.
 
 ### 6.3 Starting and stopping the radio
 
-The schedule runs in the sync timer's interrupt: `TIMER0_A1_ISR` on S3, the
-RTC alarm B callback on S3R. The radio is not handled the same way in both
-directions:
+Where the schedule runs differs:
+
+- **S3:** in the sync timer's interrupt, `TIMER0_A1_ISR`.
+- **S3R:** in `TASK_SD_SYNC_TICK`, from the main loop. RTC alarm B fires on
+  every whole second while the sync timer runs. Its callback only counts the
+  tick and queues the task, which runs `ShimSdSync_handleSyncTimerTriggers()`
+  once per counted tick. Stopping the timer drops any tick not yet run.
+
+On S3R the schedule used to run in the alarm B callback itself (DEV-1466). That
+interrupt is shared with the sample timer, which stamps each sample when its
+own callback runs. On a tick that stopped the radio or opened a connection, the
+callback held the sample timer off for 6-8 ticks. A sample due in that time was
+stamped that much late
+([SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1).
+
+The radio is not handled the same way in both directions:
 
 - **Start is queued.** `ShimSdSync_startBtForSync` calls the start callback.
   On both platforms that callback only queues `TASK_BT_TURN_ON_AFTER_BOOT`, and
   `InitialiseBtAfterBoot()` runs from the main loop. On S3 the timer interrupt
   wakes the main loop when it has queued anything.
-- **Stop is immediate.** The stop callback is `BtStop()`, called in the
-  interrupt. It hands the TX-buffer reset to `TASK_BT_TX_BUF_CLEAR`. On S3,
-  `BtStop()` also drops a start that is still queued, so a start requested
-  before a stop cannot run after it. It drops a queued set-up or connect step
-  too (below).
+- **Stop is immediate.** The stop callback is `BtStop()`, called from the
+  schedule: in the interrupt on S3, in the task on S3R. It hands the TX-buffer
+  reset to `TASK_BT_TX_BUF_CLEAR` in both cases. On S3, `BtStop()` also drops a
+  start that is still queued, so a start requested before a stop cannot run
+  after it. It drops a queued set-up or connect step too (below).
 - **On S3, the module's set-up and connect steps are queued as well.** The
   RN4x driver sends one command, then waits for the module's reply before
   sending the next. Each reply now queues the next step as `TASK_BT_CMD_STEP`,
   which sends it from the main loop (DEV-1486). Before, the Bluetooth receive
   interrupt built and sent it, and held the sample timer back while the radio
-  restarted: by up to 6 ticks on the RN4678 units measured. The first step of each sequence still runs in an
-  interrupt: the set-up's from the millisecond clock, and the centre's connect
-  or disconnect from this timer, through `BT_connect()` or `BT_disconnect()`.
+  restarted: by up to 6 ticks on the RN4678 units measured. The first step of
+  each sequence still runs in an interrupt: the set-up's from the millisecond
+  clock, and the centre's connect or disconnect from the sync timer's
+  interrupt, through `BT_connect()` or `BT_disconnect()`.
 
 > **The queued start waits only for the main loop.** It sits behind any
 > higher-priority task, such as an SD write, which normally means milliseconds.
