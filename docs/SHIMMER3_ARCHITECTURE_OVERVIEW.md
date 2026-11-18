@@ -20,7 +20,10 @@ read before adding a subsystem.
 >   bit 21's `TASK_BT_MODE_CHECK`, and bit 20's use by SD sync, also postdate
 >   `f3cf73e`. They were read from `TaskList/shimmer_taskList.{h,c}`,
 >   `ShimBt_handleBtRfCommStateChange` and `ShimSdSync_startBtForSync`, with
->   each platform's `ShimSdSync_init` call.
+>   each platform's `ShimSdSync_init` call. Task bit 5's `TASK_BT_CMD_STEP`
+>   (DEV-1486) was read from `TaskList/shimmer_taskList.{h,c}`,
+>   `ShimBt_dmaConversionDone` and shimmer3-firmware's
+>   `Shimmer_Driver/RN4X/RN4X.c` on the DEV-1486 branches.
 > - **Platform firmware:** `shimmer3-firmware` @ `2765ff4`;
 >   `shimmer3r-firmware` @ `a8f105e5`. On Shimmer3, bit 20's use by SD sync
 >   postdates `2765ff4`, whose `main.c` still passes `InitialiseBtAfterBoot` to
@@ -190,7 +193,7 @@ uint32_t taskList;   // one bit per task
 | 2 | `TASK_DOCK_PROCESS_CMD` | both |
 | 3 | `TASK_DOCK_RESPOND` | both |
 | 4 | `TASK_BT_PROCESS_CMD` | both |
-| 5 | `TASK_USB_PROCESS_CMD` / `TASK_CFGCH` | S3R / S3 |
+| 5 | `TASK_USB_PROCESS_CMD` / `TASK_BT_CMD_STEP` | S3R / S3. On Shimmer3, the RN4x driver's next set-up or connect step (`BT_runCommandStep()`). The Bluetooth receive interrupt queues it when the module's reply arrives, instead of sending the next command itself, which held the sample timer back by up to 6 ticks on the RN4678 units measured (DEV-1486). Above the data path so that logging does not slow a radio start. At boot the task loop is not running yet, so the platform's wait for the radio runs a queued step itself (`BT_runQueuedCommandStep()` in `InitialiseBt()`). The bit was `TASK_CFGCH`, which nothing set |
 | 6 | `TASK_BT_RESPOND` | both |
 | 7 | `TASK_RCCENTERR1` | both |
 | 8 | `TASK_RCNODER10` | both |
@@ -222,7 +225,7 @@ uint32_t taskList;   // one bit per task
 > interrupt because, on Shimmer3, that runs once per byte sent.
 
 > **Bits 5 and 21 mean two different things.** Bit 5 is `TASK_USB_PROCESS_CMD`
-> on Shimmer3R and `TASK_CFGCH` on Shimmer3; bit 21 is
+> on Shimmer3R and `TASK_BT_CMD_STEP` on Shimmer3; bit 21 is
 > `TASK_JUMP_TO_BOOT_LOADER` and `TASK_BT_MODE_CHECK`. The bit numbers are not a
 > stable cross-platform identifier.
 
@@ -530,8 +533,8 @@ not start and stop logging repeatedly. Dock/USB state changes are debounced at
   `ShimSens_gatherData()` directly; the task is only ever *cleared* on
   Shimmer3R.
 - ~~`TASK_CFGCH`~~ — resolved: dead. No `ShimTask_set(TASK_CFGCH)` and no
-  `case` for it anywhere in `log-and-stream-common` or either platform; it
-  survives only as an enum member (and therefore a reserved bit).
+  `case` for it anywhere in `log-and-stream-common` or either platform. DEV-1486
+  removed it and gave its bit to `TASK_BT_CMD_STEP`.
 - ~~Whether `TEST_TASK_MONITOR` is enabled in shipping builds~~ — resolved: it
   is not per-platform. `log_and_stream_definitions.h` defines it `0`, so the
   stuck-task monitor is compiled out on both platforms.
