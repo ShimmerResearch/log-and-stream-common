@@ -14,9 +14,11 @@ configuration — it describes the hardware and survives a configuration reset.
 >
 > - **Firmware:** `log-and-stream-common` @ `f3cf73e` —
 >   `EEPROM/shimmer_eeprom.{h,c}` in full.
-> - **Platform firmware:** `shimmer3r-firmware` @ `a8f105e5` —
->   `Shimmer_Driver/CAT24C16/CAT24C16.h` (`CAT24C16_PAGE_SIZE`,
->   `CAT24C16_TOTAL_SIZE`); `shimmer3-firmware` @ `2765ff4`.
+> - **Driver:** `EEPROM/cat24c16.{h,c}`, in this repository from DEV-1496
+>   (`CAT24C16_PAGE_SIZE`, `CAT24C16_TOTAL_SIZE`, the write and the
+>   self-test). Before it each firmware carried its own copy, in
+>   `Shimmer_Driver/CAT24C16/`: `shimmer3r-firmware` @ `a8f105e5`,
+>   `shimmer3-firmware` @ `2765ff4`.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =
 > Shimmer3R (STM32U5). LogAndStream only.
@@ -27,7 +29,8 @@ configuration — it describes the hardware and survives a configuration reset.
 |---|---|
 | Address map, record layouts | `EEPROM/shimmer_eeprom.h` |
 | Validation, seeding, accessors | `EEPROM/shimmer_eeprom.c` |
-| Device driver | platform `Shimmer_Driver/CAT24C16/` |
+| Device driver: pages, blocks, the factory self-test | `EEPROM/cat24c16.{h,c}` (§1.1) |
+| The bus, power, and which I2C bus | platform `Shimmer_Driver/CAT24C16/hal_CAT24C16.c` |
 | Host access | [SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md) — expansion-board memory commands |
 
 ---
@@ -45,6 +48,30 @@ configuration — it describes the hardware and survives a configuration reset.
 `ShimEeprom_isPresent()` reports whether the chip answered. **Everything in
 this document is conditional on that** — a board without an EEPROM falls back
 to compile-time defaults throughout.
+
+### 1.1 The driver
+
+Both platforms use one driver, `EEPROM/cat24c16.c` (DEV-1496). It reaches the
+part only through the callbacks in a `cat24c16dev_ctx_t`, which each firmware
+fills in from its own I2C HAL in `Shimmer_Driver/CAT24C16/hal_CAT24C16.c`.
+That file also powers the part, brings up its bus and provides `eepromRead()`
+and `eepromWrite()`, the two calls `EEPROM/shimmer_eeprom.c` makes. Shimmer3R
+fills in a second context for the test rig on I2C4 (`S3R_TEST_0024`).
+
+| Behaviour | Why |
+|---|---|
+| The I2C address carries the block: `0x50` plus `address >> 8`, then the low byte as the word address | Bits 10:8 of the memory address select one of eight 256-byte blocks |
+| A write goes one 16-byte page per transfer | The part wraps within a page rather than crossing it |
+| **After every page it waits 5 ms**, the last page and a page that failed included | tWR is 5 ms max (CAT24C16 datasheet, A.C. Characteristics), and the part acknowledges nothing until the cycle ends (Acknowledge Polling). So `CAT24C16_write()` returns with the part idle: a read, another write or a power-off can follow at once |
+| A read is one transfer, whatever its length | The address counter runs on across pages and blocks |
+| A failed read fills the caller's buffer with `0xFF` | What an erased part holds, so a failed read of the ID page reads as unprogrammed, not as a board (DEV-1019) |
+| An address or length past byte 2047 is refused, `CAT24C16_OUT_OF_BOUNDS_ERROR`, before anything reaches the bus | Checked without computing `address + length`, which wraps in the MSP430's 16-bit arithmetic |
+
+Before DEV-1496 the two copies differed here. Shimmer3's waited 5 ms *before*
+each page and not after the last, so its self-test and a power-off straight
+after a write each had to wait for themselves. Shimmer3R's waited after each
+page that succeeded but not after one that failed. Only Shimmer3's filled a
+failed read with `0xFF`.
 
 ## 2. Address map
 
@@ -93,6 +120,26 @@ EEPROM_AVAILABLE_SIZE            = 2048 - 16 = 2032
 > below the Bluetooth page.** It exists because a host addressing the
 > expansion-board memory works in a different offset space from the firmware's
 > absolute addresses. Do not treat it as a second copy of the settings.
+
+### 2.1 The factory self-test's scratch area (16-143)
+
+The CAT24C16 self-test in the factory test (`CAT24C16_TEST_OFFSET` 16,
+`CAT24C16_TEST_SIZE` 128, in `EEPROM/cat24c16.c`) overwrites **absolute bytes
+16-143, host offsets 0-127**, with test patterns. It backs them up first and
+writes the backup back afterwards. Nothing else in the firmware writes there;
+it is the start of the general storage above.
+
+When a test fails part-way, what is left there depends on the firmware:
+
+| Firmware | After a failed test |
+|---|---|
+| **S3R** from DEV-1494 | Put back and read back. If that fails three times, the `S3R_TEST_0023` line ends `- bytes 16-143 not restored` ([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §5.7) |
+| **S3** from DEV-1495 | The same as S3R from DEV-1494. Shimmer3's factory report has no test IDs, so it is the `CAT24C16` line of its `I2C:` block that ends `- bytes 16-143 not restored` ([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §5.7) |
+| **S3R** before DEV-1494, **S3** before DEV-1495 | Test data. Only a test that passed was put back |
+
+A unit that loses power mid-test also keeps test data there, on any
+firmware. A host that stores its own data in the daughter-card memory and
+needs it to survive a factory test should keep it above host offset 127.
 
 ## 3. Expansion-board ID page (0-15)
 
