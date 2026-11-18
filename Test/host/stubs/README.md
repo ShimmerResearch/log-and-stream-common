@@ -10,7 +10,7 @@ needs a new stub is telling you it reached around the abstraction.
 
 Two kinds of file live here:
 
-- **Headers the consuming firmware owns.** `CAT24C16/`, `BMPX80/`,
+- **Headers the consuming firmware owns.** `BMPX80/`,
   `hal_*.h` and friends are vendor or HAL headers that live in
   `shimmer3-firmware` / `shimmer3r-firmware`, not in this repository, so a host
   compile cannot find them. The stubs carry only the declarations and constants
@@ -40,7 +40,6 @@ test would keep passing while the device was wrong.
 
 | Stub | Mirrors | Checked against |
 |---|---|---|
-| `CAT24C16/CAT24C16.h` | `Shimmer_Driver/CAT24C16/CAT24C16.h` | page 16 B, total 2048 B |
 | `BMPX80/bmpX80.h` | `Shimmer_Driver/BMPX80/bmpX80.h` (Shimmer3 only) | `isBmp280InUse()` predicate only |
 | `MPU9150/mpu9150.h` | `Shimmer_Driver/MPU9150/mpu9150.h` (Shimmer3 only) | declaration only |
 | `hal_FactoryTest.h` | both firmwares' `hal_FactoryTest.h` | declaration only |

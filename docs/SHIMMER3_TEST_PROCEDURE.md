@@ -211,6 +211,7 @@ What the suites cover today:
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
 | `test_boards` | `Boards/shimmer_boards.c` | ×2 | Every revision gate, across 25 board revisions |
 | `test_calibration` | `Calibration/shimmer_calibration.c` | ×2 | The length and offset bounds on the calibration dump: Bluetooth chunk reads and writes, record copies against the caller's slot, the dump's declared end and the RAM end, the SD calibration file's size, and a card that stops answering |
+| `test_cat24c16` | `EEPROM/cat24c16.c` | ×1 | The CAT24C16 driver against a fake part that NACKs during its 5 ms write cycle: page and block splitting, that every write returns with the part idle, the bounds, a failed read reading as `0xFF`; and the factory self-test under injected faults, which must put bytes 16-143 back whatever fails (DEV-1494, DEV-1495) |
 | `test_platform_seam` | `Platform/platform_api.c`, `Boards/shimmer_boards.c` | ×2 | A platform's override of a weak hook beats the default even when the default links first; `log_and_stream_globals.h` declares its globals rather than defining them |
 
 `check_weak_decls.py` (`make -C Test/host weak-decls`) is the text-only half of
@@ -1179,6 +1180,7 @@ case earns a permanent place here.
 | DEV-1363 | A host connects to a unit that is already logging, and its `INQUIRY` costs the log 100 ms of samples | `smoke.sd_inquiry_midlog` on Shimmer3R, on the required list — plus §5.6.7 by hand on Shimmer3 |
 | DEV-1417 | A Shimmer3R's `max_exp_len` auto-stop ended a 7-minute log 3% early: the LED phase lock counted seconds twice when TIM6 ran fast | `test_autostop`, `test_leds_phase` (closed loop) — plus §5.6.8 |
 | SD error on USB | A Shimmer3R on USB-C, out of the dock and with no card, flashed the SD-card error instead of its charging colour: the error was gated on the dock alone | `test_leds` |
+| DEV-1494, DEV-1495 | A factory EEPROM self-test that failed part-way left test data in daughter-card bytes 0-127, which a host may have stored data in | `test_cat24c16` |
 
 **When a fault escapes, add its case here and a test for it in the same PR.** A
 regression list that only grows by hand stops growing.

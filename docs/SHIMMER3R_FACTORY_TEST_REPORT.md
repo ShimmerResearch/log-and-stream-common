@@ -369,9 +369,10 @@ starts and the filters settle, then gives:
 
 ### 5.7 `S3R_TEST_0023` — CAT24C16 EEPROM
 
-`CAT24C16_test()` uses EEPROM bytes 16-143 as scratch. It backs them up,
-writes a different random pattern over them three times, reading each back,
-then writes the backup back and reads that back too. Those bytes are host
+`CAT24C16_test()` (`EEPROM/cat24c16.c`) uses EEPROM bytes 16-143 as scratch.
+It backs them up, writes an incrementing pattern over them three times, offset
+by the pass number so that every byte differs from the last pass's, reading
+each back, then writes the backup back and reads that back too. Those bytes are host
 offsets 0-127 of the daughter-card memory commands, so a host may have stored
 data there. See
 [SHIMMER3_EEPROM_MEMORY_MAP.md](SHIMMER3_EEPROM_MEMORY_MAP.md) §2.1.
@@ -388,14 +389,14 @@ data there. See
 > **Before DEV-1494 a failed test returned without putting the backup back**,
 > so every `FAIL` line other than `Read failed` left test data in bytes 16-143.
 > A unit tested on older firmware that ever failed `0023` may still hold it.
-> The old firmware also wrote the same pattern on all three passes.
+> The old firmware also wrote the same pattern on all three passes. From
+> DEV-1494 until DEV-1496 the patterns were random.
 
-**Shimmer3** runs the same test (`shimmer3-firmware`
-`Shimmer_Driver/CAT24C16/CAT24C16.c`) and, from DEV-1495, prints the same
-lines in its `I2C:` block. They have no test ID, because Shimmer3 has no test
-registry (see the last section): ` - FAIL: CAT24C16 - Write failed`, and so on.
-Its passes write an incrementing pattern rather than a random one, and each
-pass's differs from the last. Before DEV-1495 it printed only
+**Shimmer3** runs the same test, from DEV-1496 the same code, and from DEV-1495
+prints the same lines in its `I2C:` block. The reasons come from
+`CAT24C16_testFailReason()` on both. They have no test ID, because Shimmer3 has
+no test registry (see the last section): ` - FAIL: CAT24C16 - Write failed`,
+and so on. Before DEV-1495 it printed only
 `PASS: CAT24C16` or `FAIL: CAT24C16`, and a failed test left test data in
 bytes 16-143, as on Shimmer3R before DEV-1494.
 
