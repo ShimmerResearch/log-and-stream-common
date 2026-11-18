@@ -94,6 +94,26 @@ EEPROM_AVAILABLE_SIZE            = 2048 - 16 = 2032
 > expansion-board memory works in a different offset space from the firmware's
 > absolute addresses. Do not treat it as a second copy of the settings.
 
+### 2.1 The factory self-test's scratch area (16-143)
+
+The CAT24C16 self-test in the factory test (`CAT24C16_TEST_OFFSET` 16,
+`CAT24C16_TEST_SIZE` 128, in the platform driver) overwrites **absolute bytes
+16-143, host offsets 0-127**, with test patterns. It backs them up first and
+writes the backup back afterwards. Nothing else in the firmware writes there;
+it is the start of the general storage above.
+
+When a test fails part-way, what is left there depends on the firmware:
+
+| Firmware | After a failed test |
+|---|---|
+| **S3R** from DEV-1494 | Put back and read back. If that fails three times, the `S3R_TEST_0023` line ends `- bytes 16-143 not restored` ([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §5.7) |
+| **S3** from DEV-1495 | The same as S3R from DEV-1494. Shimmer3's factory report has no test IDs, so it is the `CAT24C16` line of its `I2C:` block that ends `- bytes 16-143 not restored` ([SHIMMER3R_FACTORY_TEST_REPORT.md](SHIMMER3R_FACTORY_TEST_REPORT.md) §5.7) |
+| **S3R** before DEV-1494, **S3** before DEV-1495 | Test data. Only a test that passed was put back |
+
+A unit that loses power mid-test also keeps test data there, on any
+firmware. A host that stores its own data in the daughter-card memory and
+needs it to survive a factory test should keep it above host offset 127.
+
 ## 3. Expansion-board ID page (0-15)
 
 `daughter_card_id_page`, one 16-byte page:
