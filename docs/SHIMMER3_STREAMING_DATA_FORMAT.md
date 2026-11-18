@@ -38,7 +38,12 @@ logging, so a parser written from this document reads both.
 >   are bench measurements, not read from code: 1024 Hz streams over RN42
 >   v6.15 with the link overloaded, on `shimmer3-firmware` @ `d82c9ef`, which
 >   still re-armed from the counter, gave a mean of 32.0006 ticks per period
->   (about 19 ppm low); 512 Hz streams gave exactly 64.
+>   (about 19 ppm low); 512 Hz streams gave exactly 64. The Shimmer3 SD-sync
+>   delays are bench measurements too (DEV-1482, DEV-1486): SD logs from a
+>   diagnostic build that tags each late stamp with the interrupt that held it
+>   up, on `shimmer3-firmware` @ `29c0f7b` with `log-and-stream-common` @
+>   `be441a4`, before and with the DEV-1486 change. Both builds also carried
+>   the integer millisecond tick (DEV-1482).
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/Configuration.java` (`Shimmer3.Channel`,
 >   `SensorBitmap`, `SENSOR_ID`), `driver/ShimmerObject.java`
@@ -293,6 +298,18 @@ your port against that file.
 >   latency, so a rate measured from the timestamps reads slightly low: under
 >   50 ppm in bench streams at 1024 Hz with the Bluetooth link overloaded, and
 >   none at 512 Hz.
+> - **Shimmer3 v1.01.009 and earlier, with SD sync on**, stamp some samples
+>   several ticks late each time the radio restarts for a sync cycle, about
+>   every 10 s. Each step of the radio's set-up and connect sequence ran in the
+>   Bluetooth receive interrupt, and a sample due meanwhile was stamped when the
+>   step finished. As with any late stamp the grid does not move, and no sample
+>   was lost behind one. Measured in 8-minute sync-logging sessions at divider
+>   33 on two RN4678 units: those steps made 34 and 36 stamps 2 or more ticks
+>   late, up to 6 ticks (0.18 ms). An RN42 unit showed up to 9 ticks (0.27 ms)
+>   from the same interrupt. Later firmware sends the steps from the main loop
+>   (DEV-1486). In the same session on the same units, the worst stamp was then
+>   3 ticks late, from the sync timer itself and the centre's sync packet, so a
+>   stamp up to 3 ticks late still comes with SD sync.
 > - **Shimmer3R** samples on the RTC wake-up timer, which the hardware reloads
 >   itself, so latency has never changed its period. That timer counts at half
 >   the 32768 Hz rate (`RTC_wakeUpSet`), so the period is

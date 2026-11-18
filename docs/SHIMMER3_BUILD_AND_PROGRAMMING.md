@@ -27,6 +27,12 @@ wire, not over the air.
 >   revision's `msp430_clock_enable()` and `BtStop()`. A build that lacks either
 >   commit still lets interrupts nest, and needs room for `main` plus two
 >   handlers.
+> - §4.5's table and `-O2` figures were re-measured for DEV-1486, the same
+>   way, on the Debug and Release images of `shimmer3-firmware` @ `29c0f7b`
+>   with this repository on the DEV-1486 branch. On that revision without
+>   DEV-1486 the `-O0` interrupt figures are 448 B for `TIMER1_A0_ISR` and
+>   444 B for `DMA_ISR`, against the 450 B and 446 B measured at `ac30299`;
+>   `main` is unchanged at 1,070 B.
 > - §4.2's optimisation settings, and §4.5's `-O2` stack figures, are newer
 >   still. The settings were read from `shimmer3-firmware` @ `a886ad7` with
 >   Release raised to `-O2 --opt_for_speed=2`. The figures and §4.2's
@@ -214,10 +220,10 @@ image:
 | Path | Bytes |
 |---|---|
 | Deepest from `main`: the factory test's SD check, `ShimSd_test1()` → FatFs → SD driver | 1,070 |
-| Deepest interrupt: `TIMER1_A0_ISR`, the millisecond clock's callbacks → RN4x bring-up → `sprintf` | 450 |
-| Next deepest interrupt: `DMA_ISR`, Bluetooth RX → RN4x command response → `sprintf` | 446 |
-| `main` plus one interrupt | 1,520 |
-| `--stack_size` (680 B of margin) | 2,200 |
+| Deepest interrupt: `TIMER1_A0_ISR`, the millisecond clock's callbacks → RN4x bring-up → `sprintf` | 448 |
+| Next deepest interrupt: `DMA_ISR`, Bluetooth RX → RN4x version reply → `BT_setBtMode()` → `sprintf` | 390 |
+| `main` plus one interrupt | 1,518 |
+| `--stack_size` (682 B of margin) | 2,200 |
 
 **One interrupt is counted because handlers do not nest.** The MSP430 clears
 GIE on entry to a handler, and nothing a handler can reach sets it again.
@@ -229,9 +235,12 @@ context:
   queues `TASK_BT_TURN_ON_AFTER_BOOT`, and the disconnect handler queues
   `TASK_BT_MODE_CHECK` instead of re-checking the radio itself.
 - **`msp430_clock_enable()` leaves GIE as its caller had it.** The RN4x
-  set-up still calls it from `DMA_ISR` and `TIMER1_A0_ISR`, at the baud-change
-  step of `runSetCommands()`. That set-up is a state machine driven by those
-  two interrupts, and the main loop already runs with GIE set.
+  set-up calls it at the baud-change step of `runSetCommands()`. A step that a
+  module reply completes now runs from the main loop, which already runs with
+  GIE set, through `TASK_BT_CMD_STEP` (DEV-1486); before that it ran in
+  `DMA_ISR`. `TIMER1_A0_ISR` still reaches `runSetCommands()`, because the
+  set-up's first step starts from the millisecond clock, so this still
+  matters there.
 
 Handlers do reach one GIE write: the `__set_interrupt_state()` in the Bluetooth
 TX ring's push. It restores the state saved a few lines earlier, so inside a
@@ -240,15 +249,17 @@ handler it leaves GIE clear.
 **The size could now come down.** It was set while two nested handlers had to
 fit on top of `main`: 1,070 B, plus 462 B for `DMA_ISR`, plus 450 B for
 `TIMER1_A0_ISR`, makes 1,982 B. `DMA_ISR`'s deepest path then ran through SD
-sync's Bluetooth start, which now runs from the main loop, so it is 446 B in
-the table above. A build without the two changes above still needs that
-1,982 B. The size stays at 2,200 B until the run-time high-water mark below has
+sync's Bluetooth start. With that start in the main loop it fell to 446 B,
+through an RN4x set-up step. With those steps in the main loop too (DEV-1486)
+it is 390 B, in the table above. A build without the two changes above still
+needs that 1,982 B. The size stays at 2,200 B until the run-time high-water mark below has
 been read on units and the image has been re-measured at the optimisation level
 that ships.
 
 **At `-O2` the bound is about the same.** For Release, `-O2
---opt_for_speed=2`, the same three paths measure 1,080, 452 and 448 B. `main`
-plus one interrupt is 1,532 B, which leaves 668 B of margin. Speed 3 gives the
+--opt_for_speed=2`, the same three paths measure 1,080, 452 and 390 B (448 B
+for `DMA_ISR` before DEV-1486). `main` plus one interrupt is 1,532 B, which
+leaves 668 B of margin. Speed 3 gives the
 same figures. The functions that can turn GIE on are the same nine as at
 `-O0`, so the one-handler bound holds there too (step 6 below).
 

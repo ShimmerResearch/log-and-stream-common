@@ -182,6 +182,10 @@ void ShimBt_stopCommon(uint8_t isCalledFromMain)
   ShimTask_clear(TASK_BT_RESPOND);
   ShimTask_clear(TASK_RCCENTERR1);
   ShimTask_clear(TASK_RCNODER10);
+#if defined(SHIMMER3)
+  /* A set-up or connect step for the module being stopped */
+  ShimTask_clear(TASK_BT_CMD_STEP);
+#endif
 
   ShimBt_clearBtTxBuf(isCalledFromMain);
   ShimBt_resetBtRxBuffs();
@@ -904,6 +908,19 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
     {
       _NOP(); //bad command trap: reaching here = serious BT problem
     }
+  }
+
+  /* A reply above that completed a set-up or connect step has queued the next
+   * step (TASK_BT_CMD_STEP) rather than running it here (DEV-1486). In this
+   * interrupt the step armed the DMA for its own reply on a stopped channel
+   * (disabled on entry above), and only then did the line below run. Keep that
+   * order: leave the DMA off, with CTS holding the module, until the step
+   * runs. Arming it here for one status-string byte would start the channel
+   * first, for one byte, and the step's arm would then only rewrite DMA2SZ of
+   * a running channel. Wake the main loop for the step. */
+  if (ShimTask_getList() & TASK_BT_CMD_STEP)
+  {
+    return 1U;
   }
 
   setDmaWaitingForResponseIfStatusStrEnabled();

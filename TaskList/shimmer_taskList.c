@@ -256,6 +256,10 @@ void ShimTask_NORM_manage(void)
 #endif
 
 #if defined(SHIMMER3)
+      case TASK_BT_CMD_STEP:
+        BT_runCommandStep();
+        break;
+
       case TASK_BT_MODE_CHECK:
         ShimConfig_checkBtModeFromConfig();
         break;

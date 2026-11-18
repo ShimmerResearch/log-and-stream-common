@@ -30,7 +30,10 @@ firmware's only use of it is to phase its LEDs with the centre's (§7).
 >   `a8f105e5`. §6.3's Shimmer3R tick task was read from DEV-1466's change:
 >   `Core/Src/rtc.c` (`RTC_setupAndStartSdSyncAlarm`,
 >   `HAL_RTCEx_AlarmBEventCallback`, `RTC_takeSdSyncTicks`) and
->   `TaskList/shimmer_taskList.c` (`TASK_SD_SYNC_TICK`).
+>   `TaskList/shimmer_taskList.c` (`TASK_SD_SYNC_TICK`). §6.3's queued set-up
+>   and connect steps on Shimmer3 (DEV-1486) were read from the DEV-1486
+>   branches: `Shimmer_Driver/RN4X/RN4X.c` in `shimmer3-firmware`, and
+>   `ShimBt_dmaConversionDone` and `ShimBt_stopCommon` here.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =
 > Shimmer3R (STM32U5). LogAndStream only. All times are in 32768 Hz ticks
@@ -359,7 +362,16 @@ The radio is not handled the same way in both directions:
   schedule: in the interrupt on S3, in the task on S3R. It hands the TX-buffer
   reset to `TASK_BT_TX_BUF_CLEAR` in both cases. On S3, `BtStop()` also drops a
   start that is still queued, so a start requested before a stop cannot run
-  after it.
+  after it. It drops a queued set-up or connect step too (below).
+- **On S3, the module's set-up and connect steps are queued as well.** The
+  RN4x driver sends one command, then waits for the module's reply before
+  sending the next. Each reply now queues the next step as `TASK_BT_CMD_STEP`,
+  which sends it from the main loop (DEV-1486). Before, the Bluetooth receive
+  interrupt built and sent it, and held the sample timer back while the radio
+  restarted: by up to 6 ticks on the RN4678 units measured. The first step of
+  each sequence still runs in an interrupt: the set-up's from the millisecond
+  clock, and the centre's connect or disconnect from the sync timer's
+  interrupt, through `BT_connect()` or `BT_disconnect()`.
 
 > **The queued start waits only for the main loop.** It sits behind any
 > higher-priority task, such as an SD write, which normally means milliseconds.
@@ -367,7 +379,9 @@ The radio is not handled the same way in both directions:
 > two seconds. It is not free, though: after a restart, the centre checks
 > `btIsInitialised` on the next three ticks and restarts the radio again if it
 > is still not up. A main loop held for a large part of a second would show up
-> there first.
+> there first. On S3 each set-up step now waits for the main loop the same way,
+> one pass per step, so a slow main loop lengthens the set-up too.
+> `TASK_BT_CMD_STEP` sits above the data path to keep that short.
 
 ## 7. What a host must do
 

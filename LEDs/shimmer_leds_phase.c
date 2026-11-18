@@ -12,12 +12,24 @@ uint16_t ShimLedsPhase_frameTenth(uint64_t ticks)
   /* ticks * 5 is the time in fifths of a tick; >> 14 divides by 16384, the
    * fifths in one tenth, giving tenths since the epoch */
   uint64_t tenths = (ticks * 5U) >> 14;
-  return (uint16_t) (tenths % LED_PHASE_TENTHS_PER_FRAME);
+
+  /* tenths % 600 without a 64-bit division. On the MSP430 that is a software
+   * loop long enough that, run once a second in the main loop, it held up
+   * sample completion: at 1024 Hz Shimmer3 lost a sample every second
+   * (DEV-1386). Reduce the two 32-bit halves instead; 2^32 % 600 = 496. */
+  uint32_t hi = (uint32_t) (tenths >> 32);
+  uint32_t lo = (uint32_t) tenths;
+  uint32_t r = (hi % LED_PHASE_TENTHS_PER_FRAME) * LED_PHASE_2POW32_MOD_FRAME
+      + (lo % LED_PHASE_TENTHS_PER_FRAME);
+  return (uint16_t) (r % LED_PHASE_TENTHS_PER_FRAME);
 }
 
 int16_t ShimLedsPhase_ticksPastMidTenth(uint64_t ticks)
 {
-  int32_t fifths = (int32_t) ((ticks * 5U) & (LED_PHASE_FIFTHS_PER_TENTH - 1U));
+  /* Only the low 14 bits of ticks * 5 are kept, and they depend only on the
+   * low 14 bits of ticks, so a 32-bit product gives the same answer */
+  int32_t fifths
+      = (int32_t) (((uint32_t) ticks * 5U) & (LED_PHASE_FIFTHS_PER_TENTH - 1U));
   return (int16_t) ((fifths - (int32_t) LED_PHASE_MID_TENTH_FIFTHS) / 5);
 }
 

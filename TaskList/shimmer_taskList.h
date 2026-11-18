@@ -94,7 +94,13 @@ typedef enum TaskId_Tag
   TASK_USB_PROCESS_CMD = (0x00000001UL << 5U),
 #endif
 #if defined(SHIMMER3)
-  TASK_CFGCH = (0x00000001UL << 5U),
+  /* The RN4x driver's next set-up or connect step (BT_runCommandStep()).
+   * The Bluetooth receive interrupt queues it when the module's reply
+   * arrives, instead of building and sending the next command itself: done
+   * there, a step held the sample timer back by several ticks (DEV-1486). Up
+   * here, above the data path, so logging does not slow a radio start that SD
+   * sync allows a few seconds for. Bit 5 was TASK_CFGCH, which nothing set. */
+  TASK_BT_CMD_STEP = (0x00000001UL << 5U),
 #endif
   TASK_BT_RESPOND = (0x00000001UL << 6U),
   TASK_RCCENTERR1 = (0x00000001UL << 7U),

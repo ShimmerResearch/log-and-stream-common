@@ -101,6 +101,14 @@ class Analyse(unittest.TestCase):
         self.assertEqual(g.shifts, [])
         self.assertEqual(g.issues, [(11, "stamp 60 ticks off its slot")])
 
+    def test_a_stamp_three_quarters_late_is_jitter_not_loss(self):
+        # Counted first in the next slot, the one before lost; the stamp after
+        # it, in that same slot, shows it was late (classify_step).
+        g = midstream.analyse(stamps([P] * 10 + [P + 96, P - 96] + [P] * 10), P)
+        self.assertEqual(g.shifts, [])
+        self.assertEqual((g.stats.missing, g.stats.dupes), (0, 0))
+        self.assertEqual(g.issues, [(11, "stamp 96 ticks off its slot")])
+
     def test_one_tick_quantisation_is_clean(self):
         g = midstream.analyse(stamps([P, P + 1, P - 1] * 30), P)
         self.assertTrue(g.clean, g.issues)

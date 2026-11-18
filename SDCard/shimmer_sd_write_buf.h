@@ -53,10 +53,11 @@
 /* How many buffers rotate. Compile-time per platform, because the storage is
  * a fixed array and on the MSP430 each buffer is 512 B of a 16 KB budget.
  *
- * What the count buys is the length of card stall the firmware can absorb
- * without losing a record: a buffer takes recordsPerBlock / sampleRate to
- * fill - about 46 ms at 504 Hz with a 21-byte record - and a stall is survived
- * for roughly NUM_SDWRBUF times that. Four on Shimmer3, about 180 ms.
+ * On Shimmer3 the count does not buy stall tolerance (DEV-1386): f_write holds
+ * the main loop, nothing drains into the free buffers meanwhile, and samples
+ * that need the main loop to complete (any I2C or SPI sensor) are lost after
+ * about one sample period. Four there, so a write can be queued behind another.
+ * See docs/SHIMMER3_SD_CARD_FORMAT.md §4.1 for what a stall costs.
  *
  * Shimmer3R has 32 (16 KB), for DEV-1098: a busy card there was seen taking
  * 105-210 ms per write for up to a second at a time. The backlog that builds

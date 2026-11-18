@@ -278,7 +278,7 @@ def test_ble_throughput(rig, unit, cdc, hil_note):
     bench's BLE figures for the unit's module build ([ble_throughput_by_radio]
     in rig.toml) and any of the unit's own (ble_throughput); without any the
     item is not_covered, with the figures to record. "bt" is among its needs so
-    that the run turns the radio on (conftest._bt_on). A unit whose EEPROM has
+    that the run turns the radio on (conftest._bench_config). A unit whose EEPROM has
     BLE switched off (bleEnabled, EEPROM_MEMORY_MAP §4.2) is not_covered too:
     the bench cannot reach it over BLE, and the run does not change the EEPROM.
     The load is stored configuration, so InfoMem is saved to disk and put back.
