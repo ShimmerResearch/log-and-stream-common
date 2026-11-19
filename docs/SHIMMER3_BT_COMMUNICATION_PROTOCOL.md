@@ -321,20 +321,14 @@ Shimmer3R firmware therefore sets it always, making the flags `0x07`. Like F=1
 and F=2, it is stored in module flash when the stored value differs. Builds
 without F=4 refuse the whole command when it is set: v1.4.16.16, the public
 v1.4.18.18 release and the earlier test builds. So the firmware sends it again
-without F=4 and stores `0x03` (`0x00` below v1.4.17).
-
-The firmware sets the flags in module RAM first, and stores them only once the
-module has accepted them. A flash-scoped command that a module refused left its
-BLE at about a third of its rate until the next reset, while its classic link
-was unaffected (a test_254 module, Nov 2026). That also covers a module
+without F=4 and stores `0x03` (`0x00` below v1.4.17). That also covers a module
 taken back from the newest test build to an older image. The older image boots
 with the stored `0x07` and works, and the firmware then stores that image's own
 flags.
 
 > `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`: the
-> `START_BT_ADVERTISING` (RAM) and `PERSIST_BT_FLAGS` (flash) boot stages
-> (`bt_set_parameters`), `BT_sbtpFlags()`, and the
-> `EZS_IDX_RSP_BT_SET_PARAMETERS` handler for the resend. Earlier Shimmer3R
+> `START_BT_ADVERTISING` boot stage (`bt_set_parameters`), `BT_sbtpFlags()`, and
+> the `EZS_IDX_RSP_BT_SET_PARAMETERS` handler for the resend. Earlier Shimmer3R
 > firmware sets the flags to 1 (sniff disable only) on v1.4.17+, and firmware
 > before November 2026 never sets F=4. **Not in the pinned `shimmer3r-firmware`
 > revision**: see
