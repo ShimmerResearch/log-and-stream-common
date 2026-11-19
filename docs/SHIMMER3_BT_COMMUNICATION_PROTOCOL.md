@@ -304,22 +304,31 @@ as before. Only module builds that implement F=2 change role; builds without it
 take the master role. The flags are written to module flash once, when they
 differ from the stored value.
 
-**Short-write latency and SD sync.** Infineon's test builds of v1.4.18.18 hold
-a short write from the sensor about 30 ms longer than v1.4.16.16 or the public
-release, to fill a larger RFCOMM frame. Every short reply to a host is later by
-that much. In SD sync, the centre's clock reaches each node that much late, so
-every node's offset comes out about 50 ms too large. The newest test build adds
-`SBTP` F=4, which turns the hold off at the cost of about 15% of bulk classic
-throughput. Shimmer3R firmware sets it while the radio runs SD sync, where
-nothing streams, on centre and nodes alike, making the flags `0x07`. In normal
-operation they stay `0x03`. F=4 is set in module RAM each time the radio starts,
-never in module flash. Builds without F=4 (the public release and the earlier
-test builds) refuse the whole command when it is set, so the firmware sends it
-again without F=4.
+**Short-write latency.** Infineon's test builds of v1.4.18.18 hold a short write
+from the sensor about 30 ms longer than v1.4.16.16 or the public release, to
+fill a larger RFCOMM frame.
+- **Replies:** every short reply to a host waits for it, 46-55 ms per command
+  against about 6 ms on v1.4.16.16.
+- **SD sync:** the centre's clock reaches each node that much late, so every
+  node's offset comes out about 50 ms too large.
 
-> `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`, the
-> `START_BT_ADVERTISING` boot stage (`bt_set_parameters`) for the stored flags,
-> and the `SYNC_BT_FLAGS_*` stages of a radio restart for F=4. Earlier Shimmer3R
+The newest test build adds `SBTP` F=4, which turns the hold off. On a Shimmer3R
+it cost 17% of the classic data-rate test (154 against 128 KB/s, the same as
+v1.4.16.16), and nothing on 1024 Hz streams (four sensors at once included) or
+on BLE.
+
+Shimmer3R firmware therefore sets it always, making the flags `0x07`. Like F=1
+and F=2, it is stored in module flash when the stored value differs. Builds
+without F=4 refuse the whole command when it is set: v1.4.16.16, the public
+v1.4.18.18 release and the earlier test builds. So the firmware sends it again
+without F=4 and stores `0x03` (`0x00` below v1.4.17). That also covers a module
+taken back from the newest test build to an older image. The older image boots
+with the stored `0x07` and works, and the firmware then stores that image's own
+flags.
+
+> `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`: the
+> `START_BT_ADVERTISING` boot stage (`bt_set_parameters`), `BT_sbtpFlags()`, and
+> the `EZS_IDX_RSP_BT_SET_PARAMETERS` handler for the resend. Earlier Shimmer3R
 > firmware sets the flags to 1 (sniff disable only) on v1.4.17+, and firmware
 > before November 2026 never sets F=4. **Not in the pinned `shimmer3r-firmware`
 > revision**: see
@@ -3928,8 +3937,8 @@ them.
   ([§7.2](#72-version-information)), are not yet in a pinned revision.**
   They describe `shimmer3r-firmware` changes that were in review when written:
   `BT_selectDataPath()`, the configuration repairs that were later removed,
-  `SBTP` flags `0x03` on v1.4.17+ and `0x07` during SD sync, and the build
-  name. None of them is present at `a8f105e5`. The behaviour was bench-tested
+  `SBTP` flags `0x07` on v1.4.17+ (`0x03` where F=4 is refused), and the
+  build name. None of them is present at `a8f105e5`. The behaviour was bench-tested
   on IF820 v1.4.16.16, the v1.4.18.18 release and three Infineon test builds of
   it. **To do:** once the changes are on
   `shimmer3r-firmware`'s main branch, move the **Verified against** pin to that
