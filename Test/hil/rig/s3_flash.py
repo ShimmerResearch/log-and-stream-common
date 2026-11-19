@@ -9,7 +9,9 @@ re-writes InfoMem after flashing for the same reason. Here:
   2. unmask the slot's BSL lines, program and CRC-verify the image, mask them;
   3. wait for the new firmware to answer on the dock;
   4. write InfoMem back and read it back - identical except for the bit the
-     firmware sets on every write (byte 230 bit 0, flagWriteCfgToSd).
+     firmware sets on every write (byte 230 bit 0, flagWriteCfgToSd), and the
+     fields a newer firmware corrects (FIRMWARE_CORRECTED_BITS), which are
+     logged and returned as corrections.
 """
 
 from __future__ import annotations
@@ -22,6 +24,19 @@ from .base6 import Base6
 
 SELF_SET_BITS = [(230, 0x01)]
 
+# Fields that ShimConfig_checkAndCorrectConfig() rewrites in firmware newer than
+# v1.01.009, which corrects none of them. Restoring an image saved under older
+# firmware is a configuration write like any other, so the new firmware
+# corrects these on the way in. A unit whose bytes 232 and 233 were never
+# written by a current host holds 0xFF there, and reads back something else.
+# Sections are in docs/SHIMMER3_CONFIGURATION_INFOMEM.md.
+FIRMWARE_CORRECTED_BITS = [
+    (217, 0x20),  # userButtonEnable: held at byte 232's nearest equivalent (8.1, 8.3)
+    (218, 0x80),  # singleTouchStart: cleared when byte 232's mode can't start on a press (8.3)
+    (232, 0xFF),  # button, logging and TTL input: only what the firmware acts on (8.3)
+    (233, 0xFF),  # audio mode: 0 on Shimmer3, which has no microphone (8.5)
+]
+
 
 class S3FlashError(Exception):
     pass
@@ -32,6 +47,22 @@ def _masked(im: bytes) -> bytes:
     for off, mask in SELF_SET_BITS:
         b[off] &= ~mask & 0xFF
     return bytes(b)
+
+
+def _restore_differences(written: bytes, back: bytes) -> tuple[list[int], list[tuple[int, int, int]]]:
+    """Compare a restored InfoMem with what was written. Returns the offsets that
+    differ outside the fields the firmware may set or correct, and each
+    corrected byte as (offset, written, read back)."""
+    corrected_mask = dict(FIRMWARE_CORRECTED_BITS)
+    unexplained, corrected = [], []
+    for i, (a, b) in enumerate(zip(_masked(written), _masked(back))):
+        if a == b:
+            continue
+        if (a ^ b) & ~corrected_mask.get(i, 0) & 0xFF:
+            unexplained.append(i)
+        else:
+            corrected.append((i, written[i], back[i]))
+    return unexplained, corrected
 
 
 def flash_slot(base6: Base6, slot: int, image: Path, backup_dir: Path,
@@ -63,12 +94,16 @@ def flash_slot(base6: Base6, slot: int, image: Path, backup_dir: Path,
                                f"expected v{expect_version}")
         d.write_infomem(infomem)
         back = d.read_infomem()
-    diff = [i for i, (a, b) in enumerate(zip(_masked(infomem), _masked(back))) if a != b]
+    diff, corrected = _restore_differences(infomem, back)
     if diff:
         raise S3FlashError(f"slot {slot}: InfoMem restore differs at offsets {diff[:20]} "
                            f"- the original is in {backup}")
+    if corrected:
+        log(f"slot {slot}: v{after.text} corrected InfoMem "
+            + ", ".join(f"byte {i} 0x{a:02x} -> 0x{b:02x}" for i, a, b in corrected))
     log(f"slot {slot}: now v{after.text}, InfoMem restored")
-    return {**result, "mac": mac, "before": before.text, "after": after.text, "backup": str(backup)}
+    return {**result, "mac": mac, "before": before.text, "after": after.text, "backup": str(backup),
+            "corrected": [{"offset": i, "written": a, "read_back": b} for i, a, b in corrected]}
 
 
 RESTORE_ATTEMPTS = 3
