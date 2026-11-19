@@ -398,6 +398,17 @@ Absolute time still comes from the real-world clock; sync only relates the
 devices to each other. See
 [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
 
+> **The offset includes the one-way radio delay.** The node stamps the centre's
+> packet when it arrives, and nothing subtracts the time it spent in transit.
+> On Shimmer3R that time depends on the centre's Bluetooth module firmware.
+> Infineon's test builds of IF820 v1.4.18.18 hold a short write about 30 ms to
+> fill an RFCOMM frame. With such a centre, every node's offset came out about
+> 50 ms too large, against 1-3 ms with a v1.4.16.16 centre (DEV-1468). Shimmer3R
+> firmware now turns the hold off while the radio runs SD sync, on module
+> builds that support it
+> ([SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md)
+> §2.1).
+
 The firmware's one use of the offset is the LEDs. Once `rcFirstOffsetRxed` is
 set, a node converts the clock reading its blink phase is taken from into the
 centre's time, so the whole group flashes in step
@@ -429,7 +440,9 @@ The blue upper LED reflects `rcFirstOffsetRxed` while sensing — see
 
 - **The achieved synchronisation accuracy.** Nothing in the firmware states a
   target or a measured figure. The 0.1 s blacklist threshold and the
-  minimum-selection strategy bound the *algorithm*, not the result.
+  minimum-selection strategy bound the *algorithm*, not the result. The one
+  bench figure is Shimmer3R's: offsets within 1-3 ms with an IF820 v1.4.16.16
+  centre, on LogAndStream v1.01.026 in November 2026 (§7).
 - **What happens after `syncThis > 3`.** The branch is empty apart from the
   comment "*can stop syncing after certain #*"; the `else` increments
   `syncThis`. The intended behaviour is not implemented or not obvious.
