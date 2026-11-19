@@ -39,7 +39,7 @@ except ImportError:
     _serial.SerialException = type("SerialException", (OSError,), {})
     sys.modules.update({"serial": _serial, "serial.tools": _tools, "serial.tools.list_ports": _lp})
 
-from rig import ble, bt, config, dock, flash, power, s3_config, s3r_usb, sdfile, throughput  # noqa: E402
+from rig import ble, bt, config, dock, flash, power, s3_config, s3_flash, s3r_usb, sdfile, throughput  # noqa: E402
 import run_rc  # noqa: E402
 
 
@@ -2699,6 +2699,90 @@ class S3FleetSeeds(unittest.TestCase):
     def test_range_0_in_use_may_be_anyone_s_block(self):
         self.assertIn("0 (in use: not the old default)", self.run_mag_seeds(self.fleet.mag_seed_block(0))[0])
         self.run_mag_seeds(bytes(range(21)))
+
+
+class S3FlashRestoreCheck(unittest.TestCase):
+    """DEV-1511: flash_slot writes the saved InfoMem back after the flash. Firmware
+    newer than v1.01.009 corrects bytes 232 and 233 (and the two bits that follow
+    byte 232) on that write, which is not a failed restore."""
+
+    OLD = bytes([0x11] * 217 + [0x25, 0x01] + [0x22] * 13 + [0xFF, 0xFF] + [0x33] * 150)
+
+    def flash(self, firmware):
+        """flash_slot with the Base6, BSL and dock faked. `firmware(written)` is
+        what the new firmware makes of the restore write."""
+        stored = {"im": self.OLD}
+
+        class Dock:
+            def version(self):
+                return types.SimpleNamespace(text="1.01.010")
+
+            def mac(self):
+                return "000666AABBCC"
+
+            def read_infomem(self):
+                return stored["im"]
+
+            def write_infomem(self, im):
+                stored["im"] = firmware(bytes(im))
+
+        @contextmanager
+        def open_when_ready(port, **kw):
+            yield Dock()
+
+        b6 = types.SimpleNamespace(select=lambda s: None, uart_port="COM1", bsl_port="COM2",
+                                   shimmer_bsl_lines=lambda on: None)
+        lines = []
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(s3_flash.dock, "open_when_ready", open_when_ready), \
+                mock.patch.object(s3_flash.msp430_bsl, "program", lambda port, image, log=print: {"bytes": 1, "seconds": 1}), \
+                mock.patch.object(s3_flash.time, "sleep", lambda s: None):
+            res = s3_flash.flash_slot(b6, 1, Path("img.txt"), Path(tmp), log=lines.append)
+            self.assertEqual(Path(res["backup"]).read_bytes(), self.OLD, "the backup is what was read")
+        return res, lines
+
+    @staticmethod
+    def setting(im, offset, value):
+        b = bytearray(im)
+        b[offset] = value
+        return bytes(b)
+
+    def test_the_audio_mode_correction_is_reported_not_raised(self):
+        # 67A0, 18 Nov 2026: v1.01.009 -> main, byte 233 0xFF read back as 0x00
+        res, lines = self.flash(lambda im: self.setting(im, 233, 0x00))
+        self.assertEqual(res["corrected"], [{"offset": 233, "written": 0xFF, "read_back": 0x00}])
+        self.assertIn("corrected InfoMem byte 233 0xff -> 0x00", "\n".join(lines))
+        self.assertIn("InfoMem restored", lines[-1])
+
+    def test_the_button_mode_and_the_bits_that_follow_it(self):
+        def firmware(im):
+            im = self.setting(im, 232, 0x02)
+            im = self.setting(im, 217, im[217] ^ 0x20)   # userButtonEnable
+            return self.setting(im, 218, im[218] | 0x80)  # singleTouchStart
+        res, _ = self.flash(firmware)
+        self.assertEqual([c["offset"] for c in res["corrected"]], [217, 218, 232])
+
+    def test_a_clean_restore_reports_nothing(self):
+        res, _ = self.flash(lambda im: im)
+        self.assertEqual(res["corrected"], [])
+
+    def test_the_firmware_s_own_write_flag_is_neither_a_difference_nor_a_correction(self):
+        res, _ = self.flash(lambda im: self.setting(im, 230, im[230] | 0x01))
+        self.assertEqual(res["corrected"], [])
+
+    def test_any_other_byte_still_fails_the_restore(self):
+        with self.assertRaisesRegex(s3_flash.S3FlashError, r"differs at offsets \[0\]"):
+            self.flash(lambda im: self.setting(im, 0, 0x00))
+
+    def test_another_bit_of_a_corrected_byte_still_fails_it(self):
+        # byte 217 bit 2 is syncEnable, which no newer rule changes
+        with self.assertRaisesRegex(s3_flash.S3FlashError, r"differs at offsets \[217\]"):
+            self.flash(lambda im: self.setting(im, 217, im[217] ^ 0x04))
+
+    def test_a_correction_beside_a_real_difference_still_fails(self):
+        with self.assertRaisesRegex(s3_flash.S3FlashError, r"differs at offsets \[5\]"):
+            self.flash(lambda im: self.setting(self.setting(im, 233, 0x00), 5, 0x00))
 
 
 if __name__ == "__main__":

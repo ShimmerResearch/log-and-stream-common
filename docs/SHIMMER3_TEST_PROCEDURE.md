@@ -1519,7 +1519,12 @@ docked in a Base6. `run_rc.py` flashes each unit through its slot with the
 MSP430 bootloader, CRC-verifying every block. Mass erase also clears
 information memory B-D, which holds the unit's configuration and calibration,
 so InfoMem is read over the dock and saved first, then written back after the
-flash.
+flash. The read-back must match it everywhere except `flagWriteCfgToSd` and
+the fields that firmware newer than v1.01.009 corrects on that write: bytes 232
+and 233, `userButtonEnable` and `singleTouchStart`
+([configuration](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.3, §8.5). Corrections
+there are logged and returned by `flash_slot()`; any other difference stops the
+run (DEV-1511).
 
 | Item | Checks |
 |---|---|
