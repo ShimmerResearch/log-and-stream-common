@@ -64,8 +64,9 @@ class Action:
 
     @property
     def acked(self) -> bool:
-        """Answered with a bare ACK. GET_STATUS's answer is an in-stream
-        response, which the stream counts as a status frame instead."""
+        """Answered with a bare ACK, or a bare NACK where the log start is
+        refused (DEV-1431). GET_STATUS's answer is an in-stream response,
+        which the stream counts as a status frame instead."""
         return self.kind != "status"
 
 
@@ -235,9 +236,15 @@ def judge(st, plan: Plan, period: int) -> tuple[list[str], str]:
         problems.append(f"{st.crc_errors} link CRC errors")
     if len(st.events) < len(plan.actions):
         problems.append(f"only {len(st.events)} of {len(plan.actions)} commands went out before the stop")
+    # Firmware since DEV-1431 NACKs a log start it cannot carry out, and only
+    # a log start: SET_RWC and STOP_LOGGING are always ACKed. Whether a refusal
+    # is right is the caller's to judge; here each command needs one reply.
     want = sum(a.acked for a in plan.actions)
-    if st.acks != want:
-        problems.append(f"{st.acks} ACKs for the {want} commands sent mid-stream")
+    starts = sum(a.kind == "start" for a in plan.actions)
+    if st.acks + st.nacks != want:
+        problems.append(f"{st.acks} ACKs and {st.nacks} NACKs for the {want} commands sent mid-stream")
+    elif st.nacks > starts:
+        problems.append(f"{st.nacks} NACKs mid-stream, but only the {starts} log starts may be refused")
     for key, texts in groups.items():
         more = f" and {len(texts) - 3} more" if len(texts) > 3 else ""
         problems.append(f"{key}: {'; '.join(texts[:3])}{more}")
@@ -247,6 +254,7 @@ def judge(st, plan: Plan, period: int) -> tuple[list[str], str]:
 
     def hit(cs):
         return sum(1 for c in cs if f"cycle {c} start" in groups)
-    summary = (f"{g.packets} packets, {len(cycles)} log starts; the stream was disturbed by "
+    refused = f" ({st.nacks} refused with a NACK)" if st.nacks else ""
+    summary = (f"{g.packets} packets, {len(cycles)} log starts{refused}; the stream was disturbed by "
                f"{hit(rwc)} of {len(rwc)} starts after a clock set and {hit(plain)} of {len(plain)} without")
     return problems, summary

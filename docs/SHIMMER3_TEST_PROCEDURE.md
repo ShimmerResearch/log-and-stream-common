@@ -1002,7 +1002,7 @@ steps are all by hand.
 |---|---|---|---|
 | 5.12.1 | Write byte 232 values of every kind, with `userButtonEnable` on and off, and read them back | Kept or corrected as §8.3 says; `userButtonEnable` held at the mode's equivalent; `singleTouchStart` cleared | `release.evt_config` |
 | 5.12.2 | Log with an input recorded (`0x24`, `0x20`, `0x05`) and nobody touching anything | SD header byte 225 is byte 232; an event file at the data file's path under `events/`, paired with it, opening and closing with it, a heartbeat at least every two minutes, no edges. With nothing recorded, no event file | Shimmer3R: the matrix's `events_*` rows. Shimmer3: by hand |
-| 5.12.3 | `0x11`: undock, then send `START_LOGGING` | Nothing logs; the command is ACKed | Shimmer3R: `release.evt_log_triggers`. Shimmer3: by hand |
+| 5.12.3 | `0x11`: undock, then send `START_LOGGING` | Nothing logs; the command is NACKed (ACKed before DEV-1431) | Shimmer3R: `release.evt_log_triggers`. Shimmer3: by hand |
 | 5.12.4 | `0x09` and `0x01`: undock | `0x09` starts a log; `0x01` does not, but `START_LOGGING` does | As 5.12.3 |
 | 5.12.5 | Delete only `data/` from a card (as Consensys' Clear SD does), then log | The new session is numbered past the event file still on the card | Shimmer3R: `release.evt_session_number`. Shimmer3: by hand |
 | 5.12.6 | Over Bluetooth, set `0x24` with a one-byte `SET_INFOMEM`, opt in, opt out, reconnect | The initial state as one frame at sequence 0; the status agrees and the TTL input is armed; nothing more while nothing is connected; the opt-out disarms it; a new connection starts opted out | `release.evt_bt_stream` |
@@ -1537,7 +1537,7 @@ run (DEV-1511).
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |
 | `fleet.ble_throughput` | As `fleet.bt_throughput`, over BLE (the RN4678's transparent UART service), on the units with an RN4678. `not_covered` on an RN41 or RN42, or when the EEPROM has BLE off |
-| `fleet.sd_start_midstream` | `smoke.sd_start_midstream`'s commands at 51.2 Hz. A Shimmer3 starts logging only undocked, and a Base6 cannot undock one slot, so the log starts are refused. The clock sets still apply mid-stream, so the stream is judged the same way. A disturbed stream fails; a clean one is `not_covered`, because no log started |
+| `fleet.sd_start_midstream` | `smoke.sd_start_midstream`'s commands at 51.2 Hz. A Shimmer3 starts logging only undocked, and a Base6 cannot undock one slot, so the log starts are refused: NACKed by firmware with DEV-1431 ([BT protocol §6.1](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md#61-the-six-startstop-commands)), ACKed and ignored before it. Each command must get one reply, an ACK or, for a log start only, a NACK. The clock sets still apply mid-stream, so the stream is judged the same way. A disturbed stream fails; a clean one is `not_covered`, because no log started, and says how many starts were NACKed |
 
 There is no fleet version of `smoke.sd_inquiry_midlog`. A Shimmer3 logs only
 undocked, the Base6 cannot undock one, and `rig/sdfile.py` reads only Shimmer3R
@@ -1759,7 +1759,7 @@ leave no event file. Four items of their own are in
 |---|---|---|
 | `release.evt_config` | Both | 19 values of byte 232, each written with `singleTouchStart` set: kept, reserved, invalid and legacy, with `userButtonEnable` on and off. Each must read back as §8.3 keeps it, `userButtonEnable` held at the mode's equivalent and `singleTouchStart` cleared. Shimmer3R writes the whole image over the USB dock; Shimmer3 writes one byte at a time over Bluetooth, as §8.3 tells a host to. SR48-6-0's rules apply on that board |
 | `release.evt_bt_stream` | Both | `0x24` written with a one-byte `SET_INFOMEM`, then BT protocol §7.15: the opt-out probe is ACKed and brings nothing; the opt-in brings the initial state as one CRC-checked frame at sequence 0; the status shows the stream on, the TTL input armed and nothing lost; nothing more arrives in 10 s; the opt-out disarms; a second opt-in starts at sequence 0 again; a new connection starts opted out. The initial state must show the input low on Shimmer3R. In a Base6 the input is the dock's pin 10, so there its level is noted, and an edge fails with that named |
-| `release.evt_log_triggers` | Shimmer3R | Undocked by the hub port: `0x11` ACKs `START_LOGGING` and puts no session on the card; `0x09` starts a log on the undock; `0x01` does not, and `START_LOGGING` then does |
+| `release.evt_log_triggers` | Shimmer3R | Undocked by the hub port: `0x11` NACKs `START_LOGGING` and puts no session on the card; `0x09` starts a log on the undock; `0x01` does not, and `START_LOGGING` then does |
 | `release.evt_session_number` | Shimmer3R | A short log with presses recorded, its `data/` session folder deleted over USB, then another: the second must be numbered past the first, whose event folder is still there |
 
 Run release-tier rows with STM32CubeIDE and Consensys closed. The suite warns

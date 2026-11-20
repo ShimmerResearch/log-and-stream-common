@@ -21,7 +21,7 @@ release.evt_bt_stream      The Bluetooth stream (BT protocol §7.15), with byte
                            connected; the opt-out disarms; a second opt-in starts
                            at sequence 0 again; a new connection starts opted out.
 release.evt_log_triggers   Shimmer3R, undocked by the hub port: 0x11 (logging
-                           off) ACKs START_LOGGING and logs nothing; 0x09 starts a
+                           off) NACKs START_LOGGING and logs nothing; 0x09 starts a
                            log on the undock; 0x01 does not, but a host command
                            still does.
 release.evt_session_number Shimmer3R: a session whose data folder alone is
@@ -196,7 +196,12 @@ def test_s3r_log_triggers(unit, power, s3r_saved, hil_note):
         if _logging_within(link, 3):
             probs.append("0x11: logging started on the undock")
             return
-        link.simple(bt.START_LOGGING)                  # ACKed: command() raises on a NACK
+        try:                                           # refused with a NACK (DEV-1431)
+            link.simple(bt.START_LOGGING)
+            probs.append("0x11: START_LOGGING was ACKed with logging off, not NACKed")
+        except bt.BtError as e:
+            if "NACK" not in str(e):
+                raise
         if _logging_within(link, LOG_S):
             probs.append("0x11: START_LOGGING started a log with logging off")
 
