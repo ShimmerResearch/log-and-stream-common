@@ -299,7 +299,11 @@ one move is reported once, not as jitter on every stamp after it.
 ## Which bytes are packets
 
 A stream is framed by length: a packet is a 0x00, then the stamp and the
-channels, and the next frame starts with 0x00 or an ACK. A 0x00 can also be a
+channels, and the next frame starts with 0x00, an ACK or a NACK. A NACK there
+is a command sent mid-stream being refused, such as a log start the unit cannot
+carry out (DEV-1431). Its link CRC is checked as an ACK's is, and it is counted
+in `nacks`, not `resyncs`. `midstream.judge` takes an ACK or a NACK as the reply
+to a log start, and only an ACK for anything else. A 0x00 can also be a
 data byte, so each frame is confirmed before it is accepted (`rig/bt.py`,
 `BtLink.stream`). With a link CRC on, the CRC confirms it. Without one, the
 stamps do, through `_stamps_frame`:

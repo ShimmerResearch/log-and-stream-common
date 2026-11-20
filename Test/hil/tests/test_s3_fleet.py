@@ -568,9 +568,10 @@ def test_sd_start_midstream(unit, base6, hil_note):
     """smoke.sd_start_midstream's commands, sent to a docked Shimmer3.
 
     A Shimmer3 starts logging only undocked (ShimSens_checkStartLoggingConditions),
-    and a Base6 cannot undock one slot. Docked, the log starts are ACKed and
-    refused, but the clock sets still apply mid-stream, so the stream is still
-    judged as smoke.sd_start_midstream judges it:
+    and a Base6 cannot undock one slot. Docked, the log starts are refused:
+    NACKed by firmware with DEV-1431, ACKed and ignored before it. The clock
+    sets still apply mid-stream, so the stream is still judged as
+    smoke.sd_start_midstream judges it:
     - a disturbed stream fails the item;
     - a clean one is not_covered, because no log started;
     - if a status shows logging after all, the item is judged in full.
@@ -604,6 +605,8 @@ def test_sd_start_midstream(unit, base6, hil_note):
     problems, summary = midstream.judge(st, plan, inq.divider)
     assert not problems, f"{summary}: " + "; ".join(problems)
     if not midstream.logging_seen(st):
+        how = (f"NACKed {st.nacks} of the {MIDSTREAM_CYCLES} log starts" if st.nacks
+               else "ACKed the log starts and ignored them (firmware before DEV-1431)")
         pytest.skip(f"docked in a Base6, which cannot undock one slot, so no log started: the unit "
-                    f"refuses a log start while docked. Clean across the commands: {summary}")
+                    f"{how}. Clean across the commands: {summary}")
     hil_note(summary)

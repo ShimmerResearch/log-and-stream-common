@@ -139,6 +139,7 @@ class StreamStats:
     # framed before it), so a caller can tell which samples sit either side.
     instream: list = field(default_factory=list)
     acks: int = 0               # bare ACKs mid-stream: commands sent with actions=
+    nacks: int = 0              # bare NACKs mid-stream: those commands refused (DEV-1431)
     events: list = field(default_factory=list)  # (label, packets so far, seconds) per action sent
     first_ts: int | None = None
     deltas: dict = field(default_factory=dict)
@@ -565,8 +566,10 @@ class BtLink:
         after the start), .label and .bytes() (rig/midstream.py's Action). Each
         is recorded in st.events with the packet count when it went out. Their
         replies are counted, not matched: a bare ACK at a frame boundary in
-        st.acks, an in-stream status frame's status byte in st.pushed, and
-        every in-stream frame (status or battery) in st.instream.
+        st.acks, a bare NACK in st.nacks (a refused command, such as a log
+        start the unit cannot carry out), an in-stream status frame's status
+        byte in st.pushed, and every in-stream frame (status or battery) in
+        st.instream.
         """
         inq = inq or self.inquiry()
         crc_n = getattr(self, "crc_mode", 0)
@@ -616,13 +619,13 @@ class BtLink:
                             break
                         ts = _stamp(buf, 0)
                         # A 0x00 is not proof of a packet boundary. Confirm it: the
-                        # next frame must start with 0x00 or an ACK; with a CRC on,
-                        # the CRC must match; without one, the timestamps must
-                        # (_stamps_frame). A frame that fails is re-searched a byte
-                        # later and counted - it means bytes the parser did not
+                        # next frame must start with 0x00, an ACK or a NACK; with a
+                        # CRC on, the CRC must match; without one, the timestamps
+                        # must (_stamps_frame). A frame that fails is re-searched a
+                        # byte later and counted - it means bytes the parser did not
                         # expect arrived (and are kept for diagnosis).
                         on_grid = True
-                        if len(buf) > plen and buf[plen] not in (0x00, ACK):
+                        if len(buf) > plen and buf[plen] not in (0x00, ACK, NACK):
                             ok = False
                         elif crc_n:
                             ok = _crc_ok(buf[:body], buf[body:plen])
@@ -691,6 +694,19 @@ class BtLink:
                         del buf[:1 + crc_n]
                     elif buf[0] == ACK and len(buf) < 2:
                         break
+                    elif buf[0] == NACK and in_step:
+                        # A bare NACK at a frame boundary: a command sent with
+                        # actions= was refused, such as a log start the unit
+                        # cannot carry out (DEV-1431). It carries the link CRC
+                        # as an ACK does. Only straight after a frame: while
+                        # searching, a 0xFE is a data byte.
+                        if len(buf) < 1 + crc_n:
+                            break
+                        if crc_n and not _crc_ok(buf[:1], buf[1:1 + crc_n]):
+                            st.crc_errors += 1
+                        else:
+                            st.nacks += 1
+                        del buf[:1 + crc_n]
                     else:
                         st.resyncs += 1
                         if len(st.misframes) < 3:
@@ -754,7 +770,7 @@ def _near_step(d: int, period: int) -> bool:
 def _stamps_frame(buf, plen: int, grid_ts: int | None, period: int, on_grid: bool,
                   in_step: bool, ending: bool) -> bool | None:
     """Without a link CRC: whether the 0x00 at buf[0], whose byte plen on is
-    0x00 or an ACK, starts a packet, judged by timestamps. grid_ts is the last
+    0x00, an ACK or a NACK, starts a packet, judged by timestamps. grid_ts is the last
     stamp accepted on the sampling grid; on_grid, whether this one steps a
     plausible number of periods from it. None: the frames after it decide, and
     they have not all arrived yet (never while `ending`, when no more will).
@@ -793,7 +809,7 @@ def _stamps_frame(buf, plen: int, grid_ts: int | None, period: int, on_grid: boo
     for at in (plen, 2 * plen):
         if buf[at] != 0x00:
             return False                 # a reply, not a frame
-    if len(buf) > 3 * plen and buf[3 * plen] not in (0x00, ACK):
+    if len(buf) > 3 * plen and buf[3 * plen] not in (0x00, ACK, NACK):
         return False                     # the second is not whole
     ts, s1, s2 = _stamp(buf, 0), _stamp(buf, plen), _stamp(buf, 2 * plen)
     if not _near_step((s2 - s1) % TS_WRAP, period):

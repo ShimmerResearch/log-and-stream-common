@@ -1537,7 +1537,7 @@ run (DEV-1511).
 | `fleet.bt_stream` | At 51.2 Hz, set by the test, with the unit's own channels: no lost or duplicate samples over 10 s |
 | `fleet.bt_throughput` | As `smoke.bt_throughput`, per radio. The 1024 Hz load outruns every one of them, so the stream figure is what the link delivers when saturated |
 | `fleet.ble_throughput` | As `fleet.bt_throughput`, over BLE (the RN4678's transparent UART service), on the units with an RN4678. `not_covered` on an RN41 or RN42, or when the EEPROM has BLE off |
-| `fleet.sd_start_midstream` | `smoke.sd_start_midstream`'s commands at 51.2 Hz. A Shimmer3 starts logging only undocked, and a Base6 cannot undock one slot, so the log starts are refused. The clock sets still apply mid-stream, so the stream is judged the same way. A disturbed stream fails; a clean one is `not_covered`, because no log started |
+| `fleet.sd_start_midstream` | `smoke.sd_start_midstream`'s commands at 51.2 Hz. A Shimmer3 starts logging only undocked, and a Base6 cannot undock one slot, so the log starts are refused: NACKed by firmware with DEV-1431 ([BT protocol §6.1](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md#61-the-six-startstop-commands)), ACKed and ignored before it. Each command must get one reply, an ACK or, for a log start only, a NACK. The clock sets still apply mid-stream, so the stream is judged the same way. A disturbed stream fails; a clean one is `not_covered`, because no log started, and says how many starts were NACKed |
 
 There is no fleet version of `smoke.sd_inquiry_midlog`. A Shimmer3 logs only
 undocked, the Base6 cannot undock one, and `rig/sdfile.py` reads only Shimmer3R

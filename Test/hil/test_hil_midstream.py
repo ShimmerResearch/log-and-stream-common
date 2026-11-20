@@ -212,6 +212,19 @@ def with_crc(frame: bytes) -> bytes:
 
 
 ACK_CRC = with_crc(bytes([bt.ACK]))         # an ACK with its mode-2 CRC
+NACK_CRC = with_crc(bytes([bt.NACK]))       # a NACK with its mode-2 CRC
+
+
+def bare_packet(ts: int) -> bytes:
+    """packet() without its link CRC, for a stream with the CRC off."""
+    return bytes([0x00]) + ts.to_bytes(3, "little") + b"\x34\x12"
+
+
+def crc_link(script: bytes, crc_mode: int = 2):
+    link = bt.BtLink.__new__(bt.BtLink)
+    after = ACK_CRC if crc_mode else bytes([bt.ACK])
+    link.ser, link.hw, link.crc_mode, link._nstatus = FakeSerial(script, after), bt.HW_SHIMMER3R, crc_mode, 2
+    return link
 
 
 class StreamActions(unittest.TestCase):
@@ -253,6 +266,53 @@ class StreamActions(unittest.TestCase):
         self.assertEqual(st.packets, 5)
         self.assertEqual((st.crc_errors, st.acks, st.pushed), (2, 0, []))
         self.assertTrue(st.stop_ack)
+
+    def test_a_refused_start_is_a_nack_not_stray_bytes(self):
+        # Firmware since DEV-1431 NACKs a log start it cannot carry out, here
+        # between two packets. The packet before it still frames, the NACK and
+        # its CRC are one reply, and the stream goes on behind them.
+        ts = stamps([P] * 6)
+        script = (ACK_CRC + b"".join(packet(t) for t in ts[:3]) + NACK_CRC
+                  + b"".join(packet(t) for t in ts[3:]))
+        link = crc_link(script)
+        acts = [midstream.Action(0.0, "start", 1, bytes([bt.START_LOGGING]))]
+        st = link.stream(0.05, bt.Inquiry(P, [0x00], 1, b""), keep=True, actions=acts)
+        self.assertEqual(st.ts, ts)
+        self.assertEqual((st.resyncs, st.crc_errors, st.acks, st.nacks), (0, 0, 0, 1))
+        self.assertTrue(st.stop_ack)
+
+    def test_a_nack_without_a_link_crc(self):
+        ts = stamps([P] * 6)
+        script = (bytes([bt.ACK]) + b"".join(bare_packet(t) for t in ts[:3]) + bytes([bt.NACK])
+                  + b"".join(bare_packet(t) for t in ts[3:]))
+        st = crc_link(script, crc_mode=0).stream(0.05, bt.Inquiry(P, [0x00], 1, b""), keep=True)
+        self.assertEqual(st.ts, ts)
+        self.assertEqual((st.resyncs, st.acks, st.nacks), (0, 0, 1))
+
+    def test_a_nack_with_a_bad_crc_is_not_believed(self):
+        ts = stamps([P] * 4)
+        script = (ACK_CRC + b"".join(packet(t) for t in ts[:2]) + bytes([bt.NACK, 0, 0])
+                  + b"".join(packet(t) for t in ts[2:]))
+        st = crc_link(script).stream(0.05, bt.Inquiry(P, [0x00], 1, b""))
+        self.assertEqual(st.packets, len(ts))
+        self.assertEqual((st.crc_errors, st.nacks), (1, 0))
+
+    def test_judge_takes_a_nack_as_a_refused_start(self):
+        st = bt.StreamStats()
+        st.ts = stamps([P] * 60)
+        st.events = [("set_rwc 1", 10, 0.0), ("start 1", 10, 0.0), ("stop 1", 40, 0.0)]
+        plan = midstream.Plan([midstream.Action(0, "set_rwc", 1, b""), midstream.Action(0, "start", 1, b""),
+                               midstream.Action(0, "stop", 1, b"")], 60 * P / bt.TICKS_PER_S, [1])
+        st.acks, st.nacks = 2, 1            # the clock set and the stop ACKed, the start refused
+        problems, summary = midstream.judge(st, plan, P)
+        self.assertEqual(problems, [])
+        self.assertIn("1 log starts (1 refused with a NACK);", summary)
+        st.acks, st.nacks = 1, 2            # only a log start may be refused
+        problems, _ = midstream.judge(st, plan, P)
+        self.assertEqual(problems, ["2 NACKs mid-stream, but only the 1 log starts may be refused"])
+        st.acks, st.nacks = 1, 1            # a reply missing
+        problems, _ = midstream.judge(st, plan, P)
+        self.assertEqual(problems, ["1 ACKs and 1 NACKs for the 3 commands sent mid-stream"])
 
     def test_judge_names_the_cycle(self):
         st = bt.StreamStats()

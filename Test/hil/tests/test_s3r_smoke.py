@@ -474,6 +474,8 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
     root = s3r_usb.wait_drive(unit.usb_serial, 90)
     new = sdfile.session_dirs(root) - before
     problems, summary = midstream.judge(st, plan, inq.divider)
+    if st.nacks:
+        problems.append(f"{st.nacks} of the {MIDSTREAM_CYCLES} log starts were refused (NACK) undocked")
     if not midstream.logging_seen(st):
         problems.append("no status during the stream showed logging")
     if len(new) != MIDSTREAM_CYCLES:
