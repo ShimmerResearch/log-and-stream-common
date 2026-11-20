@@ -10,6 +10,7 @@ would.
 """
 
 import contextlib
+import importlib.util
 import sys
 import tempfile
 import types
@@ -321,6 +322,7 @@ class OperatorDockTests(unittest.TestCase):
 
 
 class AttendedOnly(unittest.TestCase):
+    @unittest.skipUnless(importlib.util.find_spec("pytest"), "conftest.py needs pytest")
     def test_the_shimmer3_long_log_runs_only_with_someone_at_the_bench(self):
         import conftest
         rig = config.Rig(path=Path("rig.toml"), bench="b", base6_serial="SRYRNS21",
