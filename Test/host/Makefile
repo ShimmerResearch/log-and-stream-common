@@ -86,7 +86,7 @@ SINGLE_PLATFORM_SUITES := test_crc test_sd_data_file test_events
 # Suites built twice, once per platform. See the note above.
 DUAL_PLATFORM_SUITES := test_rtc test_battery test_boards test_bt_reply \
                         test_calibration test_platform_seam test_dock_args \
-                        test_leds
+                        test_leds test_sd_cfg_file
 
 PLATFORMS := SHIMMER3 SHIMMER3R
 
@@ -141,6 +141,13 @@ SRC_test_battery     := test_battery.c $(REPO)/Battery/shimmer_battery.c
 SRC_test_boards      := test_boards.c $(REPO)/Boards/shimmer_boards.c
 SRC_test_bt_reply    := test_bt_reply.c $(REPO)/Comms/shimmer_bt_reply.c
 SRC_test_dock_args   := test_dock_args.c $(REPO)/Comms/shimmer_dock_args.c
+# The real button-log-mode, audio-mode and util modules (host-clean, each with
+# its own suite); the configuration and SD-sync helpers are stand-ins in the
+# test file.
+SRC_test_sd_cfg_file := test_sd_cfg_file.c $(REPO)/SDCard/shimmer_sd_cfg_file.c \
+                        $(REPO)/Configuration/shimmer_button_log_mode.c \
+                        $(REPO)/Configuration/shimmer_audio_mode.c \
+                        $(REPO)/Util/shimmer_util.c
 SRC_test_calibration := test_calibration.c \
                         $(REPO)/Calibration/shimmer_calibration.c \
                         $(REPO)/Boards/shimmer_boards.c
@@ -368,6 +375,7 @@ DUAL_COMPILE_MODULES := \
   Platform/platform_api.c \
   RTC/shimmer_rtc.c \
   SDCard/shimmer_sd_card_id.c \
+  SDCard/shimmer_sd_cfg_file.c \
   SDCard/shimmer_sd_pressure_id.c \
   SDCard/shimmer_sd_write_buf.c \
   Sensing/shimmer_autostop.c \

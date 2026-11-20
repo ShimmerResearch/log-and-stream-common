@@ -133,6 +133,7 @@ FRESULT f_close(FIL *fp);
 FRESULT f_truncate(FIL *fp);
 FRESULT f_read(FIL *fp, void *buff, UINT btr, UINT *br);
 FRESULT f_write(FIL *fp, const void *buff, UINT btw, UINT *bw);
+TCHAR *f_gets(TCHAR *buff, int len, FIL *fp);
 #if defined(SHIMMER3)
 FRESULT f_opendir(DIRS *dp, const TCHAR *path);
 #elif defined(SHIMMER3R)

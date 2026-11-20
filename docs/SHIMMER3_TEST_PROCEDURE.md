@@ -207,6 +207,7 @@ What the suites cover today:
 | `test_leds_phase` | `LEDs/shimmer_leds_phase.c` | ×1 | The LED frame arithmetic, and the phase lock run closed loop against a blink timer 3% slow to 3% fast: each whole-second tick comes once a second (DEV-1417) |
 | `test_leds` | `LEDs/shimmer_leds.c` | ×2 | The lower LED's priority order (button, host override, SD-card error, battery or charging), drawn through a recording LED driver; the SD-card error shown only out of the dock and off USB |
 | `test_util` | `Util/shimmer_util.c` | ×1 | SD directory naming, config-file 64-bit values, config-file sample rate round trip (every divider), BT response lengths, MAC byte order |
+| `test_sd_cfg_file` | `SDCard/shimmer_sd_cfg_file.c` | ×2 | `sdlog.cfg` written and read back through a fake card: the alternative accel and mag enables survive the round trip; the older `accel_mpu`/`mag_mpu` names still load on Shimmer3 and are ignored on Shimmer3R; range and rate keys are not taken for enables (DEV-1326) |
 | `test_rtc` | `RTC/shimmer_rtc.c` | ×2 | Every day from 2000 to 2099 round-trips; leap years; date validation |
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
 | `test_boards` | `Boards/shimmer_boards.c` | ×2 | Every revision gate, across 25 board revisions |
@@ -1181,6 +1182,7 @@ case earns a permanent place here.
 | DEV-1417 | A Shimmer3R's `max_exp_len` auto-stop ended a 7-minute log 3% early: the LED phase lock counted seconds twice when TIM6 ran fast | `test_autostop`, `test_leds_phase` (closed loop) — plus §5.6.8 |
 | SD error on USB | A Shimmer3R on USB-C, out of the dock and with no card, flashed the SD-card error instead of its charging colour: the error was gated on the dock alone | `test_leds` |
 | DEV-1494, DEV-1495 | A factory EEPROM self-test that failed part-way left test data in daughter-card bytes 0-127, which a host may have stored data in | `test_cat24c16` |
+| DEV-1326 | A Shimmer3 reading back its own `sdlog.cfg` turned the alternative accel and mag off: the file says `accel_alt`/`mag_alt`, and the Shimmer3 parser read only `accel_mpu`/`mag_mpu`. Seen on a unit on 20 Nov 2026 | `test_sd_cfg_file` |
 
 **When a fault escapes, add its case here and a test for it in the same PR.** A
 regression list that only grows by hand stops growing.
