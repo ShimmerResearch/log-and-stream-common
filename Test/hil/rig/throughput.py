@@ -265,23 +265,64 @@ def compare(measured: dict[str, float], baseline: dict[str, float],
     return short, gain
 
 
-def radio_mismatch(named: str | None, reported: str) -> str | None:
-    """Why the radio build rig.toml names cannot be the one the unit reports, or None.
+_VERSION_RE = re.compile(r"\d+(?:\.\d+){1,3}")
+# A module test build's name, as the Shimmer3R appends it to the module string
+# from v1.01.027: "CYW20820 app=v01.04.18.18, ..., hardware=0xf1, build=test_254".
+_BUILD_RE = re.compile(r"\bbuild=([^\s,]+)")
 
-    Only the version numbers can be compared: a module's test builds report
-    their release's version, so which build of a version is fitted is for
-    rig.toml to say, and a wrong one shows as a figure far off its baseline.
+
+def radio_version(text: str | None) -> tuple[int, ...] | None:
+    """The first version in a radio key or module string, as numbers: the
+    Shimmer3R dock reports "app=v01.04.18.18" for v1.4.18.18."""
+    m = _VERSION_RE.search(text or "")
+    return tuple(int(x) for x in m.group().split(".")) if m else None
+
+
+def named_build(named: str | None) -> str | None:
+    """The module build a rig.toml radio key names: the one word after its
+    version, as in "IF820 v1.4.18.18 test_254". None when nothing follows the
+    version, or more than one word does ("IF820 v1.4.18.18 test build"): that
+    names no build a module could report."""
+    m = _VERSION_RE.search(named or "")
+    rest = named[m.end():].split() if m else []
+    return rest[0] if len(rest) == 1 else None
+
+
+def reported_build(reported: str | None) -> str | None:
+    """The build= a module string ends in, or None. A public module release
+    reports none, and nor does Shimmer3R firmware before v1.01.027 whatever the
+    module runs; a Shimmer3's RN42 or RN4678 banner never has one."""
+    m = _BUILD_RE.search(reported or "")
+    return m.group(1) if m else None
+
+
+def radio_check(named: str | None, reported: str) -> tuple[str | None, str | None]:
+    """(mismatch, remark): the radio rig.toml names, against the module string the unit reports.
+
+    mismatch says why the named radio cannot be the one fitted: its version
+    differs, or it names a build and the module reports another. It fails the
+    item, because the name picks the throughput baseline.
+
+    remark says what could not be checked, for the item's note: the module
+    reports a build the name does not give, or the name gives a build and the
+    module reports none. A module that reports no build runs a public release,
+    or a test build behind firmware that does not pass its name on. Only the
+    figures tell those apart: a wrong build shows as a figure far off its
+    baseline.
     """
-    def version(text):
-        # As numbers: the Shimmer3R dock reports "app=v01.04.18.18" for v1.4.18.18.
-        m = re.search(r"\d+(?:\.\d+){1,3}", text or "")
-        return tuple(int(x) for x in m.group().split(".")) if m else None
-
-    want, got = version(named), version(reported)
+    want, got = radio_version(named), radio_version(reported)
     if want and got and want != got:
         return (f"rig.toml names radio {named!r} but the unit reports {reported!r}: "
-                "update its radio, which picks its throughput baseline")
-    return None
+                "update its radio, which picks its throughput baseline"), None
+    nb, rb = named_build(named), reported_build(reported)
+    if nb and rb and nb.lower() != rb.lower():
+        return (f"rig.toml names radio {named!r} but the module reports build={rb} ({reported!r}): "
+                "update its radio, which picks its throughput baseline"), None
+    if rb and not nb:
+        return None, f"module reports build={rb}, which radio {named!r} does not name"
+    if nb and not rb and got:
+        return None, f"radio {named!r} names build {nb}, but the module reports no build"
+    return None, None
 
 
 def judge(measured: dict[str, float], baseline: dict[str, float], unit_name: str,

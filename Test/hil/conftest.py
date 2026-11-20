@@ -383,6 +383,68 @@ def hil_note(request):
     return note
 
 
+# The dock each platform's module string is read over (rig/btmode.py
+# bench_routes): a Shimmer3R's USB, a Shimmer3's Base6 slot.
+RADIO_ROUTE = {"shimmer3r": {"usb"}, "shimmer3": {"dock"}}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _bt_modules(request, _bench_config):
+    """Each tested unit's Bluetooth module firmware, read over its dock once, before its first test.
+
+    The report records it per unit as run.hardware.units[].radio_reported,
+    beside the `radio` rig.toml gives the unit, so a report can be read against
+    the module build later without notes kept by hand. A module can be
+    re-flashed, and builds of one version differ a long way in Bluetooth
+    throughput. A Shimmer3R names an Infineon test build from v1.01.027
+    ("..., build=test_254"); a Shimmer3 gives its RN42 or RN4678 banner. A unit
+    whose dock the bench cannot reach, or that does not answer, gets
+    radio_unread with the reason instead; its tests run all the same.
+
+    It follows _bench_config, so the radio is on and every unit is back from
+    that fixture's reset, and like it runs before any test module opens a dock
+    or Base6 port. Only a run that writes a report reads: an unbound run or an
+    experiment would record nothing, so it does not spend the dock time.
+    """
+    cfg = request.config
+    cfg._hil_radios = {}
+    if not (cfg.getoption("--hil-report") and cfg.getoption("--candidate")) or os.environ.get("HIL_MATRIX"):
+        return
+    platform = request.getfixturevalue("candidate")["platform"]
+    units = hil_report.tested_units(request.session.items, platform, cfg.getoption("--unit") or "")
+    if not units:
+        return
+    from rig import throughput
+    from rig.btmode import bench_routes
+    access, _ = bench_routes(request.getfixturevalue("rig"))
+
+    def read(unit):
+        with access(unit) as d:
+            return d.bt_version()
+
+    def lacks(unit):
+        missing = _missing(cfg, unit, RADIO_ROUTE[unit.platform])
+        return f"bench lacks: {', '.join(sorted(missing))}" if missing else None
+
+    cfg._hil_radios = hil_report.read_radios(units, read, lacks)
+    tr = cfg.pluginmanager.get_plugin("terminalreporter")
+    for unit in units:
+        got = cfg._hil_radios[unit.name]
+        if "radio_reported" in got:
+            mismatch, remark = throughput.radio_check(unit.radio, got["radio_reported"])
+            line = f"{unit.name} Bluetooth module: {got['radio_reported']}"
+            line += f" - {mismatch or remark}" if mismatch or remark else ""
+        else:
+            line = f"{unit.name} Bluetooth module not read: {got['radio_unread']}"
+        if tr is None:
+            print(f"hil: {line}")
+            continue
+        # The first test's path is still on the line; start a fresh one.
+        if getattr(tr._tw, "width_of_current_line", 0):
+            tr.write("\n")
+        tr.write_line(f"hil: {line}")
+
+
 def pytest_sessionfinish(session, exitstatus):
     cfg = session.config
     out = cfg.getoption("--hil-report")
@@ -420,7 +482,7 @@ def pytest_sessionfinish(session, exitstatus):
                "hardware": hil_report.hardware(
                    rig_host.describe(), rig.kit() if rig else {},
                    hil_report.tested_units(session.items, cand["platform"], cfg.getoption("--unit") or "")
-                   if rig else [])},
+                   if rig else [], getattr(cfg, "_hil_radios", {}))},
         waivers=cfg._hil_waivers,
     )
     path = hil_report.write(rep, Path(out))

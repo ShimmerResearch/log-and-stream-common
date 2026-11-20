@@ -1376,6 +1376,12 @@ reports from different benches told apart:
 - `kit`: the bench's fixed hardware (the USB hub, the Base6, the ST-Links);
 - `units`: each unit the session tested, with its MAC, USB serial, radio or
   module build, board, and Base6 slot or hub port, as `rig.toml` describes it.
+  Beside the `radio` from `rig.toml`, `radio_reported` is the Bluetooth module
+  string the unit itself gave over its dock before its first test. On a
+  Shimmer3R that is the `CYW20820 app=...` line, which from v1.01.027 ends in
+  `build=<name>` on an Infineon test build; on a Shimmer3 it is the RN42 or
+  RN4678 banner. A unit that could not be read has `radio_unread`, with the
+  reason, instead. Reports written before these fields existed have neither.
 
 The gate does not read `run`.
 
@@ -1512,7 +1518,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
 | `smoke.sd_start_midstream` | Undocked, six 2 s SD logs started and stopped inside one 256 Hz stream, link CRC on. Odd cycles send `START_LOGGING` alone; even ones send `SET_RWC` first, as the reference host does before every log start. The stream's stamps must never step back or sideways: no stamp at or behind the one before, no move of the sampling grid, no lost or duplicate samples, jitter within a quarter period. Each problem is reported with the cycle it followed, and with how many clock-set and plain starts disturbed the stream. A status query must show logging, and the card must hold one new session per cycle |
 | `smoke.sd_inquiry_midlog` | §5.6.7, the DEV-1363 regression case (§7), and the one smoke item on the required list. 1024 Hz with every sensor the board has fitted; undocked, `START_LOGGING`, then `INQUIRY` every 0.25 s for 60 s, then stop and re-dock. The new session must have no lost or duplicate samples, jitter within a quarter period, and its whole 60 s; every inquiry must report the layout the log started with. A gap of `TIMEOUT_100_MS / divider + 2` samples (104 at 1024 Hz, a 3,360-tick step) is named as the packet ring's fail-safe. The note says how many inquiries went out. A clean log after fewer than 120 is `not_covered`: v1.01.024 lost samples on about one inquiry in 17, so fewer could miss it by luck. InfoMem is saved to disk and put back |
-| `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt. Lost samples are the figure, not a defect, but every byte must frame, no stamp may repeat or step back, and none may be more than a quarter period off its slot |
+| `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt. Lost samples are the figure, not a defect, but every byte must frame, no stamp may repeat or step back, and none may be more than a quarter period off its slot. First, the IF820 must report the version that the unit's `radio` in `rig.toml` names, and the test build too when `radio` names one, because `radio` picks the baseline. A test build reported but not named, or named but not reported, goes into the note (`Test/hil/README.md`, Throughput baselines) |
 | `smoke.ble_throughput` | As `smoke.bt_throughput`, over BLE (the IF820's CYSPP service, data as notifications), against this unit's BLE baseline. `not_covered` when the unit's EEPROM has BLE off (`bleEnabled`, EEPROM memory map §4.2) |
 
 The **fleet** tier is §5.1 made automatic: Shimmer3, one unit per radio
