@@ -790,6 +790,17 @@ Sensor enables:
 `exg2_16bit`, `gsr`, `br_amp`, `str`, `vbat`, `accel_d`, `accel_alt`,
 `mag_alt`, `accel_mpu`, `mag_mpu`, `pres`
 
+> **The alternative accel and mag have two names each on Shimmer3.**
+> - **Written:** `ShimSdCfgFile_generate()` writes `accel_alt` and `mag_alt` on
+>   both platforms.
+> - **Read on Shimmer3:** both those and the older `accel_mpu` and `mag_mpu`,
+>   which the C# API writes.
+> - **Read on Shimmer3R:** `accel_alt` and `mag_alt` only. A Shimmer3 file's
+>   `accel_mpu` and `mag_mpu` are ignored.
+> - **Firmware before DEV-1326:** Shimmer3 read only `accel_mpu` and `mag_mpu`.
+>   Because the parse starts from a blank configuration (§5.2), a Shimmer3
+>   reading back its own file turned both sensors off.
+
 ADC channels — note these differ by generation:
 
 | Shimmer3 | Shimmer3R |

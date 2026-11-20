@@ -78,7 +78,7 @@ static int cfg_key_is(const char *line, const char *key)
 #define CFG_KEY_INTCH2             "intch2"
 #define CFG_KEY_ACCEL_ALT          "accel_alt"
 #define CFG_KEY_MAG_ALT            "mag_alt"
-//Legacy names used under SHIMMER3 parsing
+//Older Shimmer3 names for accel_alt / mag_alt, still read on Shimmer3 only
 #define CFG_KEY_ACCEL_MPU          "accel_mpu"
 #define CFG_KEY_MAG_MPU            "mag_mpu"
 
@@ -579,11 +579,16 @@ void ShimSdCfgFile_parse(void)
       {
         storedConfigPtr->chEnIntADC14 = atoi(equals);
       }
-      else if (cfg_key_is(buffer, CFG_KEY_ACCEL_MPU))
+      /* Both names (DEV-1326). generate() writes accel_alt and mag_alt on both
+       * platforms, but Shimmer3 used to read only accel_mpu and mag_mpu, so a
+       * Shimmer3 reading back its own file turned the alternative accel and mag
+       * off. The older names stay readable: the C# API and the user manual's
+       * Shimmer3 example use them. */
+      else if (cfg_key_is(buffer, CFG_KEY_ACCEL_ALT) || cfg_key_is(buffer, CFG_KEY_ACCEL_MPU))
       {
         storedConfigPtr->chEnAltAccel = atoi(equals);
       }
-      else if (cfg_key_is(buffer, CFG_KEY_MAG_MPU))
+      else if (cfg_key_is(buffer, CFG_KEY_MAG_ALT) || cfg_key_is(buffer, CFG_KEY_MAG_MPU))
       {
         storedConfigPtr->chEnAltMag = atoi(equals);
       }
@@ -608,6 +613,9 @@ void ShimSdCfgFile_parse(void)
       {
         storedConfigPtr->chEnIntADC2 = atoi(equals);
       }
+      /* Only the new names: a Shimmer3R ignores the Shimmer3 names accel_mpu
+       * and mag_mpu (the user manual says so), so a Shimmer3 file cannot turn
+       * the ADXL371 or the alternative mag on. */
       else if (cfg_key_is(buffer, CFG_KEY_ACCEL_ALT))
       {
         storedConfigPtr->chEnAltAccel = atoi(equals);

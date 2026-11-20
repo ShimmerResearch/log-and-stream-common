@@ -66,11 +66,13 @@
 #include "CRC/shimmer_crc.h"
 #include "CRC/shimmer_swCrc.h"
 #include "Calibration/shimmer_calibration.h"
+#include "Configuration/shimmer_audio_mode.h"
 #include "Configuration/shimmer_button_log_mode.h"
 #include "Configuration/shimmer_config.h"
 #include "EEPROM/shimmer_eeprom.h"
 #include "Events/shimmer_event_record.h"
 #include "Events/shimmer_events.h"
+#include "GSR/gsr.h"
 #include "LEDs/shimmer_leds.h"
 #include "Platform/platform_api.h"
 #include "RTC/shimmer_rtc.h"
@@ -102,5 +104,12 @@
 
 /* Comms/shimmer_bt_uart.h - needs firmware-side RN4X/RN4678.h */
 char *ShimBt_macIdStrPtrGet(void);
+
+#if defined(SHIMMER3R)
+/* The Shimmer3R firmware's Shimmer_Driver/hal_pressure.h, and the HAL delay
+ * (stm32u5xx.h stub) - SDCard/shimmer_sd_cfg_file.c calls both */
+uint8_t isBmp581InUse(void);
+#include "stm32u5xx.h"
+#endif
 
 #endif /* HOST_TEST_LOG_AND_STREAM_INCLUDES_H_ */
