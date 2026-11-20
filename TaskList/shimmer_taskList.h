@@ -94,7 +94,13 @@ typedef enum TaskId_Tag
   TASK_USB_PROCESS_CMD = (0x00000001UL << 5U),
 #endif
 #if defined(SHIMMER3)
-  TASK_CFGCH = (0x00000001UL << 5U),
+  /* The RN4x driver's next set-up or connect step (BT_runCommandStep()).
+   * The Bluetooth receive interrupt queues it when the module's reply
+   * arrives, instead of building and sending the next command itself: done
+   * there, a step held the sample timer back by several ticks (DEV-1486). Up
+   * here, above the data path, so logging does not slow a radio start that SD
+   * sync allows a few seconds for. Bit 5 was TASK_CFGCH, which nothing set. */
+  TASK_BT_CMD_STEP = (0x00000001UL << 5U),
 #endif
   TASK_BT_RESPOND = (0x00000001UL << 6U),
   TASK_RCCENTERR1 = (0x00000001UL << 7U),
@@ -110,6 +116,13 @@ typedef enum TaskId_Tag
    * it must stay current while the card or the data path is slow. About
    * 1.5 ms a block. */
   TASK_AUDIO_LEVEL = (0x00000001UL << 9U),
+  /* SD sync's one-second tick (SDSync/shimmer_sd_sync.h). The RTC's Alarm B
+   * interrupt only counts the tick and queues this, because that interrupt is
+   * shared with the sample timer and any work in it delays sample stamps
+   * (DEV-1466). Above the data path so a slow card does not hold the sync
+   * schedule back; a tick that does stop or connect the radio takes a few
+   * hundred microseconds. */
+  TASK_SD_SYNC_TICK = (0x00000001UL << 10U),
 #endif
   TASK_GATHER_DATA = (0x00000001UL << 11U),
   TASK_STOPSENSING = (0x00000001UL << 12U),

@@ -34,6 +34,9 @@ extern uint8_t isBtModuleOverflowPinHigh(void);
 /* Task list */
 extern void MPU9150_startMagMeasurement(void);
 extern void BMPX80_startMeasurement(void);
+/* TASK_BT_CMD_STEP: the RN4x set-up or connect step that a module reply
+ * completed (Shimmer_Driver/RN4X/RN4X.c) */
+extern void BT_runCommandStep(void);
 
 extern void SampleTimerStart(void);
 extern void SampleTimerStop(void);
@@ -107,6 +110,9 @@ extern void RTC_setAlarmRebootToBootloader(uint8_t secondsFromNow);
 extern void RTC_setAlarmBattRead(void);
 extern void RTC_wakeUpOff(void);
 extern void RTC_wakeUpSet(uint16_t period);
+/* SD sync's one-second ticks counted by Alarm B's interrupt since the last
+ * call, for TASK_SD_SYNC_TICK */
+extern uint32_t RTC_takeSdSyncTicks(void);
 #endif
 
 extern void manageReadBatt(uint8_t isBlockingRead);

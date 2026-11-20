@@ -16,8 +16,8 @@ the result bitmask.
 > **Shimmer3R focus.** The shared harness in `Test/shimmer_test.c` builds for
 > both generations, but the test bodies and the `S3R_TEST_*` registry are in
 > the Shimmer3R platform repository. Shimmer3's equivalents were not read for
-> this document, except for the SD card identity lines, which both print
-> (§5.5).
+> this document, except for the SD card identity lines (§5.5) and the CAT24C16
+> line (§5.7), which both print.
 
 **Source references:**
 
@@ -366,6 +366,39 @@ starts and the filters settle, then gives:
 > also serves audio recording, one at a time. The steps and results above are
 > unchanged from before. A mic test while a recording runs is refused rather
 > than restarting the ADF under it.
+
+### 5.7 `S3R_TEST_0023` — CAT24C16 EEPROM
+
+`CAT24C16_test()` (`EEPROM/cat24c16.c`) uses EEPROM bytes 16-143 as scratch.
+It backs them up, writes an incrementing pattern over them three times, offset
+by the pass number so that every byte differs from the last pass's, reading
+each back, then writes the backup back and reads that back too. Those bytes are host
+offsets 0-127 of the daughter-card memory commands, so a host may have stored
+data there. See
+[SHIMMER3_EEPROM_MEMORY_MAP.md](SHIMMER3_EEPROM_MEMORY_MAP.md) §2.1.
+
+| Report line | Meaning |
+|---|---|
+| `PASS: CAT24C16` | Every pass read back what it wrote, and the backup is back |
+| `FAIL: CAT24C16 - Read failed` | The backup could not be read. Nothing was written |
+| `FAIL: CAT24C16 - Write failed` | A test write failed. The backup is back |
+| `FAIL: CAT24C16 - Read-back failed` | A read-back failed. The backup is back |
+| `FAIL: CAT24C16 - Read-back mismatch` | A read-back differed from what was written. The backup is back |
+| `… - bytes 16-143 not restored` | Added to any of the above, or on its own after `CAT24C16`, when the backup could not be written back in three tries. Those bytes now hold test data |
+
+> **Before DEV-1494 a failed test returned without putting the backup back**,
+> so every `FAIL` line other than `Read failed` left test data in bytes 16-143.
+> A unit tested on older firmware that ever failed `0023` may still hold it.
+> The old firmware also wrote the same pattern on all three passes. From
+> DEV-1494 until DEV-1496 the patterns were random.
+
+**Shimmer3** runs the same test, from DEV-1496 the same code, and from DEV-1495
+prints the same lines in its `I2C:` block. The reasons come from
+`CAT24C16_testFailReason()` on both. They have no test ID, because Shimmer3 has
+no test registry (see the last section): ` - FAIL: CAT24C16 - Write failed`,
+and so on. Before DEV-1495 it printed only
+`PASS: CAT24C16` or `FAIL: CAT24C16`, and a failed test left test data in
+bytes 16-143, as on Shimmer3R before DEV-1494.
 
 ## 6. Host capture
 

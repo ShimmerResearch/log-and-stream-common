@@ -27,11 +27,23 @@ logging, so a parser written from this document reads both.
 >   `TIMER0_B1_ISR`, `SampleTimerNextCompare`, `SampleTimerStart`). Shimmer3R
 >   at `shimmer3r-firmware` @ `c8c69e71` — `Core/Src/rtc.c` (`RTC_wakeUpSet`,
 >   `HAL_RTCEx_WakeUpTimerEventCallback`), which `Sensing/shimmer_sensing.c`
->   starts with `samplingRateTicks`. The figures for older Shimmer3 firmware
+>   starts with `samplingRateTicks`. The Shimmer3R battery-alarm delay at
+>   `shimmer3r-firmware` @ `cfa1193e` (v1.01.026) — `Core/Src/stm32u5xx_it.c`
+>   (`RTC_IRQHandler`), `Core/Src/rtc.c` (`HAL_RTC_AlarmAEventCallback`,
+>   `RTC_setNextRtcAlarmA`) — with its figures measured on that build, and the
+>   fix at `cdd7b783`. The Shimmer3R SD-sync alarm delay in the same files
+>   (`HAL_RTCEx_AlarmBEventCallback`, `RTC_setupAndStartSdSyncAlarm`), with
+>   `SDSync/shimmer_sd_sync.c`, measured on v1.01.026 and on `cdd7b783`, and
+>   fixed by DEV-1466. The figures for older Shimmer3 firmware
 >   are bench measurements, not read from code: 1024 Hz streams over RN42
 >   v6.15 with the link overloaded, on `shimmer3-firmware` @ `d82c9ef`, which
 >   still re-armed from the counter, gave a mean of 32.0006 ticks per period
->   (about 19 ppm low); 512 Hz streams gave exactly 64.
+>   (about 19 ppm low); 512 Hz streams gave exactly 64. The Shimmer3 SD-sync
+>   delays are bench measurements too (DEV-1482, DEV-1486): SD logs from a
+>   diagnostic build that tags each late stamp with the interrupt that held it
+>   up, on `shimmer3-firmware` @ `29c0f7b` with `log-and-stream-common` @
+>   `be441a4`, before and with the DEV-1486 change. Both builds also carried
+>   the integer millisecond tick (DEV-1482).
 > - **Host reference implementations:** `Shimmer-Java-Android-API` @ `edc3f7d9`
 >   (v0.11.8_beta) — `driver/Configuration.java` (`Shimmer3.Channel`,
 >   `SensorBitmap`, `SENSOR_ID`), `driver/ShimmerObject.java`
@@ -286,6 +298,18 @@ your port against that file.
 >   latency, so a rate measured from the timestamps reads slightly low: under
 >   50 ppm in bench streams at 1024 Hz with the Bluetooth link overloaded, and
 >   none at 512 Hz.
+> - **Shimmer3 v1.01.009 and earlier, with SD sync on**, stamp some samples
+>   several ticks late each time the radio restarts for a sync cycle, about
+>   every 10 s. Each step of the radio's set-up and connect sequence ran in the
+>   Bluetooth receive interrupt, and a sample due meanwhile was stamped when the
+>   step finished. As with any late stamp the grid does not move, and no sample
+>   was lost behind one. Measured in 8-minute sync-logging sessions at divider
+>   33 on two RN4678 units: those steps made 34 and 36 stamps 2 or more ticks
+>   late, up to 6 ticks (0.18 ms). An RN42 unit showed up to 9 ticks (0.27 ms)
+>   from the same interrupt. Later firmware sends the steps from the main loop
+>   (DEV-1486). In the same session on the same units, the worst stamp was then
+>   3 ticks late, from the sync timer itself and the centre's sync packet, so a
+>   stamp up to 3 ticks late still comes with SD sync.
 > - **Shimmer3R** samples on the RTC wake-up timer, which the hardware reloads
 >   itself, so latency has never changed its period. That timer counts at half
 >   the 32768 Hz rate (`RTC_wakeUpSet`), so the period is
@@ -297,6 +321,42 @@ your port against that file.
 >   and the odd settings measured ran 0.15% to 3.1% fast. `INQUIRY_RESPONSE` and
 >   the SD header still report the configured value, so a host must take the
 >   rate from the timestamps, or from `32768 / (2 × floor(samplingRateTicks / 2))`.
+> - **Shimmer3R v1.01.026 and earlier** can stamp one sample up to 13 ticks
+>   (0.4 ms) late each time the battery-read alarm fires: every 2 s docked,
+>   every 60 s undocked, always on a whole second of the clock. The alarm
+>   shares the sample timer's interrupt, which ran the alarm's handler first,
+>   and the handler took about 13 ticks. A sample due in that time was stamped
+>   when the handler finished, at about 13 ticks past the second. The grid
+>   itself does not move: the next step is short by the same amount. Only a
+>   grid with a sample due in those 13 ticks is affected, and the grid's place
+>   against the second differs from one session to the next, so at 1024 Hz
+>   most sessions show nothing and some show a late stamp at every alarm. At
+>   4096 Hz every grid is affected, and the sample after the late one is lost
+>   too. Measured on a docked unit on v1.01.026: steps of 41 then 23 ticks at
+>   1024 Hz, and 15 then 9 at 4096 Hz, at every even second. Later firmware
+>   services the sample timer first and keeps the alarm handler short
+>   (DEV-1464, DEV-1369). On the same unit with that change, 4096 Hz streams
+>   had no stamp off the grid in two minutes docked (60 alarms).
+> - **Shimmer3R with SD sync on, v1.01.026 and earlier** can also stamp a
+>   sample up to about 8 ticks (0.25 ms) late just after a whole second. SD
+>   sync's one-second alarm shares the sample timer's interrupt, and its
+>   handler ran the sync schedule. On the seconds where that schedule stopped
+>   the radio or opened a connection, the handler took 6-8 ticks. That happens
+>   every 4-7 s on the centre and every 9-11 s on a node. As with the battery
+>   alarm, the grid does not move, and only a grid with a sample due in those
+>   ticks is affected.
+>
+>   Measured while logging at 4096 Hz with sync on: four 3-minute logs per
+>   build on a centre and a node.
+>   - **v1.01.026:** 109 late stamps on the centre and 65 on the node, up to
+>     8 ticks late.
+>   - **DEV-1464's change (sample timer first):** 139 and 40, up to 5 ticks
+>     late.
+>   - **Later firmware (DEV-1466),** which runs the sync schedule from a task
+>     and leaves the alarm's handler only to count the second: 25 and 1, each
+>     1-2 ticks late, about 1 ms after the second.
+>
+>   The same logs with sync off had none.
 >
 > A step of about two or more whole periods is a missing sample, not jitter.
 > The stamps alone do not say why it is missing: a slot the firmware skipped

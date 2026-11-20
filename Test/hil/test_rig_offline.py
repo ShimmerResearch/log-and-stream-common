@@ -39,7 +39,7 @@ except ImportError:
     _serial.SerialException = type("SerialException", (OSError,), {})
     sys.modules.update({"serial": _serial, "serial.tools": _tools, "serial.tools.list_ports": _lp})
 
-from rig import ble, bt, config, dock, flash, power, s3_config, s3r_usb, sdfile, throughput  # noqa: E402
+from rig import ble, bt, config, dock, flash, power, s3_config, s3_flash, s3r_usb, sdfile, throughput  # noqa: E402
 import run_rc  # noqa: E402
 
 
@@ -892,6 +892,116 @@ class BtMode(unittest.TestCase):
         d.write_infomem = write_setting_flag
         self.assertEqual(mode.restore(), [])
 
+    # --- with a baseline (DEV-1463) ---
+
+    def with_baseline(self, byte217):
+        from rig import baseline
+        mode, d, original, resets = self.bench(byte217)
+        mode.baseline = lambda unit, im: baseline.image("shimmer3r", im)
+        return mode, d, original, resets, baseline.image("shimmer3r", original)
+
+    def test_the_baseline_is_written_whole_without_a_reset(self):
+        mode, d, original, resets, want = self.with_baseline(0x11)
+        mode.enable(self.Unit("s3r"))
+        self.assertEqual(bytes(d.im), want)
+        self.assertEqual(resets, [])                       # Bluetooth was on: nothing waits for a boot
+        self.assertEqual(mode.restore(), [])
+        self.assertEqual(bytes(d.im), original)
+        self.assertEqual(resets, [])
+
+    def test_a_unit_with_bluetooth_blocked_is_reset_both_ways(self):
+        mode, d, original, resets, want = self.with_baseline(0x15)
+        mode.enable(self.Unit("s3r"))
+        self.assertEqual(bytes(d.im), want)
+        self.assertEqual(d.im[217], 0x31)
+        self.assertEqual(mode.restore(), [])
+        self.assertEqual(bytes(d.im), original)
+        self.assertEqual(resets, ["s3r", "s3r"])
+
+    def test_a_baseline_the_firmware_corrects_stops_the_run_and_is_still_restored(self):
+        from rig import btmode
+        mode, d, original, _, _ = self.with_baseline(0x11)
+        real = d.write_infomem
+
+        def write_correcting(data, offset=0):
+            real(data, offset)
+            d.im[233] = 0x00 if len(data) == 1 else 0x55   # not the 0 written
+        d.write_infomem = write_correcting
+        with self.assertRaises(btmode.BtModeError) as e:
+            mode.enable(self.Unit("s3r"))
+        self.assertIn("233", str(e.exception))
+        d.write_infomem = real
+        self.assertEqual(mode.restore(), [])
+        self.assertEqual(bytes(d.im), original)
+
+    def test_a_platform_without_a_baseline_keeps_its_own_configuration(self):
+        mode, d, original, resets = self.bench(0x11)
+        from rig import baseline
+        mode.baseline = lambda unit, im: baseline.image("shimmer3", im)
+        mode.enable(self.Unit("s3"))
+        self.assertEqual(bytes(d.im), original)
+        self.assertEqual(resets, [])
+
+
+class Baseline(unittest.TestCase):
+    """rig/baseline.py: the configuration every Shimmer3R starts a run from (DEV-1463)."""
+
+    def unit_image(self):
+        im = bytearray(range(256)) * 2
+        im[218] = 0x11                                     # tcxo and lowBatteryAutoStop
+        im[232], im[233] = 0x35, 0x12                      # what a bench session leaves behind
+        return bytes(im)
+
+    def test_the_unit_keeps_its_identity_and_calibration(self):
+        from rig import baseline
+        u = self.unit_image()
+        b = baseline.image("shimmer3r", u)
+        for start, end in [(30, 31), (34, 118), (133, 175), (187, 199), (224, 230), (231, 232), (384, 512)]:
+            self.assertEqual(b[start:end], u[start:end], f"{start}-{end - 1}")
+        self.assertEqual(b[218], 0x10)                     # tcxo kept, auto-stop on low battery not
+
+    def test_everything_else_is_the_firmwares_default(self):
+        from rig import baseline
+        b = baseline.image("shimmer3r", self.unit_image())
+        self.assertEqual(int.from_bytes(b[0:2], "little"), 640)        # 51.2 Hz
+        self.assertEqual(bytes(b[3:6]), bytes([0xE0, 0x20, 0x00]))     # LN accel, gyro, mag, VBatt
+        self.assertEqual(bytes(b[6:10]), bytes([0x51, 0x05, 0x0E, 0x08]))
+        self.assertEqual(bytes(b[10:20]), bytes([0x02, 0x80, 0x10, 0, 0, 0, 0, 0, 0, 0x02]))
+        self.assertEqual(bytes(b[20:30]), bytes(b[10:20]))
+        self.assertEqual(bytes(b[199:215]), b"DefaultTrial\0\0\0\0")
+        self.assertEqual((b[217], b[219]), (0x31, 54))
+        self.assertEqual(bytes(b[220:224]), bytes([0, 1, 0, 0]))      # estimated 1 s, auto-stop off
+        self.assertEqual((b[232], b[233]), (0, 0))                     # no triggers, audio or sound level
+        self.assertEqual(set(b[234:384]), {0xFF})
+
+    def test_the_same_bytes_whichever_unit(self):
+        from rig import baseline
+        a = baseline.image("shimmer3r", self.unit_image())
+        b = baseline.image("shimmer3r", bytes(512))
+        kept = {i for s, e in baseline.KEEP for i in range(s, e)} | {218}
+        self.assertEqual([i for i in range(512) if a[i] != b[i] and i not in kept], [])
+
+    def test_firmware_owned_bytes_are_not_differences(self):
+        from rig import baseline
+        b = baseline.image("shimmer3r", self.unit_image())
+        back = bytearray(b)
+        back[61] ^= 0xFF                                   # gyro calibration, rewritten for the range
+        back[230] |= 0x01                                  # flagWriteCfgToSd
+        self.assertEqual(baseline.differences(b, bytes(back)), [])
+        back[232] = 0x24
+        self.assertEqual(baseline.differences(b, bytes(back)), [232])
+
+    def test_a_short_image_is_refused(self):
+        from rig import baseline
+        with self.assertRaises(ValueError):
+            baseline.image("shimmer3r", bytes(300))
+
+    def test_only_shimmer3r_has_one(self):
+        from rig import baseline
+        self.assertIsNone(baseline.image("shimmer3", bytes(512)))
+        self.assertIsNone(baseline.name("shimmer3"))
+        self.assertTrue(baseline.name("shimmer3r").startswith("shimmer3r-defaults-v1.01.026 sha256:"))
+
 
 class PushedStatusFrame(unittest.TestCase):
     """A status frame the firmware pushes as a query goes out lands where the
@@ -1131,6 +1241,18 @@ class SdFileTrailing(unittest.TestCase):
         self.assertEqual(sc.files, ["000", "001"])
         self.assertEqual((sc.records, sc.missing, sc.dupes), (10, 0, 0))
         self.assertEqual(sc.joins, [("001", 128)])
+
+    def test_a_record_three_quarters_late_is_jitter_with_no_gap_time(self):
+        import tempfile
+        stamps = [1 + 128 * i for i in range(8)]
+        stamps[3] += 96                                      # 3/4 of the 128-tick period late
+        del stamps[5]                                        # and a real loss: slot 5 skipped
+        with tempfile.TemporaryDirectory() as d:
+            sd_file(d, 0, stamps=stamps)
+            sc = sdfile.check_session(Path(d))
+        self.assertEqual((sc.records, sc.gaps, sc.missing, sc.dupes), (7, 1, 1, 0))
+        self.assertEqual((sc.jitter, sc.max_jitter_ticks), (1, 96))
+        self.assertEqual(sc.gap_times_s, [round(128 * 6 / 32768, 1)])
 
     def test_a_header_claiming_more_channels_than_a_shimmer3r_has_is_refused(self):
         raw = bytearray(sdfile.HEAD_S3R)
@@ -2427,6 +2549,11 @@ class GapPositions(unittest.TestCase):
         ts = [0, 32, 64, 128, 160, 288]
         self.assertEqual(bt.gap_positions(ts, 32), [(3, 1), (5, 3)])
 
+    def test_a_stamp_three_quarters_late_is_not_a_gap(self):
+        # 4096 Hz: 22 is the slot of 16, 6 ticks late, as the stamp at 24 shows.
+        self.assertEqual(bt.gap_positions([0, 8, 22, 24, 32], 8), [])
+        self.assertEqual(bt.gap_positions([0, 8, 24, 32, 46, 48], 8), [(2, 1)])
+
 
 def _defects_module():
     """tests/test_defects.py, which imports pytest; None without it."""
@@ -2572,6 +2699,90 @@ class S3FleetSeeds(unittest.TestCase):
     def test_range_0_in_use_may_be_anyone_s_block(self):
         self.assertIn("0 (in use: not the old default)", self.run_mag_seeds(self.fleet.mag_seed_block(0))[0])
         self.run_mag_seeds(bytes(range(21)))
+
+
+class S3FlashRestoreCheck(unittest.TestCase):
+    """DEV-1511: flash_slot writes the saved InfoMem back after the flash. Firmware
+    newer than v1.01.009 corrects bytes 232 and 233 (and the two bits that follow
+    byte 232) on that write, which is not a failed restore."""
+
+    OLD = bytes([0x11] * 217 + [0x25, 0x01] + [0x22] * 13 + [0xFF, 0xFF] + [0x33] * 150)
+
+    def flash(self, firmware):
+        """flash_slot with the Base6, BSL and dock faked. `firmware(written)` is
+        what the new firmware makes of the restore write."""
+        stored = {"im": self.OLD}
+
+        class Dock:
+            def version(self):
+                return types.SimpleNamespace(text="1.01.010")
+
+            def mac(self):
+                return "000666AABBCC"
+
+            def read_infomem(self):
+                return stored["im"]
+
+            def write_infomem(self, im):
+                stored["im"] = firmware(bytes(im))
+
+        @contextmanager
+        def open_when_ready(port, **kw):
+            yield Dock()
+
+        b6 = types.SimpleNamespace(select=lambda s: None, uart_port="COM1", bsl_port="COM2",
+                                   shimmer_bsl_lines=lambda on: None)
+        lines = []
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(s3_flash.dock, "open_when_ready", open_when_ready), \
+                mock.patch.object(s3_flash.msp430_bsl, "program", lambda port, image, log=print: {"bytes": 1, "seconds": 1}), \
+                mock.patch.object(s3_flash.time, "sleep", lambda s: None):
+            res = s3_flash.flash_slot(b6, 1, Path("img.txt"), Path(tmp), log=lines.append)
+            self.assertEqual(Path(res["backup"]).read_bytes(), self.OLD, "the backup is what was read")
+        return res, lines
+
+    @staticmethod
+    def setting(im, offset, value):
+        b = bytearray(im)
+        b[offset] = value
+        return bytes(b)
+
+    def test_the_audio_mode_correction_is_reported_not_raised(self):
+        # 67A0, 18 Nov 2026: v1.01.009 -> main, byte 233 0xFF read back as 0x00
+        res, lines = self.flash(lambda im: self.setting(im, 233, 0x00))
+        self.assertEqual(res["corrected"], [{"offset": 233, "written": 0xFF, "read_back": 0x00}])
+        self.assertIn("corrected InfoMem byte 233 0xff -> 0x00", "\n".join(lines))
+        self.assertIn("InfoMem restored", lines[-1])
+
+    def test_the_button_mode_and_the_bits_that_follow_it(self):
+        def firmware(im):
+            im = self.setting(im, 232, 0x02)
+            im = self.setting(im, 217, im[217] ^ 0x20)   # userButtonEnable
+            return self.setting(im, 218, im[218] | 0x80)  # singleTouchStart
+        res, _ = self.flash(firmware)
+        self.assertEqual([c["offset"] for c in res["corrected"]], [217, 218, 232])
+
+    def test_a_clean_restore_reports_nothing(self):
+        res, _ = self.flash(lambda im: im)
+        self.assertEqual(res["corrected"], [])
+
+    def test_the_firmware_s_own_write_flag_is_neither_a_difference_nor_a_correction(self):
+        res, _ = self.flash(lambda im: self.setting(im, 230, im[230] | 0x01))
+        self.assertEqual(res["corrected"], [])
+
+    def test_any_other_byte_still_fails_the_restore(self):
+        with self.assertRaisesRegex(s3_flash.S3FlashError, r"differs at offsets \[0\]"):
+            self.flash(lambda im: self.setting(im, 0, 0x00))
+
+    def test_another_bit_of_a_corrected_byte_still_fails_it(self):
+        # byte 217 bit 2 is syncEnable, which no newer rule changes
+        with self.assertRaisesRegex(s3_flash.S3FlashError, r"differs at offsets \[217\]"):
+            self.flash(lambda im: self.setting(im, 217, im[217] ^ 0x04))
+
+    def test_a_correction_beside_a_real_difference_still_fails(self):
+        with self.assertRaisesRegex(s3_flash.S3FlashError, r"differs at offsets \[5\]"):
+            self.flash(lambda im: self.setting(self.setting(im, 233, 0x00), 5, 0x00))
 
 
 if __name__ == "__main__":

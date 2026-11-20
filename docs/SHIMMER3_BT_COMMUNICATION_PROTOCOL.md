@@ -261,36 +261,33 @@ throughput. One reason v1.4.18.x is not on `SPP_SEND`: on those modules,
 Shimmer3R firmware does not use `SPP_SEND` on v1.4.18.x, so a host does not see
 this.
 
-**Module configuration repairs after a module update.** Updating the IF820 over
-the air keeps its stored configuration, in either direction. v1.4.18.18 changed
-two defaults in it, so a module that changes version this way runs with the
-other version's values:
+**Module configuration after a module update.** Updating the IF820 over the
+air keeps its stored configuration, in either direction. v1.4.18.18 changed two
+defaults in it, so a module that changes version this way runs with the other
+version's values:
 
 | Update | Field | Value carried over | Effect |
 |---|---|---|---|
-| to v1.4.18.18 (from v1.4.16.16 or earlier) | SPP MTU | 0 | One byte per RFCOMM frame on classic: under 1 KB/s |
-| to v1.4.18.18 (from v1.4.16.16 or earlier) | Configuration offset `0x04E`-`0x051` | `00000000` (v1.4.18.18 default `80808080`) | On v1.4.18.18, the public release and the Infineon test builds alike: after any classic SPP connection, the module stops passing data from the sensor to a BLE connection until it restarts. Commands from the BLE host still arrive, so a BLE host sees a sensor that connects but never answers |
+| to v1.4.18.18 (from v1.4.16.16 or earlier) | SPP MTU | 0 | On the v1.4.18.18 public release and the earlier Infineon test builds: one byte per RFCOMM frame on classic, under 1 KB/s. None on the newest Infineon test build |
+| to v1.4.18.18 (from v1.4.16.16 or earlier) | Configuration offset `0x04E`-`0x051` | `00000000` (v1.4.18.18 default `80808080`) | On the v1.4.18.18 public release and the earlier Infineon test builds: after any classic SPP connection, the module stops passing data from the sensor to a BLE connection until it restarts. Commands from the BLE host still arrive, so a BLE host sees a sensor that connects but never answers. None on the newest Infineon test build |
 | back to v1.4.16.16 (from v1.4.18.18) | SPP MTU | non-zero (v1.4.18.18 default) | Classic about a third slower: about 82 KB/s instead of about 128 KB/s |
 
-At power-up, while the module is still in its text mode, Shimmer3R firmware
-reads each of these fields on the module builds it recognises by boot banner.
-If the field holds the carried-over value, the firmware writes the running
-build's own default and stores it in module flash. The builds are the
-v1.4.18.18 public release and two Infineon test builds for the first two rows,
-and v1.4.16.16 for the third. The field addresses are internal to each module
-build, so other builds are left alone. A repair happens on the first boot after
-the update and never again. The module's Bluetooth address and bonds are
-unchanged, so no re-pairing is needed. Production v1.4.16.16 modules have an
-SPP MTU of 0 and are not touched.
+Shimmer3R firmware does not change these fields. Earlier firmware repaired
+them at power-up on the module builds it recognised by boot banner. The repairs
+were removed once Infineon's newest test build ran correctly with the
+carried-over values. No Shimmer3R shipped with a v1.4.18.18 module, and the
+shipped v1.4.16.16 modules keep their own defaults. A bench module updated from
+v1.4.16.16 straight to an earlier v1.4.18.18 build is slow, with the BLE
+failure above, until the fields are set by hand. The newest test build runs
+correctly with the carried-over values but leaves them stored as they were.
+So a module taken from v1.4.16.16 to it and back should keep v1.4.16.16's
+values. That is read from its stored configuration, not measured.
 
 > `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`: `BT_selectDataPath()`
-> for the path, and `btCfgRepairStep()` with the `btCfgRepairs[]` table and the
-> `SPP_MTU_*`, `CFG_04E_*` and `CFG_MTU_1616_*` boot stages for the repairs. The
-> SPP MTU address and value on v1.4.18.18 are Infineon's; the `0x04E` address on
-> v1.4.18.18 and the v1.4.16.16 address were found on an IF820 development kit
-> and await Infineon's confirmation. Earlier Shimmer3R firmware has no repairs
-> and puts every v1.4.17+ module, v1.4.18.x included, on `SPP_SEND`. **Not in
-> the pinned `shimmer3r-firmware` revision**: see
+> for the path. Shimmer3R firmware from early October to November 2026 carried
+> the repairs (`btCfgRepairStep()`); earlier firmware has none and puts every
+> v1.4.17+ module, v1.4.18.x included, on `SPP_SEND`. **Not in the pinned
+> `shimmer3r-firmware` revision**: see
 > [Still unverified](#still-unverified--not-found-in-code).
 
 **Link role on classic connections.** When a host opens a classic connection,
@@ -307,10 +304,34 @@ as before. Only module builds that implement F=2 change role; builds without it
 take the master role. The flags are written to module flash once, when they
 differ from the stored value.
 
-> `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`, the
-> `START_BT_ADVERTISING` boot stage (`bt_set_parameters`). Earlier Shimmer3R
-> firmware sets the flags to 1 (sniff disable only) on v1.4.17+. **Not in the
-> pinned `shimmer3r-firmware` revision**: see
+**Short-write latency.** Infineon's test builds of v1.4.18.18 hold a short write
+from the sensor about 30 ms longer than v1.4.16.16 or the public release, to
+fill a larger RFCOMM frame.
+- **Replies:** every short reply to a host waits for it, 46-55 ms per command
+  against about 6 ms on v1.4.16.16.
+- **SD sync:** the centre's clock reaches each node that much late, so every
+  node's offset comes out about 50 ms too large.
+
+The newest test build adds `SBTP` F=4, which turns the hold off. On a Shimmer3R
+it cost 17% of the classic data-rate test (154 against 128 KB/s, the same as
+v1.4.16.16), and nothing on 1024 Hz streams (four sensors at once included) or
+on BLE.
+
+Shimmer3R firmware therefore sets it always, making the flags `0x07`. Like F=1
+and F=2, it is stored in module flash when the stored value differs. Builds
+without F=4 refuse the whole command when it is set: v1.4.16.16, the public
+v1.4.18.18 release and the earlier test builds. So the firmware sends it again
+without F=4 and stores `0x03` (`0x00` below v1.4.17). That also covers a module
+taken back from the newest test build to an older image. The older image boots
+with the stored `0x07` and works, and the firmware then stores that image's own
+flags.
+
+> `shimmer3r-firmware` `Shimmer_Driver/CYW20820/CYW20820.c`: the
+> `START_BT_ADVERTISING` boot stage (`bt_set_parameters`), `BT_sbtpFlags()`, and
+> the `EZS_IDX_RSP_BT_SET_PARAMETERS` handler for the resend. Earlier Shimmer3R
+> firmware sets the flags to 1 (sniff disable only) on v1.4.17+, and firmware
+> before November 2026 never sets F=4. **Not in the pinned `shimmer3r-firmware`
+> revision**: see
 > [Still unverified](#still-unverified--not-found-in-code).
 
 **Module status strings (Shimmer3).** The RN41/RN42/RN4678 modules can be
@@ -1567,7 +1588,7 @@ A host must therefore know the generation *before* it can find
 `GET_DEVICE_VERSION_COMMAND` ([§7.2](#72-version-information)). Read the version
 first, then inquire.
 
-> **Shimmer3R before DEV-99: one bogus channel with InfoMem byte 4 bit 6 set.** That
+> **Shimmer3R before v1.01.026 (DEV-99): one bogus channel with InfoMem byte 4 bit 6 set.** That
 > bit (`chEnMicrophone`) added one to `numberOfChannels` without adding the
 > microphone to the packet, and the IDs are copied from the firmware's channel table
 > for that count, so the list ended in one entry that was not a channel and the
@@ -1687,11 +1708,24 @@ for the unique serial without sending the raw byte. The web SDK covers it.
 
 The string is the Bluetooth module's own firmware banner, captured during module
 bring-up and cached. On Shimmer3 it is the RN41/RN42/RN4678 version response with
-any trailing `CMD>` prompt stripped; on Shimmer3R it is the CYW20820 EZ-Serial
-application version. It is **not** null-terminated on the wire — take the length
+any trailing `CMD>` prompt stripped; on Shimmer3R it is a line the firmware
+composes from the CYW20820's EZ-Serial version record:
+
+```
+CYW20820 app=v01.04.18.18, stack=0x00000000, protocol=0x0104, hardware=0xf1
+```
+
+Every v1.4.18.18 build, the public release and Infineon's test builds alike,
+reports the same `app=` version. So on a test build, Shimmer3R firmware appends
+the build's name from the module's boot banner, as `, build=<name>`. A public
+release adds nothing. The name goes last, so a host matching the earlier fields
+is unaffected.
+
+It is **not** null-terminated on the wire — take the length
 from the length byte. The buffer is 100 bytes
-(`Comms/shimmer_bt_uart.c:53`), which is sized for the longest banner either
-module produces.
+(`Comms/shimmer_bt_uart.c:53`), so the string is at most 99 bytes. That
+covers the longest banner either module produces. On Shimmer3R the firmware
+keeps the composed line within it, `build=` included.
 
 > `Comms/shimmer_bt_uart.c:2160-2168`; the capture and `CMD>` strip are at
 > `:341-464`.
@@ -2689,7 +2723,7 @@ card memory* commands address everything above it, with host offset 0 mapping to
 absolute byte 16.
 
 > `EEPROM/shimmer_eeprom.h:15-31`; `CAT24C16_TOTAL_SIZE` 2048 and
-> `CAT24C16_PAGE_SIZE` 16 from the platform `CAT24C16/CAT24C16.h`.
+> `CAT24C16_PAGE_SIZE` 16 from `EEPROM/cat24c16.h`.
 > The `+ 16` offset is applied at `Comms/shimmer_bt_uart.c:2350` (read) and
 > inside `ShimEeprom_writeDaughterCardMem` (write).
 
@@ -3348,9 +3382,11 @@ unknown feature id ([§5.2](#52-the-three-nack-preconditions)). Firmware older
 than `SET_FEATURE` itself does not: it runs feature 3 as
 `GET_SAMPLING_RATE_COMMAND` and ACKs it ([§7.12](#712-control-and-test)).
 Neither answers `GET_EVENT_CHANNEL_STATUS_COMMAND`, an unknown byte to them.
-No release has the event channel yet
-([Appendix A](#appendix-a-firmware-version-gates)), and the builds that do have
-it report the previous release's version. So a host tells in two steps:
+`LogAndStream_Shimmer3R_v1.01.026` is the first Shimmer3R release with the
+event channel, and no Shimmer3 release has it yet
+([Appendix A](#appendix-a-firmware-version-gates)). The development builds
+before a release report the previous release's version. So a host tells in two
+steps:
 
 1. The firmware version is `LogAndStream_Shimmer3R_v1.00.052` or
    `LogAndStream_Shimmer3_v1.00.017` or later, so it has `SET_FEATURE`.
@@ -3793,7 +3829,7 @@ exist nowhere else, which are exactly the ones added after the extraction.
 | Status response | status bit 7 carries the red-LED toggle state | `isSupportedRedLedStateInStatus`<br>LogAndStream 0.7.10 | `toggleLedRedCmd` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.011`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit c42e0f6, 2024-10-07)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 65aa6176, 2023-11-09) |
 | Status response | status bits 6 and 5 carry SD bad-file / SD-inserted | `isSupportedSdInfoInStatus`<br>LogAndStream 0.7.12 | `sdBadFile` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.012`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit ed662e8, 2024-11-05)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 42a86589, 2024-11-05) |
 | Status response | status bit 2 carries "real-world clock has been set" | `isSupportedRtcStateInStatus`<br>LogAndStream 0.7.14 | `RTC_isRwcTimeSet` | Shimmer3: `LogAndStream_Shimmer3_BLE_v1.00.000`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit e501346, 2025-06-30)<br>Shimmer3R: `LogAndStream_Shimmer3R_v1.00.027` (introducing commit b4964c95, 2025-06-30) |
-| Status response | status byte 1 bits 1-2 carry audio recording and audio fault | _not yet in any host_<br>the first Shimmer3R release with DEV-99 | `ShimAudio_statusBits` | DEV-99, not yet released |
+| Status response | status byte 1 bits 1-2 carry audio recording and audio fault | _no Java predicate_; web SDK `shimmer3RRecordsAudio`<br>LogAndStream 1.1.26 (Shimmer3R); a build reporting 1.1.25 is asked with `GET_AUDIO_STATUS_COMMAND` | `ShimAudio_statusBits` | shared module: `LogAndStream_Shimmer3R_v1.01.026` (introducing commit e3cedf1, 2026-11-02) |
 | Status response | a SECOND status byte carrying USB-plugged-in | `isSupportedUSBPluggedInStatus`<br>LogAndStream 1.0.24 (Shimmer3R) | `ShimBt_assembleStatusBytes` | shared module: `LogAndStream_Shimmer3R_v1.00.024` (introducing commit 8377afc, 2025-06-04) |
 | Commands | GET_BT_VERSION_STR_COMMAND (Bluetooth module firmware string) | `isSupportedBtFwVerRequest`<br>_no version threshold (hardware-keyed or unconditional)_ | `GET_BT_VERSION_STR_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000` (introducing commit 372a4de, 2023-02-08)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | Commands | GET_STATUS_COMMAND | `isSupportedBtStatusRequest`<br>LogAndStream 0.5.2 (Shimmer3) | `GET_STATUS_COMMAND` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 8b7e616, 2014-07-22)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
@@ -3812,7 +3848,9 @@ exist nowhere else, which are exactly the ones added after the extraction.
 | Calibration | GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND (sensor-agnostic pressure coefficients) | — | `GET_PRESSURE_CALIBRATION_COEFFICIENTS_COMMAND` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.006`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit a5151db, 2024-07-08)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 707d1387, 2024-07-01) |
 | Calibration | alternative accel / alternative mag calibration commands | — | `SET_ALT_ACCEL_CALIBRATION_COMMAND` | Shimmer3: `LogAndStream_Shimmer3_BLE_v0.16.013`, `LogAndStream_Shimmer3_v1.00.003` (introducing commit 6459f66, 2024-12-12)<br>Shimmer3R: `LogAndStream_Shimmer3R_v1.00.005` (introducing commit 15947690, 2024-11-28) |
 | SD transfer | SD file transfer over Bluetooth (Shimmer3R) | — | `SD_FILE_READ_COMMAND` | shared module: `LogAndStream_Shimmer3R_v1.01.009` (introducing commit 71d283f, 2026-08-18) |
-| Event channel | `FEATURE_EVENT_STREAM`, `GET_EVENT_CHANNEL_STATUS_COMMAND` and the event record frame | — | `GET_EVENT_CHANNEL_STATUS_COMMAND` | _not yet released_ |
+| Event channel | `FEATURE_EVENT_STREAM`, `GET_EVENT_CHANNEL_STATUS_COMMAND` and the event record frame | — | `GET_EVENT_CHANNEL_STATUS_COMMAND` | shared module: `LogAndStream_Shimmer3R_v1.01.026` (introducing commit 692bbab, 2026-10-30)<br>Shimmer3: _not yet released_ |
+| Audio | `GET_AUDIO_STATUS_COMMAND` and configuration byte 233 bits 0-3 (audio recording) | _no Java predicate_; web SDK `shimmer3RRecordsAudio`<br>LogAndStream 1.1.26 (Shimmer3R); a build reporting 1.1.25 is asked with `GET_AUDIO_STATUS_COMMAND` | `GET_AUDIO_STATUS_COMMAND` | shared module: `LogAndStream_Shimmer3R_v1.01.026` (introducing commit e3cedf1, 2026-11-02) |
+| Audio | the `SOUND_LEVEL` channel (0x38), configuration byte 233 bit 4 | _no version gate_: write bit 4 and read it back ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8) | `AUDIO_SOUND_LEVEL` | shared module: `LogAndStream_Shimmer3R_v1.01.026` (introducing commit f49ccc8, 2026-11-11) |
 | InfoMem | configuration setup bytes 4-6 at InfoMem 130-132 | — | `NV_CONFIG_SETUP_BYTE4` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, ≤ `LogAndStream_v0.8.0` (introducing commit 00425d6, 2015-03-30)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | InfoMem | the Bluetooth PIN byte at InfoMem 231 | — | `NV_BT_SET_PIN` | Shimmer3: ≤ `LogAndStream_Shimmer3_BLE_v0.15.003`, ≤ `LogAndStream_Shimmer3_v0.15.000`, `LogAndStream_v0.9.0` (introducing commit 87ff27c, 2017-08-18)<br>Shimmer3R: ≤ `LogAndStream_Shimmer3R_v0.00.002` (introducing commit 39041ebe, 2023-11-01) |
 | Commands | RESET_BT_ERROR_COUNTS | — | `RESET_BT_ERROR_COUNTS` | shared module: `LogAndStream_Shimmer3R_v1.00.049`, `LogAndStream_Shimmer3_v1.00.015` (introducing commit 039dbbd, 2025-11-27) |
@@ -3904,13 +3942,16 @@ them.
 
 **Transport and framing**
 
-- **The Shimmer3R classic data path, module configuration repairs and link-role
-  flags ([§2.1](#21-classic-bluetooth-spp)) are not yet in a pinned revision.**
+- **The Shimmer3R classic data path, module configuration and link-role and
+  latency flags ([§2.1](#21-classic-bluetooth-spp)), and the Shimmer3R
+  `build=` suffix of `GET_BT_VERSION_STR_COMMAND`
+  ([§7.2](#72-version-information)), are not yet in a pinned revision.**
   They describe `shimmer3r-firmware` changes that were in review when written:
-  `BT_selectDataPath()`, `btCfgRepairStep()` and its boot stages, and `SBTP`
-  flags `0x03` on v1.4.17+. None of them is present at `a8f105e5`. The
-  behaviour was bench-tested on IF820 v1.4.16.16, the v1.4.18.18 release and two
-  Infineon test builds of it. **To do:** once the changes are on
+  `BT_selectDataPath()`, the configuration repairs that were later removed,
+  `SBTP` flags `0x07` on v1.4.17+ (`0x03` where F=4 is refused), and the
+  build name. None of them is present at `a8f105e5`. The behaviour was bench-tested
+  on IF820 v1.4.16.16, the v1.4.18.18 release and three Infineon test builds of
+  it. **To do:** once the changes are on
   `shimmer3r-firmware`'s main branch, move the **Verified against** pin to that
   commit, add line ranges to the §2.1 citations, and remove this entry.
 - **The Shimmer3R 300-byte transmit hand-off is a measured module limit.**

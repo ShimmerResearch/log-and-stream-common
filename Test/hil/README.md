@@ -94,16 +94,33 @@ fix makes its check pass, move the check into its platform's tier, and into
    hardware ID contains the unit's MAC. `smoke.ble_throughput` needs no
    pairing at all: it connects over BLE by the unit's MAC, through bleak, and
    needs the unit not connected to any other host.
-4. Units configured for SD sync, or with Bluetooth disabled, keep their radio
-   off. The run handles that itself (`rig/btmode.py`): before the first test,
-   each unit whose tests need Bluetooth has those two bits of InfoMem byte 217
-   cleared and is reset, and after the last its InfoMem is written back byte
-   for byte and it is reset again. The read-back must match everywhere but
-   byte 230 bit 0, `flagWriteCfgToSd`, which the firmware sets itself on
-   every configuration write; that bit differing is expected, not a failed
-   restore. A Shimmer3 is reset through its Base6 slot;
-   a Shimmer3R through its ST-Link if `rig.toml` names one, otherwise through
-   the ST bootloader. A unit that cannot be put back fails the run.
+4. The run sets each unit's configuration up itself, and puts the unit's own
+   back after the last test (`rig/btmode.py`). A unit that cannot be put back
+   fails the run.
+   - **Every Shimmer3R starts from the baseline** (`rig/baseline.py`,
+     DEV-1463): the firmware's default configuration, with the unit's own
+     calibration, name, MAC, Bluetooth baud and PIN bytes, and TCXO bit. It is
+     written over the dock before the first test and read back; a byte the
+     firmware changed stops the run.
+     - Without it, a test inherits whatever the unit's last bench session left
+       in InfoMem: a trigger mode in byte 232, audio or the sound level in
+       byte 233, other ranges, an auto-stop.
+     - `run.unit_config` in the report names the baseline.
+     - `--keep-unit-config` starts each unit from its own configuration
+       instead, for an experiment that needs it.
+   - **Units configured for SD sync, or with Bluetooth disabled, keep their
+     radio off.** For each unit whose tests need Bluetooth, those two bits of
+     InfoMem byte 217 are cleared. The baseline has both clear already. The
+     unit is then reset, because the firmware reads them only at boot, and
+     reset again after its InfoMem is written back. A unit whose own
+     configuration had neither set is never reset.
+   - **The restore is checked byte for byte.** The read-back must match
+     everywhere but byte 230 bit 0, `flagWriteCfgToSd`, which the firmware
+     sets itself on every configuration write. That bit differing is
+     expected, not a failed restore.
+   - **How a unit is reset.** A Shimmer3 through its Base6 slot. A Shimmer3R
+     through its ST-Link if `rig.toml` names one, otherwise through the ST
+     bootloader.
 5. Close STM32CubeIDE and Consensys before a release run. The suite warns if
    they are open: the IDE pages every Bluetooth COM port when USB devices
    arrive, which distorts Bluetooth timing for most of a minute.
@@ -258,6 +275,16 @@ not a lost sample and a duplicate. That includes one exactly half a period
 late, which a bench run showed. Smoke tests fail on any loss or duplicate, and
 on jitter beyond a quarter period.
 
+A stamp three quarters of a period late or more is first counted in the next
+slot, with its own slot lost. If the next stamp lands in that same slot, the
+first is counted again as late for the slot it skipped: jitter, with no loss
+and no duplicate. At 4096 Hz the DEV-1464 battery alarm stamped one sample 6
+ticks late in an 8-tick period, and the next on time. Without this, each alarm
+read as a lost sample and a duplicate. Only the stamp just before can be
+revised. `classify_step` returns how late it now counts, so the callers that
+report each step (`rig/midstream.py`, `rig/sdfile.py`, `bt.gap_positions`)
+take back what they reported for it.
+
 The `sd_start_midstream` items (`rig/midstream.py`) look for two more things,
 because a log start mid-stream can re-phase the stream:
 
@@ -268,6 +295,31 @@ because a log start mid-stream can re-phase the stream:
 
 The grid is moved at each move found, before the steps are sorted as above, so
 one move is reported once, not as jitter on every stamp after it.
+
+## Which bytes are packets
+
+A stream is framed by length: a packet is a 0x00, then the stamp and the
+channels, and the next frame starts with 0x00 or an ACK. A 0x00 can also be a
+data byte, so each frame is confirmed before it is accepted (`rig/bt.py`,
+`BtLink.stream`). With a link CRC on, the CRC confirms it. Without one, the
+stamps do, through `_stamps_frame`:
+
+- **In step**, straight after a packet: a stamp a plausible number of periods
+  on is a packet. So is one off the grid when the next frame is back on the
+  old grid and the one after that follows it: a late stamp, judged as jitter
+  above (DEV-1464: one stamp 9-13 ticks late at each battery alarm).
+- **Searching**, after bytes that did not frame: a candidate needs its step
+  and the two frames after it, each a step of at most `CONFIRM_MAX_PERIODS`
+  periods on. With its step alone, the search once accepted a false frame
+  inside the data, and the rest of the stream then failed to frame: 380 KB
+  of a 90 s capture.
+
+Bytes that do not frame are counted in `resyncs`, and the first few are kept
+in `misframes`. A packet one byte short shows as `plen - 1` of them. Three
+things still misframe without a CRC: a moved grid, and a late stamp within
+two packets of a reply or of the stream's end. The `sd_start_midstream` items
+run with the CRC on for the first. `test_hil_framing.py` replays streams
+captured on the bench (`testdata/`).
 
 `run_rc.py` expects every unit it flashes to be docked (on USB) when it starts,
 as the tests do, and stops before flashing anything if one is not.

@@ -27,7 +27,13 @@ firmware's only use of it is to phase its LEDs with the centre's (§7).
 >   was read at `shimmer3-firmware` @ `ac30299`, where the callback is
 >   `ShimTask_setInitialiseBluetooth` and `BtStop()` clears a queued
 >   `TASK_BT_TURN_ON_AFTER_BOOT`. Shimmer3R already queues the start at
->   `a8f105e5`.
+>   `a8f105e5`. §6.3's Shimmer3R tick task was read from DEV-1466's change:
+>   `Core/Src/rtc.c` (`RTC_setupAndStartSdSyncAlarm`,
+>   `HAL_RTCEx_AlarmBEventCallback`, `RTC_takeSdSyncTicks`) and
+>   `TaskList/shimmer_taskList.c` (`TASK_SD_SYNC_TICK`). §6.3's queued set-up
+>   and connect steps on Shimmer3 (DEV-1486) were read from the DEV-1486
+>   branches: `Shimmer_Driver/RN4X/RN4X.c` in `shimmer3-firmware`, and
+>   `ShimBt_dmaConversionDone` and `ShimBt_stopCommon` here.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430); **S3R** =
 > Shimmer3R (STM32U5). LogAndStream only. All times are in 32768 Hz ticks
@@ -331,18 +337,41 @@ below the limit, so a node in active conversation keeps its window open.
 
 ### 6.3 Starting and stopping the radio
 
-The schedule runs in the sync timer's interrupt: `TIMER0_A1_ISR` on S3, the
-RTC alarm B callback on S3R. The radio is not handled the same way in both
-directions:
+Where the schedule runs differs:
+
+- **S3:** in the sync timer's interrupt, `TIMER0_A1_ISR`.
+- **S3R:** in `TASK_SD_SYNC_TICK`, from the main loop. RTC alarm B fires on
+  every whole second while the sync timer runs. Its callback only counts the
+  tick and queues the task, which runs `ShimSdSync_handleSyncTimerTriggers()`
+  once per counted tick. Stopping the timer drops any tick not yet run.
+
+On S3R the schedule used to run in the alarm B callback itself (DEV-1466). That
+interrupt is shared with the sample timer, which stamps each sample when its
+own callback runs. On a tick that stopped the radio or opened a connection, the
+callback held the sample timer off for 6-8 ticks. A sample due in that time was
+stamped that much late
+([SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1).
+
+The radio is not handled the same way in both directions:
 
 - **Start is queued.** `ShimSdSync_startBtForSync` calls the start callback.
   On both platforms that callback only queues `TASK_BT_TURN_ON_AFTER_BOOT`, and
   `InitialiseBtAfterBoot()` runs from the main loop. On S3 the timer interrupt
   wakes the main loop when it has queued anything.
-- **Stop is immediate.** The stop callback is `BtStop()`, called in the
-  interrupt. It hands the TX-buffer reset to `TASK_BT_TX_BUF_CLEAR`. On S3,
-  `BtStop()` also drops a start that is still queued, so a start requested
-  before a stop cannot run after it.
+- **Stop is immediate.** The stop callback is `BtStop()`, called from the
+  schedule: in the interrupt on S3, in the task on S3R. It hands the TX-buffer
+  reset to `TASK_BT_TX_BUF_CLEAR` in both cases. On S3, `BtStop()` also drops a
+  start that is still queued, so a start requested before a stop cannot run
+  after it. It drops a queued set-up or connect step too (below).
+- **On S3, the module's set-up and connect steps are queued as well.** The
+  RN4x driver sends one command, then waits for the module's reply before
+  sending the next. Each reply now queues the next step as `TASK_BT_CMD_STEP`,
+  which sends it from the main loop (DEV-1486). Before, the Bluetooth receive
+  interrupt built and sent it, and held the sample timer back while the radio
+  restarted: by up to 6 ticks on the RN4678 units measured. The first step of
+  each sequence still runs in an interrupt: the set-up's from the millisecond
+  clock, and the centre's connect or disconnect from the sync timer's
+  interrupt, through `BT_connect()` or `BT_disconnect()`.
 
 > **The queued start waits only for the main loop.** It sits behind any
 > higher-priority task, such as an SD write, which normally means milliseconds.
@@ -350,7 +379,9 @@ directions:
 > two seconds. It is not free, though: after a restart, the centre checks
 > `btIsInitialised` on the next three ticks and restarts the radio again if it
 > is still not up. A main loop held for a large part of a second would show up
-> there first.
+> there first. On S3 each set-up step now waits for the main loop the same way,
+> one pass per step, so a slow main loop lengthens the set-up too.
+> `TASK_BT_CMD_STEP` sits above the data path to keep that short.
 
 ## 7. What a host must do
 
@@ -366,6 +397,18 @@ directions:
 Absolute time still comes from the real-world clock; sync only relates the
 devices to each other. See
 [SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md).
+
+> **The offset includes the one-way radio delay.** The node stamps the centre's
+> packet when it arrives, and nothing subtracts the time it spent in transit.
+> On Shimmer3R that time depends on the centre's Bluetooth module firmware.
+> Infineon's test builds of IF820 v1.4.18.18 hold a short write about 30 ms to
+> fill an RFCOMM frame. With such a centre, every node's offset came out about
+> 50 ms too large, against 1-3 ms with a v1.4.16.16 centre (DEV-1468). Shimmer3R
+> firmware now turns the hold off on module builds that support it
+> ([SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md)
+> §2.1). On the bench (Nov 2026), a centre on the newest test build gave
+> offsets of 2.5-3.5 ms with a Shimmer3R node. A Shimmer3 node's offset came
+> out at 6.7-9.6 ms, within the run-to-run spread Shimmer3 offsets show anyway.
 
 The firmware's one use of the offset is the LEDs. Once `rcFirstOffsetRxed` is
 set, a node converts the clock reading its blink phase is taken from into the
@@ -398,7 +441,9 @@ The blue upper LED reflects `rcFirstOffsetRxed` while sensing — see
 
 - **The achieved synchronisation accuracy.** Nothing in the firmware states a
   target or a measured figure. The 0.1 s blacklist threshold and the
-  minimum-selection strategy bound the *algorithm*, not the result.
+  minimum-selection strategy bound the *algorithm*, not the result. The one
+  bench figure is Shimmer3R's: offsets within 1-3 ms with an IF820 v1.4.16.16
+  centre, on LogAndStream v1.01.026 in November 2026 (§7).
 - **What happens after `syncThis > 3`.** The branch is empty apart from the
   comment "*can stop syncing after certain #*"; the `else` increments
   `syncThis`. The intended behaviour is not implemented or not obvious.

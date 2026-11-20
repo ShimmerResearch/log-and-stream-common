@@ -211,6 +211,7 @@ What the suites cover today:
 | `test_battery` | `Battery/shimmer_battery.c` | ×2 | Charge-band hysteresis, charger states, LED colours, low-battery auto-stop |
 | `test_boards` | `Boards/shimmer_boards.c` | ×2 | Every revision gate, across 25 board revisions |
 | `test_calibration` | `Calibration/shimmer_calibration.c` | ×2 | The length and offset bounds on the calibration dump: Bluetooth chunk reads and writes, record copies against the caller's slot, the dump's declared end and the RAM end, the SD calibration file's size, and a card that stops answering |
+| `test_cat24c16` | `EEPROM/cat24c16.c` | ×1 | The CAT24C16 driver against a fake part that NACKs during its 5 ms write cycle: page and block splitting, that every write returns with the part idle, the bounds, a failed read reading as `0xFF`; and the factory self-test under injected faults, which must put bytes 16-143 back whatever fails (DEV-1494, DEV-1495) |
 | `test_platform_seam` | `Platform/platform_api.c`, `Boards/shimmer_boards.c` | ×2 | A platform's override of a weak hook beats the default even when the default links first; `log_and_stream_globals.h` declares its globals rather than defining them |
 
 `check_weak_decls.py` (`make -C Test/host weak-decls`) is the text-only half of
@@ -1179,6 +1180,7 @@ case earns a permanent place here.
 | DEV-1363 | A host connects to a unit that is already logging, and its `INQUIRY` costs the log 100 ms of samples | `smoke.sd_inquiry_midlog` on Shimmer3R, on the required list — plus §5.6.7 by hand on Shimmer3 |
 | DEV-1417 | A Shimmer3R's `max_exp_len` auto-stop ended a 7-minute log 3% early: the LED phase lock counted seconds twice when TIM6 ran fast | `test_autostop`, `test_leds_phase` (closed loop) — plus §5.6.8 |
 | SD error on USB | A Shimmer3R on USB-C, out of the dock and with no card, flashed the SD-card error instead of its charging colour: the error was gated on the dock alone | `test_leds` |
+| DEV-1494, DEV-1495 | A factory EEPROM self-test that failed part-way left test data in daughter-card bytes 0-127, which a host may have stored data in | `test_cat24c16` |
 
 **When a fault escapes, add its case here and a test for it in the same PR.** A
 regression list that only grows by hand stops growing.
@@ -1416,6 +1418,42 @@ release like any other (§10.2, rule 3) unless it is accepted:
 result, as a sign-off's waiver does (§10.1). Setup and layout are in
 `Test/hil/README.md`.
 
+**Every Shimmer3R starts the run from one configuration** (DEV-1463). The smoke
+and soak tests set only what they measure, the sensors and the sampling rate,
+and keep the rest of InfoMem as they find it. Without a baseline, the rest is
+whatever the unit's last bench session left. On the v1.01.026 run that was:
+- the sound-level channel on one unit, which failed both throughput items
+  before they measured anything;
+- audio recording on three of four units, so their logs ran under a different
+  SD load from the fourth's;
+- a byte 232 trigger mode on two units, and low-battery auto-stop on two.
+
+So before its first test, the suite writes `rig/baseline.py`'s configuration
+to every Shimmer3R it tests, over the dock, and reads it back. That
+configuration is the firmware's own default (`ShimConfig_setDefaultConfig`, as
+v1.01.026 writes it for `RESET_TO_DEFAULT_CONFIGURATION`). It is 51.2 Hz with
+low-noise accel, gyro, mag and VBatt, the default ranges and ExG registers,
+the button on, no auto-stop, and bytes 232 and 233 at 0.
+- **Kept from the unit:** what describes the unit rather than configures it.
+  That is its calibration blocks, Shimmer name, MAC, Bluetooth baud and PIN
+  bytes, and the TCXO bit.
+- **Defined in the suite, not sent as `0x5A`:** a run has to start from the
+  same bytes whichever release it tests. `0x5A` also renames the unit and
+  zeroes its baud byte.
+- **A read-back that differs stops the run.** The calibration the firmware
+  recomputes for the configured ranges, and `flagWriteCfgToSd`, are allowed
+  to differ.
+- **The unit is reset only if its own configuration had SD sync or
+  `bluetoothDisable` set**, the one setting the firmware reads at boot.
+- **The unit's own InfoMem goes back at the end of the run.**
+- **The report's `run.unit_config` names the baseline and a hash of its
+  bytes.**
+- **`--keep-unit-config` turns the baseline off**, for an experiment that
+  needs a unit's own configuration, and the report says so.
+
+Shimmer3 units keep their own configuration until a Shimmer3 baseline is
+captured. Each test still restores what it found, which is now the baseline.
+
 **A Shimmer3R's USB goes away while it senses.** With USB-C in,
 `ShimSens_startSensing()` tears the unit's USB device down, CDC port and drive
 together, and the stop brings it back with `USB_init()`. So every docked
@@ -1472,7 +1510,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
 | `smoke.sd_start_midstream` | Undocked, six 2 s SD logs started and stopped inside one 256 Hz stream, link CRC on. Odd cycles send `START_LOGGING` alone; even ones send `SET_RWC` first, as the reference host does before every log start. The stream's stamps must never step back or sideways: no stamp at or behind the one before, no move of the sampling grid, no lost or duplicate samples, jitter within a quarter period. Each problem is reported with the cycle it followed, and with how many clock-set and plain starts disturbed the stream. A status query must show logging, and the card must hold one new session per cycle |
 | `smoke.sd_inquiry_midlog` | §5.6.7, the DEV-1363 regression case (§7), and the one smoke item on the required list. 1024 Hz with every sensor the board has fitted; undocked, `START_LOGGING`, then `INQUIRY` every 0.25 s for 60 s, then stop and re-dock. The new session must have no lost or duplicate samples, jitter within a quarter period, and its whole 60 s; every inquiry must report the layout the log started with. A gap of `TIMEOUT_100_MS / divider + 2` samples (104 at 1024 Hz, a 3,360-tick step) is named as the packet ring's fail-safe. The note says how many inquiries went out. A clean log after fewer than 120 is `not_covered`: v1.01.024 lost samples on about one inquiry in 17, so fewer could miss it by luck. InfoMem is saved to disk and put back |
-| `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt |
+| `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt. Lost samples are the figure, not a defect, but every byte must frame, no stamp may repeat or step back, and none may be more than a quarter period off its slot |
 | `smoke.ble_throughput` | As `smoke.bt_throughput`, over BLE (the IF820's CYSPP service, data as notifications), against this unit's BLE baseline. `not_covered` when the unit's EEPROM has BLE off (`bleEnabled`, EEPROM memory map §4.2) |
 
 The **fleet** tier is §5.1 made automatic: Shimmer3, one unit per radio
@@ -1481,7 +1519,12 @@ docked in a Base6. `run_rc.py` flashes each unit through its slot with the
 MSP430 bootloader, CRC-verifying every block. Mass erase also clears
 information memory B-D, which holds the unit's configuration and calibration,
 so InfoMem is read over the dock and saved first, then written back after the
-flash.
+flash. The read-back must match it everywhere except `flagWriteCfgToSd` and
+the fields that firmware newer than v1.01.009 corrects on that write: bytes 232
+and 233, `userButtonEnable` and `singleTouchStart`
+([configuration](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.3, §8.5). Corrections
+there are logged and returned by `flash_slot()`; any other difference stops the
+run (DEV-1511).
 
 | Item | Checks |
 |---|---|
@@ -1556,8 +1599,9 @@ read as a counter wrap, so every later sample lands 512 s late. A forward step
 is not proof of lost samples: setting the clock can step the counter, and the
 stamps cannot tell the two apart. Either way it is reported as a step off the
 grid. The stream runs with link CRC on, because without it a frame is
-confirmed by a plausible timestamp step, and an off-grid stamp would be
-dropped as a misframe instead of judged.
+confirmed by its timestamps. A single late stamp is still confirmed by the
+packets after it, back on the grid, but a grid that moves would be dropped as
+misframes instead of judged (`Test/hil/README.md`, "Which bytes are packets").
 
 The **release** tier runs a configuration matrix on each platform. On Shimmer3R
 it is the one in `Test/hil/matrix/s3r_release.toml`. There are about 30 rows, chosen so every
@@ -1577,8 +1621,9 @@ logs. Each row is its own item, `release.<row>`:
   does not have are left out (`rig/s3r_boards.py`).
 - **Timing and framing.** No lost or duplicate samples, jitter within a quarter
   period, and the rate measured on the device clock. Every frame is confirmed
-  before it is accepted: its CRC when a mode is on, a plausible timestamp step
-  when not.
+  before it is accepted: its CRC when a mode is on, its timestamps when not. A
+  stamp off the grid with the packets after it back on it is a late stamp,
+  failed as jitter, not as bytes that did not frame (DEV-1464).
 - **Signals at rest.** LN and WR accel read |a| ≈ 1 g, the gyro mean is ≈ 0,
   no axis is stuck, staircased or saturated, and VBatt is 3.0-4.3 V.
   Calibration comes from where a host would take it: `GET_ALL_CALIBRATION` for

@@ -723,6 +723,21 @@ void ShimSdSync_handleSyncTimerTrigger(void)
   }
 }
 
+#if defined(SHIMMER3R)
+/* TASK_SD_SYNC_TICK: the one-second ticks the RTC's Alarm B interrupt has
+ * counted since the task last ran, normally one. The interrupt does nothing
+ * else, because it is shared with the sample timer (DEV-1466). A tick that
+ * arrives after the timer was stopped is dropped, as the alarm itself would
+ * have been. */
+void ShimSdSync_handleSyncTimerTriggers(uint32_t ticks)
+{
+  while (ticks-- > 0U && shimmerStatus.sdSyncCommTimerRunning)
+  {
+    ShimSdSync_handleSyncTimerTrigger();
+  }
+}
+#endif
+
 void ShimSdSync_handleSyncTimerTriggerCenter(void)
 {
   if (shimmerStatus.sensing && (syncNodeNum > 0))
@@ -919,7 +934,8 @@ void ShimSdSync_handleSyncTimerTriggerNode(void)
   }
 }
 
-/* Called from the sync timer interrupt. Both platforms register a start
+/* Called from the sync tick: the sync timer interrupt on Shimmer3,
+ * TASK_SD_SYNC_TICK on Shimmer3R. Both platforms register a start
  * callback that only queues TASK_BT_TURN_ON_AFTER_BOOT, so the module starts
  * from the main loop, well inside the one-second tick. On Shimmer3 the RN4x
  * driver set-up (BT_init) is part of InitialiseBtAfterBoot(), in that task. */

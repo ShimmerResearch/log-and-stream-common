@@ -77,5 +77,44 @@ class Steps(unittest.TestCase):
         self.assertEqual(st.jitter, 0)
 
 
+class LateByThreeQuartersOrMore(unittest.TestCase):
+    """A stamp three quarters of a period late or more is first counted in the
+    next slot, the slot before it lost. When the stamp after it lands in that
+    same slot, it was a late stamp: one jitter, no loss and no duplicate."""
+
+    def test_at_4096hz_the_dev1464_alarm(self):
+        # s3r-c623 on v1.01.026, 12 Nov 2026: the sample due 7 ticks past the
+        # second stamped at 13, the next on time at 15. Steps 14 then 2.
+        st = run([8, 14, 2, 8], 8)
+        self.assertEqual((st.gaps, st.missing, st.dupes, st.max_gap_ticks), (0, 0, 0, 0))
+        self.assertEqual((st.jitter, st.max_jitter_ticks), (1, 6))
+
+    def test_at_1024hz_almost_a_period_late(self):
+        st = run([32, 32 + 31, 1, 32], 32)
+        self.assertEqual((st.gaps, st.missing, st.dupes), (0, 0, 0))
+        self.assertEqual((st.jitter, st.max_jitter_ticks), (1, 31))
+
+    def test_late_after_a_lost_sample_keeps_the_loss(self):
+        # Slot 2 lost, slot 3 stamped 6 late, slot 4 on time.
+        st = run([8, 8 * 2 + 6, 2, 8], 8)
+        self.assertEqual((st.gaps, st.missing, st.dupes, st.max_gap_ticks), (1, 1, 0, 22))
+        self.assertEqual((st.jitter, st.max_jitter_ticks), (1, 6))
+
+    def test_the_revision_is_returned(self):
+        st = StreamStats()
+        self.assertEqual([classify_step(st, d, 8) for d in (8, 14, 2, 8)], [None, None, 6, None])
+
+    def test_without_a_stamp_in_the_same_slot_it_stays_a_loss(self):
+        # The next stamp a slot on: a sample lost and one stamped a little early.
+        st = run([8, 14, 10, 8], 8)
+        self.assertEqual((st.gaps, st.missing, st.dupes, st.max_jitter_ticks), (1, 1, 0, 2))
+
+    def test_an_on_time_stamp_after_a_loss_is_not_revised(self):
+        # On its slot, not early for it: the stamp in the same slot after it
+        # is a duplicate.
+        st = run([8, 16, 1, 7], 8)
+        self.assertEqual((st.gaps, st.missing, st.dupes), (1, 1, 1))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

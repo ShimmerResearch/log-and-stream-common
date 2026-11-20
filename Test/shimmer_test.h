@@ -35,6 +35,11 @@ typedef enum
 #define SELF_TEST_STR_TEMPERATURE_ISSUE " - Temperature issue"
 #define SELF_TEST_STR_DRDY_ISSUE        " - DRDY/INT issue"
 #define SELF_TEST_STR_UNKNOWN           " - Unknown"
+//Why the CAT24C16 self-test failed (EEPROM/cat24c16.c, CAT24C16_testFailReason)
+#define SELF_TEST_STR_EEPROM_READ       " - Read failed"
+#define SELF_TEST_STR_EEPROM_WRITE      " - Write failed"
+#define SELF_TEST_STR_EEPROM_READ_BACK  " - Read-back failed"
+#define SELF_TEST_STR_EEPROM_MISMATCH   " - Read-back mismatch"
 
 #ifndef __weak
 #define __weak __attribute__((weak))
