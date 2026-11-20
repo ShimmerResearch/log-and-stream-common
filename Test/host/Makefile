@@ -148,6 +148,9 @@ SRC_test_sd_cfg_file := test_sd_cfg_file.c $(REPO)/SDCard/shimmer_sd_cfg_file.c 
                         $(REPO)/Configuration/shimmer_button_log_mode.c \
                         $(REPO)/Configuration/shimmer_audio_mode.c \
                         $(REPO)/Util/shimmer_util.c
+# parse() rounds the sample period: roundf is in libm on Linux (CI), in the C
+# runtime on MinGW
+LIBS_test_sd_cfg_file := -lm
 SRC_test_calibration := test_calibration.c \
                         $(REPO)/Calibration/shimmer_calibration.c \
                         $(REPO)/Boards/shimmer_boards.c
@@ -217,7 +220,7 @@ $(foreach s,$(SINGLE_PLATFORM_SUITES),$(eval $(call SINGLE_RULE,$(s))))
 
 define DUAL_RULE
 $(BUILD)/$(1).$(2): $$(SRC_$(1)) host_stubs.c | $(BUILD)
-	$$(CC) $$(CFLAGS) -D$(2) $$(DEFS_$(1)) $$(INCLUDES) $$(SRC_$(1)) host_stubs.c -o $$@
+	$$(CC) $$(CFLAGS) -D$(2) $$(DEFS_$(1)) $$(INCLUDES) $$(SRC_$(1)) host_stubs.c $$(LIBS_$(1)) -o $$@
 endef
 $(foreach s,$(DUAL_PLATFORM_SUITES),\
   $(foreach p,$(PLATFORMS),$(eval $(call DUAL_RULE,$(s),$(p)))))
