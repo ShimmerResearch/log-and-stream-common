@@ -6,9 +6,18 @@ reconnects - to compare across releases. Every item still fails on any
 fault, so the report says plainly that something happened; its note carries
 the rate.
 
-Durations scale with HIL_SOAK_SCALE (default 1, about three hours on one
-Shimmer3R and four Shimmer3s). 0.05 proves the tier in a few minutes; 3 is an
-overnight run. A long log needs scale >= 0.8 to cross an hourly file rollover.
+Durations scale with HIL_SOAK_SCALE (default 1). 0.05 proves the tier in a few
+minutes; 3 is an overnight run. A long log needs scale >= 0.8 to cross an
+hourly file rollover.
+
+Every Shimmer3R logs in the same stretch (rig/shared_log.py), so a Shimmer3R
+run pays for the 75-minute long log once, however many units the bench has.
+The dock cycles, reconnect loop and long stream, about 50 minutes a unit, run
+one unit at a time. They share the PC's one Bluetooth adapter, which holds
+about three Classic links (DEV-742), and each re-dock re-enumerates USB, which
+can stall the host's services (DEV-1368). At scale 1 that is about 2 hours with
+one Shimmer3R and 4.5 hours with four. A Shimmer3 run is the reconnect loop on
+each unit.
 
     set HIL_SOAK_SCALE=3
     python Test/hil/run_rc.py <tag> --no-flash --tier soak
@@ -23,7 +32,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from rig import bt, dock, s3r_usb, sdfile
+from rig import bt, dock, s3r_usb, sdfile, shared_log
 from rig.s3r_config import S3rConfig, divider_for
 
 pytestmark = pytest.mark.soak
@@ -41,8 +50,8 @@ IMU = {"ln_accel", "gyro", "mag", "vbatt"}
 
 # --- configuration, restored afterwards ---------------------------------------
 
-@contextmanager
-def s3r_config(unit, rate_hz, sensors=IMU):
+def s3r_configure(unit, rate_hz, sensors=IMU) -> bytes:
+    """Set the docked unit's rate and sensors; return the InfoMem they replaced."""
     # Every docked stream takes the unit's USB away until it stops, so the
     # port and drive are waited for before each dock exchange, and a failure
     # inside a host service stall says so (DEV-1368).
@@ -53,12 +62,22 @@ def s3r_config(unit, rate_hz, sensors=IMU):
         cfg.divider = divider_for(rate_hz)
         cfg.set_sensors(sensors)
         d.write_infomem(cfg.bytes())
+    return original
+
+
+def s3r_restore(unit, original: bytes) -> None:
+    port = s3r_usb.wait_usb_settled(unit.usb_serial, 120)
+    with s3r_usb.stall_named(unit.usb_serial), dock.open_when_ready(port) as d:
+        d.write_infomem(original)
+
+
+@contextmanager
+def s3r_config(unit, rate_hz, sensors=IMU):
+    original = s3r_configure(unit, rate_hz, sensors)
     try:
         yield
     finally:
-        port = s3r_usb.wait_usb_settled(unit.usb_serial, 120)
-        with s3r_usb.stall_named(unit.usb_serial), dock.open_when_ready(port) as d:
-            d.write_infomem(original)
+        s3r_restore(unit, original)
 
 
 @contextmanager
@@ -87,35 +106,75 @@ def base6_if_any(rig):
 
 # --- long log -------------------------------------------------------------------
 
+class S3rLogSteps:
+    """rig/shared_log.py's steps for a Shimmer3R: configured and restored over its
+    USB dock, undocked through its hub port, started and stopped over Bluetooth."""
+
+    def __init__(self, rate_hz=SOAK_RATE_HZ, sensors=IMU):
+        self.rate_hz, self.sensors = rate_hz, sensors
+        self.ports: dict[str, str] = {}
+
+    def configure(self, unit):
+        port = bt.spp_port(unit.mac)
+        if not port:
+            raise LookupError(f"no paired SPP port for {unit.mac}")
+        self.ports[unit.name] = port
+        return s3r_configure(unit, self.rate_hz, self.sensors)
+
+    def sessions(self, unit, timeout_s):
+        root = s3r_usb.wait_drive(unit.usb_serial, timeout_s)
+        return root, sdfile.session_dirs(root)
+
+    def undocked(self, unit):
+        s3r_usb.wait_cdc_gone(unit.usb_serial, 15)
+
+    def start(self, unit):
+        with bt.BtLink(self.ports[unit.name]) as link:
+            link.simple(bt.START_LOGGING)
+            link.wait_status(bt.STATUS_LOGGING, True, 10)
+
+    def stop(self, unit):
+        # No link held open for an hour: reconnect to stop, as a user would.
+        with bt.BtLink(self.ports[unit.name]) as link:
+            link.simple(bt.STOP_LOGGING)
+            link.wait_status(bt.STATUS_LOGGING, False, 30)
+
+    def restore(self, unit, saved):
+        s3r_restore(unit, saved)
+
+    def check(self, session):
+        return sdfile.check_session(session)
+
+
+@pytest.fixture(scope="module")
+def long_logs(hil_units, power, hil_log):
+    """Every Shimmer3R this run tests under soak.long_log, logging LONG_LOG_MIN at once.
+
+    Runs once, at the first unit's test, for every unit whose test will run
+    (hil_units); each unit's test then judges its own part of it.
+    """
+    units = [u for u in hil_units("soak.long_log") if u.platform == "shimmer3r"]
+    return shared_log.log_together(units, power, LONG_LOG_MIN * 60, S3rLogSteps(),
+                                   say=lambda m: hil_log(f"soak.long_log: {m}"))
+
+
 @pytest.mark.hil("soak.long_log", needs=["shimmer3r", "usb", "bt", "hub_port"])
-def test_long_log(unit, power, hil_note):
-    """Log for LONG_LOG_MIN undocked; judge every file of the session as one recording."""
-    port = bt.spp_port(unit.mac)
-    assert port, f"no paired SPP port for {unit.mac}"
-    with s3r_config(unit, SOAK_RATE_HZ):
-        root = s3r_usb.wait_drive(unit.usb_serial, 60)
-        before = sdfile.session_dirs(root)
-        power.off(unit.hub_port, unit.name)
-        try:
-            s3r_usb.wait_cdc_gone(unit.usb_serial, 15)
-            with bt.BtLink(port) as link:
-                link.simple(bt.START_LOGGING)
-                link.wait_status(bt.STATUS_LOGGING, True, 10)
-            # No link held open for an hour: reconnect to stop, as a user would.
-            time.sleep(LONG_LOG_MIN * 60)
-            with bt.BtLink(port) as link:
-                link.simple(bt.STOP_LOGGING)
-                link.wait_status(bt.STATUS_LOGGING, False, 30)
-        finally:
-            power.on(unit.hub_port, unit.name)
-        root = s3r_usb.wait_drive(unit.usb_serial, 120)
-        new = sorted(sdfile.session_dirs(root) - before)
-    assert len(new) == 1, f"expected one new session, found {len(new)}"
-    sc = sdfile.check_session(root / new[0])     # relative: the drive letter may have changed
-    per_hour = sc.missing / sc.hours if sc.hours else 0
-    hil_note(f"{SOAK_RATE_HZ} Hz, {sc.hours:.2f} h in {len(sc.files)} files: {sc.records} records, "
-             f"{sc.missing} lost in {sc.gaps} gaps ({sc.loss_fraction():.3%}, {per_hour:.0f}/h), "
-             f"joins {[d for _, d in sc.joins]}")
+def test_long_log(unit, long_logs, hil_note):
+    """This unit's part of the shared long log: every file of its session judged as one recording."""
+    log = long_logs.get(unit.name)
+    assert log is not None, f"{unit.name} was not in the shared long log"
+    problems = list(log.errors)       # a step that failed: configure, undock, start, stop, re-dock, restore
+    sc = log.check
+    if sc is not None:
+        per_hour = sc.missing / sc.hours if sc.hours else 0
+        hil_note(f"{SOAK_RATE_HZ} Hz, {sc.hours:.2f} h in {len(sc.files)} files: {sc.records} records, "
+                 f"{sc.missing} lost in {sc.gaps} gaps ({sc.loss_fraction():.3%}, {per_hour:.0f}/h), "
+                 f"joins {[d for _, d in sc.joins]}")
+        problems += _session_problems(sc)
+    assert not problems, "; ".join(problems)
+
+
+def _session_problems(sc: sdfile.SessionCheck) -> list[str]:
     problems = []
     if sc.header_mismatches:
         problems.append(f"files {sc.header_mismatches} disagree with 000's header")
@@ -129,7 +188,7 @@ def test_long_log(unit, power, hil_note):
                         f"{sc.missing / sc.hours if sc.hours else 0:.0f}/h over {sc.hours:.2f} h), "
                         f"largest stall {sc.max_gap_ticks} ticks ({sc.max_gap_ticks / 32.768:.0f} ms), "
                         f"{sc.dupes} duplicates; first gaps at {sc.gap_times_s[:10]} s")
-    assert not problems, "; ".join(problems)
+    return problems
 
 
 # --- dock / undock --------------------------------------------------------------

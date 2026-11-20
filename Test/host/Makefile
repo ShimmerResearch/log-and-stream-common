@@ -305,6 +305,8 @@ test: build
 	  failed="$$failed test_hil_dock.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_events.py; then \
 	  failed="$$failed test_hil_events.py"; fi; \
+	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_shared_log.py; then \
+	  failed="$$failed test_hil_shared_log.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_rig_offline.py; then \
 	  failed="$$failed test_rig_offline.py"; fi; \
 	if ! $(PYTHON) check_weak_decls.py; then \
