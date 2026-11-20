@@ -2785,5 +2785,44 @@ class S3FlashRestoreCheck(unittest.TestCase):
             self.flash(lambda im: self.setting(self.setting(im, 233, 0x00), 5, 0x00))
 
 
+class S3RestorePartOfInfoMem(unittest.TestCase):
+    """fleet.sd_start_midstream and the fleet item before it put back only the
+    sampling divider, InfoMem bytes 0-1. From DEV-1366 (28 Oct 2026) the read-back
+    check masked byte 230 of those two bytes and raised IndexError after the write,
+    so the item never reached its verdict (found on the bench, DEV-1431)."""
+
+    def restore(self, write_takes: bool):
+        stored = bytearray(b"\x40\x00" + bytes(510))
+
+        class Dock:
+            def write_infomem(self, data, offset=0):
+                if write_takes:
+                    stored[offset:offset + len(data)] = data
+
+            def read_infomem(self, offset=0, length=512):
+                return bytes(stored[offset:offset + length])
+
+        @contextmanager
+        def open_when_ready(port, **kw):
+            yield Dock()
+
+        b6 = types.SimpleNamespace(uart_port="COM1")
+        with mock.patch.object(s3_flash.dock, "open_when_ready", open_when_ready), \
+                mock.patch.object(s3_flash.time, "sleep", lambda s: None):
+            seen = s3_flash.restore_infomem(b6, b"\x80\x02", None)
+        return seen, bytes(stored[:2])
+
+    def test_the_divider_alone_is_put_back_and_checked(self):
+        self.assertEqual(self.restore(write_takes=True), ([], b"\x80\x02"))
+
+    def test_a_divider_that_does_not_take_is_still_caught(self):
+        with self.assertRaisesRegex(s3_flash.dock.DockError, "read back differs"):
+            self.restore(write_takes=False)
+
+    def test_masking_leaves_bytes_it_was_not_given(self):
+        self.assertEqual(s3_flash._masked(b"\x80\x02"), b"\x80\x02")
+        self.assertEqual(s3_flash._masked(bytes(230) + b"\x01" + bytes(281))[230], 0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

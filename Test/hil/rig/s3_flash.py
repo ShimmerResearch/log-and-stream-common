@@ -43,9 +43,13 @@ class S3FlashError(Exception):
 
 
 def _masked(im: bytes) -> bytes:
+    """im (InfoMem from offset 0, whole or only its start) with the bits the
+    firmware sets itself cleared. A caller that restores only the sampling
+    divider passes two bytes, so offsets beyond im are left alone."""
     b = bytearray(im)
     for off, mask in SELF_SET_BITS:
-        b[off] &= ~mask & 0xFF
+        if off < len(b):
+            b[off] &= ~mask & 0xFF
     return bytes(b)
 
 
