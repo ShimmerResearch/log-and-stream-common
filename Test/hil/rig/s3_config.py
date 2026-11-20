@@ -67,6 +67,17 @@ MAG_FLOOR_HZ = 50.0             # the slowest of those: the rate a staircase che
 MAG_SLOW_FOR_HZ = 75.0          # code 6 covers this on a DLHC; above it, 7
 GYRO_BASE_HZ = 8000.0           # MPU9x50 SMPLRT_DIV with the DLPF off; the ICM-20948 converts it
 
+# The trial fields that name a log's folder on the card (INFOMEM §2, §8.4;
+# SD_CARD_FORMAT §1.1): data/<experiment ID>_<config time>.
+EXP_ID, EXP_ID_LEN = 199, 12          # 12 chars, not NUL-terminated
+DEFAULT_EXP_ID = "DefaultTrial"       # ShimConfig_setDefaultTrialId, for an ID with no printable first char
+CONFIG_TIME = 211                     # uint32 seconds, big-endian
+# Trial configuration (INFOMEM §8.1-§8.3) and the auto-stop (§8).
+TRIAL_CONFIG0, TRIAL_CONFIG1, BUTTON_LOG_MODE = 217, 218, 232
+USER_BUTTON_ENABLE, SYNC_ENABLE, BT_DISABLE = 0x20, 0x04, 0x08     # byte 217
+SINGLE_TOUCH_START, LOW_BATTERY_AUTO_STOP = 0x80, 0x01              # byte 218
+MAX_EXP_LEN = 222                     # minutes, big-endian; 0 = no auto-stop
+
 
 def divider_for(rate_hz: float) -> int:
     return max(1, round(TICKS_PER_S / rate_hz))
@@ -194,6 +205,59 @@ class S3Config:
     def setup_bytes(self) -> bytes:
         """InfoMem 6-9, which the Shimmer3 inquiry response carries (BT_COMMUNICATION_PROTOCOL §7.1)."""
         return bytes(self.b[6:10])
+
+    # --- the trial: its folder on the card, and what starts and stops a log ----
+
+    @property
+    def experiment_id(self) -> str:
+        """The experiment ID as the firmware names a folder with it: the printable
+        characters before the first other one, at most 12, or DefaultTrial when
+        there are none (ShimConfig_parseExpIdNameFromConfigBytes)."""
+        raw = self.b[EXP_ID:EXP_ID + EXP_ID_LEN]
+        n = 0
+        while n < EXP_ID_LEN and 0x20 <= raw[n] <= 0x7E:
+            n += 1
+        return raw[:n].decode("ascii") if n else DEFAULT_EXP_ID
+
+    @experiment_id.setter
+    def experiment_id(self, text: str):
+        data = text.encode("ascii")
+        if not 0 < len(data) <= EXP_ID_LEN or not all(0x20 <= c <= 0x7E for c in data):
+            raise ValueError(f"experiment ID {text!r}: 1-{EXP_ID_LEN} printable ASCII characters")
+        self.b[EXP_ID:EXP_ID + EXP_ID_LEN] = data.ljust(EXP_ID_LEN, b"\0")
+
+    @property
+    def config_time(self) -> int:
+        return int.from_bytes(self.b[CONFIG_TIME:CONFIG_TIME + 4], "big")
+
+    @config_time.setter
+    def config_time(self, seconds: int):
+        self.b[CONFIG_TIME:CONFIG_TIME + 4] = int(seconds).to_bytes(4, "big")
+
+    @property
+    def trial_dir(self) -> str:
+        """The trial's folder under data/ on the card: the experiment ID, '_', and
+        the config time in decimal (SD_CARD_FORMAT §1.1)."""
+        return f"{self.experiment_id}_{self.config_time}"
+
+    def set_undock_start(self):
+        """Make leaving the dock start logging, the way every LogAndStream release
+        reads it: the button off (217 bit 5) and single touch off (218 bit 7), with
+        byte 232 at 0 so that byte 217 decides (INFOMEM §8.1-§8.3). The button no
+        longer starts or stops a log, and the TTL input (232 bit 5) is off."""
+        self.b[TRIAL_CONFIG0] &= ~USER_BUTTON_ENABLE & 0xFF
+        self.b[TRIAL_CONFIG1] &= ~SINGLE_TOUCH_START & 0xFF
+        self.b[BUTTON_LOG_MODE] = 0
+
+    def clear_auto_stop(self):
+        """No auto-stop: neither a maximum length (222-223) nor a low battery (218 bit 0) ends a log."""
+        self.b[MAX_EXP_LEN:MAX_EXP_LEN + 2] = b"\0\0"
+        self.b[TRIAL_CONFIG1] &= ~LOW_BATTERY_AUTO_STOP & 0xFF
+
+    @property
+    def radio_blocked(self) -> bool:
+        """SD sync or bluetoothDisable is set: the radio stays off outside sync (rig/btmode.py)."""
+        return bool(self.b[TRIAL_CONFIG0] & (SYNC_ENABLE | BT_DISABLE))
 
     # --- calibration ---------------------------------------------------------
 

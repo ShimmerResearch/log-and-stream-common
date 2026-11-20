@@ -10,6 +10,12 @@ slots are occupied ("Q,101100", slot 1 first); SDP,0n$ connects slot n and
 needs ~1.5 s to settle; SDD$ disconnects all. The protocol is the one
 Consensys uses (dockManager/SmartDockUart.java).
 
+SDP leaves the slot's SD card with its Shimmer. SDC,0n$ connects the slot and
+switches its card to one of the Base6's two USB card readers ("Shimmer
+HS-SD/MMC"), where it mounts as a drive (rig/s3_card.py); the next SDP gives it
+back. Consensys waits 5 s on Windows after SDC
+(SLOT_CHANGEOVER_DELAY_WITH_SD_CARD_WIN).
+
 Ports are found by FTDI serial (<base>A..D), never by COM number. Consensys
 must be closed: it holds these ports open.
 """
@@ -24,6 +30,7 @@ from serial.tools import list_ports
 from .config import RigError
 
 SETTLE_S = 1.5
+CARD_CHANGEOVER_S = 5.0     # after SDC, as Consensys waits on Windows
 
 
 def port_for(serial_prefix: str) -> str | None:
@@ -74,6 +81,19 @@ class Base6:
         self._cmd(f"SDP,0{slot}$")
         time.sleep(SETTLE_S)
         self.selected = slot
+
+    def card_to_pc(self, slot: int) -> None:
+        """Connect slot n with its SD card switched to the USB card reader (SDC,0n$),
+        and wait out the changeover. select() gives the card back to the Shimmer."""
+        if not 1 <= slot <= 6:
+            raise ValueError(slot)
+        r = self._cmd(f"SDC,0{slot}$")
+        # Whatever the answer, the next select() must send SDP, which is what
+        # hands the card back.
+        self.selected = None
+        if not r.startswith("C"):
+            raise RigError(f"Base6 SDC,0{slot}$ answered {r!r}")
+        time.sleep(CARD_CHANGEOVER_S)
 
     def shimmer_bsl_lines(self, connected: bool) -> None:
         """Connect (SDS,0$) or mask (SDS,1$) the selected slot's RST/TEST lines.

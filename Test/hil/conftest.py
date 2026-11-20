@@ -21,6 +21,7 @@ no report is written: a report that cannot name its build is not evidence.
 
 from __future__ import annotations
 
+import contextlib
 import getpass
 import json
 import os
@@ -37,7 +38,7 @@ import hil_report  # noqa: E402
 from rig import baseline as rig_baseline  # noqa: E402
 from rig import config as rig_config  # noqa: E402
 from rig import host as rig_host  # noqa: E402
-from rig.power import HubPower, ManualPower  # noqa: E402
+from rig.power import HubPower, ManualPower, speak  # noqa: E402
 
 
 def pytest_addoption(parser):
@@ -50,7 +51,11 @@ def pytest_addoption(parser):
                 help="run against this rig unit only; the others are reported not_covered, so the "
                      "report never passes an item for a unit it did not test (default: every unit)")
     g.addoption("--manual-power", action="store_true",
-                help="prompt the operator to dock/undock even if the rig has a hub")
+                help="prompt the operator to dock/undock even if the rig has a hub (implies --attended)")
+    g.addoption("--attended", action="store_true",
+                help="someone is at the bench to handle units when asked, so the items that need hands "
+                     "run (needs=[\"attended\"]: the Shimmer3 long log, whose units are lifted out of "
+                     "the Base6); without it they are reported not_covered and the run never waits")
     g.addoption("--keep-unit-config", action="store_true",
                 help="start each unit from its own configuration instead of the baseline "
                      "(rig/baseline.py); the report records which (default: the baseline)")
@@ -191,6 +196,27 @@ def _say(config):
 def hil_log(pytestconfig):
     """say(text): a "hil: ..." line on the terminal now, not after the test."""
     return _say(pytestconfig)
+
+
+@pytest.fixture(scope="session")
+def hil_ask(pytestconfig):
+    """ask(text): put a request to the operator and return once they press Enter.
+
+    Spoken aloud first (rig/power.speak), for an operator who is away from the
+    screen, then printed as a line of its own, so run_rc.py, which passes the
+    output on line by line, shows it before the answer. pytest's capture is
+    suspended while it waits, since it would otherwise refuse to read stdin.
+    Only tests that need "attended" use it.
+    """
+    say = _say(pytestconfig)
+    capman = pytestconfig.pluginmanager.get_plugin("capturemanager")
+
+    def ask(text: str):
+        speak(text)
+        say(f">>> {text}, then press Enter")
+        with capman.global_and_fixture_disabled() if capman else contextlib.nullcontext():
+            input()
+    return ask
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -343,6 +369,8 @@ def _missing(config, unit, needs: set[str]) -> set[str]:
     if config.getoption("--manual-power"):
         # Without the hub the operator is the switch, so docking is possible.
         have.add("hub_port")
+    if config.getoption("--attended") or config.getoption("--manual-power"):
+        have.add("attended")
     missing = needs - have
     if unit is None and needs & set(rig_config.PLATFORMS):
         missing |= needs & set(rig_config.PLATFORMS)

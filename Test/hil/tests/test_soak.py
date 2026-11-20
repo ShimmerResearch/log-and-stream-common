@@ -16,11 +16,18 @@ The dock cycles, reconnect loop and long stream, about 50 minutes a unit, run
 one unit at a time. They share the PC's one Bluetooth adapter, which holds
 about three Classic links (DEV-742), and each re-dock re-enumerates USB, which
 can stall the host's services (DEV-1368). At scale 1 that is about 2 hours with
-one Shimmer3R and 4.5 hours with four. A Shimmer3 run is the reconnect loop on
-each unit.
+one Shimmer3R and 4.5 hours with four.
+
+A Shimmer3 run is the reconnect loop on each unit, and with --attended the
+long log too. Every Base6 Shimmer3 logs in the same stretch, as the Shimmer3Rs
+do, but the Base6 cannot take a unit off the dock, so the operator lifts them
+all out at the start and puts them all back at the end, asked once each way
+and aloud (rig/s3_long_log.py). Without --attended that item is not_covered
+and the run is unattended as before.
 
     set HIL_SOAK_SCALE=3
     python Test/hil/run_rc.py <tag> --no-flash --tier soak
+    python Test/hil/run_rc.py <Shimmer3 tag> --no-flash --tier soak --attended
 """
 
 from __future__ import annotations
@@ -29,10 +36,12 @@ import os
 import statistics
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 
-from rig import bt, dock, s3r_usb, sdfile, shared_log
+from rig import bt, dock, s3_long_log, s3r_usb, sdfile, shared_log
+from rig.power import OperatorDock
 from rig.s3r_config import S3rConfig, divider_for
 
 pytestmark = pytest.mark.soak
@@ -170,6 +179,40 @@ def test_long_log(unit, long_logs, hil_note):
         hil_note(f"{SOAK_RATE_HZ} Hz, {sc.hours:.2f} h in {len(sc.files)} files: {sc.records} records, "
                  f"{sc.missing} lost in {sc.gaps} gaps ({sc.loss_fraction():.3%}, {per_hour:.0f}/h), "
                  f"joins {[d for _, d in sc.joins]}")
+        problems += _session_problems(sc)
+    assert not problems, "; ".join(problems)
+
+
+@pytest.fixture(scope="module")
+def long_logs_s3(hil_units, base6_if_any, hil_log, hil_ask):
+    """Every Shimmer3 this run tests under soak.long_log, logging LONG_LOG_MIN at once,
+    the operator taking them out of the Base6 and putting them back (rig/s3_long_log.py).
+
+    The sessions copied off the cards, and each unit's InfoMem before the log,
+    are kept in Test/hil/out/soak-long-log/<time>/.
+    """
+    units = [u for u in hil_units("soak.long_log") if u.platform == "shimmer3"]
+    say = lambda m: hil_log(f"soak.long_log: {m}")  # noqa: E731
+    out = Path(__file__).resolve().parents[1] / "out" / "soak-long-log" / time.strftime("%Y%m%d_%H%M%S")
+    steps = s3_long_log.S3LogSteps(base6_if_any, hil_ask, out, SOAK_RATE_HZ, IMU, say=say)
+    return shared_log.log_together(units, OperatorDock(hil_ask, lambda: steps.ready),
+                                   LONG_LOG_MIN * 60, steps, say=say)
+
+
+@pytest.mark.hil("soak.long_log", needs=["shimmer3", "dock", "bt", "attended"])
+def test_long_log_s3(unit, long_logs_s3, hil_note):
+    """This Shimmer3's part of the shared long log, judged as the Shimmer3R's is,
+    and against the configuration its header records."""
+    log = long_logs_s3.get(unit.name)
+    assert log is not None, f"{unit.name} was not in the shared long log"
+    problems = list(log.errors)       # a step that failed: configure, undock, start, stop, re-dock, restore
+    sc = log.check
+    if sc is not None:
+        per_hour = sc.missing / sc.hours if sc.hours else 0
+        hil_note(f"{unit.radio}: {SOAK_RATE_HZ} Hz, {sc.hours:.2f} h in {len(sc.files)} files: "
+                 f"{sc.records} records, {sc.missing} lost in {sc.gaps} gaps ({sc.loss_fraction():.3%}, "
+                 f"{per_hour:.0f}/h), joins {[d for _, d in sc.joins]}")
+        problems += s3_long_log.session_problems(sc, SOAK_RATE_HZ, IMU, LONG_LOG_MIN * 60)
         problems += _session_problems(sc)
     assert not problems, "; ".join(problems)
 
