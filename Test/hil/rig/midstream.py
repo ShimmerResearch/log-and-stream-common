@@ -78,16 +78,20 @@ class Plan:
 
 
 def schedule(cycles: int, lead_s: float = 3.0, on_s: float = 2.0, off_s: float = 2.0,
-             rwc_gap_s: float = 0.2, status_after_s: float = 1.0, tail_s: float = 2.0) -> Plan:
-    """Log cycles inside one stream: odd cycles start logging plainly, even
-    cycles set the clock first, as the reference host does. Each start is
-    followed by a status query, which shows whether logging really began."""
+             rwc_gap_s: float = 0.2, status_after_s: float = 1.0, tail_s: float = 2.0,
+             clock_sets: bool = True) -> Plan:
+    """Log cycles inside one stream. Each start is followed by a status query,
+    which shows whether logging really began.
+
+    With clock_sets, odd cycles start logging plainly and even cycles set the
+    clock first, as the reference host once did. Without, every cycle starts
+    plainly, as hosts do now: none sends SET_RWC mid-stream."""
     actions = []
     t = lead_s
     rwc = []
     for c in range(1, cycles + 1):
         start = t
-        if c % 2 == 0:
+        if clock_sets and c % 2 == 0:
             actions.append(Action(t, "set_rwc", c, rwc_payload))
             rwc.append(c)
             start = t + rwc_gap_s
@@ -255,6 +259,10 @@ def judge(st, plan: Plan, period: int) -> tuple[list[str], str]:
     def hit(cs):
         return sum(1 for c in cs if f"cycle {c} start" in groups)
     refused = f" ({st.nacks} refused with a NACK)" if st.nacks else ""
-    summary = (f"{g.packets} packets, {len(cycles)} log starts{refused}; the stream was disturbed by "
-               f"{hit(rwc)} of {len(rwc)} starts after a clock set and {hit(plain)} of {len(plain)} without")
+    if rwc:
+        disturbed = (f"{hit(rwc)} of {len(rwc)} starts after a clock set and "
+                     f"{hit(plain)} of {len(plain)} without")
+    else:
+        disturbed = f"{hit(plain)} of {len(plain)} starts, none after a clock set"
+    summary = f"{g.packets} packets, {len(cycles)} log starts{refused}; the stream was disturbed by {disturbed}"
     return problems, summary

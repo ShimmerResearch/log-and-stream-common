@@ -15,8 +15,9 @@ whole InfoMem over the dock, and the calibration dump over Bluetooth, from
 copies taken first and also kept on disk (the `restored` fixture). The
 read-only checks touch neither.
 
-The Shimmer3s sit in the Base6, so nothing here logs to SD: a docked Shimmer3
-refuses a log start, and a Base6 cannot undock one slot.
+The Shimmer3s sit in the Base6, so nothing here logs to SD on them: a docked
+Shimmer3 refuses a log start, and a Base6 cannot undock one slot. A Shimmer3R
+check that logs is undocked by its hub port, as the smoke items are.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from pathlib import Path
 
 import pytest
 
-from rig import bt, dock, midstream, throughput
+from rig import bt, dock, midstream, s3r_usb, throughput
 from rig.s3_config import S3Config, calib_records
 from rig.s3_flash import reset_slot, restore_infomem
 
@@ -241,3 +242,32 @@ def test_dev1297_reads_midstream(unit, base6, restored, hil_note):
     if hung:
         problems.append(hung)
     assert not problems, f"{summary}: " + "; ".join(problems)
+
+
+@pytest.fixture
+def cdc(unit):
+    """The unit's CDC port, waited for afresh, as test_s3r_smoke.py's is."""
+    return s3r_usb.wait_usb_settled(unit.usb_serial, 60)
+
+
+@pytest.mark.hil("defect.dev1539_clock_set_midstream", needs=["shimmer3r", "usb", "bt", "hub_port"])
+def test_dev1539_clock_set_midstream(unit, cdc, power, hil_note):
+    """DEV-1539: a clock set while a Shimmer3R streams steps the stream's stamps.
+
+    smoke.sd_start_midstream's session with its clock sets put back: six 2 s
+    logs inside one 256 Hz stream, odd cycles started with START_LOGGING alone
+    and even ones with SET_RWC first, as the reference host once did before
+    every log start (DEV-1337 stopped it). On Shimmer3R the stamps are the
+    clock itself, so a set applied at once steps every stamp after it by the
+    set's transit time: on v1.01.027, 20 of 21 starts after a clock set
+    disturbed the stream and none of the plain ones did. The plain cycles stay
+    in as the control, and the summary counts the two apart.
+
+    When the fix makes this pass, it moves back into the smoke tier as the
+    fix's acceptance test, in the same PR as the fix.
+    """
+    # Imported here, not at the top: pytest puts tests/ on the path when it runs
+    # a test, but the offline suite loads this file on its own.
+    from test_s3r_smoke import MIDSTREAM_CYCLES, midstream_session
+
+    midstream_session(unit, cdc, power, hil_note, midstream.schedule(MIDSTREAM_CYCLES))
