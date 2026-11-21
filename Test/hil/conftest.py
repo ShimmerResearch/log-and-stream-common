@@ -432,7 +432,9 @@ def _bt_modules(request, _bench_config):
         got = cfg._hil_radios[unit.name]
         if "radio_reported" in got:
             mismatch, remark = throughput.radio_check(unit.radio, got["radio_reported"])
-            line = f"{unit.name} Bluetooth module: {got['radio_reported']}"
+            # An RN42 banner spans two lines ("Ver 6.15 04/26/2013\n\r(c) Roving
+            # Networks"). The report keeps it as sent; the terminal gets one line.
+            line = f"{unit.name} Bluetooth module: {' '.join(got['radio_reported'].split())}"
             line += f" - {mismatch or remark}" if mismatch or remark else ""
         else:
             line = f"{unit.name} Bluetooth module not read: {got['radio_unread']}"
