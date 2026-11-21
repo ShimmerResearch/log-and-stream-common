@@ -588,10 +588,12 @@ Three things matter when writing configuration bytes directly:
 >   Shimmer3 creates the file before it samples, which takes 1-2 s, so its log
 >   spans about 599 s: 599.125 and 598.797 s on one unit (5 Nov 2026), on the
 >   old count and the new.
-> - **A clock set mid-log:** each check adds at most 2 s and never goes
->   backwards, so a set moves the stop by about a second either way. That
->   applies to Shimmer3R, whose clock is the calendar that `SET_RWC` moves.
->   Shimmer3's `RTC_get32()` counts from boot and is never set.
+> - **A clock set mid-log** waits for the stop since DEV-1539
+>   ([TIMEKEEPING §3](SHIMMER3_TIMEKEEPING.md#3-setting-and-reading-the-clock)),
+>   so it no longer reaches the count. Before that, each check added at most
+>   2 s and never went backwards, so a set moved the stop by about a second
+>   either way. That applied to Shimmer3R, whose clock is the calendar that
+>   `SET_RWC` moves. Shimmer3's `RTC_get32()` counts from boot and is never set.
 > - **Before DEV-1417** each check added one second, so the limit was only as
 >   good as the blink timer. On Shimmer3R that timer is off the crystal, and
 >   the LED phase lock could count a second twice (see

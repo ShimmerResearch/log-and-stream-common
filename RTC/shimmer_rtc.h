@@ -59,4 +59,8 @@ uint8_t ShimRtc_isTimeSet(void);
 void ShimRtc_rwcErrorCheck(void);
 uint8_t ShimRtc_setRtcSetByBt(uint8_t setByBt);
 
+uint8_t ShimRtc_setRwc(uint64_t ticks, uint8_t setByBt);
+uint8_t ShimRtc_applyDeferredRwc(void);
+uint8_t ShimRtc_isRwcSetDeferred(void);
+
 #endif /* RTC_SHIMMER_RTC_H_ */

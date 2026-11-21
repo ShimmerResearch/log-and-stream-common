@@ -13,6 +13,7 @@ installed (CI) a stand-in is put in its place, as test_hil_timing.py does.
 """
 
 import sys
+import time
 import types
 import unittest
 from pathlib import Path
@@ -164,6 +165,70 @@ class Schedule(unittest.TestCase):
         self.assertEqual(b[0], 0x8F)
         self.assertEqual(int.from_bytes(b[1:], "little"), int(1.5 * 32768))
         self.assertEqual(len(b), 9)
+
+    def test_only_the_last_clock_set_is_the_probe(self):
+        plan = midstream.schedule(6)
+        self.assertEqual(plan.rwc_cycles, [2, 4, 6])
+        self.assertEqual(plan.probe_s, midstream.PROBE_S)
+        sets = [a for a in plan.actions if a.kind == "set_rwc"]
+        now = time.time()
+        sent = [int.from_bytes(a.bytes()[1:], "little") / 32768 - now for a in sets]
+        self.assertLess(abs(sent[0]), 1.0)
+        self.assertLess(abs(sent[1]), 1.0)
+        self.assertAlmostEqual(sent[2], midstream.PROBE_S, delta=1.0)
+
+    def test_no_probe(self):
+        plan = midstream.schedule(4, probe=False)
+        self.assertEqual(plan.probe_s, 0.0)
+        now = time.time()
+        for a in plan.actions:
+            if a.kind == "set_rwc":
+                self.assertLess(abs(int.from_bytes(a.bytes()[1:], "little") / 32768 - now), 1.0)
+
+    def test_no_clock_set_no_probe(self):
+        self.assertEqual(midstream.schedule(1).probe_s, 0.0)
+
+
+class FakeClock:
+    """A device clock read and set over Bluetooth: it reads the host's time plus
+    offset_s, and a set takes at once unless ignore_sets."""
+
+    def __init__(self, offset_s: float, ignore_sets: bool = False):
+        self.offset_s = offset_s
+        self.ignore_sets = ignore_sets
+        self.sets = []
+
+    def get_rwc(self) -> int:
+        return int((time.time() + self.offset_s) * 32768)
+
+    def set_rwc(self, ticks: int) -> None:
+        self.sets.append(ticks)
+        if not self.ignore_sets:
+            self.offset_s = ticks / 32768 - time.time()
+
+
+class ClockAfterStop(unittest.TestCase):
+    def test_a_deferred_set_applied_at_the_stop(self):
+        link = FakeClock(midstream.PROBE_S - 0.02)
+        problems, note = midstream.clock_after_stop(link, midstream.PROBE_S)
+        self.assertEqual(problems, [])
+        self.assertEqual(len(link.sets), 1, "the clock is put back once")
+        self.assertLess(abs(link.offset_s), 0.01)
+        self.assertIn("after the stop", note)
+
+    def test_a_set_lost_at_the_stop(self):
+        problems, _ = midstream.clock_after_stop(FakeClock(-0.02), midstream.PROBE_S)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("not applied at the stop", problems[0])
+
+    def test_an_idle_set_that_does_not_take(self):
+        problems, _ = midstream.clock_after_stop(FakeClock(midstream.PROBE_S, ignore_sets=True),
+                                                 midstream.PROBE_S)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("while idle", problems[0])
+
+    def test_offset_is_against_the_middle_of_the_exchange(self):
+        self.assertAlmostEqual(midstream.clock_offset(FakeClock(1.5)), 1.5, delta=0.01)
 
 
 class FakeSerial:

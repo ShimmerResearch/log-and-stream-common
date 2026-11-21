@@ -10,6 +10,10 @@
 
 #include "log_and_stream_includes.h"
 
+#if defined(SHIMMER3)
+#include "../5xx_HAL/hal_RTC.h"
+#endif
+
 /* Stores the time at which the RWC was last set. */
 uint64_t rwcConfigTime64;
 
@@ -282,4 +286,84 @@ uint8_t ShimRtc_setRtcSetByBt(uint8_t setByBt)
   cfg->rtcSetByBt = want;
   InfoMem_write(NV_SD_TRIAL_CONFIG0, &cfg->rawBytes[NV_SD_TRIAL_CONFIG0], 1);
   return 1;
+}
+
+/* DEV-1539: a clock set that arrives while sensing waits for sensing to stop.
+ *
+ * On Shimmer3R the sample stamps are the clock itself (RTC_getRwcTime is
+ * RTC_get64), so setting it mid-session steps every stamp after the set by the
+ * difference between the value written and the clock it replaces. Over
+ * Bluetooth that difference is mostly the command's transit time, which the
+ * firmware cannot see: 19-27 ms on an idle Classic link, about 3.5 ms while
+ * streaming. A step back beyond a host's reorder window reads as a counter
+ * wrap, 512 s. Shimmer3's stamps are a free-running counter and do not step,
+ * but its clock offset still moves under a running session: a log's later
+ * hourly files carry a different SDH_RTC_DIFF from its earlier ones. The rule
+ * is the same on both, so a host need not know which it is talking to.
+ *
+ * While sensing (streaming, SD logging or both), a set is accepted and kept as
+ * the difference between the time it asked for and the clock when it arrived.
+ * Once streaming and logging have both stopped, ShimSens_stopSensing() applies
+ * it to the clock as it then reads, which gives the time the host asked for
+ * just as an immediate set would have. A later set while still sensing
+ * replaces an earlier one. Until then the clock, GET_RWC and the dock's
+ * current-time read all carry on unchanged, as the session's stamps do.
+ *
+ * Who set it (rtcSetByBt and the SD header's copy) waits too: on the first set
+ * it changes, and that InfoMem write erases flash with interrupts disabled. */
+static uint8_t rwcSetDeferred;
+static uint8_t rwcSetDeferredByBt;
+/* Requested ticks minus the clock when the set arrived, modulo 2^64: adding it
+ * back gives the right answer whichever way the clock is to move. */
+static uint64_t rwcSetDeferredOffset;
+
+static void ShimRtc_applyRwc(uint64_t ticks, uint8_t setByBt)
+{
+  ShimRtc_setRtcSetByBt(setByBt);
+  ShimSdHead_sdHeadTextSetByte(SDH_TRIAL_CONFIG0,
+      ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0]);
+
+  RTC_setTimeFromTicksPtr((uint8_t *) &ticks);
+  ShimRtc_rwcErrorCheck();
+#if defined(SHIMMER3R)
+  if (setByBt)
+  {
+    RTC_setAlarmBattRead(); //configure RTC alarm after time set from BT.
+  }
+#endif
+}
+
+/* Set the real-world clock to ticks (32768 Hz since the Unix epoch, UTC), now
+ * or, while sensing, when sensing stops. setByBt is 1 for SET_RWC_COMMAND and
+ * 0 for the dock. Returns 1 if the set was deferred. */
+uint8_t ShimRtc_setRwc(uint64_t ticks, uint8_t setByBt)
+{
+  if (shimmerStatus.sensing)
+  {
+    rwcSetDeferredOffset = ticks - RTC_getRwcTime();
+    rwcSetDeferredByBt = setByBt ? 1U : 0U;
+    rwcSetDeferred = 1;
+    return 1;
+  }
+  rwcSetDeferred = 0;
+  ShimRtc_applyRwc(ticks, setByBt);
+  return 0;
+}
+
+/* Apply a set deferred while sensing. Called once streaming and logging have
+ * both stopped. Returns 1 if there was one. */
+uint8_t ShimRtc_applyDeferredRwc(void)
+{
+  if (!rwcSetDeferred)
+  {
+    return 0;
+  }
+  rwcSetDeferred = 0;
+  ShimRtc_applyRwc(RTC_getRwcTime() + rwcSetDeferredOffset, rwcSetDeferredByBt);
+  return 1;
+}
+
+uint8_t ShimRtc_isRwcSetDeferred(void)
+{
+  return rwcSetDeferred;
 }

@@ -104,6 +104,23 @@ The clock is set by the host, over Bluetooth (`SET_RWC_COMMAND`) or over the
 dock (`UART_PROP_RWC_CFG_TIME`). The value is 64-bit ticks since the Unix
 epoch, **UTC**.
 
+> **A set that arrives while sensing waits for the stop.** While the device
+> streams, SD-logs or both, `ShimRtc_setRwc` (`RTC/shimmer_rtc.c`) keeps the
+> difference between the time sent and the clock as it read on arrival.
+> `ShimSens_stopSensing` applies it once streaming and logging have both
+> stopped, to the clock as it then reads. That gives the time the host asked
+> for, as if the clock had been set on arrival.
+>
+> - The set is ACKed as usual. A later set replaces an earlier one.
+> - The flash write of who set it waits too.
+> - Until the stop, the clock and every read of it run on unchanged.
+>
+> So a session keeps one timeline from its start to its stop, on both
+> generations. A host that wants the clock right for a session sets it before
+> the session starts. This is a change later than the pins above (DEV-1539).
+> Before it, a set was applied at once, and §7.1 says what that did to a
+> Shimmer3R stream.
+
 The platform's `RTC_isRwcTimeSet()` reports whether the clock has been set
 since it last lost its time. It is declared in `log_and_stream_externs.h` and
 implemented by each platform, so it is the one to call. What "lost its time"
@@ -401,20 +418,26 @@ Consensys plots against, and it inherits the first packet's buffering delay as
 a constant offset. Check the *clock has been set* status bit (§6) before
 preferring an RWC anchor to this one.
 
-> **Setting the clock mid-stream moves the anchor.** `SET_RWC_COMMAND` is one
-> of the few writes permitted while sensing, and on Shimmer3R it steps the very
-> counter the packets carry. Re-anchor after any write; do not carry an
-> anchor across one. The step is the difference between the value written and
-> the clock it replaces, and has two parts: the error in the written value
-> (over Bluetooth, tens of milliseconds, because the command's transit time
-> varies and the host cannot know it), and however far the device's own clock
-> has drifted since it was last set. Either can be tens of milliseconds; on the
-> one bench unit measured, the second dominated (figures under
-> [Still unverified](#still-unverified--not-found-in-code)).
-> Packets after the write sit off the old sample grid, and a
-> backward step larger than the unwrap's reorder window reads as a counter wrap
+> **Setting the clock mid-stream no longer moves the anchor.** A
+> `SET_RWC_COMMAND` sent while sensing is accepted, but it waits until
+> streaming and logging have both stopped (§3, DEV-1539). Until then
+> `GET_RWC_COMMAND` returns the unchanged clock, so an anchor taken at any
+> point in the session holds for all of it.
+>
+> **Older firmware applied the set at once.** On Shimmer3R that stepped the
+> very counter the packets carry, by the difference between the value written
+> and the clock it replaced. That difference has two parts:
+>
+> - **The error in the written value.** Over Bluetooth it is mostly the
+>   command's transit time, which varies and which the host cannot know.
+> - **The device's own drift** since its clock was last set.
+>
+> Packets after the write sat off the old sample grid. A backward step larger
+> than the unwrap's reorder window reads as a counter wrap
 > ([SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md) §2.1).
-> Set the clock before streaming starts, not at each logging start.
+> With such firmware, re-anchor after any write, and set the clock before
+> streaming starts, not at each logging start. The figures are under
+> [Still unverified](#still-unverified--not-found-in-code).
 
 ### 7.2 Logged data
 
@@ -486,18 +509,32 @@ that has one, and is forced off elsewhere
    year before 2000 (§3). Do not detect an unset clock by comparing against
    1970.
 7. **Do not assume file boundaries mean anything in wall-clock terms.**
+8. **Set the clock before a session, not during one.** A set sent while the
+   device streams or logs takes effect only at the stop (§3).
 
 ## Still unverified / not found in code
 
-- **Mid-stream clock writes: bench figures from one Shimmer3R.** The §7.1
-  note on setting the clock mid-stream is backed by bench runs, not source, on
-  a single Shimmer3R over BLE at 256 Hz, at a firmware revision later than the
-  pins above. There, repeat mid-stream `SET_RWC_COMMAND` writes stepped the
-  counter forward by 17-24 ms each time. Most of that was not transit time: on
-  that unit the RTC itself lost about 16 ms at each SD-logging start, running
-  slow while the card was busy, and each write put the lost time back. Whether
-  other units do the same was not checked. Re-check before relying on the
-  figures, and pin them when they are.
+- **Mid-stream clock writes before DEV-1539: bench figures.** The §7.1 note on
+  what older firmware did is backed by bench runs, not source.
+  - **Shimmer3R 5307, LogAndStream v1.01.027, Classic SPP, docked (21 Nov
+    2026).** A set over the dock left the clock 14-16 ticks behind the host and
+    it stayed there. So the set itself loses no time, and in particular none
+    while the RTC is in init mode. Sets over an idle Bluetooth link landed
+    625-893 ticks (19-27 ms) behind the host, and sets sent while streaming
+    about 113 ticks (3.5 ms) behind. Each stream step equalled the change in
+    the clock to within 6 ticks.
+  - **What that did to a stream.** The first mid-stream set after an idle one
+    stepped it forward by the difference in transit time: +518 and +714 ticks
+    on that unit. That is the "4 samples lost (step ~650 ticks)" every release
+    run of HIL `smoke.sd_start_midstream` reported at its first clock-set
+    cycle, v1.01.024 to v1.01.027.
+  - **An earlier figure, from one Shimmer3R over BLE at 256 Hz (October
+    2026).** Repeat mid-stream writes stepped the counter forward by 17-24 ms
+    each time. That unit's RTC lost about 16 ms at each SD-logging start,
+    because its crystal was driven at too low a drive level, and each write put
+    the lost time back. The drive level has since been fixed (DEV-1257).
+
+  Pin these figures once the change is in a release.
 
 - **The newer Shimmer3R time-set behaviour is not yet pinned to a release.**
   The sub-second `RTC_SHIFTR` shift (advance-only, `SS[14:0]` reads), the

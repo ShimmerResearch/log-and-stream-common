@@ -66,4 +66,13 @@ uint32_t hostStub_getResetCount(void);
  * not actually wait. */
 uint32_t hostStub_getDelayMsTotal(void);
 
+/* Number of RTC_setTimeFromTicksPtr() calls, and the value the latest set the
+ * clock to. A set moves the real-world clock from the tick it was made at, the
+ * way each platform does: on Shimmer3R RTC_get64() moves with it, on Shimmer3
+ * only RTC_getRwcTime(). Shimmer3R's RTC_setAlarmBattRead() calls are counted
+ * too. */
+uint32_t hostStub_getRwcSetCount(void);
+uint64_t hostStub_getRwcLastSet(void);
+uint32_t hostStub_getBattAlarmCount(void);
+
 #endif /* HOST_TEST_HOST_STUBS_H */

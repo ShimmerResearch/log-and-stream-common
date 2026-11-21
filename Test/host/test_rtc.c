@@ -41,6 +41,10 @@
 #include "host_test.h"
 #include "log_and_stream_includes.h"
 
+#if defined(SHIMMER3)
+#include "hal_RTC.h" /* RTC_getRwcTime(); a macro on Shimmer3R */
+#endif
+
 /* 2000-01-01 00:00:00 UTC. The RTC stores a two-digit year, so this is the
  * earliest instant it can express and the zero point of every case below. */
 #define UNIX_2000_01_01 946684800U
@@ -432,6 +436,152 @@ static void test_rtc_set_by_bt_flush(void)
       ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0], 0xFF);
 }
 
+/* --- DEV-1539: a clock set while sensing waits for the stop --------------- *
+ *
+ * The stub clock keeps each platform's shape (host_stubs.h): a set moves
+ * RTC_get64() on Shimmer3R, which is what the sample stamps carry, and only
+ * RTC_getRwcTime() on Shimmer3. The stub tick is in milliseconds. */
+
+/* 2026-11-21 00:00:00 UTC, in ticks. */
+#define T_2026 ((uint64_t) 1795219200U * TICKS_PER_SEC)
+
+/* The deferral is module state that hostStub_reset() cannot see: drain it. */
+static void rwcStartClean(void)
+{
+  hostStub_reset();
+  (void) ShimRtc_applyDeferredRwc();
+  hostStub_reset();
+}
+
+/* Idle, a set is applied at once, with everything the command did before. */
+static void test_rwc_set_when_idle(void)
+{
+  testCase("test_rwc_set_when_idle");
+
+  rwcStartClean();
+  ShimConfig_getStoredConfig()->rtcErrorEnable = 1;
+  hostStub_setTick(1000);
+
+  expectU("a Bluetooth set while idle is not deferred", ShimRtc_setRwc(T_2026, 1), 0);
+  expectFalse("nothing is waiting", ShimRtc_isRwcSetDeferred());
+  expectU("the clock was set once", hostStub_getRwcSetCount(), 1);
+  expectU("to the value sent", hostStub_getRwcLastSet(), T_2026);
+  expectU("and reads it", RTC_getRwcTime(), T_2026);
+  expectU("set by Bluetooth", ShimConfig_getStoredConfig()->rtcSetByBt, 1);
+  expectU("the SD header's copy follows", ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0),
+      ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0]);
+  expectU("the RTC error flash goes off", hostStub_getRtcErrorFlash(), 0);
+#if defined(SHIMMER3R)
+  expectU("Shimmer3R re-arms the battery alarm", hostStub_getBattAlarmCount(), 1);
+#endif
+
+  expectU("a dock set while idle is not deferred", ShimRtc_setRwc(T_2026 + 5, 0), 0);
+  expectU("the clock was set twice", hostStub_getRwcSetCount(), 2);
+  expectU("set by the dock", ShimConfig_getStoredConfig()->rtcSetByBt, 0);
+#if defined(SHIMMER3R)
+  expectU("a dock set leaves the battery alarm as it was",
+      hostStub_getBattAlarmCount(), 1);
+#endif
+  expectFalse("nothing to apply at a stop", ShimRtc_applyDeferredRwc());
+  expectU("still two sets", hostStub_getRwcSetCount(), 2);
+}
+
+/* While sensing, a set is ACKed and kept, and applied at the stop to the clock
+ * as it then reads: the time the host asked for, as if set on arrival. */
+static void test_rwc_set_deferred_while_sensing(void)
+{
+  uint64_t before;
+  uint64_t stamps;
+
+  testCase("test_rwc_set_deferred_while_sensing");
+
+  rwcStartClean();
+  hostStub_setTick(1000);
+  ShimRtc_setRwc(T_2026, 0); /* set by the dock, before the session */
+  const uint32_t writes = hostStub_getInfoMemWriteCount();
+
+  shimmerStatus.sensing = 1;
+  hostStub_setTick(2000);
+  before = RTC_getRwcTime();
+  stamps = RTC_get64();
+  expectU("a set while sensing is deferred", ShimRtc_setRwc(before + 500, 1), 1);
+  expectTrue("and waits", ShimRtc_isRwcSetDeferred());
+  expectU("the clock is not touched", hostStub_getRwcSetCount(), 1);
+  expectU("it reads on unchanged", RTC_getRwcTime(), before);
+  expectU("so the stamps do not step", RTC_get64(), stamps);
+  expectU("who set it waits too", ShimConfig_getStoredConfig()->rtcSetByBt, 0);
+  expectU("no InfoMem write mid-session", hostStub_getInfoMemWriteCount(), writes);
+#if defined(SHIMMER3R)
+  expectU("no battery alarm re-arm mid-session", hostStub_getBattAlarmCount(), 0);
+#endif
+
+  /* Three seconds on, logging and streaming stop. */
+  hostStub_setTick(5000);
+  expectU("the clock still runs on its own", RTC_getRwcTime(), before + 3U * TICKS_PER_SEC);
+  shimmerStatus.sensing = 0;
+  expectU("the stop applies it", ShimRtc_applyDeferredRwc(), 1);
+  expectFalse("nothing is left waiting", ShimRtc_isRwcSetDeferred());
+  expectU("one more set", hostStub_getRwcSetCount(), 2);
+  expectU("the clock is 500 ticks on from where it ran", RTC_getRwcTime(),
+      before + 3U * TICKS_PER_SEC + 500U);
+  expectU("now set by Bluetooth", ShimConfig_getStoredConfig()->rtcSetByBt, 1);
+  expectU("one InfoMem write, after the session",
+      hostStub_getInfoMemWriteCount(), writes + 1);
+  expectU("the SD header's copy follows", ShimSdHead_sdHeadTextGetByte(SDH_TRIAL_CONFIG0),
+      ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0]);
+#if defined(SHIMMER3R)
+  expectU("the battery alarm is re-armed at the apply", hostStub_getBattAlarmCount(), 1);
+#endif
+  expectFalse("a second stop has nothing to apply", ShimRtc_applyDeferredRwc());
+  expectU("still two sets", hostStub_getRwcSetCount(), 2);
+}
+
+/* The latest set while sensing is the one applied, whichever way it moves the
+ * clock and whoever sent it. */
+static void test_rwc_latest_deferred_set_wins(void)
+{
+  uint64_t before;
+
+  testCase("test_rwc_latest_deferred_set_wins");
+
+  rwcStartClean();
+  hostStub_setTick(1000);
+  ShimRtc_setRwc(T_2026, 1);
+  shimmerStatus.sensing = 1;
+  before = RTC_getRwcTime();
+  ShimRtc_setRwc(before + 32768U, 1); /* a second ahead */
+  hostStub_setTick(1500);
+  ShimRtc_setRwc(before + 16384U - 300U, 0); /* 300 ticks behind the clock */
+  expectU("neither touched the clock", hostStub_getRwcSetCount(), 1);
+
+  hostStub_setTick(4000);
+  shimmerStatus.sensing = 0;
+  expectU("the stop applies one set", ShimRtc_applyDeferredRwc(), 1);
+  expectU("two sets in all", hostStub_getRwcSetCount(), 2);
+  expectU("the later one, back 300 ticks from where the clock ran",
+      RTC_getRwcTime(), before + 3U * TICKS_PER_SEC - 300U);
+  expectU("by its sender, the dock", ShimConfig_getStoredConfig()->rtcSetByBt, 0);
+}
+
+/* A set that arrives once sensing has stopped is applied at once, and replaces
+ * one still waiting - the stop applies a deferred set before anything else can
+ * arrive, so this is a guard rather than a path. */
+static void test_rwc_idle_set_replaces_deferred(void)
+{
+  testCase("test_rwc_idle_set_replaces_deferred");
+
+  rwcStartClean();
+  hostStub_setTick(1000);
+  ShimRtc_setRwc(T_2026, 1);
+  shimmerStatus.sensing = 1;
+  ShimRtc_setRwc(T_2026 + 99999U, 1);
+  shimmerStatus.sensing = 0;
+  expectU("an idle set is applied at once", ShimRtc_setRwc(T_2026 + 7U, 1), 0);
+  expectFalse("and nothing is left waiting", ShimRtc_isRwcSetDeferred());
+  expectFalse("so the stop applies nothing", ShimRtc_applyDeferredRwc());
+  expectU("the idle set stands", RTC_getRwcTime(), T_2026 + 7U);
+}
+
 /* Every hour of a handful of representative days, as "unix,date,weekday", for
  * crosscheck_rtc.py to put against Python's datetime. */
 static void dumpCorpus(void)
@@ -486,6 +636,10 @@ int main(int argc, char **argv)
   test_rwc_error_flash();
   test_rwc_config_time();
   test_rtc_set_by_bt_flush();
+  test_rwc_set_when_idle();
+  test_rwc_set_deferred_while_sensing();
+  test_rwc_latest_deferred_set_wins();
+  test_rwc_idle_set_replaces_deferred();
 
   return hostTestReport("shimmer_rtc");
 }
