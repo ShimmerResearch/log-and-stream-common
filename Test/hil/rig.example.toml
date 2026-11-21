@@ -51,8 +51,9 @@ platform = "shimmer3r"
 mac = "AABBCCDD0001"           # Bluetooth MAC
 usb_serial = "0123456789AB"    # USB iSerial: `python -m serial.tools.list_ports -v`, VID:PID 0483:5710
 hub_port = 1                   # hub port powering its USB-C (power-off = undock)
-radio = "IF820 v1.4.16.16"     # the module build, exactly as keyed above; a test build of a version
-#                              # reports the release's, so name it here when one is fitted
+radio = "IF820 v1.4.16.16"     # the module build, exactly as keyed above; a test build reports its
+#                              # release's version, so name it after the version as the module's
+#                              # build= gives it: "IF820 v1.4.18.18 test_254"
 board = ""
 notes = ""
 # stlink_serial = "..."        # the ST-Link on this unit's SWD header: flash and reset by SWD, not

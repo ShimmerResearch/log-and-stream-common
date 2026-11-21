@@ -109,10 +109,37 @@ def tested_units(items, platform: str, only: str = "") -> list:
     return out
 
 
-def hardware(host: dict, kit: dict, units) -> dict:
+def read_radios(units, read, lacks) -> dict[str, dict[str, str]]:
+    """Each unit's Bluetooth module firmware as the unit reports it, for run.hardware.
+
+    read(unit) returns the module string over the unit's dock; lacks(unit) says
+    why the bench cannot reach that dock, or None. Each unit gets either
+    {"radio_reported": <string>} or {"radio_unread": <why>}. A unit that could
+    not be read is still tested: this records what was fitted, it judges nothing.
+    """
+    out = {}
+    for unit in units:
+        why = lacks(unit)
+        if not why:
+            try:
+                text = read(unit)
+            except Exception as e:      # a dock that does not answer, a port that is gone
+                why = f"{type(e).__name__}: {e}"
+            else:
+                why = None if text else "the dock replied with an empty string"
+        out[unit.name] = {"radio_unread": why[:200]} if why else {"radio_reported": text}
+    return out
+
+
+def hardware(host: dict, kit: dict, units, radios: dict[str, dict] | None = None) -> dict:
     """run.hardware: the PC, the bench's fixed kit and the units tested, so that a
-    figure can be traced to what gave it and benches told apart."""
-    return {"host": host, "kit": kit, "units": [u.describe() for u in units]}
+    figure can be traced to what gave it and benches told apart.
+
+    `radios` (read_radios) adds what each unit's module reported beside the
+    `radio` rig.toml gives it: a module can be re-flashed, and its build moves
+    the Bluetooth figures a long way."""
+    radios = radios or {}
+    return {"host": host, "kit": kit, "units": [{**u.describe(), **radios.get(u.name, {})} for u in units]}
 
 
 def write(rep: dict, path: Path) -> Path:

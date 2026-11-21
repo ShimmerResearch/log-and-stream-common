@@ -96,10 +96,6 @@ class Waivers(unittest.TestCase):
             self.report({"a.fails": "accepted"})
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class Hardware(unittest.TestCase):
     """run.hardware: the host, the kit and the units a session tested."""
 
@@ -139,3 +135,67 @@ class Hardware(unittest.TestCase):
                          operator="o", extra={"hardware": hil_report.hardware({"name": "PC"}, {}, [])})
         self.assertEqual(rep["run"]["hardware"]["units"], [])
 
+
+# What the Shimmer3R dock reported on 20 Nov 2026 (COMP_BLUETOOTH / PROP_BT_VER, v1.01.027).
+TEST_254 = "CYW20820 app=v01.04.18.18, stack=0x00000000, protocol=0x0104, hardware=0xf1, build=test_254"
+TEST_251 = "CYW20820 app=v01.04.18.18, stack=0x00000000, protocol=0x0104, hardware=0xf1, build=test_251"
+V1_4_16_16 = "CYW20820 app=v01.04.16.16, stack=0x00000000, protocol=0x0104, hardware=0xf1"
+
+
+class RadioReported(unittest.TestCase):
+    """run.hardware.units[].radio_reported: each unit's module firmware, read over its dock."""
+
+    def _unit(self, **kw):
+        from rig import config
+        return config.Unit(**{"name": "u", "platform": "shimmer3r", **kw})
+
+    def test_each_unit_gets_its_string_or_the_reason_it_has_none(self):
+        units = [self._unit(name=n) for n in ("a", "b", "c", "d", "e")]
+        replies = {"a": TEST_254, "c": OSError("could not open port 'COM9'"), "d": "", "e": V1_4_16_16}
+
+        def read(unit):
+            r = replies[unit.name]
+            if isinstance(r, Exception):
+                raise r
+            return r
+
+        got = hil_report.read_radios(units, read, lambda u: "bench lacks: usb" if u.name == "b" else None)
+        self.assertEqual(got, {
+            "a": {"radio_reported": TEST_254},
+            "b": {"radio_unread": "bench lacks: usb"},
+            "c": {"radio_unread": "OSError: could not open port 'COM9'"},
+            "d": {"radio_unread": "the dock replied with an empty string"},
+            "e": {"radio_reported": V1_4_16_16},
+        })
+
+    def test_a_unit_the_bench_cannot_reach_is_not_read(self):
+        def read(unit):
+            raise AssertionError("read a unit the bench lacks the dock for")
+        got = hil_report.read_radios([self._unit(name="a")], read, lambda u: "bench lacks: dock")
+        self.assertEqual(got, {"a": {"radio_unread": "bench lacks: dock"}})
+
+    def test_the_reported_string_sits_beside_the_rigs_radio(self):
+        a = self._unit(name="a", radio="IF820 v1.4.18.18 test_254", hub_port=1)
+        b = self._unit(name="b", radio="IF820", hub_port=4)
+        c = self._unit(name="c", radio="IF820 v1.4.16.16", hub_port=3)
+        radios = {"a": {"radio_reported": TEST_254}, "b": {"radio_reported": TEST_251}}
+        units = hil_report.hardware({}, {}, [a, b, c], radios)["units"]
+        self.assertEqual(units[0], {"name": "a", "platform": "shimmer3r", "radio": "IF820 v1.4.18.18 test_254",
+                                    "hub_port": 1, "radio_reported": TEST_254})
+        self.assertEqual(units[1]["radio_reported"], TEST_251)
+        self.assertNotIn("radio_reported", units[2])     # not read: no entry, as in a report from before
+
+    def test_a_report_with_and_without_it_passes_the_gate_check(self):
+        a = self._unit(name="a", radio="IF820 v1.4.16.16")
+        for radios in ({"a": {"radio_reported": V1_4_16_16}}, {"a": {"radio_unread": "bench lacks: usb"}}, None):
+            col = hil_report.Collector()
+            col.record("smoke.boot_identity", "pass")
+            rep = col.report(platform="shimmer3r", commit=SHA, firmware_version="1.01.027", bench="b",
+                             operator="o", extra={"hardware": hil_report.hardware({}, {}, [a], radios)})
+            self.assertEqual(hil_gate.validate_report("r.json", rep), [])
+            v = hil_gate.evaluate("shimmer3r", SHA, "1.01.027", {"r.json": rep}, [{"id": "smoke.boot_identity"}])
+            self.assertTrue(v.ok, v.problems)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

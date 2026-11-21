@@ -1773,14 +1773,76 @@ class ThroughputByRadio(unittest.TestCase):
         self.assertEqual(len(short), 1)
 
     def test_the_module_version_must_match_the_named_build(self):
-        self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.18.18 test build", "1.4.18.18"))
+        self.assertEqual(throughput.radio_check("IF820 v1.4.18.18 test build", "1.4.18.18"), (None, None))
         # What the Shimmer3R dock reports, zero-padded.
         reported = "CYW20820 app=v01.04.18.18, stack=0x00000000, protocol=0x0104, hardware=0xf1"
-        self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.18.18", reported))
-        self.assertIn("update its radio", throughput.radio_mismatch("IF820 v1.4.16.16", reported))
-        self.assertIn("update its radio", throughput.radio_mismatch("IF820 v1.4.16.16", "v1.4.18.18"))
-        self.assertIsNone(throughput.radio_mismatch(None, "1.4.18.18"))
-        self.assertIsNone(throughput.radio_mismatch("IF820 v1.4.16.16", "unreadable"))
+        self.assertEqual(throughput.radio_check("IF820 v1.4.18.18", reported), (None, None))
+        self.assertIn("update its radio", throughput.radio_check("IF820 v1.4.16.16", reported)[0])
+        self.assertIn("update its radio", throughput.radio_check("IF820 v1.4.16.16", "v1.4.18.18")[0])
+        self.assertEqual(throughput.radio_check(None, "1.4.18.18"), (None, None))
+        self.assertEqual(throughput.radio_check("IF820 v1.4.16.16", "unreadable"), (None, None))
+
+
+class RadioBuild(unittest.TestCase):
+    """The module build a radio key names, against the build= the Shimmer3R reports from v1.01.027."""
+
+    # What the dock reported on 20 Nov 2026 (COMP_BLUETOOTH / PROP_BT_VER, v1.01.027).
+    TEST_254 = "CYW20820 app=v01.04.18.18, stack=0x00000000, protocol=0x0104, hardware=0xf1, build=test_254"
+    TEST_251 = "CYW20820 app=v01.04.18.18, stack=0x00000000, protocol=0x0104, hardware=0xf1, build=test_251"
+    V1_4_16_16 = "CYW20820 app=v01.04.16.16, stack=0x00000000, protocol=0x0104, hardware=0xf1"
+    # A v1.4.18.18 module behind firmware older than v1.01.027, or the public release.
+    V1_4_18_18 = "CYW20820 app=v01.04.18.18, stack=0x00000000, protocol=0x0104, hardware=0xf1"
+
+    def test_the_reported_build_is_the_value_after_build_equals(self):
+        self.assertEqual(throughput.reported_build(self.TEST_254), "test_254")
+        self.assertEqual(throughput.reported_build(self.TEST_251), "test_251")
+        self.assertIsNone(throughput.reported_build(self.V1_4_16_16))
+        self.assertIsNone(throughput.reported_build("Ver 6.15 04/26/2013\n\r(c) Roving Networks"))
+        self.assertIsNone(throughput.reported_build(None))
+
+    def test_a_key_names_a_build_with_one_word_after_its_version(self):
+        self.assertEqual(throughput.named_build("IF820 v1.4.18.18 test_254"), "test_254")
+        self.assertIsNone(throughput.named_build("IF820 v1.4.16.16"))
+        self.assertIsNone(throughput.named_build("IF820 v1.4.18.18 test build"))
+        self.assertIsNone(throughput.named_build("IF820"))
+        self.assertIsNone(throughput.named_build(None))
+        self.assertIsNone(throughput.named_build("RN4678 V1.00.5"))
+
+    def test_the_named_build_must_be_the_reported_one(self):
+        self.assertEqual(throughput.radio_check("IF820 v1.4.18.18 test_254", self.TEST_254), (None, None))
+        self.assertEqual(throughput.radio_check("IF820 v1.4.18.18 TEST_254", self.TEST_254), (None, None))
+        self.assertEqual(throughput.radio_check("IF820 v1.4.18.18 test_251", self.TEST_251), (None, None))
+        for named, reported in (("IF820 v1.4.18.18 test_254", self.TEST_251),
+                                ("IF820 v1.4.18.18 test_251", self.TEST_254)):
+            mismatch, remark = throughput.radio_check(named, reported)
+            self.assertIn("update its radio", mismatch)
+            self.assertIn(f"build={throughput.reported_build(reported)}", mismatch)
+            self.assertIsNone(remark)
+
+    def test_a_production_module_matches_its_key_and_no_test_builds(self):
+        self.assertEqual(throughput.radio_check("IF820 v1.4.16.16", self.V1_4_16_16), (None, None))
+        self.assertIn("update its radio", throughput.radio_check("IF820 v1.4.16.16", self.TEST_254)[0])
+        self.assertIn("update its radio", throughput.radio_check("IF820 v1.4.18.18 test_254", self.V1_4_16_16)[0])
+
+    def test_a_reported_build_the_key_does_not_name_is_remarked_on(self):
+        # 10E0 on 20 Nov 2026: rig.toml said only "IF820", and the module ran test_251.
+        for named in ("IF820", "IF820 v1.4.18.18", "IF820 v1.4.18.18 test build", None):
+            mismatch, remark = throughput.radio_check(named, self.TEST_251)
+            self.assertIsNone(mismatch, named)
+            self.assertIn("build=test_251", remark)
+
+    def test_a_named_build_the_module_does_not_report_is_remarked_on(self):
+        mismatch, remark = throughput.radio_check("IF820 v1.4.18.18 test_254", self.V1_4_18_18)
+        self.assertIsNone(mismatch)
+        self.assertIn("reports no build", remark)
+        # A module that could not be read says nothing either way.
+        self.assertEqual(throughput.radio_check("IF820 v1.4.18.18 test_254", ""), (None, None))
+
+    def test_a_shimmer3_banner_matches_its_key(self):
+        self.assertEqual(throughput.radio_check("RN42 Ver 6.15", "Ver 6.15 04/26/2013\n\r(c) Roving Networks"),
+                         (None, None))
+        self.assertEqual(throughput.radio_check("RN4678 V1.23", "RN4678 V1.23 06/30/2021"), (None, None))
+        self.assertIn("update its radio", throughput.radio_check("RN4678 V1.00.5", "RN4678 V1.23 06/30/2021")[0])
 
 
 class BleBaselineConfig(unittest.TestCase):

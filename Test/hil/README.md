@@ -47,6 +47,15 @@ python -m pytest Test/hil/tests -m smoke --candidate build-info.json --hil-repor
 A run without `--candidate` still tests, but writes no report: a report that
 cannot name the build it tested is not evidence about any build.
 
+A report also records what it ran on, under `run.hardware`: the PC, the
+bench's fixed kit and each unit tested. Each unit carries the `radio` its
+`rig.toml` gives it and, beside it, `radio_reported`: the Bluetooth module
+firmware the unit reported over its dock before its first test. From v1.01.027
+a Shimmer3R appends an Infineon test build's name there
+(`CYW20820 app=v01.04.18.18, ..., build=test_254`); a Shimmer3 gives its RN42
+or RN4678 banner. A unit that could not be read that way has `radio_unread`
+with the reason instead, and is tested all the same.
+
 For the items no rig covers yet, a person records a sign-off with
 `hil_signoff.py --tag <tag> --upload`.
 
@@ -200,16 +209,30 @@ figures. Take a row's KB/s × 1024, and the low end of each range:
 [throughput_by_radio]
 "IF820 v1.4.16.16" = { link_bytes_per_s = 156672, tolerance = 0.10 }   # 153-154 KB/s
 "IF820 v1.4.18.18" = { link_bytes_per_s = 77824, tolerance = 0.10 }    # 76-77 KB/s, public release
+"IF820 v1.4.18.18 test_254" = { link_bytes_per_s = ..., tolerance = 0.10 }
 
 [[unit]]
 name = "s3r-a"
 radio = "IF820 v1.4.16.16"
 ```
 
-- **Module check:** the item checks that the module reports the version
-  `radio` names. A module's test builds report their release's version, so
-  give each its own key, e.g. `"IF820 v1.4.18.18 <build>"`, and keep that
-  `radio` up to date by hand when a unit is re-flashed.
+- **Module check:** before measuring, the item checks the module against
+  `radio`, because `radio` picks the baseline.
+  - The module must report the version `radio` names.
+  - A test build reports its release's version, so give each test build its
+    own key: the build's name, as the module reports it, after the version,
+    e.g. `"IF820 v1.4.18.18 test_254"`.
+  - From v1.01.027 the Shimmer3R appends a test build's name to the module
+    string (`..., hardware=0xf1, build=test_254`), and a public release
+    appends nothing. So test builds can now be told apart: a build that
+    `radio` names must be the one reported, or the item fails. A build the
+    module reports that `radio` does not name, or one `radio` names that the
+    module does not report, goes into the item's note.
+  - Older firmware reports no build, whatever the module runs. Against it
+    only the figures tell test builds apart.
+  - Keep `radio` up to date when a unit's module is re-flashed. The report
+    records what each module reported (`radio_reported`), but the baseline
+    still comes from `radio`.
 - **Overrides:** a unit's own `throughput` overrides its radio row key by
   key.
 

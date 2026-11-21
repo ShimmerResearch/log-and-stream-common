@@ -236,17 +236,19 @@ def test_bt_throughput(rig, unit, cdc, btlink, hil_note):
     rig/throughput.py has the two measurements, judged against this bench's
     figures for the unit's IF820 module build ([throughput_by_radio] in
     rig.toml) and any of the unit's own; without any the item is not_covered,
-    with the figures to record. The module is checked to be the version
-    rig.toml names first, because that picks the baseline. If the IF820
-    carries the whole load, the stream figure sits near 1024 and a fall is
-    samples lost. The load is stored configuration, so InfoMem is saved to
-    disk and put back.
+    with the figures to record. The module is checked first to be the version
+    and build that rig.toml's radio names, because that picks the baseline
+    (throughput.radio_check); what the module reports and the name does not
+    say, or the reverse, goes into the item's note. If the IF820 carries the
+    whole load, the stream figure sits near 1024 and a fall is samples lost.
+    The load is stored configuration, so InfoMem is saved to disk and put back.
     """
     with dock.open_when_ready(cdc) as d:
         reported = d.bt_version()
         original = bytes(d.read_infomem())
-    mismatch = throughput.radio_mismatch(unit.radio, reported)
+    mismatch, remark = throughput.radio_check(unit.radio, reported)
     assert not mismatch, mismatch
+    also = f"; {remark}" if remark else ""
     baseline = rig.throughput_baseline(unit)
     backup = throughput.save_infomem(unit.name, original)
     error = None
@@ -263,10 +265,10 @@ def test_bt_throughput(rig, unit, cdc, btlink, hil_note):
     measured = throughput.figures(rate, st, inq)
     if not baseline:
         pytest.skip(f"no throughput baseline for {unit.name} ({unit.radio}) in rig.toml; "
-                    f"measured {throughput.as_toml(measured)}")
+                    f"measured {throughput.as_toml(measured)}{also}")
     short, note = throughput.judge(measured, baseline, unit.name)
-    hil_note(note)
-    assert not short, "; ".join(short)
+    hil_note(note + also)
+    assert not short, "; ".join(short) + also
 
 
 @pytest.mark.hil("smoke.ble_throughput", needs=["shimmer3r", "bt", "ble", "usb"])
@@ -292,8 +294,9 @@ def test_ble_throughput(rig, unit, cdc, hil_note):
                         "bleEnabled clear)")
         reported = d.bt_version()
         original = bytes(d.read_infomem())
-    mismatch = throughput.radio_mismatch(unit.radio, reported)
+    mismatch, remark = throughput.radio_check(unit.radio, reported)
     assert not mismatch, mismatch
+    also = f"; {remark}" if remark else ""
     baseline = rig.ble_throughput_baseline(unit)
     backup = throughput.save_infomem(unit.name, original)
     error = None
@@ -312,13 +315,13 @@ def test_ble_throughput(rig, unit, cdc, hil_note):
     measured = throughput.figures(rate, st, inq)
     if not baseline:
         pytest.skip(f"no BLE throughput baseline for {unit.name} ({unit.radio}) in rig.toml; "
-                    f"measured {throughput.as_toml(measured, 'ble_throughput')}")
+                    f"measured {throughput.as_toml(measured, 'ble_throughput')}{also}")
     short, note = throughput.judge(measured, baseline, unit.name)
-    hil_note(note)
+    hil_note(note + also)
     # A PC's Bluetooth stack can stick in a state that holds BLE at about 60%
     # until Bluetooth is switched off and on (TEST_PROCEDURE §5.5).
     assert not short, "; ".join(short) + (" - switch the PC's Bluetooth off and on and repeat before "
-                                         "believing a BLE shortfall")
+                                         "believing a BLE shortfall") + also
 
 
 @pytest.mark.hil("smoke.usb_replug", needs=["shimmer3r", "usb", "hub_port"])
