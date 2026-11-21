@@ -167,6 +167,32 @@ def _baseline_for(config):
     return lambda unit, infomem: rig_baseline.image(unit.platform, infomem)
 
 
+def _say(config):
+    """A function that writes one "hil: ..." line to the terminal at once, for
+    progress the operator should see while a test runs, which pytest's capture
+    would otherwise hold back."""
+    tr = config.pluginmanager.get_plugin("terminalreporter")
+
+    def say(m):
+        if tr is None:
+            print(f"hil: {m}")
+            return
+        # Progress dots may still be on the line (at teardown, say); without a
+        # fresh line the message is glued to them ("..hil: ..."). The
+        # reporter's ensure_newline() tracks file paths, not what is on the
+        # line, so ask the terminal writer.
+        if getattr(tr._tw, "width_of_current_line", 0):
+            tr.write("\n")
+        tr.write_line(f"hil: {m}")
+    return say
+
+
+@pytest.fixture(scope="session")
+def hil_log(pytestconfig):
+    """say(text): a "hil: ..." line on the terminal now, not after the test."""
+    return _say(pytestconfig)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _bench_config(request):
     """Every unit starts the run from the baseline configuration, with Bluetooth on
@@ -208,19 +234,8 @@ def _bench_config(request):
     if not units:
         yield
         return
-    tr = request.config.pluginmanager.get_plugin("terminalreporter")
-    def log(m):
-        if tr is None:
-            print(m)
-            return
-        # At teardown the progress dots are still on the line; without a fresh
-        # line the restore confirmation is glued to them ("..hil: ..."). The
-        # reporter's ensure_newline() tracks file paths, not what is on the
-        # line, so ask the terminal writer.
-        if getattr(tr._tw, "width_of_current_line", 0):
-            tr.write("\n")
-        tr.write_line(f"hil: {m}")
-    mode = BtMode(*bench_routes(request.getfixturevalue("rig")), log=log, baseline=baseline)
+    mode = BtMode(*bench_routes(request.getfixturevalue("rig")), log=_say(request.config),
+                  baseline=baseline)
     try:
         for unit in units.values():
             mode.enable(unit)
@@ -334,19 +349,48 @@ def _missing(config, unit, needs: set[str]) -> set[str]:
     return missing
 
 
-def pytest_runtest_setup(item):
+def _not_covered(config, item) -> str | None:
+    """Why pytest_runtest_setup skips this item as not_covered, or None when it runs."""
     item_id, needs = _item(item)
     if not item_id:
-        return
+        return None
     unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
-    only = item.config.getoption("--unit")
+    only = config.getoption("--unit")
     if only and unit is not None and unit.name != only:
-        item._hil_not_covered = f"not run: --unit {only}"
-        pytest.skip(item._hil_not_covered)
-    missing = _missing(item.config, unit, needs)
+        return f"not run: --unit {only}"
+    missing = _missing(config, unit, needs)
     if missing:
-        item._hil_not_covered = f"bench lacks: {', '.join(sorted(missing))}"
-        pytest.skip(item._hil_not_covered)
+        return f"bench lacks: {', '.join(sorted(missing))}"
+    return None
+
+
+def pytest_runtest_setup(item):
+    reason = _not_covered(item.config, item)
+    if reason:
+        item._hil_not_covered = reason
+        pytest.skip(reason)
+
+
+@pytest.fixture(scope="session")
+def hil_units(request):
+    """units(item_id): the units this run tests under report item `item_id`, in run order.
+
+    For tests whose units share one piece of work, as soak.long_log's share one
+    log. The work then covers exactly the units whose own tests will run: the
+    ones collected and selected, not left out by --unit, and with what they
+    need on this bench (pytest_runtest_setup).
+    """
+    def units(item_id: str) -> list:
+        out, seen = [], set()
+        for item in request.session.items:
+            unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
+            if (unit is None or unit.name in seen or _item(item)[0] != item_id
+                    or _not_covered(request.config, item)):
+                continue
+            seen.add(unit.name)
+            out.append(unit)
+        return out
+    return units
 
 
 @pytest.hookimpl(hookwrapper=True)

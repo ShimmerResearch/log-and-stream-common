@@ -1771,17 +1771,27 @@ the high-rate rows need.
 
 The **soak** tier is the §5.11 soak, made repeatable: what shows only over
 time or repetition. It runs unattended, with durations scaled by
-`HIL_SOAK_SCALE` (1 is about three hours; 3 is an overnight run). It is
+`HIL_SOAK_SCALE` (3 is an overnight run). It is
 **advisory**: never required for a release. Its notes carry rates, such as
 lost samples per hour or failures per hundred reconnects, so candidates can be
 compared, and each item still fails if anything happened.
 
 | Item | Checks |
 |---|---|
-| `soak.long_log` | Shimmer3R, undocked, logging at 256 Hz for 75 min × scale. The session's files are checked as one recording, and each file must join the next at exactly one sample period across the hourly rollover |
+| `soak.long_log` | Shimmer3R, undocked, logging at 256 Hz for 75 min × scale. Every Shimmer3R logs at the same time: each is configured and undocked, the logs are started over Bluetooth one unit at a time, and after one wait each is stopped, re-docked and has its InfoMem put back. Each unit is still judged on its own. The session's files are checked as one recording, and each file must join the next at exactly one sample period across the hourly rollover |
 | `soak.dock_cycles` | Repeated hub-port undock/re-dock. Every cycle, the CDC port, the dock protocol and the SD drive must return; re-enumeration time is recorded. A cycle whose dock exchange failed inside a host service stall (§10.4) is counted apart and noted, not failed |
 | `soak.bt_reconnect` | On every unit, connect → status → 3 s stream at 51.2 Hz → stop → status → close, repeated. Counts connect failures, stops without an ACK, links left silent, and lost samples. On Shimmer3, two failed connects in a row trigger a reset through the Base6 and a retry, and the count records whether the reset brought Bluetooth back |
 | `soak.long_stream` | A long Shimmer3R stream at 256 Hz: lost samples, duplicates, resyncs, jitter, and whether the stop is ACKed |
+
+Only the long logs share time. A unit logging undocked needs nothing from the
+PC between the start and the stop, and each writes its own SD card. The other
+items run one unit at a time. They hold a Bluetooth link for minutes or
+switch a hub port over and over, and the bench shares one Bluetooth adapter,
+which holds about three Classic links (DEV-742), and one hub, whose USB
+re-enumeration can stall the host's services (DEV-1368). At scale 1 a
+Shimmer3R run takes the 75-minute log once and then about 50 minutes per
+unit: about 2 hours with one Shimmer3R, 4.5 hours with four. A Shimmer3 run is
+the reconnect loop on each unit.
 
 Smoke, fleet and release items are not yet on the required lists. They join once they have run
 clean across a few candidates, so a flaky check never blocks a release on its
