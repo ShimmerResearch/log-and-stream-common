@@ -565,7 +565,8 @@ MIDSTREAM_CRC = 2
 
 @pytest.mark.hil("fleet.sd_start_midstream", needs=["shimmer3", "bt", "dock"])
 def test_sd_start_midstream(unit, base6, hil_note):
-    """smoke.sd_start_midstream's commands, sent to a docked Shimmer3.
+    """smoke.sd_clock_set_midstream's commands, sent to a docked Shimmer3:
+    smoke.sd_start_midstream's, with a clock set before every other start.
 
     A Shimmer3 starts logging only undocked (ShimSens_checkStartLoggingConditions),
     and a Base6 cannot undock one slot. Docked, the log starts are refused:

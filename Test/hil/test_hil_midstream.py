@@ -160,6 +160,13 @@ class Schedule(unittest.TestCase):
         self.assertAlmostEqual(plan.seconds, max(times) + 2)
         self.assertEqual(sum(a.acked for a in plan.actions), 4 * 2 + 2)
 
+    def test_no_clock_sets(self):
+        plan = midstream.schedule(6, clock_sets=False)
+        self.assertEqual(plan.rwc_cycles, [])
+        self.assertEqual([a.kind for a in plan.actions].count("start"), 6)
+        self.assertNotIn("set_rwc", [a.kind for a in plan.actions])
+        self.assertEqual(sum(a.acked for a in plan.actions), 6 * 2)
+
     def test_rwc_payload(self):
         b = midstream.rwc_payload(1.5)
         self.assertEqual(b[0], 0x8F)
@@ -390,6 +397,17 @@ class StreamActions(unittest.TestCase):
         self.assertEqual(len(problems), 1)
         self.assertTrue(problems[0].startswith("cycle 2 start: "))
         self.assertIn("1 of 1 starts after a clock set", summary)
+
+    def test_judge_without_clock_sets(self):
+        st = bt.StreamStats()
+        st.ts = stamps([P] * 60)
+        st.events = [("start 1", 25, 0.0), ("status 1", 40, 1.0)]
+        st.acks = 1
+        plan = midstream.Plan([midstream.Action(0, "start", 1, b""), midstream.Action(1, "status", 1, b"")],
+                              60 * P / bt.TICKS_PER_S, [])
+        problems, summary = midstream.judge(st, plan, P)
+        self.assertEqual(problems, [])
+        self.assertIn("disturbed by 0 of 1 starts, none after a clock set", summary)
 
 
     def test_too_few_packets_is_a_problem(self):

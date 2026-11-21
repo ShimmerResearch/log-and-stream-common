@@ -424,16 +424,10 @@ MIDSTREAM_CRC = 2
 def test_sd_start_midstream(unit, cdc, power, hil_note):
     """Start and stop SD logging while streaming: the stream's stamps must not notice.
 
-    Six 2 s logs inside one 256 Hz stream (rig/midstream.py). Odd cycles send
-    START_LOGGING alone. Even ones set the clock first, as the reference host
-    once did before every log start. The clock is set once before the stream
-    too, so every mid-stream set is a repeat, not the first set after power-up.
-
-    Firmware since DEV-1539 keeps a clock set that arrives while sensing until
-    the stop. So the clock sets must leave the stream alone, and the last one,
-    which asks for the host's time plus midstream.PROBE_S, must show in the
-    clock once the stream has stopped. The clock is then put back to the host's
-    time.
+    Six 2 s logs inside one 256 Hz stream (rig/midstream.py), each started with
+    START_LOGGING alone, as hosts start a log on a live stream. The clock is set
+    once before the stream, and never during it: none of the host software
+    sends SET_RWC mid-stream. smoke.sd_clock_set_midstream adds the clock sets.
 
     The stream runs with link CRC on, so every frame is confirmed by its CRC.
     Without one a frame is confirmed by a plausible timestamp step, and an
@@ -441,14 +435,44 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
 
     Fails on a stamp at or behind the one before, a moved sampling grid, lost
     or duplicate samples, or jitter past a quarter period, naming the cycle each
-    followed, and on a clock that does not read as the last set asked once the
-    stream has stopped. Each start must also have begun a log: a status query
-    shows logging, and once re-docked the card holds one new session per cycle.
+    followed. Each start must also have begun a log: a status query shows
+    logging, and once re-docked the card holds one new session per cycle.
 
     Logging cannot start docked, so the hub port is the dock, as in
     smoke.sd_log. The rate is stored configuration, so InfoMem is saved to disk
     and put back.
     """
+    midstream_session(unit, cdc, power, hil_note, midstream.schedule(MIDSTREAM_CYCLES, clock_sets=False))
+
+
+@pytest.mark.hil("smoke.sd_clock_set_midstream", needs=["shimmer3r", "usb", "bt", "hub_port"])
+def test_sd_clock_set_midstream(unit, cdc, power, hil_note):
+    """A clock set while streaming must not reach the stream (DEV-1539).
+
+    smoke.sd_start_midstream's session with SET_RWC before every other log
+    start, as the reference host once did (DEV-1337 stopped it). The plain
+    cycles stay in as the control, and the summary counts the two apart. Every
+    mid-stream set is a repeat, since the clock is set before the stream.
+
+    Firmware since DEV-1539 keeps a clock set that arrives while sensing until
+    the stop. So the clock sets must leave the stream alone, and the last one,
+    which asks for the host's time plus midstream.PROBE_S, must show in the
+    clock once the stream has stopped. The clock is then put back to the host's
+    time. On firmware that applies a set at once, the stamps step by the set's
+    transit time: on v1.01.027, 20 of 21 starts after a clock set disturbed the
+    stream. This was defect.dev1539_clock_set_midstream until the fix.
+
+    Fails as smoke.sd_start_midstream does, and on a clock that does not read as
+    the last set asked once the stream has stopped.
+    """
+    midstream_session(unit, cdc, power, hil_note, midstream.schedule(MIDSTREAM_CYCLES))
+
+
+def midstream_session(unit, cdc, power, hil_note, plan: midstream.Plan) -> None:
+    """One undocked 256 Hz stream with plan's log cycles inside it, judged as
+    smoke.sd_start_midstream says. A plan with clock sets also has the clock
+    checked, then put back, once the stream has stopped
+    (midstream.clock_after_stop)."""
     port = bt.spp_port(unit.mac)
     if not port:
         pytest.skip(f"no paired SPP port for {unit.mac}")
@@ -456,7 +480,7 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
         original = bytes(d.read_infomem())
         d.write_infomem(MIDSTREAM_DIVIDER.to_bytes(2, "little"), offset=0)
     backup = throughput.save_infomem(unit.name, original)
-    plan = midstream.schedule(MIDSTREAM_CYCLES)
+    clock_problems, clock_note = [], None
     error = None
     try:
         root = s3r_usb.wait_drive(unit.usb_serial, 45)
@@ -473,7 +497,8 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
                 st = link.stream(plan.seconds, inq, keep=True, actions=plan.actions)
                 link.wait_status(bt.STATUS_SENSING, False, 15)
                 link.set_crc(0)
-                clock_problems, clock_note = midstream.clock_after_stop(link, plan.probe_s)
+                if plan.rwc_cycles:
+                    clock_problems, clock_note = midstream.clock_after_stop(link, plan.probe_s)
         finally:
             power.on(unit.hub_port, unit.name)
     except BaseException as e:
@@ -486,14 +511,16 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
     new = sdfile.session_dirs(root) - before
     problems, summary = midstream.judge(st, plan, inq.divider)
     problems += clock_problems
+    starts = sum(a.kind == "start" for a in plan.actions)
     if st.nacks:
-        problems.append(f"{st.nacks} of the {MIDSTREAM_CYCLES} log starts were refused (NACK) undocked")
+        problems.append(f"{st.nacks} of the {starts} log starts were refused (NACK) undocked")
     if not midstream.logging_seen(st):
         problems.append("no status during the stream showed logging")
-    if len(new) != MIDSTREAM_CYCLES:
-        problems.append(f"{len(new)} new SD sessions for {MIDSTREAM_CYCLES} log starts")
+    if len(new) != starts:
+        problems.append(f"{len(new)} new SD sessions for {starts} log starts")
     assert not problems, f"{summary}: " + "; ".join(problems)
-    hil_note(f"{summary}; {clock_note}; {len(new)} sessions logged")
+    clock = f"; {clock_note}" if clock_note else ""
+    hil_note(f"{summary}{clock}; {len(new)} sessions logged")
 
 
 MIDLOG_SECONDS = 5.0            # logged either side of the clock set
