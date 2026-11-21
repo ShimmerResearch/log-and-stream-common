@@ -22,6 +22,17 @@ python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022 --no-flash --tier soa
 python Test/hil/run_rc.py LogAndStream_Shimmer3_v1.01.007 --no-flash --tier soak
 ```
 
+The Shimmer3 long log needs someone at the bench, because the Base6 cannot
+take a unit off the dock. With `--attended` the soak tier includes it: the run
+asks, aloud and on the terminal, for every Shimmer3 to be taken out of the
+Base6, and after the log for them all to be put back, each in its own slot.
+Press Enter after each. Without `--attended` the item is `not_covered` and the
+run never waits on anyone:
+
+```
+python Test/hil/run_rc.py LogAndStream_Shimmer3_v1.01.007 --no-flash --tier soak --attended
+```
+
 The release tier's configuration matrix works the same way. `--tier release` runs the matrix for the
 candidate's platform: `matrix/s3r_release.toml` on the Shimmer3Rs, configured over USB, or
 `matrix/s3_release.toml` on each Base6 Shimmer3, configured over Bluetooth:
@@ -138,7 +149,9 @@ What the bench lacks is not a failure. Each test declares what it needs
 (`@pytest.mark.hil("smoke.sd_log", needs=[...])`); on a bench without, say, the
 managed hub, the item is reported `not_covered` and another bench's report has
 to cover it. `--manual-power` makes the operator the dock: the suite prompts to
-plug and unplug.
+plug and unplug. Items that need hands whatever the bench has, such as the
+Shimmer3 long log, need `attended`, which `--attended` (or `--manual-power`)
+supplies.
 
 ## Layout
 
@@ -148,18 +161,20 @@ plug and unplug.
 | `hil_signoff.py` | Manual sign-off, written as a report |
 | `hil_report.py`, `conftest.py` | Turns pytest outcomes into a report; capability checks |
 | `rig/config.py` | `rig.toml` |
-| `rig/power.py` | Hub port power (through bench-tools `hub/hubctl.py`), or the operator |
+| `rig/power.py` | Hub port power (through bench-tools `hub/hubctl.py`), or the operator: one unit at a time, or a group of Shimmer3s taken out of the Base6 and put back with one request each way (`OperatorDock`). `speak` says a request aloud |
 | `rig/dock.py` | The dock protocol over the Shimmer3R USB CDC port. The port is configured when it opens and again only for a different reply timeout: each reconfigure sends the unit CDC control requests (DEV-1368) |
 | `rig/bt.py` | Bluetooth SPP: commands, status, streaming with timestamp checks, and commands sent mid-stream; configuration as a host writes it (InfoMem, the calibration dump, the rate, sensor and per-setting commands) |
 | `rig/midstream.py` | SD logs started and stopped inside a stream: the command schedule, and the stamps judged across each start (steps back, grid moves) |
 | `rig/throughput.py` | Bluetooth throughput: the firmware's data-rate test, and a stream that outruns the link, against each unit's baseline |
 | `rig/s3r_usb.py` | Finds a Shimmer3R's CDC port and SD drive by USB serial. The drive comes from Get-Disk, or from Win32_DiskDrive when Get-Disk does not list the unit: on one bench Get-Disk has listed no disks at all for minutes, and listed a unit back from a long log minutes late. `wait_usb_settled` waits for both the port and the drive. A docked stream takes the unit's USB away until it stops, and the port can return before the rest of the device. So call `wait_usb_settled` before the first dock exchange after sensing or a re-dock (DEV-1368, TEST_PROCEDURE §10.4). Run those exchanges in `stall_named`: a failure within 35 s of the unit's USB arrival is checked against System event 7011 and, inside a host service stall, raised as `HostServiceStall` naming it. It is still a failure (bench-tools `hil/known_issues.md`) |
 | `rig/usb_throughput.py` | The SD card's write and read rates over USB mass storage, timed around the PC's file cache |
-| `rig/sdfile.py` | Reads a Shimmer3R SD data file and checks its records |
+| `rig/sdfile.py` | Reads a Shimmer3 or Shimmer3R SD data file and checks its records. A Shimmer3 file lists no channels, so its layout is rebuilt from the header's sensor bitmaps and `rig/s3_config.py`'s channel order |
 | `rig/shared_log.py` | Several undocked units logging at once (`soak.long_log`). Bluetooth starts and stops each log one unit at a time, and the run waits once. A unit's failure stays with that unit. Every unit taken off the dock is put back, and every unit's configuration restored, whatever fails |
+| `rig/s3_long_log.py` | The Shimmer3's steps for `shared_log`: an undock-start configuration over the dock, the operator taking the units out, Bluetooth confirming and stopping each log, each session found in the log's own trial folder and copied off the card. Units are found by MAC wherever they were put back |
+| `rig/s3_card.py` | A docked Shimmer3's SD card through the Base6's USB card reader (`SDC`): finds the reader's drive, retries while the mount comes and goes after a re-dock, copies a session off |
 | `rig/events.py` | The event channel: byte 232 as the firmware keeps it (INFOMEM §8.3), an event file checked against its data file with Extras' `shimmer_event_file.py`, and the Bluetooth record frames and status (TEST_PROCEDURE §5.12) |
 | `rig/flash.py` | Flashes a Shimmer3R by USB DFU or SWD, then confirms the version. USB DFU flashes only a DFU device that appeared after this unit was sent to its bootloader, and only if it is the only one |
-| `rig/base6.py` | Base6 slot mux: which slots are occupied, select one, mask its BSL lines |
+| `rig/base6.py` | Base6 slot mux: which slots are occupied, select one (its SD card with the Shimmer, `SDP`) or give its card to the USB reader (`SDC`), mask its BSL lines |
 | `rig/msp430_bsl.py` | MSP430 ROM bootloader client (port of Consensys's): erase, write, CRC-verify |
 | `rig/s3_flash.py` | Flashes a Shimmer3 in a Base6 slot, backing up and restoring its InfoMem; restores a unit's InfoMem over the dock after a test |
 | `rig/s3_config.py` | Shimmer3 InfoMem fields the matrix varies, the ODRs a host derives for a rate (Shimmer3 firmware does not raise them), calibration blocks from the dump, and the channel order an inquiry should report |

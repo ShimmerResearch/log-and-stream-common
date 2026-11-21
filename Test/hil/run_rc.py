@@ -129,6 +129,10 @@ def main(argv=None) -> int:
     ap.add_argument("--manual-power", action="store_true",
                     help="the operator docks and undocks when prompted, instead of the hub; without a hub "
                          "and without this, the docking tests are reported not_covered")
+    ap.add_argument("--attended", action="store_true",
+                    help="someone is at the bench to handle units when asked: runs the items that need "
+                         "hands, such as the Shimmer3 long log in --tier soak, which are otherwise "
+                         "reported not_covered")
     ap.add_argument("--upload", action="store_true", help="attach the report to the GitHub release")
     ap.add_argument("--triage", action="store_true",
                     help="if anything did not pass, ask Claude to triage it (triage.py; costs model usage)")
@@ -206,6 +210,7 @@ def main(argv=None) -> int:
            "--rig", str(rig.path), "--candidate", str(out / "build-info.json"),
            "--hil-report", str(report), "-p", "no:cacheprovider", "-rA",
            *(["--manual-power"] if a.manual_power else []),
+           *(["--attended"] if a.attended else []),
            *[f"--waive={w}" for w in a.waive], *a.pytest_args]
     log = out / "pytest.log"
     with open(log, "w", encoding="utf-8") as f:

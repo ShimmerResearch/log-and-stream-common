@@ -1,8 +1,18 @@
-"""Read a Shimmer3R SD data file well enough to check it (docs/SHIMMER3_SD_CARD_FORMAT.md).
+"""Read a Shimmer3 or Shimmer3R SD data file well enough to check it (docs/SHIMMER3_SD_CARD_FORMAT.md).
 
-A Shimmer3R file is self-describing: the 384-byte header records the channel
-list (§3.5), so records can be sliced without knowing the configuration.
-Shimmer3 files are not, and are out of scope here.
+The generation is in the header (offsets 30-31, §2.2), and decides the
+header's length and how the records are laid out:
+
+- A Shimmer3R file is self-describing: its 384-byte header records the channel
+  list (§3.5), so records can be sliced without knowing the configuration.
+- A Shimmer3 file is not (§3.5). Its 256-byte header has the sensor bitmaps
+  (offsets 3-5, copies of InfoMem 3-5) but no channel list, so the layout is
+  rebuilt from them and the firmware's channel order (rig/s3_config.py,
+  STREAMING_DATA_FORMAT §4.1). Only the internal sensors that module orders
+  are read; a file with any other channel enabled, an expansion board's say,
+  raises SdFileError rather than be sliced at a guessed width. On an
+  LSM303DLHC board the magnetometer runs X, Z, Y, which moves a column but not
+  the record's length, so nothing here needs to know the board.
 
 Blocks: records accumulate into a 512-byte buffer, so the body is a run of
 blocks of floor((512 - syncHead) / recordLen) records, each preceded by a
@@ -15,8 +25,10 @@ import struct
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .bt import HW_SHIMMER3R, TS_WRAP, channel_width, classify_step, ts_step
+from .bt import HW_SHIMMER3, HW_SHIMMER3R, TS_WRAP, channel_width, classify_step, ts_step
+from .s3_config import SENSOR_BITS, STREAMABLE, expected_channels
 
+HEAD_S3 = 256
 HEAD_S3R = 384
 SDH_TRIAL_CONFIG0 = 16
 SDH_TIME_SYNC = 0x04
@@ -39,6 +51,11 @@ class Header:
     fw: tuple[int, int, int, int]
     channels: list[int]
     sync: bool
+    sensors: frozenset[str] | None = None    # Shimmer3: the enabled sensors the layout was rebuilt from
+
+    @property
+    def head_len(self) -> int:
+        return HEAD_S3R if self.hw == HW_SHIMMER3R else HEAD_S3
 
     @property
     def record_len(self) -> int:
@@ -63,23 +80,44 @@ class FileCheck:
     rows: list = field(default_factory=list)
 
 
+def s3_sensors(raw: bytes) -> frozenset[str]:
+    """The sensors a Shimmer3 header enables (offsets 3-5, INFOMEM Appendix A), if
+    rig/s3_config.py knows their channels; SdFileError naming any it does not."""
+    on = {name for name, (byte, bit) in SENSOR_BITS.items() if raw[byte] & (1 << bit)}
+    other = on - STREAMABLE
+    if other:
+        raise SdFileError(f"Shimmer3 header enables {', '.join(sorted(other))}, whose record layout "
+                          f"is not known here (only {', '.join(sorted(STREAMABLE))})")
+    return frozenset(on)
+
+
 def read_header(raw: bytes) -> Header:
-    if len(raw) < HEAD_S3R:
-        raise SdFileError(f"file is {len(raw)} bytes, shorter than the {HEAD_S3R}-byte header")
+    if len(raw) < HEAD_S3:
+        raise SdFileError(f"file is {len(raw)} bytes, shorter than the {HEAD_S3}-byte header")
     hw = struct.unpack(">H", raw[30:32])[0]
-    if hw != HW_SHIMMER3R:
-        raise SdFileError(f"header says hardware {hw}; only Shimmer3R ({HW_SHIMMER3R}) files are read here")
-    n = raw[SDH_NUM_ENABLED_CHANNELS]
-    if n > S3R_MAX_CHANNELS:
-        # More would read past the channel list into the rest of the header.
-        raise SdFileError(f"header says {n} channels; a Shimmer3R records at most {S3R_MAX_CHANNELS}")
+    sensors = None
+    if hw == HW_SHIMMER3R:
+        if len(raw) < HEAD_S3R:
+            raise SdFileError(f"file is {len(raw)} bytes, shorter than the {HEAD_S3R}-byte header")
+        n = raw[SDH_NUM_ENABLED_CHANNELS]
+        if n > S3R_MAX_CHANNELS:
+            # More would read past the channel list into the rest of the header.
+            raise SdFileError(f"header says {n} channels; a Shimmer3R records at most {S3R_MAX_CHANNELS}")
+        channels = list(raw[SDH_CHANNEL_ID_BYTE_0:SDH_CHANNEL_ID_BYTE_0 + n])
+    elif hw == HW_SHIMMER3:
+        sensors = s3_sensors(raw)
+        channels = expected_channels(sensors, dlhc=False)
+    else:
+        raise SdFileError(f"header says hardware {hw}; only Shimmer3 ({HW_SHIMMER3}) and "
+                          f"Shimmer3R ({HW_SHIMMER3R}) files are read here")
     return Header(
         divider=struct.unpack("<H", raw[0:2])[0],
         mac=raw[24:30].hex().upper(),
         hw=hw,
         fw=(struct.unpack(">H", raw[34:36])[0], struct.unpack(">H", raw[36:38])[0], raw[38], raw[39]),
-        channels=list(raw[SDH_CHANNEL_ID_BYTE_0:SDH_CHANNEL_ID_BYTE_0 + n]),
+        channels=channels,
         sync=bool(raw[SDH_TRIAL_CONFIG0] & SDH_TIME_SYNC),
+        sensors=sensors,
     )
 
 
@@ -104,7 +142,7 @@ def check(path: Path, keep: bool = False) -> FileCheck:
     if per_block < 1:
         raise SdFileError(f"record length {rl} does not fit a block")
     fc = FileCheck(h)
-    pos, end = HEAD_S3R, len(raw)
+    pos, end = h.head_len, len(raw)
     last = None
     while pos < end:
         if pos + head + rl > end:
@@ -148,6 +186,18 @@ def session_dirs(root: Path) -> set[Path]:
     return {s.relative_to(root) for e in data.iterdir() if e.is_dir() for s in e.iterdir() if s.is_dir()}
 
 
+def trial_sessions(root: Path, trial: str) -> set[Path]:
+    """The session directories of one trial folder, data/<trial>/<name>-NNN,
+    relative to the card's root (SD_CARD_FORMAT §1.1-§1.2). A Shimmer3 with no
+    real-world clock dates its files 1981, so its sessions are told apart by
+    their folder's name, never by date."""
+    root = Path(root)
+    folder = root / "data" / trial
+    if not folder.is_dir():
+        return set()
+    return {s.relative_to(root) for s in folder.iterdir() if s.is_dir()}
+
+
 def iter_records(path: Path):
     """(timestamp, record bytes) for every whole record of one file, in order."""
     raw = Path(path).read_bytes()
@@ -155,7 +205,7 @@ def iter_records(path: Path):
     rl = h.record_len
     head = SYNC_HEAD if h.sync else 0
     per_block = (BLOCK - head) // rl
-    pos, end = HEAD_S3R, len(raw)
+    pos, end = h.head_len, len(raw)
     while pos < end:
         pos += head
         for _ in range(per_block):
@@ -204,11 +254,12 @@ def check_session(session_dir: Path) -> SessionCheck:
     last = None
     gap_logged = False             # the last stamp's gap went into gap_times_s
     for f in files:
-        raw_head = f.read_bytes()[:HEAD_S3R]
+        raw_head = f.read_bytes()[:HEAD_S3R]        # the longer header; a Shimmer3 file uses the first 256
         h = read_header(raw_head)
         if sc.header is None:
             sc.header = h
-        elif (h.divider, h.channels, h.mac) != (sc.header.divider, sc.header.channels, sc.header.mac):
+        elif ((h.hw, h.divider, h.channels, h.mac)
+              != (sc.header.hw, sc.header.divider, sc.header.channels, sc.header.mac)):
             sc.header_mismatches.append(f.name)
         first_in_file = True
         for ts, _ in iter_records(f):

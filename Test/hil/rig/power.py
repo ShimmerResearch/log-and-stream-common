@@ -7,6 +7,11 @@ runs. Without the flag such a bench reports the docking tests not_covered, so
 an unattended run never waits on a prompt. Both have the same interface; tests
 never know which they got.
 
+OperatorDock has the same interface for a Shimmer3, which is docked by sitting
+in its Base6 slot and has nothing to switch: the operator takes a whole group
+out with one request and puts it back with another. Tests that use it need
+"attended" (conftest.py), so they too never wait on an unattended run.
+
 hubctl is imported from a bench-tools checkout named in rig.toml rather than
 copied here: it is the one place the hub's protocol and its safety rules live
 (its README), and a copy would drift.
@@ -15,6 +20,8 @@ copied here: it is the one place the hub's protocol and its safety rules live
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -121,6 +128,65 @@ class ManualPower(Power):
 
     def off(self, port, label):
         self.prompt(f"\n>>> Disconnect USB-C from {label} (undock it), then press Enter ")
+
+
+def listing(items) -> str:
+    """'a', 'a and b', 'a, b and c'."""
+    items = [str(i) for i in items]
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+class OperatorDock(Power):
+    """Units only a person can take off the dock or put back, handled as one group.
+
+    `group()` returns the units to take out (each with a name and a base6_slot),
+    asked for when the first off() comes: the units configured for the shared
+    log, say, which are known only once configuring is over. The first off()
+    asks the operator to take every one of them out, and the first on() after
+    it to put them all back, each in its own slot; the rest of the group's
+    calls find them already out, or already back. So the operator is asked
+    twice, at the start and the end, rather than once per unit.
+
+    `ask(text)` puts a request to the operator and returns once it is done
+    (conftest's hil_ask: spoken aloud, printed, then Enter). A unit counts as
+    out from just before its request, as shared_log counts a hub port, so a
+    request cut short is still followed by the one to put the units back.
+    """
+
+    def __init__(self, ask, group):
+        self.ask, self.group = ask, group
+        self.out: dict[str, int | None] = {}      # unit name -> its own slot, for those taken out
+
+    def off(self, port, label):
+        if label in self.out:
+            return
+        units = {u.name: u.base6_slot for u in self.group() if u.name not in self.out}
+        if label not in units:
+            units = {label: None}           # not in the group: asked for on its own
+        self.out.update(units)
+        self.ask(f"Take {listing(units)} out of the Base6")
+
+    def on(self, port, label):
+        if label not in self.out:
+            return
+        where = [f"{n} in slot {s}" if s else n for n, s in self.out.items()]
+        self.ask(f"Put {'it' if len(where) == 1 else 'them'} back in the Base6: {listing(where)}")
+        self.out.clear()
+
+
+def speak(text: str) -> None:
+    """Say `text` aloud through Windows' speech synthesiser, so an operator away
+    from the screen hears a request. Best effort: elsewhere, or if it fails, nothing."""
+    if sys.platform != "win32":
+        return
+    try:
+        # The text goes in the environment, so no quoting of it can break the command.
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                        "Add-Type -AssemblyName System.Speech; "
+                        "(New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak($env:HIL_SPEAK)"],
+                       env={**os.environ, "HIL_SPEAK": text}, capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def wait_for(predicate, timeout_s: float, interval_s: float = 0.25, what: str = "condition"):

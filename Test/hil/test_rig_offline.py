@@ -181,9 +181,10 @@ class FlashEveryUnitOrNone(unittest.TestCase):
                 mock.patch.object(run_rc.rig_config, "load", lambda p: rig), \
                 mock.patch.object(run_rc, "fetch", lambda tag, out: ({"commit": "0" * 40}, Path("img.hex"))), \
                 mock.patch.object(run_rc.subprocess, "Popen", Proc):
-            run_rc.main(["LogAndStream_Shimmer3R_v1.01.022", "--no-flash", "--manual-power",
+            run_rc.main(["LogAndStream_Shimmer3R_v1.01.022", "--no-flash", "--manual-power", "--attended",
                          "--waive", "smoke.sd_log=ABC-1"])
         self.assertIn("--manual-power", cmds[0])
+        self.assertIn("--attended", cmds[0])
         self.assertIn("--waive=smoke.sd_log=ABC-1", cmds[0])
 
     def test_a_report_from_a_run_that_stopped_early_is_not_uploaded(self):
