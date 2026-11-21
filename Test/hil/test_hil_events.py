@@ -191,9 +191,27 @@ class EventFile(unittest.TestCase):
         probs = self.check(event_file(quiet(30)), lead=3.9, span=30.0).problems
         self.assertTrue(any("spans 30.0 s, the data file 26.1 s" in p for p in probs), probs)
 
-    def test_a_data_file_whose_first_sample_is_after_its_open(self):
+    def test_a_data_file_whose_first_sample_is_long_after_its_open(self):
         probs = self.check(event_file(quiet(30)), lead=-1.0).problems
-        self.assertTrue(any("before its open, or after it" in p for p in probs), probs)
+        self.assertTrue(any("1.000 s after its open" in p for p in probs), probs)
+
+    def test_a_data_file_whose_first_sample_came_just_after_its_open(self):
+        # In a trial folder of few sessions the folder is made at once, so the
+        # file opens before the first sample: up to 50 ms after it at 51.2 Hz
+        # (bench, 2026-11-21). Read modulo 2^24 that was "512.0 s before its open".
+        fc = self.check(event_file(quiet(30)), lead=-0.050)
+        self.assertEqual(fc.problems, [])
+        self.assertNotIn("opened", fc.note)
+
+    def test_a_data_file_whose_first_sample_is_far_before_its_open(self):
+        probs = self.check(event_file(quiet(30)), lead=31.0).problems
+        self.assertTrue(any("31.0 s before its open" in p for p in probs), probs)
+
+    def test_lead_ticks_takes_the_nearest_wrap(self):
+        wrap = 0x12 << 24
+        self.assertEqual(events.lead_ticks(wrap - 50, (wrap + 100) & 0xFFFFFF), -150)
+        self.assertEqual(events.lead_ticks(wrap + 50, (wrap - 3000) & 0xFFFFFF), 3050)
+        self.assertEqual(events.lead_ticks(OPEN_TS, (OPEN_TS - 4 * T) & 0xFFFFFF), 4 * T)
 
     def test_the_initial_state_comes_first_with_nothing_pressed_or_high(self):
         recs = quiet(30)

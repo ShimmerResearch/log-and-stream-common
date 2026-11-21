@@ -239,6 +239,27 @@ class DataHeader(unittest.TestCase):
                          (ts, CONFIG_TIME, MAC.hex().upper(), FW, 2))
         self.assertEqual((d.first_ticks, d.last_ticks), (ts - 100, ts + 900))
 
+    def data(self, initial_ts: int, first_ticks: int) -> "sa.DataFile":
+        return sa.DataFile(initial_ts=initial_ts, config_time=CONFIG_TIME, mac=MAC.hex().upper(), fw=FW,
+                           audio_mode=1, first_ts24=first_ticks % (1 << 24), span_ticks=1000)
+
+    def test_a_first_sample_after_the_open(self):
+        # In a trial folder of few sessions the file opens first: at 51.2 Hz the
+        # first sample came up to 50 ms (1638 ticks) after it on the bench. Read
+        # as before the open, it was 512 s early, and every audio clock check failed.
+        ts = (0x12 << 32) | 0x3456789A
+        d = self.data(ts, ts + 1638)
+        self.assertEqual((d.first_ticks, d.last_ticks), (ts + 1638, ts + 2638))
+
+    def test_a_first_sample_before_the_open_by_seconds(self):
+        ts = (0x12 << 32) | 0x3456789A
+        self.assertEqual(self.data(ts, ts - 4 * TICKS).first_ticks, ts - 4 * TICKS)
+
+    def test_the_open_and_the_first_sample_on_either_side_of_a_wrap(self):
+        wrap = (0x12 << 32) | (0x35 << 24)              # the RTC's low 24 bits roll over here
+        self.assertEqual(self.data(wrap - 50, wrap + 100).first_ticks, wrap + 100)
+        self.assertEqual(self.data(wrap + 50, wrap - 3000).first_ticks, wrap - 3000)
+
     def test_status_reply(self):
         raw = bytes([1, 2, 3, 0]) + struct.pack("<IIHHIIII", 28, 0, 0, 0, 280, 280, 6, 0)
         st = sa.audio_status(raw)
