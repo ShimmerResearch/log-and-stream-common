@@ -1608,8 +1608,9 @@ is not proof of lost samples: setting the clock can step the counter, and the
 stamps cannot tell the two apart. Either way it is reported as a step off the
 grid. On Shimmer3R firmware up to v1.01.027 a `SET_RWC` mid-stream does step it
 (DEV-1539): the smoke item leaves clock sets out, since no host sends one
-mid-stream, and `defect.dev1539_clock_set_midstream` tracks them. The stream runs with link CRC on, because without it a frame is
-confirmed by its timestamps. A single late stamp is still confirmed by the
+mid-stream, and `defect.dev1539_clock_set_midstream` tracks them. The stream
+runs with link CRC on, because without it a frame is confirmed by its
+timestamps. A single late stamp is still confirmed by the
 packets after it, back on the grid, but a grid that moves would be dropped as
 misframes instead of judged (`Test/hil/README.md`, "Which bytes are packets").
 
