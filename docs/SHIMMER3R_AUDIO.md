@@ -47,7 +47,11 @@ The first 256 ms of capture are dropped while the microphone starts and the
 filters settle. In two bench runs the first audio sample came 0.36 and 0.48 s
 after the data file's initial timestamp, which is 0.73 and 0.85 s after its first
 sample: the data file's packet ring holds samples taken before the file opened.
-Each file's header says exactly when.
+That depends on how long the session folder takes to make. In a trial folder of
+few sessions the file can open first, and at 51.2 Hz the first sample then came up
+to 50 ms after the initial timestamp, so place the first sample's 24-bit stamp on
+the wrap of the initial timestamp nearest it, not on the one before. Each file's
+header says exactly when.
 
 Logging stopping, by any route, stops capture at once. Everything captured is
 written to the WAV, a fingerprint chunk already analysed is written, and the

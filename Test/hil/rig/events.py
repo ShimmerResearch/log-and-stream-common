@@ -103,7 +103,19 @@ SPAN_SLACK_S = 2.0              # the final record against the data file's last 
 # for 531). Those samples are buffered and written first. The event file starts
 # at the open (§4.3), so its span is measured against the data file's from there.
 DATA_LEAD_MAX_S = 30.0
+# In a trial folder of few sessions the folder is made at once, so the file can
+# open before the first sample: up to 50 ms after it at 51.2 Hz on the bench
+# (18-63 sessions; 0.46-0.59 s the other way in a folder of about 600). The lead
+# is then negative, and may be by this much.
+DATA_LAG_MAX_S = 0.25
 TS24 = 1 << 24                  # a data sample's stamp: the RTC's low 24 bits
+
+
+def lead_ticks(open_ts: int, first_ts24: int) -> int:
+    """How long before the file's open its first sample was, in ticks: the 24-bit
+    stamp is put on the wrap of the open nearest it, so a sample a few ticks after
+    the open is a few ticks negative, never 512 s early."""
+    return ((open_ts - first_ts24 + TS24 // 2) % TS24) - TS24 // 2
 
 
 def companion_path(data_path: Path, root: Path) -> Path:
@@ -174,9 +186,11 @@ def check_file(path: Path, data_blob: bytes, *, want_enables: int, hw_id: int,
     span = (recs[-1]["ts"] - first["ts"]) / TICKS_PER_S
     if span >= HEARTBEAT_BY_S and not beats:
         p.append(f"no heartbeat in {span:.0f} s")
-    lead = ((h["file_open_ts"] - data_first_ts) % TS24) / TICKS_PER_S
+    lead = lead_ticks(h["file_open_ts"], data_first_ts) / TICKS_PER_S
     if lead > DATA_LEAD_MAX_S:
-        p.append(f"the data file's first sample is {lead:.1f} s before its open, or after it")
+        p.append(f"the data file's first sample is {lead:.1f} s before its open")
+    elif lead < -DATA_LAG_MAX_S:
+        p.append(f"the data file's first sample is {-lead:.3f} s after its open")
     elif abs(span - (data_span_s - lead)) > SPAN_SLACK_S:
         p.append(f"spans {span:.1f} s, the data file {data_span_s - lead:.1f} s from its open")
     fc.note = f"{len(recs)} records, {beats} heartbeats, {span:.1f} s"

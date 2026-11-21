@@ -158,9 +158,14 @@ class DataFile:
 
     @property
     def first_ticks(self) -> int:
-        """The first record on the full Shimmer clock. The packet ring holds
-        samples taken before the file opened, so it precedes initial_ts."""
-        return self.initial_ts - ((self.initial_ts - self.first_ts24) % TS_WRAP)
+        """The first record on the full Shimmer clock: its 24-bit stamp on the
+        wrap of initial_ts nearest it. The packet ring holds samples taken before
+        the file opened, so it usually precedes initial_ts, by up to seconds in a
+        trial folder of hundreds of sessions. In a folder of few sessions the file
+        can open first, and the first sample come tens of ms after (events.py,
+        DATA_LAG_MAX_S)."""
+        d = ((self.first_ts24 - self.initial_ts + TS_WRAP // 2) % TS_WRAP) - TS_WRAP // 2
+        return self.initial_ts + d
 
     @property
     def last_ticks(self) -> int:
