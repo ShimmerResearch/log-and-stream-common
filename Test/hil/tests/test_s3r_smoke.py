@@ -424,10 +424,12 @@ MIDSTREAM_CRC = 2
 def test_sd_start_midstream(unit, cdc, power, hil_note):
     """Start and stop SD logging while streaming: the stream's stamps must not notice.
 
-    Six 2 s logs inside one 256 Hz stream (rig/midstream.py). Odd cycles send
-    START_LOGGING alone. Even ones set the clock first, as the reference host
-    does before every log start. The clock is set once before the stream too,
-    so every mid-stream set is a repeat, not the first set after power-up.
+    Six 2 s logs inside one 256 Hz stream (rig/midstream.py), each started with
+    START_LOGGING alone, as hosts start a log on a live stream. The clock is set
+    once before the stream, and never during it: none of the host software
+    sends SET_RWC mid-stream. A clock set mid-stream is checked by
+    defect.dev1539_clock_set_midstream (tests/test_defects.py), which fails on
+    firmware that applies the set at once.
 
     The stream runs with link CRC on, so every frame is confirmed by its CRC.
     Without one a frame is confirmed by a plausible timestamp step, and an
@@ -442,6 +444,13 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
     smoke.sd_log. The rate is stored configuration, so InfoMem is saved to disk
     and put back.
     """
+    midstream_session(unit, cdc, power, hil_note, midstream.schedule(MIDSTREAM_CYCLES, clock_sets=False))
+
+
+def midstream_session(unit, cdc, power, hil_note, plan: midstream.Plan) -> None:
+    """One undocked 256 Hz stream with plan's log cycles inside it, judged as
+    smoke.sd_start_midstream says. defect.dev1539_clock_set_midstream runs it
+    with clock sets."""
     port = bt.spp_port(unit.mac)
     if not port:
         pytest.skip(f"no paired SPP port for {unit.mac}")
@@ -449,7 +458,6 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
         original = bytes(d.read_infomem())
         d.write_infomem(MIDSTREAM_DIVIDER.to_bytes(2, "little"), offset=0)
     backup = throughput.save_infomem(unit.name, original)
-    plan = midstream.schedule(MIDSTREAM_CYCLES)
     error = None
     try:
         root = s3r_usb.wait_drive(unit.usb_serial, 45)
@@ -477,12 +485,13 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
     root = s3r_usb.wait_drive(unit.usb_serial, 90)
     new = sdfile.session_dirs(root) - before
     problems, summary = midstream.judge(st, plan, inq.divider)
+    starts = sum(a.kind == "start" for a in plan.actions)
     if st.nacks:
-        problems.append(f"{st.nacks} of the {MIDSTREAM_CYCLES} log starts were refused (NACK) undocked")
+        problems.append(f"{st.nacks} of the {starts} log starts were refused (NACK) undocked")
     if not midstream.logging_seen(st):
         problems.append("no status during the stream showed logging")
-    if len(new) != MIDSTREAM_CYCLES:
-        problems.append(f"{len(new)} new SD sessions for {MIDSTREAM_CYCLES} log starts")
+    if len(new) != starts:
+        problems.append(f"{len(new)} new SD sessions for {starts} log starts")
     assert not problems, f"{summary}: " + "; ".join(problems)
     hil_note(f"{summary}; {len(new)} sessions logged")
 

@@ -324,8 +324,9 @@ revised. `classify_step` returns how late it now counts, so the callers that
 report each step (`rig/midstream.py`, `rig/sdfile.py`, `bt.gap_positions`)
 take back what they reported for it.
 
-The `sd_start_midstream` items (`rig/midstream.py`) look for two more things,
-because a log start mid-stream can re-phase the stream:
+The `sd_start_midstream` items and `defect.dev1539_clock_set_midstream`
+(`rig/midstream.py`) look for two more things, because a log start or a clock
+set mid-stream can re-phase the stream:
 
 - **steps back:** a stamp at or behind the one before it. A host that unwraps
   the counter can take one for a wrap;
