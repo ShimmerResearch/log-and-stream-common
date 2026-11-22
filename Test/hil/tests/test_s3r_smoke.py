@@ -427,9 +427,7 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
     Six 2 s logs inside one 256 Hz stream (rig/midstream.py), each started with
     START_LOGGING alone, as hosts start a log on a live stream. The clock is set
     once before the stream, and never during it: none of the host software
-    sends SET_RWC mid-stream. A clock set mid-stream is checked by
-    defect.dev1539_clock_set_midstream (tests/test_defects.py), which fails on
-    firmware that applies the set at once.
+    sends SET_RWC mid-stream. smoke.sd_clock_set_midstream adds the clock sets.
 
     The stream runs with link CRC on, so every frame is confirmed by its CRC.
     Without one a frame is confirmed by a plausible timestamp step, and an
@@ -447,10 +445,34 @@ def test_sd_start_midstream(unit, cdc, power, hil_note):
     midstream_session(unit, cdc, power, hil_note, midstream.schedule(MIDSTREAM_CYCLES, clock_sets=False))
 
 
+@pytest.mark.hil("smoke.sd_clock_set_midstream", needs=["shimmer3r", "usb", "bt", "hub_port"])
+def test_sd_clock_set_midstream(unit, cdc, power, hil_note):
+    """A clock set while streaming must not reach the stream (DEV-1539).
+
+    smoke.sd_start_midstream's session with SET_RWC before every other log
+    start, as the reference host once did (DEV-1337 stopped it). The plain
+    cycles stay in as the control, and the summary counts the two apart. Every
+    mid-stream set is a repeat, since the clock is set before the stream.
+
+    Firmware since DEV-1539 keeps a clock set that arrives while sensing until
+    the stop. So the clock sets must leave the stream alone, and the last one,
+    which asks for the host's time plus midstream.PROBE_S, must show in the
+    clock once the stream has stopped. The clock is then put back to the host's
+    time. On firmware that applies a set at once, the stamps step by the set's
+    transit time: on v1.01.027, 20 of 21 starts after a clock set disturbed the
+    stream. This was defect.dev1539_clock_set_midstream until the fix.
+
+    Fails as smoke.sd_start_midstream does, and on a clock that does not read as
+    the last set asked once the stream has stopped.
+    """
+    midstream_session(unit, cdc, power, hil_note, midstream.schedule(MIDSTREAM_CYCLES))
+
+
 def midstream_session(unit, cdc, power, hil_note, plan: midstream.Plan) -> None:
     """One undocked 256 Hz stream with plan's log cycles inside it, judged as
-    smoke.sd_start_midstream says. defect.dev1539_clock_set_midstream runs it
-    with clock sets."""
+    smoke.sd_start_midstream says. A plan with clock sets also has the clock
+    checked, then put back, once the stream has stopped
+    (midstream.clock_after_stop)."""
     port = bt.spp_port(unit.mac)
     if not port:
         pytest.skip(f"no paired SPP port for {unit.mac}")
@@ -458,6 +480,7 @@ def midstream_session(unit, cdc, power, hil_note, plan: midstream.Plan) -> None:
         original = bytes(d.read_infomem())
         d.write_infomem(MIDSTREAM_DIVIDER.to_bytes(2, "little"), offset=0)
     backup = throughput.save_infomem(unit.name, original)
+    clock_problems, clock_note = [], None
     error = None
     try:
         root = s3r_usb.wait_drive(unit.usb_serial, 45)
@@ -474,6 +497,8 @@ def midstream_session(unit, cdc, power, hil_note, plan: midstream.Plan) -> None:
                 st = link.stream(plan.seconds, inq, keep=True, actions=plan.actions)
                 link.wait_status(bt.STATUS_SENSING, False, 15)
                 link.set_crc(0)
+                if plan.rwc_cycles:
+                    clock_problems, clock_note = midstream.clock_after_stop(link, plan.probe_s)
         finally:
             power.on(unit.hub_port, unit.name)
     except BaseException as e:
@@ -485,6 +510,7 @@ def midstream_session(unit, cdc, power, hil_note, plan: midstream.Plan) -> None:
     root = s3r_usb.wait_drive(unit.usb_serial, 90)
     new = sdfile.session_dirs(root) - before
     problems, summary = midstream.judge(st, plan, inq.divider)
+    problems += clock_problems
     starts = sum(a.kind == "start" for a in plan.actions)
     if st.nacks:
         problems.append(f"{st.nacks} of the {starts} log starts were refused (NACK) undocked")
@@ -493,7 +519,75 @@ def midstream_session(unit, cdc, power, hil_note, plan: midstream.Plan) -> None:
     if len(new) != starts:
         problems.append(f"{len(new)} new SD sessions for {starts} log starts")
     assert not problems, f"{summary}: " + "; ".join(problems)
-    hil_note(f"{summary}; {len(new)} sessions logged")
+    clock = f"; {clock_note}" if clock_note else ""
+    hil_note(f"{summary}{clock}; {len(new)} sessions logged")
+
+
+MIDLOG_SECONDS = 5.0            # logged either side of the clock set
+
+
+@pytest.mark.hil("smoke.sd_clock_set_midlog", needs=["shimmer3r", "usb", "bt", "hub_port"])
+def test_sd_clock_set_midlog(unit, power, hil_note):
+    """A clock set that arrives while the unit SD-logs undocked must not reach the log.
+
+    A host that connects over Bluetooth to a unit already logging, and sets its
+    clock on connecting, sends exactly this. Firmware since DEV-1539 keeps the
+    set until logging stops. So the log's stamps stay on one grid, GET_RWC
+    reads the unchanged clock while the log runs, and the set takes effect at
+    the stop. The set asks for the host's time plus midstream.PROBE_S, so its
+    effect is unmistakable either way: before DEV-1539 it shows as a step of
+    that size in the log. The clock is put back to the host's time after the
+    stop.
+
+    The clock is set over Bluetooth before the log, so the log runs on a clock
+    that was set. Undocked by the hub port, as in smoke.sd_log; the unit's own
+    configuration.
+    """
+    port = bt.spp_port(unit.mac)
+    if not port:
+        pytest.skip(f"no paired SPP port for {unit.mac}")
+    root = s3r_usb.wait_drive(unit.usb_serial, 45)
+    before = sdfile.session_dirs(root)
+
+    problems = []
+    power.off(unit.hub_port, unit.name)
+    try:
+        s3r_usb.wait_cdc_gone(unit.usb_serial, 15)
+        with bt.BtLink(port) as link:
+            link.set_rwc(midstream.host_ticks())
+            link.simple(bt.START_LOGGING)
+            link.wait_status(bt.STATUS_LOGGING, True, 10)
+            time.sleep(MIDLOG_SECONDS)
+            link.set_rwc(midstream.host_ticks(midstream.PROBE_S))
+            during = midstream.clock_offset(link)
+            if abs(during) > midstream.CLOCK_TOL_S:
+                problems.append(f"while logging, the clock read {during:+.3f} s from the host's time just after "
+                                f"a set asking for {midstream.PROBE_S:+.1f} s: the set reached the running log")
+            time.sleep(MIDLOG_SECONDS)
+            link.simple(bt.STOP_LOGGING)
+            link.wait_status(bt.STATUS_SENSING, False, 15)
+            clock_problems, clock_note = midstream.clock_after_stop(link, midstream.PROBE_S)
+            problems += clock_problems
+    finally:
+        power.on(unit.hub_port, unit.name)
+
+    root = s3r_usb.wait_drive(unit.usb_serial, 60)
+    new = sorted(sdfile.session_dirs(root) - before)      # relative: the drive letter may have changed
+    assert len(new) == 1, f"expected one new session directory, found {len(new)}: {new}"
+    files = sorted(p for p in (root / new[0]).iterdir() if p.is_file())
+    assert files and files[0].name == "000", f"{new[0]}: no data file 000 ({[f.name for f in files]})"
+    fc = sdfile.check(files[0])
+    problems += _timing_problems(fc, fc.header.divider)
+    covered_s = (fc.span_ticks + fc.header.divider) / bt.TICKS_PER_S
+    if covered_s > 2 * MIDLOG_SECONDS + midstream.PROBE_S / 2:
+        problems.append(f"the records span {covered_s:.2f} s of a {2 * MIDLOG_SECONDS:.0f} s log: "
+                        f"the clock set stepped the log's stamps")
+    elif covered_s < 2 * MIDLOG_SECONDS - LOG_TAIL_S:
+        problems.append(f"the records cover {covered_s:.2f} s of a {2 * MIDLOG_SECONDS:.0f} s log: "
+                        f"the end is missing")
+    assert not problems, "; ".join(problems)
+    hil_note(f"{new[0].parent.name}/{new[0].name}: {fc.records} records over {covered_s:.2f} s, on one grid; "
+             f"clock {during:+.3f} s while logging after a {midstream.PROBE_S:+.1f} s set; {clock_note}")
 
 
 INQUIRY_SECONDS = 60.0

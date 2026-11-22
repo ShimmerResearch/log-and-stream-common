@@ -1661,16 +1661,11 @@ void ShimBt_processCmd(void)
       }
       case SET_RWC_COMMAND:
       {
-        /* Flushes InfoMem only if the flag changes; see the helper. */
-        ShimRtc_setRtcSetByBt(1);
-        ShimSdHead_sdHeadTextSetByte(
-            SDH_TRIAL_CONFIG0, storedConfigPtr->rawBytes[NV_SD_TRIAL_CONFIG0]);
-
-        RTC_setTimeFromTicksPtr((uint8_t *) &args[0]);
-        ShimRtc_rwcErrorCheck();
-#if defined(SHIMMER3R)
-        RTC_setAlarmBattRead(); //configure RTC alarm after time set from BT.
-#endif
+        /* Applied now, or when sensing stops if it arrived while sensing
+         * (DEV-1539): see ShimRtc_setRwc(). ACKed either way. */
+        uint64_t rwcTicks;
+        memcpy((uint8_t *) &rwcTicks, (uint8_t *) &args[0], 8);
+        ShimRtc_setRwc(rwcTicks, 1);
         break;
       }
       case SET_ALT_ACCEL_CALIBRATION_COMMAND:

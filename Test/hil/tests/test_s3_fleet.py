@@ -565,18 +565,21 @@ MIDSTREAM_CRC = 2
 
 @pytest.mark.hil("fleet.sd_start_midstream", needs=["shimmer3", "bt", "dock"])
 def test_sd_start_midstream(unit, base6, hil_note):
-    """defect.dev1539_clock_set_midstream's commands, sent to a docked Shimmer3:
-    smoke.sd_start_midstream's, with a clock set before every other start. A
-    Shimmer3's stamps do not step on a clock set, so they stay in here.
+    """smoke.sd_clock_set_midstream's commands, sent to a docked Shimmer3:
+    smoke.sd_start_midstream's, with a clock set before every other start.
 
     A Shimmer3 starts logging only undocked (ShimSens_checkStartLoggingConditions),
     and a Base6 cannot undock one slot. Docked, the log starts are refused:
     NACKed by firmware with DEV-1431, ACKed and ignored before it. The clock
-    sets still apply mid-stream, so the stream is still judged as
+    sets still arrive mid-stream, so the stream is still judged as
     smoke.sd_start_midstream judges it:
     - a disturbed stream fails the item;
     - a clean one is not_covered, because no log started;
     - if a status shows logging after all, the item is judged in full.
+    The clock must read as the last set asked once the stream has stopped, and
+    is then put back (midstream.clock_after_stop). A Shimmer3's stamps do not
+    step on a clock set, so that is how this item sees DEV-1539's deferral:
+    applied at the stop, as before it at once.
     The stream runs at 51.2 Hz, as fleet.bt_stream does, and the rate is put back.
     """
     base6.select(unit.base6_slot)
@@ -597,6 +600,7 @@ def test_sd_start_midstream(unit, base6, hil_note):
             # on here, not as a dock timeout in the restore.
             link.wait_status(bt.STATUS_SENSING, False, timeout_s=5)
             link.set_crc(0)
+            clock_problems, clock_note = midstream.clock_after_stop(link, plan.probe_s)
     except BaseException as e:
         error = e
         raise
@@ -605,10 +609,11 @@ def test_sd_start_midstream(unit, base6, hil_note):
         if retries:
             hil_note(f"divider restore needed {len(retries)} retries: {'; '.join(retries)}")
     problems, summary = midstream.judge(st, plan, inq.divider)
+    problems += clock_problems
     assert not problems, f"{summary}: " + "; ".join(problems)
     if not midstream.logging_seen(st):
         how = (f"NACKed {st.nacks} of the {MIDSTREAM_CYCLES} log starts" if st.nacks
                else "ACKed the log starts and ignored them (firmware before DEV-1431)")
         pytest.skip(f"docked in a Base6, which cannot undock one slot, so no log started: the unit "
-                    f"{how}. Clean across the commands: {summary}")
-    hil_note(summary)
+                    f"{how}. Clean across the commands: {summary}; {clock_note}")
+    hil_note(f"{summary}; {clock_note}")

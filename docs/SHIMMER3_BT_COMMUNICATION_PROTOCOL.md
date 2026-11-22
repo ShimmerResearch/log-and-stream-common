@@ -2497,11 +2497,46 @@ carry it (`isSupportedRtcStateInStatus`,
 > across. The dock property being named `CURR_LOCAL_TIME` is the likeliest
 > source of the confusion, and it is a name, not a statement about its base.
 
-`SET_RWC_COMMAND` is **not** blocked while sensing — it is one of the few writes
-permitted mid-recording ([§10](#10-important-boundaries)) — and its handler is
-deliberately reached as early as possible after the argument bytes arrive, to
-minimise the delay between the host reading its own clock and the device
-adopting the value.
+`SET_RWC_COMMAND` is **not** blocked while sensing: it is always ACKed
+([§10](#10-important-boundaries)). Its handler is deliberately reached as early
+as possible after the argument bytes arrive, to minimise the delay between the
+host reading its own clock and the device taking the value.
+
+**While sensing, the set waits for the stop.** When the device is streaming,
+SD logging or both, the clock is not changed:
+
+- **What is kept:** the difference between the time sent and the device's
+  clock when the command arrived.
+- **When it is applied:** once streaming and logging have both stopped, to the
+  clock as it then reads. The result is the time the host asked for, as if it
+  had been set on arrival.
+- **A later set** while still sensing replaces an earlier one.
+- **The side effects above** wait with it, because the `rtcSetByBt` flush is a
+  flash erase.
+- **Until the stop,** `GET_RWC_COMMAND` returns the unchanged clock, and so
+  does the dock's current-time read. That is the clock the session's stamps
+  follow.
+- **The dock's set** (`RTC_CFG_TIME`) behaves the same
+  ([SHIMMER3_DOCK_PROTOCOL.md](SHIMMER3_DOCK_PROTOCOL.md)).
+
+Firmware before this change applied the set at once. On Shimmer3R the stream
+and SD sample stamps *are* the clock
+([SHIMMER3_TIMEKEEPING.md](SHIMMER3_TIMEKEEPING.md) §7.1), so a mid-session set
+stepped every stamp after it by the difference between the value written and
+the clock it replaced. Over Bluetooth that difference is mostly the command's
+transit time, which the device cannot see: one bench unit took sets 19-27 ms
+after the host stamped them on an idle Classic link, and about 3.5 ms after
+while streaming. A step back past a host's reorder window reads as a counter
+wrap, a 512 s jump ([SHIMMER3_STREAMING_DATA_FORMAT.md](SHIMMER3_STREAMING_DATA_FORMAT.md)
+§2.1). Shimmer3's stamps never stepped. A mid-session set still moved its clock
+offset under a running log, so the log's later hourly files were dated on a
+different clock from its earlier ones. The rule is now the same on both. This
+change is later than the pinned revision; see
+[Still unverified](#still-unverified--not-found-in-code).
+
+A host that wants the device's clock right for a session sets it **before**
+starting to stream or log. Once streaming and logging have both stopped, a
+`GET_RWC_COMMAND` shows whether a set made during the session has been applied.
 
 #### `UPD_SDLOG_CFG_COMMAND` (0x9C)
 
@@ -3784,8 +3819,10 @@ Grouped by what they would have changed:
 **Everything not on that list is permitted while sensing** — every `GET`, the
 start/stop commands, `SET_CRC_COMMAND`, `SET_INSTREAM_RESPONSE_ACK_PREFIX_STATE`,
 `SET_FEATURE`, `SET_CHARGE_STATUS_LED_COMMAND`, `RESET_BT_ERROR_COUNTS`,
-`TOGGLE_LED_COMMAND` and, notably, **`SET_RWC_COMMAND`**. The clock can be set
-mid-recording.
+`TOGGLE_LED_COMMAND` and, notably, **`SET_RWC_COMMAND`**. A clock set is
+accepted mid-recording, but it takes effect only when streaming and logging
+have both stopped, so it never moves a running session's timeline
+([§7.7](#77-sd-logging-and-trial-configuration)).
 
 The Shimmer3R SD file-transfer commands are not on the blocked list either, but
 they are gated separately and in band: their access check reports
@@ -4064,6 +4101,16 @@ them.
 
 **Firmware provenance**
 
+- **`SET_RWC_COMMAND` waits for the end of sensing.** The deferral in
+  [§7.7](#77-sd-logging-and-trial-configuration) (`ShimRtc_setRwc` and
+  `ShimRtc_applyDeferredRwc` in `RTC/shimmer_rtc.c`, applied from
+  `ShimSens_stopSensing`) is in a `log-and-stream-common` change later than the
+  `f3cf73e` pin (DEV-1539). The dock's `RTC_CFG_TIME` set uses the same path.
+  Before it, a set was applied at once, even while sensing. The transit times
+  quoted there were measured on one Shimmer3R on LogAndStream v1.01.027 over
+  Classic SPP. A dock set landed 14-16 ticks behind the host and held there, so
+  the device's own set loses no time. **Move under Verified against** once the
+  change is on `main` and the pin is bumped.
 - **`SET_RWC_COMMAND` flushes `rtcSetByBt` only when it changes.** The
   conditional flush in [§7.7](#77-sd-logging-and-trial-configuration) (`ShimRtc_setRtcSetByBt`,
   `RTC/shimmer_rtc.c`) is in a `log-and-stream-common` change later than the

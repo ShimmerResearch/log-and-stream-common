@@ -33,6 +33,12 @@ static uint32_t stubResetCount;
 static uint32_t stubDelayMsTotal;
 static uint32_t stubInfoMemWriteCount;
 static uint16_t stubInfoMemLastAddr;
+/* The real-world clock's offset from the free-running tick, as the last
+ * RTC_setTimeFromTicksPtr() left it, and what that call was given. */
+static uint64_t stubRwcOffset;
+static uint32_t stubRwcSetCount;
+static uint64_t stubRwcLastSet;
+static uint32_t stubBattAlarmCount;
 /* The real gConfigBytes union - see ShimConfig_getStoredConfig() below. */
 static gConfigBytes stubStoredConfig;
 /* The SD file header, at the real header's SD_HEAD_SIZE. */
@@ -55,6 +61,10 @@ void hostStub_reset(void)
   stubDelayMsTotal = 0;
   stubInfoMemWriteCount = 0;
   stubInfoMemLastAddr = 0;
+  stubRwcOffset = 0;
+  stubRwcSetCount = 0;
+  stubRwcLastSet = 0;
+  stubBattAlarmCount = 0;
 }
 
 void hostStub_setDockedOrUsbIn(uint8_t state)
@@ -171,6 +181,17 @@ uint8_t ShimSdHead_sdHeadTextGetByte(uint16_t offset)
   return stubSdHeadText[offset];
 }
 
+/* The real setter's body, over the same array. */
+uint8_t ShimSdHead_sdHeadTextSetByte(uint16_t offset, uint8_t val)
+{
+  if (offset > SD_HEAD_SIZE - 1)
+  {
+    return 1;
+  }
+  stubSdHeadText[offset] = val;
+  return 0;
+}
+
 /* --- SDCard/shimmer_sd.h -------------------------------------------------- */
 
 FRESULT ShimSd_setFileTimestamp(char *path)
@@ -198,19 +219,66 @@ uint32_t RTC_get32(void)
   return stubTick / 1000U;
 }
 
-uint64_t RTC_get64(void)
+/* The clocks keep each platform's shape. Shimmer3R's RTC is settable, so a set
+ * moves RTC_get64() itself - the counter the sample stamps carry - and
+ * RTC_getRwcTime is a macro over it. Shimmer3's counter cannot be set:
+ * RTC_get64() runs on untouched and RTC_getRwcTime() adds the stored offset. */
+static uint64_t stubFreeRunningTicks(void)
 {
   return (uint64_t) stubTick * 32768U / 1000U;
 }
 
+uint64_t RTC_get64(void)
+{
+#if defined(SHIMMER3R)
+  return stubFreeRunningTicks() + stubRwcOffset;
+#else
+  return stubFreeRunningTicks();
+#endif
+}
+
 #if defined(SHIMMER3)
-/* Shimmer3's own function, from 5xx_HAL/hal_RTC.h. On Shimmer3R the same name
- * is a macro over RTC_get64(), so both platforms read the same clock here. */
+/* Shimmer3's own function, from 5xx_HAL/hal_RTC.h. */
 uint64_t RTC_getRwcTime(void)
 {
-  return RTC_get64();
+  return stubFreeRunningTicks() + stubRwcOffset;
 }
 #endif
+
+/* Both platforms: the clock reads ticksPtr's value from now on, and counts as
+ * set. */
+void RTC_setTimeFromTicksPtr(uint8_t *ticksPtr)
+{
+  uint64_t ticks;
+
+  memcpy(&ticks, ticksPtr, sizeof(ticks));
+  stubRwcOffset = ticks - stubFreeRunningTicks();
+  stubRwcSetCount++;
+  stubRwcLastSet = ticks;
+  stubRwcTimeSet = 1;
+}
+
+#if defined(SHIMMER3R)
+void RTC_setAlarmBattRead(void)
+{
+  stubBattAlarmCount++;
+}
+#endif
+
+uint32_t hostStub_getRwcSetCount(void)
+{
+  return stubRwcSetCount;
+}
+
+uint64_t hostStub_getRwcLastSet(void)
+{
+  return stubRwcLastSet;
+}
+
+uint32_t hostStub_getBattAlarmCount(void)
+{
+  return stubBattAlarmCount;
+}
 
 uint8_t InfoMem_write(uint16_t addr, uint8_t *buf, uint16_t size)
 {

@@ -324,7 +324,7 @@ revised. `classify_step` returns how late it now counts, so the callers that
 report each step (`rig/midstream.py`, `rig/sdfile.py`, `bt.gap_positions`)
 take back what they reported for it.
 
-The `sd_start_midstream` items and `defect.dev1539_clock_set_midstream`
+The `sd_start_midstream` items and `smoke.sd_clock_set_midstream`
 (`rig/midstream.py`) look for two more things, because a log start or a clock
 set mid-stream can re-phase the stream:
 

@@ -29,6 +29,8 @@ INQUIRY, INQUIRY_RSP = 0x01, 0x02
 GET_DEVICE_VERSION, DEVICE_VERSION_RSP = 0x3F, 0x25
 GET_FW_VERSION, FW_VERSION_RSP = 0x2E, 0x2F
 GET_STATUS, STATUS_RSP = 0x72, 0x71
+# The real-world clock (§7.7): 64-bit little-endian 32768 Hz ticks since the epoch.
+SET_RWC, RWC_RSP, GET_RWC = 0x8F, 0x90, 0x91
 # The battery read: answered in the in-stream wrapper, ACK 0x8A 0x94, then the
 # 3 bytes of battStatusRaw (ADC value, then the charger status), streaming or not.
 GET_VBATT, VBATT_RSP, VBATT_BYTES = 0x95, 0x94, 3
@@ -531,6 +533,16 @@ class BtLink:
 
     def simple(self, op: int) -> None:
         self.command(op)
+
+    def get_rwc(self) -> int:
+        """GET_RWC (§7.7): the device's clock, in ticks. Not while streaming."""
+        self.command(GET_RWC, rsp=RWC_RSP)
+        return int.from_bytes(self._read(8), "little")
+
+    def set_rwc(self, ticks: int) -> None:
+        """SET_RWC (§7.7). Firmware since DEV-1539 takes it at once only when not
+        sensing; otherwise when streaming and logging have both stopped."""
+        self.command(SET_RWC, ticks.to_bytes(8, "little"))
 
     # --- streaming -----------------------------------------------------------
 

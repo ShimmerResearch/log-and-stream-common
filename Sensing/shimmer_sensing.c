@@ -392,6 +392,10 @@ void ShimSens_stopSensing(uint8_t enableDockUartIfDocked)
     sensing.skippingPacketsFlag = 0;
     ShimSens_resetPacketBuffAll();
 
+    /* A clock set that arrived during the session takes effect now, with the
+     * sample timer stopped and any log file closed (DEV-1539). */
+    ShimRtc_applyDeferredRwc();
+
     if (enableDockUartIfDocked && shimmerStatus.docked)
     {
       DockUart_init();

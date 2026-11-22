@@ -2,7 +2,7 @@
 does to the stream's timestamps.
 
 A host that logs while it streams sends the log start mid-stream. The
-reference host sets the real-world clock first, every time: SET_RWC_COMMAND,
+reference host once set the real-world clock first, every time: SET_RWC_COMMAND,
 then START_LOGGING_COMMAND. The protocol allows both while sensing
 (SHIMMER3_BT_COMMUNICATION_PROTOCOL.md, SET_RWC_COMMAND). Neither may
 disturb the stream. Its stamps must stay increasing, one period apart and on
@@ -12,6 +12,12 @@ The worst disturbance is a stamp behind the one before it. A host that
 unwraps the 24-bit counter as specified (SHIMMER3_STREAMING_DATA_FORMAT.md
 §2.1) takes a step back beyond its reorder window for a wrap, so every later
 sample comes out 512 s late.
+
+Firmware since DEV-1539 keeps a clock set that arrives while sensing until
+streaming and logging have both stopped, and then applies it. The last clock
+set of a plan asks for the host's time plus PROBE_S, so that whether it was
+applied at the stop is plain from the clock afterwards (clock_after_stop), and
+an immediate set shows in the stream as a step of PROBE_S.
 
 schedule() builds the commands for BtLink.stream(actions=...). analyse()
 judges the stamps, and by_cycle() says which log start or stop each problem
@@ -38,6 +44,19 @@ SETTLE = 3
 # Packets that must arrive, as a fraction of the stream's length at its rate,
 # before its stamps are judged at all (the release rows use the same floor).
 MIN_PACKET_FRACTION = 0.8
+# What the last clock set of a session adds to the host's time. Far beyond any
+# transit time or drift, so the clock after the stop shows whether it was
+# applied, and far inside the 512 s counter wrap.
+PROBE_S = 3.0
+# How far a clock read over Bluetooth may sit from what it should: the transit
+# time of the set (19-27 ms on an idle Classic link on the bench) and half the
+# read's round trip, with room to spare. Small against PROBE_S.
+CLOCK_TOL_S = 0.25
+
+
+def host_ticks(plus_s: float = 0.0) -> int:
+    """The host's clock now, plus plus_s, in 32768 Hz ticks of the Unix epoch."""
+    return int((time.time() + plus_s) * TICKS_PER_S)
 
 
 def rwc_payload(now_s: float | None = None) -> bytes:
@@ -45,6 +64,41 @@ def rwc_payload(now_s: float | None = None) -> bytes:
     ticks of the Unix epoch, as the reference host sends it."""
     ticks = int((time.time() if now_s is None else now_s) * TICKS_PER_S)
     return bytes([SET_RWC]) + ticks.to_bytes(8, "little")
+
+
+def probe_payload() -> bytes:
+    """SET_RWC_COMMAND for the host's clock now plus PROBE_S."""
+    return rwc_payload(time.time() + PROBE_S)
+
+
+def clock_offset(link) -> float:
+    """The device's clock minus the host's, in seconds, from one GET_RWC_COMMAND,
+    taken against the host's time at the middle of the exchange. Not while
+    streaming."""
+    before = time.time()
+    ticks = link.get_rwc()
+    after = time.time()
+    return ticks / TICKS_PER_S - (before + after) / 2
+
+
+def clock_after_stop(link, want_s: float) -> tuple[list[str], str]:
+    """Check the clock once sensing has stopped, then put it back.
+
+    want_s is how far ahead of the host's time the session's last clock set
+    asked for (PROBE_S). Firmware since DEV-1539 applies that set at the stop,
+    so the clock must read within CLOCK_TOL_S of it. The clock is then set to
+    the host's time while idle, which must take at once, and read again.
+    Returns the problems, and a note giving both offsets."""
+    problems = []
+    after = clock_offset(link)
+    if abs(after - want_s) > CLOCK_TOL_S:
+        problems.append(f"after the stop the clock read {after:+.3f} s from the host's time; the session's "
+                        f"last clock set asked for {want_s:+.3f} s, so it was not applied at the stop")
+    link.set_rwc(host_ticks())
+    reset = clock_offset(link)
+    if abs(reset) > CLOCK_TOL_S:
+        problems.append(f"a clock set while idle left the clock {reset:+.3f} s from the host's time")
+    return problems, f"clock {after:+.3f} s after the stop (asked {want_s:+.1f} s), {reset:+.3f} s once reset"
 
 
 @dataclass
@@ -75,31 +129,37 @@ class Plan:
     actions: list[Action]
     seconds: float                  # how long to stream
     rwc_cycles: list[int]           # cycles whose start sets the clock first
+    probe_s: float = 0.0            # what the last clock set adds to the host's time
 
 
 def schedule(cycles: int, lead_s: float = 3.0, on_s: float = 2.0, off_s: float = 2.0,
              rwc_gap_s: float = 0.2, status_after_s: float = 1.0, tail_s: float = 2.0,
-             clock_sets: bool = True) -> Plan:
+             clock_sets: bool = True, probe: bool = True) -> Plan:
     """Log cycles inside one stream. Each start is followed by a status query,
     which shows whether logging really began.
 
     With clock_sets, odd cycles start logging plainly and even cycles set the
     clock first, as the reference host once did. Without, every cycle starts
-    plainly, as hosts do now: none sends SET_RWC mid-stream."""
+    plainly, as hosts do now: none sends SET_RWC mid-stream.
+
+    With probe, the last clock set asks for the host's time plus PROBE_S
+    (clock_after_stop says why); the others send the host's time."""
     actions = []
     t = lead_s
     rwc = []
+    last_set = max((c for c in range(1, cycles + 1) if c % 2 == 0), default=None) if clock_sets else None
     for c in range(1, cycles + 1):
         start = t
         if clock_sets and c % 2 == 0:
-            actions.append(Action(t, "set_rwc", c, rwc_payload))
+            payload = probe_payload if probe and c == last_set else rwc_payload
+            actions.append(Action(t, "set_rwc", c, payload))
             rwc.append(c)
             start = t + rwc_gap_s
         actions.append(Action(start, "start", c, bytes([bt.START_LOGGING])))
         actions.append(Action(start + status_after_s, "status", c, bytes([bt.GET_STATUS])))
         actions.append(Action(start + on_s, "stop", c, bytes([bt.STOP_LOGGING])))
         t = start + on_s + off_s
-    return Plan(actions, t - off_s + tail_s, rwc)
+    return Plan(actions, t - off_s + tail_s, rwc, PROBE_S if probe and last_set else 0.0)
 
 
 @dataclass

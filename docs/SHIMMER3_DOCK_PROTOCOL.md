@@ -342,7 +342,7 @@ table used to give was wrong. `0x07` in the `SHIMMER` component's own space is
 
 | Component | Property | Value bytes | Effect |
 |---|---|---|---|
-| `SHIMMER` | `RWC_CFG_TIME` `0x04` | 8 bytes, 64-bit ticks (`LEN` must be 10) | `RTC_setTimeFromTicksPtr`, clears `rtcSetByBt` through `ShimRtc_setRtcSetByBt(0)` (which writes InfoMem byte `NV_SD_TRIAL_CONFIG0` only if the bit was set; later than the pin, see [Still unverified](#still-unverified--not-found-in-code)), and updates the SD header |
+| `SHIMMER` | `RWC_CFG_TIME` `0x04` | 8 bytes, 64-bit ticks (`LEN` must be 10) | `RTC_setTimeFromTicksPtr`, clears `rtcSetByBt` through `ShimRtc_setRtcSetByBt(0)` (which writes InfoMem byte `NV_SD_TRIAL_CONFIG0` only if the bit was set; later than the pin, see [Still unverified](#still-unverified--not-found-in-code)), and updates the SD header. While the device is sensing, all of it waits until streaming and logging have both stopped, as Bluetooth's `SET_RWC_COMMAND` does ([BT protocol §7.7](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md#77-sd-logging-and-trial-configuration)); still ACKed |
 | `SHIMMER` | `INFOMEM` `0x06` | `length` u8, `offset` u16, then `length` bytes (`LEN` must be 5 + length) — bounded by `STOREDCONFIG_SIZE` | `ShimConfig_storedConfigSet`, `ShimConfig_checkAndCorrectConfig`, flags the SD config file for rewrite, `LogAndStream_infomemUpdate` |
 | `SHIMMER` | `CALIB_DUMP`* | `length` u8, `offset` u16, then `length` bytes | `ShimmerCalib_ramWrite` (return value ignored; always ACKs) |
 | `SHIMMER` | `ENTER_BOOTLOADER` `0x09` (Shimmer3R only) | 1 byte: seconds until reboot; `0` cancels (`LEN` 3) | arms `RTC_setAlarmRebootToBootloader`, sets `bslRebootPending` |
@@ -375,6 +375,15 @@ otherwise to the dock UART; on Shimmer3 always to the dock UART.
 
 ## Still unverified / not found in code
 
+- **`RWC_CFG_TIME` waits for the end of sensing.** The deferral
+  (`ShimRtc_setRwc`, `RTC/shimmer_rtc.c`, DEV-1539) is in a change later than
+  the pin in **Verified against**. Before it, the set was applied at once.
+  `ShimSens_startSensing` shuts the dock UART on both platforms, and Shimmer3R's
+  USB too, until the stop. So a dock set normally cannot arrive mid-session,
+  and this is a guard that gives the dock the same rule as Bluetooth. Covered
+  by the host tests `test_rwc_set_deferred_while_sensing` and
+  `test_rwc_latest_deferred_set_wins`. **Move under Verified against** once the
+  change is on `main` and the pin is bumped.
 - **`RWC_CFG_TIME` writes InfoMem only when `rtcSetByBt` changes.** The
   conditional write (`ShimRtc_setRtcSetByBt`, `RTC/shimmer_rtc.c`) is in a
   change later than the pin in **Verified against**. At the pin, every

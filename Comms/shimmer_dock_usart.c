@@ -371,12 +371,11 @@ void ShimDock_processCmd(void)
             case UART_PROP_RWC_CFG_TIME:
               if (dockRxBuf[UART_RXBUF_LEN] == 10)
               {
-                RTC_setTimeFromTicksPtr((uint8_t *) (dockRxBuf + UART_RXBUF_DATA));
-                ShimRtc_rwcErrorCheck();
-
-                ShimRtc_setRtcSetByBt(0);
-                ShimSdHead_sdHeadTextSetByte(SDH_TRIAL_CONFIG0,
-                    ShimConfig_getStoredConfig()->rawBytes[NV_SD_TRIAL_CONFIG0]);
+                /* Applied now, or when sensing stops if it arrived while
+                 * sensing (DEV-1539): see ShimRtc_setRwc(). */
+                uint64_t rwcTicks;
+                memcpy((uint8_t *) &rwcTicks, (uint8_t *) (dockRxBuf + UART_RXBUF_DATA), 8);
+                ShimRtc_setRwc(rwcTicks, 0);
 
                 uartSendRspAck = 1;
               }
