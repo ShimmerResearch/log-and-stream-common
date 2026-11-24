@@ -23,8 +23,9 @@ reads them (SmartDock.SMARTDOCK_RESPONSE_TIMEOUT_SLOT_CHANGE).
 A Base6 can also refuse a command at random. From one moment on 24 Nov 2026,
 and through a power cycle, one answered most SDC, SDP and SDD commands with an
 instant E (it never tried the switch) or not at all, and its queries now and
-then. Sent again every 2 s, each got through within 6 tries. So every command
-is sent up to TRIES times, RETRY_S apart, until it gets the answer it should.
+then. Sent again every 2 s, each got through within 6 tries, but a select was
+later refused 8 times in a row. So every command is sent up to TRIES times,
+RETRY_S apart (about 30 s of refusals), until it gets the answer it should.
 A select that never takes raises: the dock UART would still be connected to
 the slot selected before it, and that slot's unit would answer instead.
 
@@ -45,7 +46,7 @@ SETTLE_S = 1.5
 CARD_CHANGEOVER_S = 5.0     # after SDC, as Consensys waits on Windows
 REPLY_S = 1.0               # SDQ, SDS
 SLOT_REPLY_S = 10.0         # SDP, SDC, SDD: they answer once the slot has changed
-TRIES = 8                   # a refused or unanswered command is sent this many times in all
+TRIES = 15                  # a refused or unanswered command is sent this many times in all
 RETRY_S = 2.0               # between tries
 
 

@@ -13,6 +13,8 @@ import contextlib
 import importlib.util
 import sys
 import tempfile
+import threading
+import time
 import types
 import unittest
 from pathlib import Path
@@ -257,55 +259,87 @@ def unit(name, slot, mac=None):
 
 
 class OperatorDockTests(unittest.TestCase):
-    def test_one_request_each_way_for_the_whole_group(self):
+    """The spoken part of each request is short; the printed detail names the units."""
+
+    def recorder(self):
         asked = []
+        return asked, lambda text, detail="": asked.append((text, detail))
+
+    def test_one_request_each_way_for_the_whole_group(self):
+        asked, ask = self.recorder()
         group = [unit("a", 1), unit("b", 2), unit("c", 3)]
-        od = power.OperatorDock(asked.append, lambda: group)
+        od = power.OperatorDock(ask, lambda: group)
         for u in group:
             od.off(None, u.name)
         for u in group:
             od.on(None, u.name)
-        self.assertEqual(asked, ["Take a, b and c out of the Base6",
-                                 "Put them back in the Base6: a in slot 1, b in slot 2 and c in slot 3"])
+        self.assertEqual(asked, [
+            ("Undock the units", "take a, b and c out of the Base6"),
+            ("Dock the units, each in its own slot",
+             "put them back in the Base6: a in slot 1, b in slot 2 and c in slot 3")])
 
     def test_the_group_is_asked_for_at_the_first_off(self):
         group = []
-        asked = []
-        od = power.OperatorDock(asked.append, lambda: group)
+        asked, ask = self.recorder()
+        od = power.OperatorDock(ask, lambda: group)
         group += [unit("a", 1), unit("b", 2)]               # known only once configuring is over
         od.off(None, "a")
-        self.assertEqual(asked, ["Take a and b out of the Base6"])
+        self.assertEqual(asked, [("Undock the units", "take a and b out of the Base6")])
 
     def test_a_unit_outside_the_group_is_asked_for_alone(self):
-        asked = []
-        od = power.OperatorDock(asked.append, lambda: [unit("a", 1)])
+        asked, ask = self.recorder()
+        od = power.OperatorDock(ask, lambda: [unit("a", 1)])
         od.off(None, "z")
         od.on(None, "z")
-        self.assertEqual(asked, ["Take z out of the Base6", "Put it back in the Base6: z"])
+        self.assertEqual(asked, [("Undock the unit", "take z out of the Base6"),
+                                 ("Dock the unit", "put it back in the Base6: z")])
 
     def test_on_for_a_unit_never_taken_out_asks_nothing(self):
-        asked = []
-        power.OperatorDock(asked.append, lambda: [unit("a", 1)]).on(None, "a")
+        asked, ask = self.recorder()
+        power.OperatorDock(ask, lambda: [unit("a", 1)]).on(None, "a")
         self.assertEqual(asked, [])
+
+    def test_the_other_units_wait_until_the_operator_has_answered(self):
+        """On the bench (24 Nov 2026) the units after the first returned from
+        off() at once, so each gave the operator only its own 30 s from the
+        request, not from the answer, and failed while they were still in."""
+        answered = threading.Event()
+        returned = {}
+
+        def ask(text, detail=""):
+            time.sleep(0.3)                     # the operator, lifting the units out
+            answered.set()
+        od = power.OperatorDock(ask, lambda: [unit("a", 1), unit("b", 2), unit("c", 3)])
+
+        def off(name):
+            od.off(None, name)
+            returned[name] = answered.is_set()
+        threads = [threading.Thread(target=off, args=(n,)) for n in "abc"]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(returned, {"a": True, "b": True, "c": True})
 
     def test_a_request_cut_short_is_still_followed_by_the_one_to_put_them_back(self):
         asked = []
 
-        def ask(text):
-            asked.append(text)
-            if text.startswith("Take"):
+        def ask(text, detail=""):
+            asked.append((text, detail))
+            if text.startswith("Undock"):
                 raise KeyboardInterrupt
         od = power.OperatorDock(ask, lambda: [unit("a", 1), unit("b", 2)])
         with self.assertRaises(KeyboardInterrupt):
             od.off(None, "a")
         od.on(None, "a")
-        self.assertEqual(asked[-1], "Put them back in the Base6: a in slot 1 and b in slot 2")
+        self.assertEqual(asked[-1], ("Dock the units, each in its own slot",
+                                     "put them back in the Base6: a in slot 1 and b in slot 2"))
 
     def test_a_failed_put_back_is_asked_again(self):
         answers = [EOFError(), None]
 
-        def ask(text):
-            if text.startswith("Put"):
+        def ask(text, detail=""):
+            if text.startswith("Dock"):
                 a = answers.pop(0)
                 if a:
                     raise a
@@ -316,9 +350,45 @@ class OperatorDockTests(unittest.TestCase):
         od.on(None, "b")
         self.assertEqual((answers, od.out), ([], {}))
 
+    def test_manual_power_asks_through_the_same_prompt(self):
+        asked, ask = self.recorder()
+        mp = power.ManualPower(ask)
+        mp.off(1, "s3r-x")
+        mp.on(1, "s3r-x")
+        self.assertEqual(asked, [("Undock s3r-x", "disconnect its USB-C"), ("Dock s3r-x", "connect its USB-C")])
+
     def test_listing(self):
         self.assertEqual([power.listing(x) for x in (["a"], ["a", "b"], ["a", "b", "c"])],
                          ["a", "a and b", "a, b and c"])
+
+
+class OperatorAsk(unittest.TestCase):
+    """conftest's hil_ask reads the answer from stdin, so stdin must be out of
+    pytest's capture too: global_and_fixture_disabled() alone leaves it in,
+    and input() failed at once on the bench (24 Nov 2026)."""
+
+    @unittest.skipUnless(importlib.util.find_spec("pytest"), "conftest.py needs pytest")
+    def test_stdin_is_released_for_the_answer_and_taken_back_after(self):
+        import conftest
+        calls = []
+
+        class Capman:
+            @contextlib.contextmanager
+            def global_and_fixture_disabled(self):
+                calls.append("out released")
+                yield
+                calls.append("all taken back")
+
+            def suspend_global_capture(self, in_=False):
+                calls.append(f"suspend in_={in_}")
+
+        said = []
+        ask = conftest._asker(said.append, Capman(), read=lambda: calls.append("read"))
+        with mock.patch.object(conftest, "speak", lambda text: calls.append(f"spoke {text}")):
+            ask("Undock the units", "take a and b out of the Base6")
+        self.assertEqual(calls, ["spoke Undock the units", "out released", "suspend in_=True", "read",
+                                 "all taken back"])
+        self.assertEqual(said, [">>> Undock the units: take a and b out of the Base6, then press Enter"])
 
 
 class AttendedOnly(unittest.TestCase):
@@ -613,16 +683,16 @@ class Bench:
         self.boot_silence = {}         # unit name -> dock opens it leaves unanswered once put back
         self.ports = {f"COM{40 + i}": self.shimmers[u.name] for i, u in enumerate(units)}
 
-    def ask(self, text):
-        self.asks.append(text)
-        named = [u for u in self.units if u.name in text]
-        if text.startswith("Take"):
+    def ask(self, text, detail=""):
+        self.asks.append(f"{text}: {detail}" if detail else text)
+        named = [u for u in self.units if u.name in f"{text} {detail}"]
+        if text.startswith("Undock"):
             for u in named:
                 if u.name not in self.left_in:
                     slot = next(s for s, sh in self.base6.slots.items() if sh.u is u)
                     del self.base6.slots[slot]
                     self.shimmers[u.name].undocked()
-        elif text.startswith("Put"):
+        elif text.startswith("Dock"):
             for u in named:
                 slot = self.put_back.get(u.name, u.base6_slot)
                 if slot is not None:
@@ -700,8 +770,9 @@ class StepsThroughSharedLog(unittest.TestCase):
         logs, steps = self.bench.run()
         self.assertEqual({n: lg.errors for n, lg in logs.items()}, {u.name: [] for u in self.units})
         self.assertEqual(self.bench.asks, [
-            "Take s3-a, s3-b and s3-c out of the Base6",
-            "Put them back in the Base6: s3-a in slot 1, s3-b in slot 2 and s3-c in slot 3"])
+            "Undock the units: take s3-a, s3-b and s3-c out of the Base6",
+            "Dock the units, each in its own slot: put them back in the Base6: s3-a in slot 1, s3-b in slot 2 "
+            "and s3-c in slot 3"])
         for u in self.units:
             lg = logs[u.name]
             self.assertEqual(lg.session, self.tmp / "out" / u.name / "data" / "HIL_longlog_1795195659"
@@ -749,7 +820,7 @@ class StepsThroughSharedLog(unittest.TestCase):
         self.own["s3-b"] = bytes(self.bench.shimmers["s3-b"].infomem)
         logs, steps = self.bench.run()
         self.assertRegex(" ".join(logs["s3-b"].errors), "configure: .*SD sync")
-        self.assertEqual(self.bench.asks[0], "Take s3-a and s3-c out of the Base6")
+        self.assertEqual(self.bench.asks[0], "Undock the units: take s3-a and s3-c out of the Base6")
         self.assertEqual(self.bench.where("s3-b"), 2)
         self.assertEqual((logs["s3-a"].errors, logs["s3-c"].errors), ([], []))
         self.assertRestored()

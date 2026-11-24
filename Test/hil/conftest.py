@@ -150,9 +150,9 @@ def base6(rig):
 
 
 @pytest.fixture(scope="session")
-def power(rig, pytestconfig):
+def power(rig, pytestconfig, hil_ask):
     if pytestconfig.getoption("--manual-power") or "hub" not in rig.capabilities():
-        p = ManualPower()
+        p = ManualPower(hil_ask)
     else:
         p = HubPower(rig.bench_tools, rig.hub_serial)
     yield p
@@ -200,22 +200,32 @@ def hil_log(pytestconfig):
 
 @pytest.fixture(scope="session")
 def hil_ask(pytestconfig):
-    """ask(text): put a request to the operator and return once they press Enter.
+    """ask(text, detail=""): put a request to the operator and return once they
+    press Enter.
 
-    Spoken aloud first (rig/power.speak), for an operator who is away from the
-    screen, then printed as a line of its own, so run_rc.py, which passes the
-    output on line by line, shows it before the answer. pytest's capture is
-    suspended while it waits, since it would otherwise refuse to read stdin.
-    Only tests that need "attended" use it.
+    `text` is spoken aloud first (rig/power.speak), for an operator who is away
+    from the screen, so it is kept short; `detail`, which names the units, is
+    only printed. The request is printed as a line of its own, so run_rc.py,
+    which passes the output on line by line, shows it before the answer.
+    Only tests that need "attended", or a run with --manual-power, use it.
+
+    pytest's capture is suspended while it waits, stdin included. On its own,
+    global_and_fixture_disabled() leaves stdin captured, and input() then
+    raises "reading from stdin while output is captured" at once: on the
+    bench (24 Nov 2026) the request was spoken and never waited for.
     """
-    say = _say(pytestconfig)
-    capman = pytestconfig.pluginmanager.get_plugin("capturemanager")
+    return _asker(_say(pytestconfig), pytestconfig.pluginmanager.get_plugin("capturemanager"))
 
-    def ask(text: str):
+
+def _asker(say, capman, read=input):
+    """hil_ask's ask(), from its parts (test_hil_s3_long_log.py tests it)."""
+    def ask(text: str, detail: str = ""):
         speak(text)
-        say(f">>> {text}, then press Enter")
+        say(f">>> {text}{f': {detail}' if detail else ''}, then press Enter")
         with capman.global_and_fixture_disabled() if capman else contextlib.nullcontext():
-            input()
+            if capman:
+                capman.suspend_global_capture(in_=True)   # resumed with the rest on the way out
+            read()
     return ask
 
 
