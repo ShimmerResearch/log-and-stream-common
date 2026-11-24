@@ -16,6 +16,11 @@ HS-SD/MMC"), where it mounts as a drive (rig/s3_card.py); the next SDP gives it
 back. Consensys waits 5 s on Windows after SDC
 (SLOT_CHANGEOVER_DELAY_WITH_SD_CARD_WIN).
 
+A slot change answers only once it is done: SDC took 1.44-1.47 s and SDD
+1.17 s on one Base6 (SDP about 0.4 s), past the 1 s the other commands get. So
+SDP, SDC and SDD replies are read with a longer timeout, 10 s, as Consensys
+reads them (SmartDock.SMARTDOCK_RESPONSE_TIMEOUT_SLOT_CHANGE).
+
 Ports are found by FTDI serial (<base>A..D), never by COM number. Consensys
 must be closed: it holds these ports open.
 """
@@ -31,6 +36,8 @@ from .config import RigError
 
 SETTLE_S = 1.5
 CARD_CHANGEOVER_S = 5.0     # after SDC, as Consensys waits on Windows
+REPLY_S = 1.0               # SDQ, SDS
+SLOT_REPLY_S = 10.0         # SDP, SDC, SDD: they answer once the slot has changed
 
 
 def port_for(serial_prefix: str) -> str | None:
@@ -49,7 +56,7 @@ class Base6:
         if missing:
             raise RigError(f"Base6 {ftdi_serial}: channel(s) {', '.join(missing)} not present")
         self.ports = ports
-        self.mux = serial.Serial(ports["B"], 115200, timeout=1.0)
+        self.mux = serial.Serial(ports["B"], 115200, timeout=REPLY_S)
         self.selected: int | None = None
 
     @property
@@ -62,10 +69,18 @@ class Base6:
         """COM port of the selected slot's bootloader lines (channel C)."""
         return self.ports["C"]
 
-    def _cmd(self, text: str) -> str:
+    def _cmd(self, text: str, reply_s: float = REPLY_S) -> str:
+        """Send one command and read its reply line, waiting up to reply_s."""
         self.mux.reset_input_buffer()
         self.mux.write(text.encode("ascii"))
-        return self.mux.readline().decode("ascii", "replace").strip()
+        was = self.mux.timeout
+        if reply_s != was:
+            self.mux.timeout = reply_s
+        try:
+            return self.mux.readline().decode("ascii", "replace").strip()
+        finally:
+            if reply_s != was:
+                self.mux.timeout = was
 
     def occupied(self) -> list[int]:
         r = self._cmd("SDQ$")
@@ -78,7 +93,7 @@ class Base6:
             raise ValueError(slot)
         if self.selected == slot:
             return
-        self._cmd(f"SDP,0{slot}$")
+        self._cmd(f"SDP,0{slot}$", SLOT_REPLY_S)
         time.sleep(SETTLE_S)
         self.selected = slot
 
@@ -87,7 +102,7 @@ class Base6:
         and wait out the changeover. select() gives the card back to the Shimmer."""
         if not 1 <= slot <= 6:
             raise ValueError(slot)
-        r = self._cmd(f"SDC,0{slot}$")
+        r = self._cmd(f"SDC,0{slot}$", SLOT_REPLY_S)
         # Whatever the answer, the next select() must send SDP, which is what
         # hands the card back.
         self.selected = None
@@ -106,7 +121,7 @@ class Base6:
             raise RigError(f"Base6 refused to {'unmask' if connected else 'mask'} the BSL lines: {r!r}")
 
     def disconnect(self) -> None:
-        self._cmd("SDD$")
+        self._cmd("SDD$", SLOT_REPLY_S)
         self.selected = None
 
     def close(self) -> None:
