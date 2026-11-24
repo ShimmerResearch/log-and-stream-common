@@ -1,13 +1,13 @@
 """A docked Shimmer3's SD card, read through the Base6's card reader.
 
-A Shimmer3 has no USB of its own. The Base6 switches a slot's card to one of
-its two USB card readers ("Shimmer HS-SD/MMC"), where it mounts as a drive:
+A Shimmer3 has no USB of its own. The Base6 switches a slot's card to its USB
+card reader ("Shimmer HS-SD/MMC"), where it mounts as a drive:
 Base6.card_to_pc(slot) sends SDC and Base6.select(slot) gives it back
 (rig/base6.py).
 
 Two things make that drive awkward:
-- Its letter is whichever the reader that took the card has. So it is found as
-  a reader's drive that was not there before the SDC.
+- Its letter is not fixed, and a single-slot dock's reader has the same name.
+  So it is found as a reader's drive that was not there before the SDC.
 - Straight after a Shimmer3 is put back in the Base6 the mount comes and goes
   for a while (bench, 16 Oct 2026). So anything read from the card is read with
   retries (with_retries), each finding the drive again, and a session is copied

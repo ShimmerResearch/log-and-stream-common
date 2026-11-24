@@ -39,7 +39,7 @@ except ImportError:
     _serial.SerialException = type("SerialException", (OSError,), {})
     sys.modules.update({"serial": _serial, "serial.tools": _tools, "serial.tools.list_ports": _lp})
 
-from rig import ble, bt, config, dock, flash, power, s3_config, s3_flash, s3r_usb, sdfile, throughput  # noqa: E402
+from rig import base6, ble, bt, config, dock, flash, power, s3_config, s3_flash, s3r_usb, sdfile, throughput  # noqa: E402
 import run_rc  # noqa: E402
 
 
@@ -2885,6 +2885,141 @@ class S3RestorePartOfInfoMem(unittest.TestCase):
     def test_masking_leaves_bytes_it_was_not_given(self):
         self.assertEqual(s3_flash._masked(b"\x80\x02"), b"\x80\x02")
         self.assertEqual(s3_flash._masked(bytes(230) + b"\x01" + bytes(281))[230], 0)
+
+
+class Base6SlotReplies(unittest.TestCase):
+    """A Base6 slot change answers only once it is done: SDC,0n$ took 1.44-1.47 s
+    on the bench and SDD$ 1.17 s. Read with the 1 s every command had, SDC's
+    answer came back empty and the card read raised "SDC answered ''"
+    (24 Nov 2026, DEV-1533)."""
+
+    class Mux:
+        """Channel B: each command's reply arrives after its delay; readline
+        gives it only if the port's timeout reaches that far. A list of
+        (reply, delay) answers successive sends in turn, its last repeating."""
+
+        def __init__(self, replies):
+            self.replies, self._timeout, self.assigned, self.read_with = replies, base6.REPLY_S, [], []
+            self.pending, self.sent = None, []
+
+        @property
+        def timeout(self):
+            return self._timeout
+
+        @timeout.setter
+        def timeout(self, t):
+            self.assigned.append(t)
+            self._timeout = t
+
+        def reset_input_buffer(self):
+            self.pending = None
+
+        def write(self, data):
+            text = data.decode("ascii")
+            self.sent.append(text)
+            reply = self.replies[text]
+            if isinstance(reply, list):
+                reply = reply.pop(0) if len(reply) > 1 else reply[0]
+            self.pending = reply
+
+        def readline(self):
+            self.read_with.append(self._timeout)
+            reply, delay_s = self.pending
+            return reply if self._timeout >= delay_s else b""
+
+    def dock(self, **replies):
+        b = base6.Base6.__new__(base6.Base6)
+        b.mux, b.selected = self.Mux(replies), None
+        return b
+
+    def test_a_card_switch_answering_after_one_second_is_read(self):
+        b = self.dock(**{"SDC,01$": (b"C,01\r\n", 1.47)})
+        with mock.patch.object(base6.time, "sleep", lambda s: None):
+            b.card_to_pc(1)
+        self.assertEqual(b.mux.read_with, [base6.SLOT_REPLY_S])
+        self.assertEqual(b.mux.timeout, base6.REPLY_S)
+
+    def test_slot_select_and_disconnect_wait_for_their_answers(self):
+        b = self.dock(**{"SDP,02$": (b"P,02\r\n", 0.44), "SDD$": (b"D\r\n", 1.17)})
+        with mock.patch.object(base6.time, "sleep", lambda s: None):
+            b.select(2)
+            b.disconnect()
+        self.assertEqual(b.mux.read_with, [base6.SLOT_REPLY_S, base6.SLOT_REPLY_S])
+        self.assertEqual(b.mux.timeout, base6.REPLY_S)
+
+    def test_other_commands_keep_the_short_timeout_untouched(self):
+        b = self.dock(**{"SDQ$": (b"Q,110010\r\n", 0.23)})
+        self.assertEqual(b.occupied(), [1, 2, 5])
+        self.assertEqual(b.mux.read_with, [base6.REPLY_S])
+        self.assertEqual(b.mux.assigned, [])
+
+
+class Base6Refusals(unittest.TestCase):
+    """From one moment on 24 Nov 2026, and through a power cycle, a Base6
+    answered most slot commands with an instant E, or not at all. Sent again
+    every 2 s, SDC got through within 6 tries and the hand-back within 3
+    (DEV-1533)."""
+
+    E, NONE = (b"E\r\n", 0.01), (b"", 0.0)
+
+    def dock(self, **replies):
+        b = base6.Base6.__new__(base6.Base6)
+        b.mux, b.selected = Base6SlotReplies.Mux(replies), None
+        self.slept = []
+        patcher = mock.patch.object(base6.time, "sleep", self.slept.append)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return b
+
+    def test_a_refused_card_switch_is_sent_again_until_it_takes(self):
+        b = self.dock(**{"SDC,01$": [self.E] * 5 + [(b"C,01\r\n", 1.47)]})
+        b.card_to_pc(1)
+        self.assertEqual(b.mux.sent, ["SDC,01$"] * 6)
+        self.assertEqual(self.slept, [base6.RETRY_S] * 5 + [base6.CARD_CHANGEOVER_S])
+
+    def test_an_unanswered_command_is_sent_again_too(self):
+        b = self.dock(**{"SDP,02$": [self.NONE, (b"P,02\r\n", 0.44)]})
+        b.select(2)
+        self.assertEqual(b.mux.sent, ["SDP,02$"] * 2)
+        self.assertEqual(b.selected, 2)
+
+    def test_a_card_switch_refused_every_time_raises_after_the_last_try(self):
+        b = self.dock(**{"SDC,03$": [self.E]})
+        with self.assertRaisesRegex(base6.RigError, rf"SDC,03\$ answered 'E' after {base6.TRIES} tries"):
+            b.card_to_pc(3)
+        self.assertEqual(len(b.mux.sent), base6.TRIES)
+        self.assertIsNone(b.selected)
+
+    def test_a_select_that_never_takes_raises_and_forgets_the_slot(self):
+        """Left connected to slot 2, the dock UART answered for slot 3 with
+        slot 2's unit (bench, 24 Nov 2026): carrying on would talk to the
+        wrong Shimmer."""
+        b = self.dock(**{"SDP,02$": (b"P,02\r\n", 0.44), "SDP,03$": [self.E]})
+        b.select(2)
+        with self.assertRaisesRegex(base6.RigError, r"SDP,03\$ answered 'E'"):
+            b.select(3)
+        self.assertIsNone(b.selected)
+
+    def test_an_answer_for_another_slot_is_not_taken_for_this_one(self):
+        b = self.dock(**{"SDP,03$": [(b"P,02\r\n", 0.4), (b"P,03\r\n", 0.4)]})
+        b.select(3)
+        self.assertEqual(b.mux.sent, ["SDP,03$"] * 2)
+
+    def test_a_disconnect_refused_every_time_does_not_raise(self):
+        b = self.dock(**{"SDD$": [self.E]})
+        b.selected = 4
+        self.assertFalse(b.disconnect())
+        self.assertEqual(len(b.mux.sent), base6.TRIES)
+        self.assertIsNone(b.selected)
+
+    def test_a_refused_bsl_mask_is_sent_again(self):
+        b = self.dock(**{"SDS,1$": [self.E, (b"S,1\r\n", 0.02)]})
+        b.shimmer_bsl_lines(False)
+        self.assertEqual(b.mux.sent, ["SDS,1$"] * 2)
+
+    def test_a_query_that_goes_unanswered_is_asked_again(self):
+        b = self.dock(**{"SDQ$": [self.NONE, (b"Q,111100\r\n", 0.2)]})
+        self.assertEqual(b.occupied(), [1, 2, 3, 4])
 
 
 if __name__ == "__main__":

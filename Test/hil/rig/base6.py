@@ -11,10 +11,22 @@ needs ~1.5 s to settle; SDD$ disconnects all. The protocol is the one
 Consensys uses (dockManager/SmartDockUart.java).
 
 SDP leaves the slot's SD card with its Shimmer. SDC,0n$ connects the slot and
-switches its card to one of the Base6's two USB card readers ("Shimmer
-HS-SD/MMC"), where it mounts as a drive (rig/s3_card.py); the next SDP gives it
-back. Consensys waits 5 s on Windows after SDC
-(SLOT_CHANGEOVER_DELAY_WITH_SD_CARD_WIN).
+switches its card to the Base6's USB card reader ("Shimmer HS-SD/MMC"), where
+it mounts as a drive (rig/s3_card.py); the next SDP gives it back. Consensys
+waits 5 s on Windows after SDC (SLOT_CHANGEOVER_DELAY_WITH_SD_CARD_WIN).
+
+A slot change answers only once it is done: SDC took 1.44-1.47 s and SDD
+1.17 s on one Base6 (SDP about 0.4 s), past the 1 s the other commands get. So
+SDP, SDC and SDD replies are read with a longer timeout, 10 s, as Consensys
+reads them (SmartDock.SMARTDOCK_RESPONSE_TIMEOUT_SLOT_CHANGE).
+
+A Base6 can also refuse a command at random. From one moment on 24 Nov 2026,
+and through a power cycle, one answered most SDC, SDP and SDD commands with an
+instant E (it never tried the switch) or not at all, and its queries now and
+then. Sent again every 2 s, each got through within 6 tries. So every command
+is sent up to TRIES times, RETRY_S apart, until it gets the answer it should.
+A select that never takes raises: the dock UART would still be connected to
+the slot selected before it, and that slot's unit would answer instead.
 
 Ports are found by FTDI serial (<base>A..D), never by COM number. Consensys
 must be closed: it holds these ports open.
@@ -31,6 +43,10 @@ from .config import RigError
 
 SETTLE_S = 1.5
 CARD_CHANGEOVER_S = 5.0     # after SDC, as Consensys waits on Windows
+REPLY_S = 1.0               # SDQ, SDS
+SLOT_REPLY_S = 10.0         # SDP, SDC, SDD: they answer once the slot has changed
+TRIES = 8                   # a refused or unanswered command is sent this many times in all
+RETRY_S = 2.0               # between tries
 
 
 def port_for(serial_prefix: str) -> str | None:
@@ -49,7 +65,7 @@ class Base6:
         if missing:
             raise RigError(f"Base6 {ftdi_serial}: channel(s) {', '.join(missing)} not present")
         self.ports = ports
-        self.mux = serial.Serial(ports["B"], 115200, timeout=1.0)
+        self.mux = serial.Serial(ports["B"], 115200, timeout=REPLY_S)
         self.selected: int | None = None
 
     @property
@@ -62,15 +78,35 @@ class Base6:
         """COM port of the selected slot's bootloader lines (channel C)."""
         return self.ports["C"]
 
-    def _cmd(self, text: str) -> str:
+    def _cmd(self, text: str, reply_s: float = REPLY_S) -> str:
+        """Send one command and read its reply line, waiting up to reply_s."""
         self.mux.reset_input_buffer()
         self.mux.write(text.encode("ascii"))
-        return self.mux.readline().decode("ascii", "replace").strip()
+        was = self.mux.timeout
+        if reply_s != was:
+            self.mux.timeout = reply_s
+        try:
+            return self.mux.readline().decode("ascii", "replace").strip()
+        finally:
+            if reply_s != was:
+                self.mux.timeout = was
+
+    def _cmd_until(self, text: str, ok, reply_s: float = REPLY_S) -> tuple[bool, str]:
+        """Send one command until ok(reply) holds, at most TRIES times, RETRY_S
+        apart. Returns whether it did, and the last reply."""
+        r = ""
+        for attempt in range(TRIES):
+            if attempt:
+                time.sleep(RETRY_S)
+            r = self._cmd(text, reply_s)
+            if ok(r):
+                return True, r
+        return False, r
 
     def occupied(self) -> list[int]:
-        r = self._cmd("SDQ$")
-        if not r.startswith("Q,"):
-            raise RigError(f"Base6 SDQ$ answered {r!r}")
+        done, r = self._cmd_until("SDQ$", lambda r: r.startswith("Q,"))
+        if not done:
+            raise RigError(f"Base6 SDQ$ answered {r!r} after {TRIES} tries")
         return [i + 1 for i, c in enumerate(r[2:]) if c == "1"]
 
     def select(self, slot: int) -> None:
@@ -78,7 +114,11 @@ class Base6:
             raise ValueError(slot)
         if self.selected == slot:
             return
-        self._cmd(f"SDP,0{slot}$")
+        # Only this slot's answer will do: a late one for another slot is not it.
+        done, r = self._cmd_until(f"SDP,0{slot}$", lambda r: r.startswith(f"P,0{slot}"), SLOT_REPLY_S)
+        if not done:
+            self.selected = None
+            raise RigError(f"Base6 SDP,0{slot}$ answered {r!r} after {TRIES} tries")
         time.sleep(SETTLE_S)
         self.selected = slot
 
@@ -87,12 +127,12 @@ class Base6:
         and wait out the changeover. select() gives the card back to the Shimmer."""
         if not 1 <= slot <= 6:
             raise ValueError(slot)
-        r = self._cmd(f"SDC,0{slot}$")
+        done, r = self._cmd_until(f"SDC,0{slot}$", lambda r: r.startswith(f"C,0{slot}"), SLOT_REPLY_S)
         # Whatever the answer, the next select() must send SDP, which is what
         # hands the card back.
         self.selected = None
-        if not r.startswith("C"):
-            raise RigError(f"Base6 SDC,0{slot}$ answered {r!r}")
+        if not done:
+            raise RigError(f"Base6 SDC,0{slot}$ answered {r!r} after {TRIES} tries")
         time.sleep(CARD_CHANGEOVER_S)
 
     def shimmer_bsl_lines(self, connected: bool) -> None:
@@ -101,13 +141,18 @@ class Base6:
         Masked by default, so that opening channel C - which toggles DTR/RTS -
         cannot reset a docked Shimmer by accident. Unmask only to flash.
         """
-        r = self._cmd("SDS,0$" if connected else "SDS,1$")
-        if r.startswith("E"):
-            raise RigError(f"Base6 refused to {'unmask' if connected else 'mask'} the BSL lines: {r!r}")
+        done, r = self._cmd_until("SDS,0$" if connected else "SDS,1$",
+                                  lambda r: bool(r) and not r.startswith("E"))
+        if not done:
+            raise RigError(f"Base6 refused to {'unmask' if connected else 'mask'} the BSL lines: "
+                           f"{r!r} after {TRIES} tries")
 
-    def disconnect(self) -> None:
-        self._cmd("SDD$")
+    def disconnect(self) -> bool:
+        """Disconnect every slot (SDD$). Returns whether the Base6 said it did.
+        A refusal does not raise: close() runs this on the way out of a failure."""
+        done, _ = self._cmd_until("SDD$", lambda r: r.startswith("D"), SLOT_REPLY_S)
         self.selected = None
+        return done
 
     def close(self) -> None:
         try:
