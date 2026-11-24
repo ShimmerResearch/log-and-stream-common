@@ -338,6 +338,10 @@ class AttendedOnly(unittest.TestCase):
 # --- the Base6 card reader ----------------------------------------------------------------
 
 class FakeMux:
+    """Channel B: answers every command with `reply`, or each command with its
+    own from a dict."""
+    timeout = base6.REPLY_S
+
     def __init__(self, reply):
         self.reply, self.sent = reply, []
 
@@ -348,7 +352,7 @@ class FakeMux:
         self.sent.append(b.decode())
 
     def readline(self):
-        return self.reply
+        return self.reply[self.sent[-1]] if isinstance(self.reply, dict) else self.reply
 
 
 class Base6Card(unittest.TestCase):
@@ -358,7 +362,7 @@ class Base6Card(unittest.TestCase):
         return b
 
     def test_sdc_gives_the_card_to_the_reader_and_select_takes_it_back(self):
-        b = self.b6(b"C,03\r\n")
+        b = self.b6({"SDC,03$": b"C,03\r\n", "SDP,03$": b"P,03\r\n"})
         with mock.patch.object(base6.time, "sleep") as slept:
             b.card_to_pc(3)
             self.assertEqual((b.mux.sent, b.selected), (["SDC,03$"], None))
@@ -368,8 +372,9 @@ class Base6Card(unittest.TestCase):
 
     def test_a_refusal_raises_and_still_forgets_the_selection(self):
         b = self.b6(b"E\r\n")
-        with self.assertRaisesRegex(RigError, "SDC,02"):
+        with mock.patch.object(base6.time, "sleep"), self.assertRaisesRegex(RigError, "SDC,02"):
             b.card_to_pc(2)
+        self.assertEqual(b.mux.sent, ["SDC,02$"] * base6.TRIES)
         self.assertIsNone(b.selected)
 
     def test_reader_roots_come_from_the_readers_disks_only(self):
