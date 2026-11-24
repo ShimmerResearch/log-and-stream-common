@@ -390,6 +390,38 @@ class OperatorAsk(unittest.TestCase):
                                  "all taken back"])
         self.assertEqual(said, [">>> Undock the units: take a and b out of the Base6, then press Enter"])
 
+    @unittest.skipUnless(importlib.util.find_spec("pytest"), "conftest.py needs pytest")
+    def test_a_progress_line_is_written_with_the_capture_suspended(self):
+        """During a test pytest's fd capture has the terminal's descriptor too,
+        so a line the reporter writes reached the screen only after the run,
+        the operator's requests among them (bench, 24 Nov 2026)."""
+        import conftest
+        calls = []
+
+        class Capman:
+            @contextlib.contextmanager
+            def global_and_fixture_disabled(self):
+                calls.append("released")
+                yield
+                calls.append("taken back")
+
+        class Tw:
+            width_of_current_line = 0
+
+            def flush(self):
+                calls.append("flushed")
+
+        class Reporter:
+            _tw = Tw()
+
+            def write_line(self, text):
+                calls.append(f"wrote {text}")
+
+        plugins = {"terminalreporter": Reporter(), "capturemanager": Capman()}
+        config = types.SimpleNamespace(pluginmanager=types.SimpleNamespace(get_plugin=plugins.get))
+        conftest._say(config)("Undock the units")
+        self.assertEqual(calls, ["released", "wrote hil: Undock the units", "flushed", "taken back"])
+
 
 class AttendedOnly(unittest.TestCase):
     @unittest.skipUnless(importlib.util.find_spec("pytest"), "conftest.py needs pytest")

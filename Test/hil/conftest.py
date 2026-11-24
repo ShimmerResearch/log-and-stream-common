@@ -26,6 +26,7 @@ import getpass
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -172,23 +173,37 @@ def _baseline_for(config):
     return lambda unit, infomem: rig_baseline.image(unit.platform, infomem)
 
 
+# One console for every thread's progress lines and the operator's requests: a
+# line written while a request waits for its answer would otherwise put stdin
+# back under capture as it resumed the rest.
+_CONSOLE = threading.RLock()
+
+
 def _say(config):
     """A function that writes one "hil: ..." line to the terminal at once, for
-    progress the operator should see while a test runs, which pytest's capture
-    would otherwise hold back."""
+    progress the operator should see while a test runs.
+
+    pytest's capture is suspended for the write, as its own live logging does.
+    The terminal reporter alone is not enough: during a test pytest's fd
+    capture has the terminal's file descriptor too, so the lines, the
+    operator's requests among them, reached the terminal only once the run
+    was over (bench, 24 Nov 2026)."""
     tr = config.pluginmanager.get_plugin("terminalreporter")
+    capman = config.pluginmanager.get_plugin("capturemanager")
 
     def say(m):
-        if tr is None:
-            print(f"hil: {m}")
-            return
-        # Progress dots may still be on the line (at teardown, say); without a
-        # fresh line the message is glued to them ("..hil: ..."). The
-        # reporter's ensure_newline() tracks file paths, not what is on the
-        # line, so ask the terminal writer.
-        if getattr(tr._tw, "width_of_current_line", 0):
-            tr.write("\n")
-        tr.write_line(f"hil: {m}")
+        with _CONSOLE, capman.global_and_fixture_disabled() if capman else contextlib.nullcontext():
+            if tr is None:
+                print(f"hil: {m}", flush=True)
+                return
+            # Progress dots may still be on the line (at teardown, say); without a
+            # fresh line the message is glued to them ("..hil: ..."). The
+            # reporter's ensure_newline() tracks file paths, not what is on the
+            # line, so ask the terminal writer.
+            if getattr(tr._tw, "width_of_current_line", 0):
+                tr.write("\n")
+            tr.write_line(f"hil: {m}")
+            tr._tw.flush()
     return say
 
 
@@ -220,12 +235,13 @@ def hil_ask(pytestconfig):
 def _asker(say, capman, read=input):
     """hil_ask's ask(), from its parts (test_hil_s3_long_log.py tests it)."""
     def ask(text: str, detail: str = ""):
-        speak(text)
-        say(f">>> {text}{f': {detail}' if detail else ''}, then press Enter")
-        with capman.global_and_fixture_disabled() if capman else contextlib.nullcontext():
-            if capman:
-                capman.suspend_global_capture(in_=True)   # resumed with the rest on the way out
-            read()
+        with _CONSOLE:
+            speak(text)
+            say(f">>> {text}{f': {detail}' if detail else ''}, then press Enter")
+            with capman.global_and_fixture_disabled() if capman else contextlib.nullcontext():
+                if capman:
+                    capman.suspend_global_capture(in_=True)   # resumed with the rest on the way out
+                read()
     return ask
 
 
