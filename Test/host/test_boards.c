@@ -578,24 +578,60 @@ static void test_shimmer3_only_gates(void)
 }
 #endif /* SHIMMER3 */
 
-/* The human-readable name shown on the dock and over Bluetooth. An unknown ID
- * has to produce something a support engineer can act on, not an empty string. */
+/* The human-readable board name: the factory report's model line, and on a
+ * Shimmer3 its BLE model name too. An unknown ID has to produce something a
+ * support engineer can act on, not an empty string. */
 static void test_daughter_card_name(void)
 {
   testCase("test_daughter_card_name");
   hostStub_reset();
 
+  /* The Shimmer3R reuses the Shimmer3's board IDs, so the platform in the name
+   * comes from the hardware ID. Its factory report printed "Shimmer3 GSR+" for
+   * a Shimmer3R GSR+ until the hardware ID was consulted. */
   setBoard(HW_ID_SHIMMER3R, SHIMMER3_IMU, 11, 0);
   ShimBrd_parseDaughterCardId();
-  expectStr("SR31 names the IMU board", ShimBrd_getDaughtCardIdStrPtr(), "Shimmer3 IMU");
+  expectStr("SR31 names the Shimmer3R IMU board",
+      ShimBrd_getDaughtCardIdStrPtr(), "Shimmer3R IMU");
 
-  setBoard(HW_ID_SHIMMER3R, EXP_BRD_GSR_UNIFIED, 8, 0);
+  setBoard(HW_ID_SHIMMER3R, EXP_BRD_GSR_UNIFIED, 8, 2);
   ShimBrd_parseDaughterCardId();
-  expectStr("SR48 names the GSR board", ShimBrd_getDaughtCardIdStrPtr(), "Shimmer3 GSR+");
+  expectStr("SR48 names the Shimmer3R GSR board",
+      ShimBrd_getDaughtCardIdStrPtr(), "Shimmer3R GSR+");
 
   setBoard(HW_ID_SHIMMER3R, EXP_BRD_EXG_UNIFIED, 8, 0);
   ShimBrd_parseDaughterCardId();
-  expectStr("SR47 names the ExG board", ShimBrd_getDaughtCardIdStrPtr(), "Shimmer3 ExG");
+  expectStr("SR47 names the Shimmer3R ExG board",
+      ShimBrd_getDaughtCardIdStrPtr(), "Shimmer3R ExG");
+
+  /* The longest name must fit whole: a buffer one byte short would lose the
+   * last letter here rather than overrun. */
+  setBoard(HW_ID_SHIMMER3R, EXP_BRD_BR_AMP_UNIFIED, 4, 0);
+  ShimBrd_parseDaughterCardId();
+  expectStr("the longest name fits whole", ShimBrd_getDaughtCardIdStrPtr(),
+      "Shimmer3R Bridge Amplifier");
+
+  /* A Shimmer3's names must not change: its RN4678 is given this string as the
+   * BLE model name and is reconfigured whenever the two disagree. */
+  setBoard(HW_ID_SHIMMER3, SHIMMER3_IMU, 9, 0);
+  ShimBrd_parseDaughterCardId();
+  expectStr("SR31 on a Shimmer3 is still the Shimmer3 IMU",
+      ShimBrd_getDaughtCardIdStrPtr(), "Shimmer3 IMU");
+
+  setBoard(HW_ID_SHIMMER3, EXP_BRD_GSR_UNIFIED, 4, 0);
+  ShimBrd_parseDaughterCardId();
+  expectStr("SR48 on a Shimmer3 is still the Shimmer3 GSR+",
+      ShimBrd_getDaughtCardIdStrPtr(), "Shimmer3 GSR+");
+
+  setBoard(HW_ID_SHIMMER3, EXP_BRD_BR_AMP_UNIFIED, 3, 0);
+  ShimBrd_parseDaughterCardId();
+  expectStr("SR49 on a Shimmer3 is still the Shimmer3 Bridge Amplifier",
+      ShimBrd_getDaughtCardIdStrPtr(), "Shimmer3 Bridge Amplifier");
+
+  /* The Shimmer4 SDK names its own platform on either firmware. */
+  setBoard(HW_ID_SHIMMER3R, SHIMMER4_SDK, 1, 0);
+  ShimBrd_parseDaughterCardId();
+  expectStr("the Shimmer4 SDK keeps its name", ShimBrd_getDaughtCardIdStrPtr(), "Shimmer4 SDK");
 
   /* Unknown IDs fall back to "SR<n>", which is still enough to identify the
    * board from a support log. */
@@ -604,9 +640,8 @@ static void test_daughter_card_name(void)
   expectStr("an unknown ID still reports its number",
       ShimBrd_getDaughtCardIdStrPtr(), "SR123");
 
-  /* The name buffer is 26 bytes and the longest name is well inside it, but the
-   * fallback is built with sprintf() from a uint8_t, so the widest possible
-   * result is "SR255" - asserted so a wider ID field would fail here first. */
+  /* The fallback is built from a uint8_t, so the widest possible result is
+   * "SR255" - asserted so a wider ID field would fail here first. */
   setBoard(HW_ID_SHIMMER3R, 255, 0, 0);
   ShimBrd_parseDaughterCardId();
   expectStr("the widest fallback name", ShimBrd_getDaughtCardIdStrPtr(), "SR255");
