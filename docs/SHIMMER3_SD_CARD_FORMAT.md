@@ -50,6 +50,13 @@ channel encodings are identical, only the framing around them differs.
 >   claims about these were checked at this revision. The interrupts holding off
 >   the drain during a refusal (`ShimSens_queueSaveData`,
 >   `ShimSdDataFile_isRefusingRecords`) were added by DEV-99.
+> - **Shimmer3 sampling while the card is busy (§4.1):** `log-and-stream-common`
+>   @ `444d13e` plus the change that added
+>   `ShimTask_serviceSamplingWhileSdBusy` (`TaskList/shimmer_taskList.c`) and
+>   `ShimSens_saveDataWhileSdBusy` (`Sensing/shimmer_sensing.c`);
+>   `shimmer3-firmware` @ `4a3022a` plus the change that calls it from
+>   `wait_ready()` in `LogAndStream_Shimmer3/Shimmer_Driver/FatFs/mmc.c`. Only
+>   those claims were checked at these revisions.
 > - **When `center=` is written:** `log-and-stream-common` @ `f573f60` —
 >   `ShimSdCfgFile_generate()` in `SDCard/shimmer_sd_cfg_file.c`. Only that
 >   claim was checked at this revision.
@@ -585,21 +592,43 @@ the card.
 The bytes reaching the file are the same either way, sync heads included:
 buffers stay 512 bytes, the unit of the file layout.
 
-**On Shimmer3 the buffers do not absorb a card stall.** `f_write` runs in the
-main loop and holds it for as long as the card takes, and nothing drains the
-sample ring meanwhile, so the free buffers cannot fill. What absorbs a stall is
-the ring, and only for a channel set whose samples complete without the main
-loop:
+**On Shimmer3 the SD driver keeps sampling while the card is busy.** `f_write`
+runs in the main loop and holds it for as long as the card takes. The read that
+completes each sample from an I2C or SPI sensor (the gyro, for example) runs in
+the main loop too, so on its own it would wait for the write. Instead, each pass
+of the SD driver's wait for a busy card (`wait_ready()` in the platform's
+`mmc.c`) calls `ShimTask_serviceSamplingWhileSdBusy()`. While `TASK_SDWRITE` is
+the task running and sensing is on, that:
 
-- **ADC channels only:** the DMA interrupt completes each sample, so the ring
-  holds about `DATA_BUF_QTY_IN_USE` (6) sample periods.
-- **With an I2C or SPI sensor** (the gyro, for example): the read that completes
-  each sample runs in the main loop, so only one sample is ever in flight. A
-  main-loop stall of more than about one sample period loses a sample per period.
+- runs the queued pre-sample starts and the gather, in the task loop's order;
+- drains the sample ring into the SD buffers not being written, and stops at
+  the first record they would refuse, leaving it in the ring
+  (`ShimSens_saveDataWhileSdBusy`).
 
-At 1024 Hz both are under 6 ms, and the card and the file system stall for
-longer than that as a matter of course. Measured on a Shimmer3 at 1024 Hz with
-LN accel, gyro and VBatt (DEV-1386), on a card with 4 KB clusters:
+It never touches the card, which has an SPI bus of its own, or the buffer being
+written. Nothing else runs during the wait: commands, the dock and SD sync wait
+for the write as before. Other card accesses (opening the file at the start of
+a log, the configuration file, the flush at a stop) don't call it.
+
+So a stall is absorbed by the three buffers not being written, less what the
+one in progress already holds, plus the ring's `DATA_BUF_QTY_IN_USE` (6)
+packets. With 23-byte records (256 Hz with LN accel, gyro, mag and VBatt, 22 to
+a buffer) that is up to about 72 samples, 0.28 s; with 17-byte records at
+1024 Hz, up to about 96 samples, 94 ms. A longer stall fills the
+ring, and each tick then loses its sample (`PKT_TICK_FULL`, counted in the
+ring's `diag.startsRefusedFull`).
+
+A pass that did sampling work skips the driver's 100 µs delay, so the driver's
+500 ms timeout, which counts passes, stays about that long. At high rates,
+where the reads take most of each pass, it stretches.
+
+**Before that, a Shimmer3 stall lost samples after about one sample period.**
+Nothing drained the ring during the write, so the free buffers could not fill,
+and with an I2C or SPI sensor only one sample was ever in flight. With ADC
+channels only, which the DMA interrupt completes, the ring held about 6 sample
+periods. At 1024 Hz even six periods is under 6 ms, and the card and the file
+system stall for longer than that as a matter of course. Measured on a Shimmer3 at 1024 Hz
+with LN accel, gyro and VBatt (DEV-1386), on a card with 4 KB clusters:
 
 | Stall | When | Samples lost |
 | --- | --- | --- |
@@ -619,10 +648,17 @@ That counter is cleared when logging starts and never while it runs, so a bench
 run can be read out afterwards. The file then shows a gap of whole sample
 periods at a block boundary; it never shows a partial record.
 
-On Shimmer3 a stall usually costs samples before that point, and silently: a
-sample tick that finds the previous sample still unfinished drops its sample
-(`PKT_TICK_BUSY` in the packet ring), and no counter records it. Those gaps also
-fall on whole sample periods, at any position in a block.
+On Shimmer3 the drain that runs during the wait never gets that far: it holds
+back what the buffers would refuse, as Shimmer3R's does (below). Before it did,
+a stall cost samples well before that point, and silently: a sample tick that
+found the previous sample still unfinished dropped its sample (`PKT_TICK_BUSY`
+in the packet ring), and no counter recorded it. After about 100 ms the ring's
+fail-safe released the unfinished sample and the next tick started another,
+which waited too, so a stall of more than 100 ms left a gap of a whole multiple
+of 27 samples at 256 Hz (27, 81 and 189 were seen). In 75-minute logs at 256 Hz
+on three units, every gap started just after the first or second record of a
+512-byte block, which is when the previous buffer's write is waiting on the
+card.
 
 **On Shimmer3R the drain does not get that far.** Before handing a record on, it
 asks `SdWrBuf_canAccept()`; if the buffers would refuse it, the drain stops and

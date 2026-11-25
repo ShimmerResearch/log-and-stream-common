@@ -31,6 +31,13 @@
  * why nothing here is volatile and there are no critical sections. If you ever
  * call SdWrBuf_put from an ISR, change this comment first, then the code.
  *
+ * Records can also arrive in the middle of a write: Shimmer3's SD driver runs
+ * the drain while it waits on a busy card (ShimTask_serviceSamplingWhileSdBusy),
+ * between the writer's SdWrBuf_peekWrite and its SdWrBuf_writeDone. Still the
+ * main loop, and safe because SdWrBuf_put only touches the buffer at sensIdx:
+ * with a write outstanding, numQueued >= 1, and sensIdx equals wrIdx, the
+ * buffer being written, only when numQueued is NUM_SDWRBUF, when put refuses.
+ *
  * THE INVARIANTS, maintained by every function that mutates the struct:
  *   - sensIdx == (wrIdx + numQueued) % NUM_SDWRBUF;
  *   - a queued buffer always holds at least one byte, which is what makes the
@@ -53,11 +60,12 @@
 /* How many buffers rotate. Compile-time per platform, because the storage is
  * a fixed array and on the MSP430 each buffer is 512 B of a 16 KB budget.
  *
- * On Shimmer3 the count does not buy stall tolerance (DEV-1386): f_write holds
- * the main loop, nothing drains into the free buffers meanwhile, and samples
- * that need the main loop to complete (any I2C or SPI sensor) are lost after
- * about one sample period. Four there, so a write can be queued behind another.
- * See docs/SHIMMER3_SD_CARD_FORMAT.md §4.1 for what a stall costs.
+ * On Shimmer3, four. f_write holds the main loop, and samples that need the
+ * main loop to complete (any I2C or SPI sensor) used to be lost after about
+ * one sample period of it (DEV-1386). The SD driver now runs the gather and
+ * the drain while it waits on the card, so the three buffers not being written
+ * take the samples instead: about a quarter of a second at 256 Hz with four
+ * sensors. See docs/SHIMMER3_SD_CARD_FORMAT.md §4.1 for what a stall costs.
  *
  * Shimmer3R has 32 (16 KB), for DEV-1098: a busy card there was seen taking
  * 105-210 ms per write for up to a second at a time. The backlog that builds

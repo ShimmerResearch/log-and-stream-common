@@ -21,6 +21,10 @@
  *   - the gather completion runs in the main loop on Shimmer3 (I2C/SPI) or an
  *     ISR (its ADC DMA), and always in an ISR on Shimmer3R;
  *   - the drain runs in the main loop on both.
+ * On Shimmer3 the main-loop gather and the drain also run while the SD driver
+ * waits on a busy card (ShimTask_serviceSamplingWhileSdBusy). That is nested
+ * inside TASK_SDWRITE, but still the main loop, and never inside another
+ * gather or drain, so each index keeps its one writer.
  * Each index has exactly one writer: wrIdx is written only by
  * PktRing_onComplete (completion context), rdIdx only by PktRing_drainDone
  * (drain context). Both are 16-bit and aligned, so a load is atomic on the
