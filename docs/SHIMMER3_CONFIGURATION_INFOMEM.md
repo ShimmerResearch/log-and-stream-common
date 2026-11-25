@@ -118,6 +118,10 @@ calibration blocks at 34-117, and why the calibration sync code splits into
 `ShimCalib_configBytes0To127ToCalibDumpBytes` and
 `ShimCalib_configBytes128To255ToCalibDumpBytes`.
 
+The pages are not a unit of writing. A host may write any chunk of up to 128
+bytes at any offset, and `SET_INFOMEM` syncs each calibration block the chunk
+covers into the dump (`ShimCalib_configBytesWriteToCalibDump`, DEV-1562).
+
 > **Two addressing conventions exist for the same bytes.** Some host code
 > addresses InfoMem by the absolute MSP430 address (`0x1800 + offset`), and some
 > by a flat offset from 0. The Bluetooth commands documented here use **flat
@@ -543,9 +547,13 @@ Three things matter when writing configuration bytes directly:
    rather than zero, because zero is a legal-looking but useless calibration.
 2. **These blocks are overwritten from the calibration dump.** Any path that
    calls `ShimCalib_calibDumpToConfigBytesAndSdHeaderAll` — including the
-   completion of a `SET_CALIB_DUMP` — replaces them. Writing a calibration block
-   through `SET_INFOMEM` and then completing a calibration-dump upload loses the
-   former.
+   completion of a `SET_CALIB_DUMP`, and every `SET_INFOMEM` — replaces them.
+   `SET_INFOMEM` first copies each block the chunk covers into the dump, so
+   what it writes survives. Firmware before DEV-1562 did that only for a chunk
+   starting at 0 or 128, so a block in a chunk at 64 was replaced by its old
+   value ([SHIMMER3_BT_COMMUNICATION_PROTOCOL.md](SHIMMER3_BT_COMMUNICATION_PROTOCOL.md)
+   §7.5). Writing a calibration block through `SET_INFOMEM` and then completing
+   a calibration-dump upload loses the former.
 3. **The block written is the one for the currently selected range.** Changing
    a sensor's range swaps in a different set from the dump.
 

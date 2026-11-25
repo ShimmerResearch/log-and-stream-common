@@ -212,6 +212,7 @@ void ShimCalib_initFromConfigBytesAll(void);
 void ShimCalib_updateFromConfigBytesAll(void);
 void ShimCalib_configBytes0To127ToCalibDumpBytes(uint8_t setCalibTsZero);
 void ShimCalib_configBytes128To255ToCalibDumpBytes(uint8_t setCalibTsZero);
+uint8_t ShimCalib_configBytesWriteToCalibDump(uint16_t offset, uint16_t length, uint8_t setCalibTsZero);
 void ShimCalib_configBytesToCalibDump(uint8_t id, uint8_t setCalibTsZero);
 void ShimCalib_singleSensorToCalibDump(uint16_t id,
     uint8_t range,

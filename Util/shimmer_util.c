@@ -208,3 +208,17 @@ void ShimUtil_reverseArray(uint8_t *arr, size_t length)
     arr[length - 1 - i] = temp;
   }
 }
+
+/* 1 if the byte ranges [aStart, aStart + aLen) and [bStart, bStart + bLen)
+ * share at least one byte, else 0. An empty range overlaps nothing. The ends
+ * are summed in 32 bits, so a range reaching 0xFFFF cannot wrap on the MSP430,
+ * whose int is 16 bits. */
+uint8_t ShimUtil_rangesOverlap(uint16_t aStart, uint16_t aLen, uint16_t bStart, uint16_t bLen)
+{
+  if ((aLen == 0) || (bLen == 0))
+  {
+    return 0;
+  }
+  return ((uint32_t) aStart < (uint32_t) bStart + bLen)
+      && ((uint32_t) bStart < (uint32_t) aStart + aLen);
+}

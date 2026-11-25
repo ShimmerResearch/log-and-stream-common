@@ -1923,27 +1923,45 @@ Writing a chunk does considerably more than copy bytes. In order:
 1. The payload is copied into the RAM configuration image at `offset`.
 2. **If `offset == 128`**, the six MAC-address bytes at InfoMem 224-229 are
    overwritten with the module's real MAC, unconditionally — the firmware does
-   not check whether the host's chunk even reached byte 224. Whatever the host
-   supplied for those bytes is discarded.
+   not check whether the host's chunk even reached byte 224.
 3. `ShimConfig_checkAndCorrectConfig()` runs, over the **whole** image, after
    **every** chunk. It clamps out-of-range fields and fills in defaults, so it
    can change bytes the host did not write, and it can change bytes the host
-   *did* write in this very chunk.
-4. The corrected image is flushed to InfoMem in full
-   (`LogAndStream_infomemUpdate()`).
-5. **If `offset == 0`**, the calibration dump's first half is regenerated from
-   configuration bytes 0-127 (`ShimCalib_configBytes0To127ToCalibDumpBytes`) and
-   the on-card calibration file is queued for rewrite.
-6. **On Shimmer3R only, if `offset == 128`**, the dump's second half is
-   likewise regenerated from bytes 128-255.
-7. The SD header mirror is rebuilt and the SD configuration file is queued for
-   rewrite.
+   *did* write in this very chunk. It also writes the module's MAC back into
+   224-229 whenever they differ, so whatever chunk carried those bytes, the
+   host's values for them are discarded.
+4. **Each of the six calibration blocks the chunk covers, even in part**, is
+   copied into the calibration dump under its sensor's current range
+   (`ShimCalib_configBytesWriteToCalibDump`), and the on-card calibration file
+   is queued for rewrite. The blocks are InfoMem 34-117 and 133-174
+   ([SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §7).
+   A block that spans two chunks is copied after each, so the dump holds the
+   whole block once its last byte has arrived.
+5. The corrected image, and on Shimmer3R the dump with it, is flushed to
+   InfoMem in full (`LogAndStream_infomemUpdate()`).
+6. The SD header mirror is rebuilt and the SD configuration file is queued for
+   rewrite. Rebuilding it copies the dump back over **every** calibration block
+   in the configuration bytes (`ShimCalib_calibDumpToConfigBytesAndSdHeaderAll`),
+   so a block the chunk did not cover takes the dump's record for its current
+   range.
 
-> The `offset == 0` / `offset == 128` tests are written as
-> `INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430` (= 0) and
-> `INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430` (= 128) — the MSP430
-> InfoMem segment addresses that the layout is still named after.
-> `shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_InfoMem.h:57,62-63`.
+So the chunk size is the host's choice: 64-byte chunks, as Shimmer Capture web
+writes over BLE, leave the same image and the same dump as 128-byte pages.
+
+> **Earlier firmware synced the dump only for a chunk that started at 0 or
+> 128** (`Comms/shimmer_bt_uart.c:1452-1499`). A chunk at offset 0 copied the
+> four blocks in bytes 0-127, and one at 128 the two in 128-255 (on Shimmer3
+> since DEV-996). Step 6 then copied the stale dump back over the chunk at 64,
+> so a host writing 64-byte chunks lost its calibration from byte 64 on: the
+> gyro block (55-75) read back new up to byte 63 and old from 64, and the mag
+> and WR-accel blocks read back old. The next write copied the mixed gyro block
+> into the dump, so it stayed until a write in 128-byte pages (DEV-1562).
+
+> The `offset == 128` test is written as
+> `INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430` (= 128), and the earlier
+> `offset == 0` one as `INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430`
+> (= 0): the MSP430 InfoMem segment addresses that the layout is still named
+> after. `shimmer3-firmware` `Shimmer_Driver/5xx_HAL/hal_InfoMem.h:57,62-63`.
 
 > **Caution — earlier firmware answers a rejected write with silence.** Before
 > the command-handler fixes, a bounds-check failure executed a bare `return`
@@ -4101,6 +4119,14 @@ them.
 
 **Firmware provenance**
 
+- **`SET_INFOMEM_COMMAND` syncs every calibration block a chunk covers.** Step
+  4 of [§7.5](#75-infomem) (`ShimCalib_configBytesWriteToCalibDump` in
+  `Calibration/shimmer_calibration.c`, `ShimUtil_rangesOverlap` in
+  `Util/shimmer_util.c`) is in a `log-and-stream-common` change later than the
+  `f3cf73e` pin (DEV-1562). At the pin the dump was synced only for a chunk that
+  started at 0 or 128. The mixed gyro block this caused was seen on one
+  Shimmer3R on LogAndStream v1.01.027 over BLE. **Move under Verified against**
+  once the change is on `main` and the pin is bumped.
 - **`SET_RWC_COMMAND` waits for the end of sensing.** The deferral in
   [§7.7](#77-sd-logging-and-trial-configuration) (`ShimRtc_setRwc` and
   `ShimRtc_applyDeferredRwc` in `RTC/shimmer_rtc.c`, applied from

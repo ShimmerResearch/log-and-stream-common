@@ -20,5 +20,6 @@ volatile void *ShimUtil_memcpy_v(volatile void *dest, const void *src, size_t n)
 volatile void *ShimUtil_memcpy_vv(volatile void *dest, volatile void *src, size_t n);
 size_t ShimUtil_strlen_v(volatile void *dest, size_t maxSize);
 void ShimUtil_reverseArray(uint8_t *arr, size_t length);
+uint8_t ShimUtil_rangesOverlap(uint16_t aStart, uint16_t aLen, uint16_t bStart, uint16_t bLen);
 
 #endif /* LOG_AND_STREAM_COMMON_UTIL_SHIMMER_UTIL_H_ */
