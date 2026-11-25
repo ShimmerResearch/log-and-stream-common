@@ -950,6 +950,20 @@ is confirm the ADC actually reads what the cell is doing.
 | 5.9.1 | Three units, one centre, 30 min | All files carry usable offsets |
 | 5.9.2 | Power-cycle a node mid-session | Rejoins; the gap is visible in the data, not silent |
 
+**The units in each round.** Three units is the least a round can hold. A
+release round holds more, because the sync exchange runs over each radio's own
+firmware, and customers run mixed fleets:
+
+- **Every round has one Shimmer3 of each radio firmware that shipped** (§5.1):
+  RN42 v4.77, RN42 v6.15, RN4678 v1.00.5 and RN4678 v1.23.0.
+- **Every round has a Shimmer3R** as well.
+- **The centre changes from round to round.** Over the rounds, each of the four
+  Shimmer3 radio firmwares is the centre once, and so is a Shimmer3R with
+  Shimmer3 nodes.
+- **When the bench has a second Shimmer3R, put it on the newest IF820 build**
+  and add it to every round. A round then covers both the shipping module
+  firmware and the newest.
+
 ### 5.10 Power
 
 | # | Step | Expected |
@@ -1525,8 +1539,14 @@ The **smoke** tier, Shimmer3R over USB-C:
 
 The **fleet** tier is §5.1 made automatic: Shimmer3, one unit per radio
 firmware that shipped (RN42 v4.77 and v6.15, RN4678 v1.00.5 and v1.23), all
-docked in a Base6. `run_rc.py` flashes each unit through its slot with the
-MSP430 bootloader, CRC-verifying every block. Mass erase also clears
+docked in a Base6. Each unit is found by the MAC it reports over the dock, not
+only by the slot `rig.toml` gives it, before anything addresses it: before the
+flash, and again when the run starts. Units put back by hand have gone into each
+other's slots, and would otherwise be flashed, configured and tested as each
+other. A unit found in no slot keeps its own slot, unless another unit answers
+there: then it has no slot for the run, and its dock tests are `not_covered`.
+`run_rc.py` flashes each unit through its slot with the MSP430 bootloader,
+CRC-verifying every block. Mass erase also clears
 information memory B-D, which holds the unit's configuration and calibration,
 so InfoMem is read over the dock and saved first, then written back after the
 flash. The read-back must match it everywhere except `flagWriteCfgToSd` and
@@ -1795,7 +1815,7 @@ compared, and each item still fails if anything happened.
 | Item | Checks |
 |---|---|
 | `soak.long_log` | Shimmer3R, undocked, logging at 256 Hz for 75 min × scale. Every Shimmer3R logs at the same time: each is configured and undocked, the logs are started over Bluetooth one unit at a time, and after one wait each is stopped, re-docked and has its InfoMem put back. Each unit is still judged on its own. The session's files are checked as one recording, and each file must join the next at exactly one sample period across the hourly rollover |
-| `soak.long_log` (Shimmer3, `--attended`) | The same log on every Base6 Shimmer3 at once: 256 Hz, low-noise accel, gyro, mag and VBatt, 75 min × scale. The Base6 cannot undock a slot, so the operator takes every unit out with one spoken request and puts them back with another. Each unit is configured over the dock with the button and single touch off, so leaving the dock starts its log (CONFIGURATION_INFOMEM §8.1-§8.3), and with no auto-stop. Bluetooth confirms each log is running and stops it after the wait. Each card is read through the Base6's card reader, and the session found by name: every unit logs into one new trial folder, `HIL_longlog_<config time>`, because a Shimmer3 without its clock set dates its files 1981. The session is copied off the card and checked as the Shimmer3R's is. A Shimmer3 file does not list its channels, so the record layout comes from the header's sensor bitmaps, and the header must also show the log's rate and sensors and span the whole wait. Units are found by MAC wherever they were put back, and the operator is asked to move any not in its own slot |
+| `soak.long_log` (Shimmer3, `--attended`) | The same log on every Base6 Shimmer3 at once: 256 Hz, low-noise accel, gyro, mag and VBatt, 75 min × scale. The Base6 cannot undock a slot, so the operator takes every unit out with one spoken request and puts them back with another. Each unit is configured over the dock with the button and single touch off, so leaving the dock starts its log (CONFIGURATION_INFOMEM §8.1-§8.3), and with no auto-stop. Bluetooth confirms each log is running and stops it after the wait. Each card is read through the Base6's card reader, and the session found by name: every unit logs into one new trial folder, `HIL_longlog_<config time>`, because a Shimmer3 without its clock set dates its files 1981. The session is copied off the card and checked as the Shimmer3R's is. A Shimmer3 file does not list its channels, so the record layout comes from the header's sensor bitmaps, and the header must also show the log's rate and sensors and span the whole wait. Units are found by MAC wherever they were put back, and the operator is asked to move any not in its own slot. A move is an undock, and the log's configuration is still in the unit, so it may write a short session of its own. The log's session is then the lowest-numbered new one, and the rest are noted, not judged. Two new sessions on a unit that was not asked to move still fail |
 | `soak.dock_cycles` | Repeated hub-port undock/re-dock. Every cycle, the CDC port, the dock protocol and the SD drive must return; re-enumeration time is recorded. A cycle whose dock exchange failed inside a host service stall (§10.4) is counted apart and noted, not failed |
 | `soak.bt_reconnect` | On every unit, connect → status → 3 s stream at 51.2 Hz → stop → status → close, repeated. Counts connect failures, stops without an ACK, links left silent, and lost samples. On Shimmer3, two failed connects in a row trigger a reset through the Base6 and a retry, and the count records whether the reset brought Bluetooth back |
 | `soak.long_stream` | A long Shimmer3R stream at 256 Hz: lost samples, duplicates, resyncs, jitter, and whether the stop is ACKed |
