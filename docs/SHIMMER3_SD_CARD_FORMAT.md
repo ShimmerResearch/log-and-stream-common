@@ -54,8 +54,9 @@ channel encodings are identical, only the framing around them differs.
 >   @ `444d13e` plus the change that added
 >   `ShimTask_serviceSamplingWhileSdBusy` (`TaskList/shimmer_taskList.c`) and
 >   `ShimSens_saveDataWhileSdBusy` (`Sensing/shimmer_sensing.c`);
->   `shimmer3-firmware` @ `4a3022a` plus the change that calls it from
->   `wait_ready()` in `LogAndStream_Shimmer3/Shimmer_Driver/FatFs/mmc.c`. Only
+>   `shimmer3-firmware` @ `4a3022a` plus the changes that call it from
+>   `wait_ready()` and `rcvr_datablock()` in
+>   `LogAndStream_Shimmer3/Shimmer_Driver/FatFs/mmc.c`. Only
 >   those claims were checked at these revisions.
 > - **When `center=` is written:** `log-and-stream-common` @ `f573f60` —
 >   `ShimSdCfgFile_generate()` in `SDCard/shimmer_sd_cfg_file.c`. Only that
@@ -596,9 +597,12 @@ buffers stay 512 bytes, the unit of the file layout.
 runs in the main loop and holds it for as long as the card takes. The read that
 completes each sample from an I2C or SPI sensor (the gyro, for example) runs in
 the main loop too, so on its own it would wait for the write. Instead, each pass
-of the SD driver's wait for a busy card (`wait_ready()` in the platform's
-`mmc.c`) calls `ShimTask_serviceSamplingWhileSdBusy()`. While `TASK_SDWRITE` is
-the task running and sensing is on, that:
+of the SD driver's waits on the card calls `ShimTask_serviceSamplingWhileSdBusy()`.
+The platform's `mmc.c` has two: `wait_ready()`, for the card to be ready, and
+`rcvr_datablock()`, for the data of a sector it reads. A log's write reads too:
+FAT and directory sectors, when it takes a new cluster and when it syncs the
+file each minute. While `TASK_SDWRITE` is the task running and sensing is on,
+that:
 
 - runs the queued pre-sample starts and the gather, in the task loop's order;
 - drains the sample ring into the SD buffers not being written, and stops at
@@ -619,8 +623,9 @@ ring, and each tick then loses its sample (`PKT_TICK_FULL`, counted in the
 ring's `diag.startsRefusedFull`).
 
 A pass that did sampling work skips the driver's 100 µs delay, so the driver's
-500 ms timeout, which counts passes, stays about that long. At high rates,
-where the reads take most of each pass, it stretches.
+timeouts, which count passes (500 ms for the card to be ready, 100 ms for a
+sector's data), stay about that long. At high rates, where the reads take most
+of each pass, they stretch.
 
 **Before that, a Shimmer3 stall lost samples after about one sample period.**
 Nothing drained the ring during the write, so the free buffers could not fill,
