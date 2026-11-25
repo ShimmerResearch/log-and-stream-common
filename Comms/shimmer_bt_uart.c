@@ -1621,31 +1621,31 @@ void ShimBt_processCmd(void)
         {
           ShimConfig_storedConfigSet((uint8_t *) &args[3], infomemOffset, infomemLength);
 
-          if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
+          /* Always overwrite MAC ID, in whichever chunk carries its bytes. It
+           * was only restored on a chunk starting at 128, so a 64-byte chunk
+           * at 192 stored the host's bytes (DEV-1562). */
+          if (ShimUtil_rangesOverlap(infomemOffset, infomemLength,
+                  NV_MAC_ADDRESS, sizeof(ShimConfig_getStoredConfig()->macAddr)))
           {
-            /* Always overwrite MAC ID */
             memcpy(&ShimConfig_getStoredConfig()->macAddr[0],
                 ShimBt_macIdBytesPtrGet(), 6);
           }
 
           ShimConfig_checkAndCorrectConfig();
 
+          /* Save each calibration block this write touched, at any offset, to
+           * the calib dump in memory. ShimSdHead_config2SdHead() below copies
+           * the dump back over every block, so a block left out here is reset
+           * to its old value (DEV-1562). Done before the InfoMem update, which
+           * on Shimmer3R stores the dump too. */
+          if (ShimCalib_configBytesWriteToCalibDump(infomemOffset, infomemLength, 0))
+          {
+            update_calib_dump_file = 1;
+          }
+
           LogAndStream_infomemUpdate();
           //InfoMem_write(infomemOffset, &args[3], infomemLength);
           //InfoMem_read(infomemOffset, &storedConfigPtr->rawBytes[infomemOffset], infomemLength);
-
-          /* Save from infomem to calib dump in memory */
-          if (infomemOffset == (INFOMEM_SEG_D_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
-          {
-            ShimCalib_configBytes0To127ToCalibDumpBytes(0);
-            update_calib_dump_file = 1;
-          }
-          else if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
-          {
-            /* The alt accel and alt mag blocks, on both platforms (DEV-996). */
-            ShimCalib_configBytes128To255ToCalibDumpBytes(0);
-            update_calib_dump_file = 1;
-          }
 
           ShimSdHead_config2SdHead();
           update_sdconfig = 1;

@@ -379,7 +379,9 @@ Each occupies 21 bytes. The first four are contiguous from 34 to 117; the two
 alt blocks live in the second 128-byte configuration page, which is why
 the firmware splits the sync into
 `ShimCalib_configBytes0To127ToCalibDumpBytes` and
-`ShimCalib_configBytes128To255ToCalibDumpBytes`. See
+`ShimCalib_configBytes128To255ToCalibDumpBytes`. A Bluetooth InfoMem write
+uses neither: `ShimCalib_configBytesWriteToCalibDump` copies each block the
+chunk covers, wherever the chunk starts (DEV-1562). See
 [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §7.
 
 ### 4.2 SD-card data-file header

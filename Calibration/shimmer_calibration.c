@@ -1290,6 +1290,64 @@ void ShimCalib_configBytes128To255ToCalibDumpBytes(uint8_t setCalibTsZero)
 #endif
 }
 
+/*
+ * Copy into the calibration dump each calibration block of the config bytes
+ * that the write [offset, offset + length) touched, under its sensor's current
+ * range, as configBytesToCalibDump does for one sensor. Blocks the write did
+ * not touch are left alone. Returns the number of blocks copied.
+ *
+ * SET_INFOMEM calls this for every chunk, whatever its offset and length
+ * (DEV-1562). It used to sync only on a chunk that started at offset 0 (bytes
+ * 0-127) or 128 (bytes 128-255), and every chunk then copies the dump back
+ * over the config bytes (ShimSdHead_config2SdHead ->
+ * calibDumpToConfigBytesAndSdHeaderAll). So a host writing 64-byte chunks, as
+ * Shimmer Capture web does over BLE, had the chunk at 64 overwritten from the
+ * dump: the gyro block (55-75) kept its old bytes from 64 on, and the mag and
+ * wide-range accel blocks (76-117) kept their old values entirely.
+ *
+ * A block split across two chunks is copied after each of them, half-written
+ * after the first, so the dump holds the whole new block once the second
+ * arrives.
+ */
+uint8_t ShimCalib_configBytesWriteToCalibDump(uint16_t offset, uint16_t length, uint8_t setCalibTsZero)
+{
+  /* The sensor whose calibration each config-byte block holds, as
+   * configBytesToCalibDump maps them */
+  static const struct
+  {
+    uint8_t id;
+    uint16_t infomemOffset;
+  } blocks[] = {
+#if defined(SHIMMER3)
+    { SC_SENSOR_ANALOG_ACCEL, NV_LN_ACCEL_CALIBRATION },
+    { SC_SENSOR_MPU9X50_ICM20948_GYRO, NV_GYRO_CALIBRATION },
+    { SC_SENSOR_LSM303_MAG, NV_MAG_CALIBRATION },
+    { SC_SENSOR_LSM303_ACCEL, NV_WR_ACCEL_CALIBRATION },
+    { SC_SENSOR_MPU9X50_ICM20948_ACCEL, NV_ALT_ACCEL_CALIBRATION },
+    { SC_SENSOR_MPU9X50_ICM20948_MAG, NV_ALT_MAG_CALIBRATION },
+#elif defined(SHIMMER3R)
+    { SC_SENSOR_LSM6DSV_ACCEL, NV_LN_ACCEL_CALIBRATION },
+    { SC_SENSOR_LSM6DSV_GYRO, NV_GYRO_CALIBRATION },
+    { SC_SENSOR_LIS2MDL_MAG, NV_MAG_CALIBRATION },
+    { SC_SENSOR_LIS2DW12_ACCEL, NV_WR_ACCEL_CALIBRATION },
+    { SC_SENSOR_ADXL371_ACCEL, NV_ALT_ACCEL_CALIBRATION },
+    { SC_SENSOR_LIS3MDL_MAG, NV_ALT_MAG_CALIBRATION },
+#endif
+  };
+  uint8_t i;
+  uint8_t copied = 0;
+
+  for (i = 0; i < sizeof(blocks) / sizeof(blocks[0]); i++)
+  {
+    if (ShimUtil_rangesOverlap(offset, length, blocks[i].infomemOffset, SC_DATA_LEN_STD_IMU_CALIB))
+    {
+      ShimCalib_configBytesToCalibDump(blocks[i].id, setCalibTsZero);
+      copied++;
+    }
+  }
+  return copied;
+}
+
 void ShimCalib_configBytesToCalibDump(uint8_t id, uint8_t setCalibTsZero)
 {
   gConfigBytes *configBytes = ShimConfig_getStoredConfig();

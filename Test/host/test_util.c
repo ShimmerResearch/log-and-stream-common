@@ -380,6 +380,39 @@ static void test_reverse_array(void)
   expectU("zero length is a no-op", odd[0], 5);
 }
 
+/*
+ * ShimUtil_rangesOverlap - which calibration blocks, and whether the MAC, a
+ * Bluetooth InfoMem write touched (DEV-1562). Half-open ranges: two ranges
+ * that only meet at an edge share no byte, and an empty range touches
+ * nothing, even inside another.
+ */
+static void test_ranges_overlap(void)
+{
+  testCase("test_ranges_overlap");
+  /* The gyro block (55-75) against 64-byte chunks */
+  expectU("chunk 0-63 and the gyro block", ShimUtil_rangesOverlap(0, 64, 55, 21), 1);
+  expectU("chunk 64-127 and the gyro block", ShimUtil_rangesOverlap(64, 64, 55, 21), 1);
+  expectU("chunk 128-191 and the gyro block", ShimUtil_rangesOverlap(128, 64, 55, 21), 0);
+  /* Edges */
+  expectU("ends where the other starts", ShimUtil_rangesOverlap(0, 55, 55, 21), 0);
+  expectU("one byte into it", ShimUtil_rangesOverlap(0, 56, 55, 21), 1);
+  expectU("starts where the other ends", ShimUtil_rangesOverlap(76, 10, 55, 21), 0);
+  expectU("its last byte", ShimUtil_rangesOverlap(75, 10, 55, 21), 1);
+  expectU("inside it", ShimUtil_rangesOverlap(60, 2, 55, 21), 1);
+  expectU("around it", ShimUtil_rangesOverlap(0, 128, 55, 21), 1);
+  expectU("either order", ShimUtil_rangesOverlap(55, 21, 0, 56), 1);
+  /* Empty ranges */
+  expectU("an empty write inside a block", ShimUtil_rangesOverlap(60, 0, 55, 21), 0);
+  expectU("an empty block", ShimUtil_rangesOverlap(0, 128, 60, 0), 0);
+  /* The MAC (224-229) against the last 64-byte chunk of the second page */
+  expectU("chunk 192-255 and the MAC", ShimUtil_rangesOverlap(192, 64, 224, 6), 1);
+  expectU("chunk 128-191 and the MAC", ShimUtil_rangesOverlap(128, 64, 224, 6), 0);
+  /* No 16-bit wrap: start + length past 0xFFFF on the MSP430 */
+  expectU("a range ending past 0xFFFF",
+      ShimUtil_rangesOverlap(0xFFF0, 0x20, 0x0005, 4), 0);
+  expectU("and one reaching into it", ShimUtil_rangesOverlap(0xFFF0, 0x20, 0xFFFE, 1), 1);
+}
+
 int main(void)
 {
   printf("shimmer_util host tests\n\n");
@@ -392,6 +425,7 @@ int main(void)
   test_volatile_memory_helpers();
   test_strlen_v();
   test_reverse_array();
+  test_ranges_overlap();
 
   return hostTestReport("shimmer_util");
 }

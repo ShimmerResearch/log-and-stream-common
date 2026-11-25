@@ -1210,6 +1210,299 @@ static void test_config_block_scan(void)
       memcmp(sc.data.raw, config->lnAccelCalib.rawBytes, IMU_LEN) == 0);
 }
 
+/* --- InfoMem written over Bluetooth in chunks (DEV-1562) ---------------------- */
+
+/* The six calibration blocks in the config bytes, and the sensor each one's
+ * dump record belongs to. reset() zeroes the config bytes, so every range is
+ * 0 and each record is filed under range 0. */
+static const struct
+{
+  uint16_t id;
+  uint16_t at;
+  const char *name;
+} chunkBlocks[] = {
+#if defined(SHIMMER3)
+  { SC_SENSOR_ANALOG_ACCEL, NV_LN_ACCEL_CALIBRATION, "LN accel" },
+  { SC_SENSOR_MPU9X50_ICM20948_GYRO, NV_GYRO_CALIBRATION, "gyro" },
+  { SC_SENSOR_LSM303_MAG, NV_MAG_CALIBRATION, "mag" },
+  { SC_SENSOR_LSM303_ACCEL, NV_WR_ACCEL_CALIBRATION, "WR accel" },
+  { SC_SENSOR_MPU9X50_ICM20948_ACCEL, NV_ALT_ACCEL_CALIBRATION, "alt accel" },
+  { SC_SENSOR_MPU9X50_ICM20948_MAG, NV_ALT_MAG_CALIBRATION, "alt mag" },
+#else
+  { SC_SENSOR_LSM6DSV_ACCEL, NV_LN_ACCEL_CALIBRATION, "LN accel" },
+  { SC_SENSOR_LSM6DSV_GYRO, NV_GYRO_CALIBRATION, "gyro" },
+  { SC_SENSOR_LIS2MDL_MAG, NV_MAG_CALIBRATION, "mag" },
+  { SC_SENSOR_LIS2DW12_ACCEL, NV_WR_ACCEL_CALIBRATION, "WR accel" },
+  { SC_SENSOR_ADXL371_ACCEL, NV_ALT_ACCEL_CALIBRATION, "alt accel" },
+  { SC_SENSOR_LIS3MDL_MAG, NV_ALT_MAG_CALIBRATION, "alt mag" },
+#endif
+};
+#define N_CHUNK_BLOCKS \
+  ((unsigned) (sizeof(chunkBlocks) / sizeof(chunkBlocks[0])))
+#define GYRO_BLOCK 1
+
+/* Calibration set `base` is a ramp per block, distinct between blocks, so a
+ * byte that lands in the wrong block or keeps another set's value shows. Bases
+ * 0x00 and 0x80 keep every byte below 0xFF, the erased value. */
+#define OLD_SET    0x00
+#define NEW_SET    0x80
+
+static uint8_t blockFirst(unsigned b, uint8_t base)
+{
+  return (uint8_t) (base + b * IMU_LEN);
+}
+
+static void putBlocks(uint8_t *image, uint8_t base)
+{
+  unsigned b, i;
+
+  for (b = 0; b < N_CHUNK_BLOCKS; b++)
+  {
+    for (i = 0; i < IMU_LEN; i++)
+    {
+      image[chunkBlocks[b].at + i] = (uint8_t) (blockFirst(b, base) + i);
+    }
+  }
+}
+
+/* Boot with calibration set `base` in InfoMem: the config bytes hold it and
+ * initFromConfigBytesAll copies it into the dump. `image` gets the config
+ * bytes, for a test to edit and write back. */
+static void bootWithBlocks(uint8_t *image, uint8_t base)
+{
+  gConfigBytes *config;
+
+  reset();
+  config = ShimConfig_getStoredConfig();
+  putBlocks(config->rawBytes, base);
+  ShimCalib_initFromConfigBytesAll();
+  memcpy(image, config->rawBytes, STOREDCONFIG_SIZE);
+}
+
+/* The dump's record for block b holds the block as set `base` has it. */
+static int dumpBlockIs(unsigned b, uint8_t base)
+{
+  sc_t sc;
+
+  sc.id = chunkBlocks[b].id;
+  sc.range = 0;
+  sc.data_len = IMU_LEN;
+  return (ShimCalib_singleSensorRead(&sc) == 0)
+      && isRamp(sc.data.raw, IMU_LEN, blockFirst(b, base));
+}
+
+static int configBlockIs(unsigned b, uint8_t base)
+{
+  return isRamp(&ShimConfig_getStoredConfig()->rawBytes[chunkBlocks[b].at],
+      IMU_LEN, blockFirst(b, base));
+}
+
+/* One SET_INFOMEM chunk, as far as calibration goes (ShimBt_processCmd): the
+ * bytes are stored, each block the chunk touched is copied into the dump, and
+ * ShimSdHead_config2SdHead() then copies the dump back over every block. */
+static void setInfomemChunk(const uint8_t *image, uint16_t offset, uint16_t len)
+{
+  memcpy(&ShimConfig_getStoredConfig()->rawBytes[offset], &image[offset], len);
+  ShimCalib_configBytesWriteToCalibDump(offset, len, 0);
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(0);
+}
+
+/* The rule the handler followed before DEV-1562: the dump was updated only for
+ * a chunk starting at 0 (blocks in bytes 0-127) or at 128 (bytes 128-255). */
+static void setInfomemChunkOldRule(const uint8_t *image, uint16_t offset, uint16_t len)
+{
+  memcpy(&ShimConfig_getStoredConfig()->rawBytes[offset], &image[offset], len);
+  if (offset == 0)
+  {
+    ShimCalib_configBytes0To127ToCalibDumpBytes(0);
+  }
+  else if (offset == 128)
+  {
+    ShimCalib_configBytes128To255ToCalibDumpBytes(0);
+  }
+  ShimCalib_calibDumpToConfigBytesAndSdHeaderAll(0);
+}
+
+/* The whole image, in `chunk`-byte writes from offset 0, as a host sends it. */
+static void setInfomemInChunks(const uint8_t *image,
+    uint16_t chunk,
+    void (*write)(const uint8_t *, uint16_t, uint16_t))
+{
+  uint16_t offset;
+
+  for (offset = 0; offset < STOREDCONFIG_SIZE; offset += chunk)
+  {
+    uint16_t len = (STOREDCONFIG_SIZE - offset < chunk) ? STOREDCONFIG_SIZE - offset : chunk;
+    write(image, offset, len);
+  }
+}
+
+/* The handler finds the blocks by their InfoMem offsets, and re-applies the
+ * MAC by NV_MAC_ADDRESS. Each must be where its config-bytes field is. */
+static void test_infomem_block_offsets(void)
+{
+  gConfigBytes *config;
+
+  testCase("test_infomem_block_offsets");
+  reset();
+  config = ShimConfig_getStoredConfig();
+  expectU("NV_LN_ACCEL_CALIBRATION is lnAccelCalib",
+      (unsigned) (config->lnAccelCalib.rawBytes - config->rawBytes), NV_LN_ACCEL_CALIBRATION);
+  expectU("NV_GYRO_CALIBRATION is gyroCalib",
+      (unsigned) (config->gyroCalib.rawBytes - config->rawBytes), NV_GYRO_CALIBRATION);
+  expectU("NV_MAG_CALIBRATION is magCalib",
+      (unsigned) (config->magCalib.rawBytes - config->rawBytes), NV_MAG_CALIBRATION);
+  expectU("NV_WR_ACCEL_CALIBRATION is wrAccelCalib",
+      (unsigned) (config->wrAccelCalib.rawBytes - config->rawBytes), NV_WR_ACCEL_CALIBRATION);
+  expectU("NV_ALT_ACCEL_CALIBRATION is altAccelCalib",
+      (unsigned) (config->altAccelCalib.rawBytes - config->rawBytes),
+      NV_ALT_ACCEL_CALIBRATION);
+  expectU("NV_ALT_MAG_CALIBRATION is altMagCalib",
+      (unsigned) (config->altMagCalib.rawBytes - config->rawBytes), NV_ALT_MAG_CALIBRATION);
+  expectU("NV_MAC_ADDRESS is macAddr",
+      (unsigned) (config->macAddr - config->rawBytes), NV_MAC_ADDRESS);
+  expectU("the gyro block straddles the 64-byte chunk boundary",
+      (NV_GYRO_CALIBRATION < 64) && (NV_GYRO_CALIBRATION + IMU_LEN > 64), 1);
+}
+
+/*
+ * The bench case (DEV-1562): Shimmer Capture web writes InfoMem over BLE in
+ * 64-byte chunks. Under the old rule the chunk at 64 was copied back over from
+ * the dump, so the gyro block read back new up to byte 63 and old from 64 on,
+ * and the mag and WR accel blocks, wholly in that chunk, read back old. The
+ * next 64-byte write copied the mixed gyro block into the dump, so it stayed.
+ */
+static void test_infomem_64_byte_chunks(void)
+{
+  static uint8_t image[STOREDCONFIG_SIZE];
+  unsigned b;
+  unsigned split = 64 - NV_GYRO_CALIBRATION;
+
+  testCase("test_infomem_64_byte_chunks");
+
+  bootWithBlocks(image, OLD_SET);
+  putBlocks(image, NEW_SET);
+  setInfomemInChunks(image, 64, setInfomemChunkOldRule);
+  expectTrue("old rule: gyro bytes before 64 are new",
+      isRamp(&ShimConfig_getStoredConfig()->rawBytes[NV_GYRO_CALIBRATION],
+          split, blockFirst(GYRO_BLOCK, NEW_SET)));
+  expectTrue("old rule: gyro bytes from 64 on are old",
+      isRamp(&ShimConfig_getStoredConfig()->rawBytes[64], IMU_LEN - split,
+          (uint8_t) (blockFirst(GYRO_BLOCK, OLD_SET) + split)));
+  expectTrue("old rule: the mag block is old", configBlockIs(2, OLD_SET));
+  expectTrue("old rule: the WR accel block is old", configBlockIs(3, OLD_SET));
+  setInfomemInChunks(image, 64, setInfomemChunkOldRule);
+  expectTrue("old rule: a second write leaves the gyro block mixed",
+      !configBlockIs(GYRO_BLOCK, NEW_SET) && !configBlockIs(GYRO_BLOCK, OLD_SET));
+
+  bootWithBlocks(image, OLD_SET);
+  putBlocks(image, NEW_SET);
+  setInfomemInChunks(image, 64, setInfomemChunk);
+  for (b = 0; b < N_CHUNK_BLOCKS; b++)
+  {
+    char what[80];
+
+    snprintf(what, sizeof(what), "%s block is new in the config bytes",
+        chunkBlocks[b].name);
+    expectTrue(what, configBlockIs(b, NEW_SET));
+    snprintf(what, sizeof(what), "%s block is new in the dump", chunkBlocks[b].name);
+    expectTrue(what, dumpBlockIs(b, NEW_SET));
+  }
+
+  /* The repair: a unit left mixed by the old rule, written once more in
+   * 64-byte chunks with the fix */
+  bootWithBlocks(image, OLD_SET);
+  putBlocks(image, NEW_SET);
+  setInfomemInChunks(image, 64, setInfomemChunkOldRule);
+  setInfomemInChunks(image, 64, setInfomemChunk);
+  expectTrue("a mixed unit is repaired by one fixed 64-byte write",
+      configBlockIs(GYRO_BLOCK, NEW_SET) && dumpBlockIs(GYRO_BLOCK, NEW_SET));
+}
+
+/*
+ * Every chunk size a host could use, 1 to 128 bytes: each ends with every
+ * block new in both the config bytes and the dump, as a 128-byte page write
+ * does. Most of these sizes split some block across two or more chunks.
+ */
+static void test_infomem_any_chunk_size(void)
+{
+  static uint8_t image[STOREDCONFIG_SIZE];
+  uint16_t chunk;
+  unsigned b;
+
+  testCase("test_infomem_any_chunk_size");
+  for (chunk = 1; chunk <= 128; chunk++)
+  {
+    int ok = 1;
+    char what[80];
+
+    bootWithBlocks(image, OLD_SET);
+    putBlocks(image, NEW_SET);
+    setInfomemInChunks(image, chunk, setInfomemChunk);
+    for (b = 0; b < N_CHUNK_BLOCKS; b++)
+    {
+      ok = ok && configBlockIs(b, NEW_SET) && dumpBlockIs(b, NEW_SET);
+    }
+    snprintf(what, sizeof(what), "%u-byte chunks: every block is new", (unsigned) chunk);
+    expectTrue(what, ok);
+  }
+}
+
+/*
+ * Only the blocks a write touched are copied, so a write that touches none,
+ * such as a sampling-rate change, leaves the dump's records and their
+ * timestamps alone. The old rule restamped all four blocks of bytes 0-127 on
+ * any write at offset 0, however short.
+ */
+static void test_infomem_chunk_touches_only_its_blocks(void)
+{
+  static uint8_t image[STOREDCONFIG_SIZE];
+  sc_t sc;
+
+  testCase("test_infomem_chunk_touches_only_its_blocks");
+  bootWithBlocks(image, OLD_SET);
+  hostStub_setTick(5000);
+
+  expectU("bytes 0-33: no block", ShimCalib_configBytesWriteToCalibDump(0, 34, 0), 0);
+  expectU("bytes 0-34: the LN accel block's first byte",
+      ShimCalib_configBytesWriteToCalibDump(0, 35, 0), 1);
+  expectU("bytes 0-63: LN accel and gyro",
+      ShimCalib_configBytesWriteToCalibDump(0, 64, 0), 2);
+  expectU("bytes 64-127: gyro, mag and WR accel",
+      ShimCalib_configBytesWriteToCalibDump(64, 64, 0), 3);
+  expectU("byte 117: the WR accel block's last byte",
+      ShimCalib_configBytesWriteToCalibDump(117, 1, 0), 1);
+  expectU("bytes 118-132: between the pages' blocks",
+      ShimCalib_configBytesWriteToCalibDump(118, 15, 0), 0);
+  expectU("bytes 128-191: alt accel and alt mag",
+      ShimCalib_configBytesWriteToCalibDump(128, 64, 0), 2);
+  expectU("bytes 192-255: no block", ShimCalib_configBytesWriteToCalibDump(192, 64, 0), 0);
+  expectU("bytes 0-511 in 128-byte pages: all six",
+      (unsigned) ShimCalib_configBytesWriteToCalibDump(0, 128, 0)
+          + ShimCalib_configBytesWriteToCalibDump(128, 128, 0)
+          + ShimCalib_configBytesWriteToCalibDump(256, 128, 0)
+          + ShimCalib_configBytesWriteToCalibDump(384, 128, 0),
+      N_CHUNK_BLOCKS);
+  expectU("an empty write: no block", ShimCalib_configBytesWriteToCalibDump(60, 0, 0), 0);
+
+  bootWithBlocks(image, OLD_SET);
+  hostStub_setTick(5000);
+  setInfomemChunk(image, 0, 16);
+  setInfomemChunk(image, 192, 64);
+  sc.id = chunkBlocks[GYRO_BLOCK].id;
+  sc.range = 0;
+  sc.data_len = IMU_LEN;
+  expectU("after writes touching no block, the gyro record is there",
+      ShimCalib_singleSensorRead(&sc), 0);
+  expectTrue("with its boot timestamp still zero", allBytes(sc.ts, SC_TIMESTAMP_LENGTH, 0));
+
+  setInfomemChunk(image, 64, 64);
+  expectU("after a write touching it, the gyro record is there",
+      ShimCalib_singleSensorRead(&sc), 0);
+  expectFalse("restamped with the time of the write",
+      allBytes(sc.ts, SC_TIMESTAMP_LENGTH, 0));
+}
+
 #if defined(SHIMMER3)
 /* Config bytes holding a recognisable alt accel and alt mag block. */
 static gConfigBytes *altBlocks(uint8_t altAccelRange)
@@ -1836,6 +2129,10 @@ int main(void)
   test_file2ram_stat_fails();
 #endif
   test_config_block_scan();
+  test_infomem_block_offsets();
+  test_infomem_64_byte_chunks();
+  test_infomem_any_chunk_size();
+  test_infomem_chunk_touches_only_its_blocks();
   test_ram2file_rewrites_in_place();
 #if defined(SHIMMER3R)
   test_dump_to_config_unknown_sensor();

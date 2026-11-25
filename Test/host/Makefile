@@ -153,7 +153,8 @@ SRC_test_sd_cfg_file := test_sd_cfg_file.c $(REPO)/SDCard/shimmer_sd_cfg_file.c 
 LIBS_test_sd_cfg_file := -lm
 SRC_test_calibration := test_calibration.c \
                         $(REPO)/Calibration/shimmer_calibration.c \
-                        $(REPO)/Boards/shimmer_boards.c
+                        $(REPO)/Boards/shimmer_boards.c \
+                        $(REPO)/Util/shimmer_util.c
 # The library's weak defaults come FIRST, ahead of the test file and of
 # host_stubs.c (which the rule appends). That is the link order in which a weak
 # override loses to the default - see test_platform_seam.c.
