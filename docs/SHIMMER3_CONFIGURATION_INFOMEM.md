@@ -1014,8 +1014,12 @@ Two limits on relying on it:
   different bytes than it wrote.
 - Where a part's ceiling is below the packet rate the correction settles at the
   ceiling rather than reaching the invariant. A LIS2MDL tops out at 100 Hz, so a
-  512 Hz trial simply runs the magnetometer at 100 Hz. The correction is applied
-  once and not repeated, so this does not churn the stored image.
+  512 Hz trial simply runs the magnetometer at 100 Hz. A LIS2DW12 in a low-power
+  mode tops out at 200 Hz the same way, and the firmware leaves the mode alone.
+  The packets the part has no new sample for repeat its last reading
+  ([STREAMING_DATA_FORMAT](SHIMMER3_STREAMING_DATA_FORMAT.md) §8.1). Up to
+  v1.01.027 the LIS2DW12's were zero or stale instead (DEV-1561). The correction
+  is applied once and not repeated, so this does not churn the stored image.
 - It judges the packet rate as `ShimConfig_getShimmerSamplingFreq()`, which is
   the configured `32768 / samplingRateTicks`. On Shimmer3R with an odd
   `samplingRateTicks` the real rate is slightly higher (above), so an ODR that
