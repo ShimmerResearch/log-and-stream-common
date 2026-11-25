@@ -1554,7 +1554,13 @@ the fields that firmware newer than v1.01.009 corrects on that write: bytes 232
 and 233, `userButtonEnable` and `singleTouchStart`
 ([configuration](SHIMMER3_CONFIGURATION_INFOMEM.md) §8.3, §8.5). Corrections
 there are logged and returned by `flash_slot()`; any other difference stops the
-run (DEV-1511).
+run (DEV-1511). Last, `flash_slot()` sets the unit's real-world clock to the PC's
+time over the dock and reads it back, as Consensys does when a unit docks: the
+flash resets the MCU, which clears the clock, and a unit left without one shows
+"clock not set" on the dock and stamps its logs from 1981. It does this after
+the InfoMem check, because a clock set over the dock clears `rtcSetByBt`
+(byte 217 bit 7). A clock that does not take is logged and returned, not
+raised, since the fleet items judge the firmware's clock handling themselves.
 
 | Item | Checks |
 |---|---|
