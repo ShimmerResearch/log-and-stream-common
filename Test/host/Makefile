@@ -309,6 +309,8 @@ test: build
 	  failed="$$failed test_hil_shared_log.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_s3_long_log.py; then \
 	  failed="$$failed test_hil_s3_long_log.py"; fi; \
+	if ! $(PYTHON) $(REPO)/Test/hil/test_hil_s3_slots.py; then \
+	  failed="$$failed test_hil_s3_slots.py"; fi; \
 	if ! $(PYTHON) $(REPO)/Test/hil/test_rig_offline.py; then \
 	  failed="$$failed test_rig_offline.py"; fi; \
 	if ! $(PYTHON) check_weak_decls.py; then \

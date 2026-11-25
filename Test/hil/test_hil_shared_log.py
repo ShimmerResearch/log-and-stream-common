@@ -93,12 +93,25 @@ class FakeSteps:
         return f"checked {session.name}"
 
 
+class ExplainingSteps(FakeSteps):
+    """FakeSteps with shared_log.Steps' optional extra_sessions_reason: `reasons`
+    maps a unit name to why it may have more than one new session."""
+
+    def __init__(self, events, fail=None, new=None, reasons=None):
+        super().__init__(events, fail, new)
+        self.reasons = reasons or {}
+
+    def extra_sessions_reason(self, u):
+        self.events.append(("reason", u.name))
+        return self.reasons.get(u.name)
+
+
 UNITS = [unit("A", 1), unit("B", 2), unit("C", 3)]
 
 
-def run(fail=None, power_fail=(), new=None, sleep=None, units=UNITS):
+def run(fail=None, power_fail=(), new=None, sleep=None, units=UNITS, reasons=None):
     events = []
-    steps = FakeSteps(events, fail, new)
+    steps = FakeSteps(events, fail, new) if reasons is None else ExplainingSteps(events, fail, new, reasons)
     power = FakePower(events, power_fail)
     sleeps = []
 
@@ -214,6 +227,39 @@ class OneUnitFails(unittest.TestCase):
         self.assertEqual(sleeps, [])
         self.assertFalse(power.off_ports)
         self.assertEqual(set(steps.restored), set("ABC"))
+
+
+class ExtraSessions(unittest.TestCase):
+    """A unit the steps themselves undocked again after the re-dock has written a
+    session after its log's own. Only the steps can say so."""
+
+    TWO = [Path("data/exp/B-002"), Path("data/exp/B-001")]
+
+    def test_with_a_reason_the_lowest_numbered_session_is_judged_and_the_rest_noted(self):
+        logs, *_ = run(new={"B": self.TWO}, reasons={"B": "moved between slots"})
+        self.assertTrue(logs["B"].ok, logs["B"].errors)
+        self.assertEqual(logs["B"].session, ROOT / "data/exp/B-001")
+        self.assertEqual(logs["B"].check, "checked B-001")
+        self.assertEqual(logs["B"].notes,
+                         ["1 more session(s) after the log's own (B-002), not judged: moved between slots"])
+        self.assertEqual((logs["A"].notes, logs["C"].notes), ([], []))
+
+    def test_without_a_reason_two_sessions_are_still_a_failure(self):
+        logs, *_ = run(new={"B": self.TWO}, reasons={})
+        self.assertEqual(logs["B"].errors, ["session: expected one new session, found 2"])
+        self.assertIsNone(logs["B"].session)
+
+    def test_steps_without_the_method_fail_two_sessions_as_before(self):
+        logs, *_ = run(new={"B": self.TWO})
+        self.assertEqual(logs["B"].errors, ["session: expected one new session, found 2"])
+
+    def test_a_reason_is_asked_for_only_when_there_is_more_than_one(self):
+        logs, events, *_ = run(new={"B": self.TWO}, reasons={"B": "moved"})
+        self.assertEqual(names(events, "reason"), ["B"])
+
+    def test_a_reason_does_not_excuse_a_log_with_no_session(self):
+        logs, *_ = run(new={"A": []}, reasons={"A": "moved"})
+        self.assertEqual(logs["A"].errors, ["session: expected one new session, found 0"])
 
 
 class Interrupted(unittest.TestCase):
