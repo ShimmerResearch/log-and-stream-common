@@ -168,9 +168,18 @@ def main(argv=None) -> int:
                              "or test what the units run now with --no-flash.")
         from rig.base6 import Base6
         from rig.s3_flash import flash_slot
+        from rig.s3_slots import locate
         # InfoMem backups live beside the run: the one copy of each unit's
         # configuration and calibration if a flash fails half way.
         with Base6(rig.base6_serial) as b6:
+            # Each unit where it answers, not where rig.toml says: units put
+            # back by hand have gone into each other's slots (rig/s3_slots.py).
+            for line in locate(b6, units):
+                print(line, flush=True)
+            lost = [u.name for u in units if not u.base6_slot]
+            if lost:
+                raise SystemExit(f"{', '.join(lost)}: answers in no Base6 slot, and another unit is in its own, "
+                                 "so it cannot be flashed. Dock it, or test what the units run now with --no-flash.")
             for u in units:
                 print(f"{u.name}: flashing {image.name} through Base6 slot {u.base6_slot} ...", flush=True)
                 flash_slot(b6, u.base6_slot, image, out / "infomem-backup", expect_version=version)

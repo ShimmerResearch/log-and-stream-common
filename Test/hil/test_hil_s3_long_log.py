@@ -640,6 +640,20 @@ class Shimmer:
                 mac=self.u.mac, record_len=3 + 20 if cfg.enabled() == IMU else 3)
 
 
+    def moved(self):
+        """Taken out of one slot and put in another moments later, the log's
+        undock-start configuration still in it: a session with no records."""
+        self.undocked()
+        if not self.logging:
+            return
+        self.logging = False
+        cfg = S3Config(bytes(self.infomem))
+        folder = self.card / "data" / cfg.trial_dir
+        n = len([p for p in folder.iterdir()])
+        s3_file(folder / f"Shimmer_{self.u.mac[-4:]}-{n:03d}", "000", [], divider=cfg.divider,
+                sensors=cfg.enabled(), mac=self.u.mac, record_len=3 + 20 if cfg.enabled() == IMU else 3)
+
+
 class FakeBase6:
     uart_port = "COM14"
 
@@ -712,6 +726,7 @@ class Bench:
         self.left_in = set()           # units the operator forgets to take out
         self.put_back = {}             # unit name -> the slot the operator puts it back in (None: not at all)
         self.moves_done = True         # whether the operator does a "Move" request
+        self.moves_log = False         # whether a move starts a log, as an undock with undock-start set does
         self.boot_silence = {}         # unit name -> dock opens it leaves unanswered once put back
         self.ports = {f"COM{40 + i}": self.shimmers[u.name] for i, u in enumerate(units)}
 
@@ -732,6 +747,8 @@ class Bench:
                     self.shimmers[u.name].silent_opens = self.boot_silence.get(u.name, 0)
         elif text.startswith("Move") and self.moves_done:
             for u in named:
+                if self.moves_log:
+                    self.shimmers[u.name].moved()
                 self._dock(u, u.base6_slot)
 
     def _dock(self, u, slot):
@@ -823,6 +840,24 @@ class StepsThroughSharedLog(unittest.TestCase):
         self.assertEqual(self.bench.asks[2], "Move s3-a to slot 1 (now in slot 2) and s3-b to slot 2 (now in slot 1)")
         self.assertEqual((self.bench.where("s3-a"), self.bench.where("s3-b")), (1, 2))
         self.assertRestored()
+
+    def test_the_session_a_requested_move_starts_is_noted_not_failed(self):
+        self.bench.put_back = {"s3-a": 2, "s3-b": 1}
+        self.bench.moves_log = True
+        logs, steps = self.bench.run()
+        self.assertEqual({n: lg.errors for n, lg in logs.items()}, {u.name: [] for u in self.units})
+        for u in self.units[:2]:
+            lg = logs[u.name]
+            self.assertEqual(lg.session.name, f"Shimmer_{u.mac[-4:]}-000")
+            self.assertEqual(lg.check.records, 513)
+            self.assertRegex(" ".join(lg.notes),
+                             rf"1 more session\(s\) .*\(Shimmer_{u.mac[-4:]}-001\).*moved between slots")
+        self.assertEqual(logs["s3-c"].notes, [])
+        self.assertRestored()
+
+    def test_a_unit_not_asked_to_move_has_no_reason_for_a_second_session(self):
+        logs, steps = self.bench.run()
+        self.assertEqual([steps.extra_sessions_reason(u) for u in self.units], [None, None, None])
 
     def test_a_unit_still_booting_is_waited_for_not_moved(self):
         self.bench.boot_silence = {"s3-b": 2}

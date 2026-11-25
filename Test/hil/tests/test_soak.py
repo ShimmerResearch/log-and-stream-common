@@ -173,6 +173,8 @@ def test_long_log(unit, long_logs, hil_note):
     log = long_logs.get(unit.name)
     assert log is not None, f"{unit.name} was not in the shared long log"
     problems = list(log.errors)       # a step that failed: configure, undock, start, stop, re-dock, restore
+    for note in log.notes:            # sessions the run itself caused after the log's, not judged
+        hil_note(note)
     sc = log.check
     if sc is not None:
         per_hour = sc.missing / sc.hours if sc.hours else 0
@@ -206,6 +208,8 @@ def test_long_log_s3(unit, long_logs_s3, hil_note):
     log = long_logs_s3.get(unit.name)
     assert log is not None, f"{unit.name} was not in the shared long log"
     problems = list(log.errors)       # a step that failed: configure, undock, start, stop, re-dock, restore
+    for note in log.notes:            # sessions the run itself caused after the log's, not judged
+        hil_note(note)
     sc = log.check
     if sc is not None:
         per_hour = sc.missing / sc.hours if sc.hours else 0

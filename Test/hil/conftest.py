@@ -121,6 +121,11 @@ def pytest_report_header(config):
 
 @pytest.fixture(scope="session")
 def rig(pytestconfig):
+    # The rig the tests were parametrised from, so a unit a test is given is the
+    # one this fixture's rig.units holds: _locate_shimmer3s() updates them in place.
+    loaded = _rig_for_collection(pytestconfig)
+    if loaded is not None:
+        return loaded
     try:
         return rig_config.load(pytestconfig.getoption("--rig"))
     except rig_config.RigError as e:
@@ -263,6 +268,8 @@ def _bench_config(request):
     """
     from rig.btmode import BtMode, bench_routes
 
+    _locate_shimmer3s(request)
+
     # Only units a test will actually run against: one the bench cannot serve
     # is reported not_covered by pytest_runtest_setup, and reaching for its
     # dock here would fail the run before that. The fixture also needs its own
@@ -296,6 +303,33 @@ def _bench_config(request):
         problems = mode.restore()
         if problems:
             pytest.fail("; ".join(problems), pytrace=False)
+
+
+def _locate_shimmer3s(request):
+    """Point each Shimmer3 the run tests at the Base6 slot it answers in, before
+    anything addresses one (rig/s3_slots.py). A unit docked in another's slot
+    would otherwise be configured, reset and tested as that other unit.
+
+    It runs first in _bench_config, while no test module has the Base6 open.
+    A unit found nowhere, whose slot another unit answers in, loses its slot,
+    and its dock tests are then not_covered (pytest_runtest_setup)."""
+    rig = _rig_for_collection(request.config)
+    if rig is None or not rig.base6_serial:
+        return
+    units = {}
+    for item in request.session.items:
+        unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
+        if (unit is not None and unit.platform == "shimmer3" and unit.base6_slot
+                and _item(item)[0] and not _not_covered(request.config, item)):
+            units[unit.name] = unit
+    if not units:
+        return
+    from rig.base6 import Base6
+    from rig.s3_slots import locate
+    say = _say(request.config)
+    with Base6(rig.base6_serial) as b:
+        for line in locate(b, list(units.values())):
+            say(line)
 
 
 # --- per-unit parametrisation ------------------------------------------------

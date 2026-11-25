@@ -110,6 +110,7 @@ class S3LogSteps:
         self.backups: dict[str, Path] = {}
         self.before: dict[str, set] = {}    # unit name -> its sessions in the trial folder before the log
         self.misplaced: dict[str, int | None] = {}
+        self.moved: set[str] = set()        # units the operator was asked to move between slots
         self._settled = False
 
     # --- finding a unit -------------------------------------------------------
@@ -178,6 +179,7 @@ class S3LogSteps:
             if not wrong or attempt == SLOT_REQUESTS:
                 self.misplaced = {n: now for n, (_, now) in wrong.items()}
                 return
+            self.moved |= {n for n, (_, now) in wrong.items() if now}
             self.ask("Move " + listing(f"{n} to slot {own} ({f'now in slot {now}' if now else 'not found'})"
                                        for n, (own, now) in wrong.items()))
 
@@ -290,6 +292,15 @@ class S3LogSteps:
 
     def check(self, session):
         return sdfile.check_session(session)
+
+    def extra_sessions_reason(self, unit) -> str | None:
+        """Why the unit may have more sessions than its log's (shared_log.Steps). A
+        unit moved between slots after the re-dock was undocked again, with the
+        log's undock-start configuration still in it, so the move started a short
+        log of its own: on the bench, an empty session (24 Nov 2026)."""
+        if unit.name in self.moved:
+            return "the unit was moved between slots after the re-dock, and that undock started a log"
+        return None
 
 
 def _newest_trials(root: Path, n: int = 5) -> list[str]:

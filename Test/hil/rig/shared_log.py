@@ -60,6 +60,12 @@ class Steps(Protocol):
     def check(self, session: Path) -> Any:
         """Read the session the log wrote; the result is what the caller's test judges."""
 
+    # Optional: extra_sessions_reason(unit) -> str | None. Why the unit may have
+    # written sessions after its log's own, when the steps themselves caused it
+    # (an undock they asked for after the re-dock, which starts a log of its
+    # own). With a reason the log's session is the lowest-numbered new one and
+    # the rest are noted; without one, more than one new session is a failure.
+
 
 @dataclass
 class UnitLog:
@@ -68,6 +74,7 @@ class UnitLog:
     errors: list[str] = field(default_factory=list)    # "step: what went wrong", in the order met
     before: set = field(default_factory=set)           # its session directories before the log
     session: Path | None = None                        # the one session the log wrote
+    notes: list[str] = field(default_factory=list)     # what the caller should report but not fail
     check: Any = None                                  # Steps.check(session)
 
     @property
@@ -144,8 +151,17 @@ def log_together(units, power, seconds: float, steps: Steps, *,
                     fail(u, "re-dock", e)
                     continue
                 new = sorted(after - logs[u.name].before)
-                if len(new) == 1:
-                    logs[u.name].session = root / new[0]     # relative: the drive letter may have changed
+                why = getattr(steps, "extra_sessions_reason", lambda unit: None)(u) if len(new) > 1 else None
+                if len(new) == 1 or why:
+                    # Relative: the drive letter may have changed. Sessions are
+                    # numbered as they are made, so with a reason for the rest
+                    # the lowest is the log's own.
+                    logs[u.name].session = root / new[0]
+                    if len(new) > 1:
+                        note = (f"{len(new) - 1} more session(s) after the log's own "
+                                f"({', '.join(Path(n).name for n in new[1:])}), not judged: {why}")
+                        logs[u.name].notes.append(note)
+                        say(f"{u.name}: {note}")
                 else:
                     fail(u, "session", f"expected one new session, found {len(new)}")
         finally:
