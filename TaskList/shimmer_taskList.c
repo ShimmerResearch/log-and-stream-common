@@ -370,6 +370,66 @@ uint32_t ShimTask_getExecutingTask(void)
   return executingTask;
 }
 
+/* Clears a task if it is queued, and says whether it was. Main loop only, like
+ * ShimTask_NORM_popNext: an interrupt can only set bits, so one landing between
+ * the test and the clear finds the bit already set and changes nothing. */
+static uint8_t ShimTask_takeIfQueued(TaskId_t task)
+{
+  if (ShimTask_getList() & task)
+  {
+    ShimTask_clear(task);
+    return 1U;
+  }
+  return 0U;
+}
+
+uint8_t ShimTask_serviceSamplingWhileSdBusy(void)
+{
+  static uint8_t servicing = 0U;
+  uint8_t ran = 0U;
+
+  /* Only inside the data file's own write, the one card access that runs all
+   * through a log. The others - opening the file as a log starts, reading or
+   * writing the configuration file, the flush at a stop - happen while sensing
+   * is starting, stopping or being reconfigured, when no sample should run, so
+   * they keep the main loop to themselves as before. */
+  if (servicing || (executingTask != TASK_SDWRITE) || !shimmerStatus.sensing)
+  {
+    return 0U;
+  }
+  servicing = 1U;
+
+  /* The same work, in the same order, as the task loop would do it. The
+   * pre-sample starts come first so the gather after them reads a conversion
+   * that was started on time. */
+#if defined(SHIMMER3)
+  if (ShimTask_takeIfQueued(TASK_SAMPLE_MPU9150_MAG))
+  {
+    MPU9150_startMagMeasurement();
+    ran = 1U;
+  }
+  if (ShimTask_takeIfQueued(TASK_SAMPLE_BMPX80_PRESS))
+  {
+    BMPX80_startMeasurement();
+    ran = 1U;
+  }
+#endif
+  if (ShimTask_takeIfQueued(TASK_GATHER_DATA))
+  {
+    ShimSens_gatherData();
+    ran = 1U;
+  }
+  /* TASK_SAVEDATA stays queued: the drain below only goes as far as the free
+   * SD buffers allow, and the task finishes the job once the write is over. */
+  if (ShimSens_saveDataWhileSdBusy())
+  {
+    ran = 1U;
+  }
+
+  servicing = 0U;
+  return ran;
+}
+
 void ShimTask_setStartLoggingIfReady(void)
 {
   if (ShimSens_checkStartLoggingConditions())

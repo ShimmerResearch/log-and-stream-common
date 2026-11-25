@@ -264,6 +264,10 @@ void ShimSens_step5Start(void);
 void ShimSens_stepDone(void);
 
 void ShimSens_saveData(void);
+/* The drain run from inside a wait on a busy card (TaskList's
+ * ShimTask_serviceSamplingWhileSdBusy). Always holds back what the SD buffers
+ * would refuse. Returns 1 if any packet moved. */
+uint8_t ShimSens_saveDataWhileSdBusy(void);
 
 uint8_t ShimSens_getNumEnabledChannels(void);
 uint8_t ShimSens_startLoggingIfUndockStartEnabled(void);

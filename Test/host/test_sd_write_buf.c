@@ -337,6 +337,63 @@ static void test_normal_cycle(void)
   sim_checkNothingLost(&sim);
 }
 
+/* Shimmer3's SD driver runs the drain while it waits on a busy card, so records
+ * arrive between the writer's SdWrBuf_peekWrite and its SdWrBuf_writeDone. That
+ * drain offers a record only when SdWrBuf_canAccept allows it, and holds the
+ * rest back. The buffer being written must come through unchanged, the other
+ * buffers must take exactly as much as they have room for, and everything
+ * accepted meanwhile must reach the card after it, in order. */
+static void test_records_during_a_write(void)
+{
+  Sim sim;
+  const uint8_t *data;
+  uint16_t len;
+  uint8_t before[SD_WRITE_BUF_SIZE];
+  uint16_t refusedBefore;
+  uint16_t accepted = 0;
+  uint16_t i;
+
+  testCase("records offered while a write waits on the card");
+  sim_init(&sim, FIELD_HEAD_LEN);
+  sim_fillCurrent(&sim);
+  sim_put(&sim, FIELD_REC_LEN); /* closes the first buffer */
+  refusedBefore = sim.w.diag.putsRefusedFull;
+
+  expectTrue("a buffer is queued for the write", SdWrBuf_peekWrite(&sim.w, &data, &len));
+  memcpy(before, data, len);
+
+  /* The write is waiting on the card: drain everything the buffers will take. */
+  for (i = 0; i < (NUM_SDWRBUF + 1U) * SD_WRITE_BUF_SIZE; i++)
+  {
+    if (!SdWrBuf_canAccept(&sim.w, FIELD_REC_LEN))
+    {
+      break;
+    }
+    expectTrue("a record canAccept allows is stored",
+        sim_put(&sim, FIELD_REC_LEN) != SDWRBUF_PUT_REFUSED);
+    accepted++;
+  }
+
+  expectTrue("the buffer being written is unchanged", memcmp(data, before, len) == 0);
+  expectU("its length is unchanged", sim.w.len[sim.w.wrIdx], len);
+  expectU("nothing is refused while the drain holds back",
+      sim.w.diag.putsRefusedFull, refusedBefore);
+#if NUM_SDWRBUF == 1
+  expectU("with one buffer nothing fits until the write ends", accepted, 0);
+#else
+  /* Every buffer but the one being written fills; the record that closed the
+   * first buffer is already in the second. */
+  expectU("the other buffers fill exactly", accepted,
+      (NUM_SDWRBUF - 1U) * ((SD_WRITE_BUF_SIZE - FIELD_HEAD_LEN) / FIELD_REC_LEN) - 1U);
+#endif
+
+  expectU("the write completes", sim_taskSdWrite(&sim), 1);
+  expectTrue("a buffer is free again", SdWrBuf_canAccept(&sim.w, FIELD_REC_LEN));
+  sim_put(&sim, FIELD_REC_LEN);
+  sim_stop(&sim);
+  sim_checkNothingLost(&sim);
+}
+
 /* THE DEFECT. The drain hands over several records in a row without the task
  * loop running in between, so a batch can cross the 512-byte boundary. With one
  * buffer every record from the crossing on was dropped; with more the batch
@@ -953,6 +1010,7 @@ int main(void)
   hostTestSilenceUnused();
 
   test_normal_cycle();
+  test_records_during_a_write();
   test_batch_crossing_boundary();
   test_refusal_is_counted_and_recovers();
   test_can_accept_predicts_put();

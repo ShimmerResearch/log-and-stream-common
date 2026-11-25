@@ -758,25 +758,28 @@ static void ShimSens_routePacket(PACKETBufferTypeDef *slotPtr, uint8_t toSd)
 #endif
 }
 
-void ShimSens_saveData(void)
+/* Moves completed packets from the ring to the SD buffers and the stream.
+ * holdWhenSdFull: stop at the first record the SD buffers would refuse and
+ * leave it, and everything after it, in the ring. Returns 1 if any packet
+ * moved. */
+static uint8_t ShimSens_drainRing(uint8_t holdWhenSdFull)
 {
-  /* Snapshot the count so this task run is bounded: a completion landing while
-   * the loop is running queues TASK_SAVEDATA again. */
+  /* Snapshot the count so this run is bounded: a completion landing while the
+   * loop is running queues TASK_SAVEDATA again. */
   uint16_t budget = PktRing_count(&sensing.ring);
   PACKETBufferTypeDef *slotPtr;
+  uint8_t moved = 0U;
 
   while (budget--)
   {
-#if defined(SHIMMER3R) && USE_SD
-    /* Back-pressure: when the SD buffers would refuse this record, leave the
-     * packets in the ring - deep enough on Shimmer3R to wait out a write-busy
-     * card - rather than lose it. TASK_SDWRITE re-queues this task as each
-     * buffer is released. No re-queue here: TASK_SAVEDATA outranks
-     * TASK_SDWRITE, so it would starve the write it is waiting for. */
-    if (shimmerStatus.sdLogging && !ShimSdDataFile_canAcceptRecord(sensing.dataLen - 1))
+#if USE_SD
+    if (holdWhenSdFull && shimmerStatus.sdLogging
+        && !ShimSdDataFile_canAcceptRecord(sensing.dataLen - 1))
     {
       break;
     }
+#else
+    (void) holdWhenSdFull;
 #endif
     if (!PktRing_drainNext(&sensing.ring, &slotPtr))
     {
@@ -786,7 +789,34 @@ void ShimSens_saveData(void)
 
     /* Data packet has moved off dataBuf, device is free to start new packet */
     PktRing_drainDone(&sensing.ring);
+    moved = 1U;
   }
+  return moved;
+}
+
+void ShimSens_saveData(void)
+{
+#if defined(SHIMMER3R) && USE_SD
+  /* Back-pressure: when the SD buffers would refuse this record, leave the
+   * packets in the ring - deep enough on Shimmer3R to wait out a write-busy
+   * card - rather than lose it. TASK_SDWRITE re-queues this task as each
+   * buffer is released. No re-queue here: TASK_SAVEDATA outranks
+   * TASK_SDWRITE, so it would starve the write it is waiting for. */
+  (void) ShimSens_drainRing(1U);
+#else
+  (void) ShimSens_drainRing(0U);
+#endif
+}
+
+uint8_t ShimSens_saveDataWhileSdBusy(void)
+{
+  /* Called from inside TASK_SDWRITE's wait on the card, so the write in
+   * progress holds the oldest queued buffer; records go only into the others.
+   * Always with back-pressure, on both platforms: a record the buffers would
+   * refuse stays in the ring for TASK_SAVEDATA, which runs once the write is
+   * over and has freed a buffer. Handed to the buffers instead it would be
+   * dropped there. */
+  return ShimSens_drainRing(1U);
 }
 
 #if defined(SHIMMER3R) && USE_SD

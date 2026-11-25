@@ -202,6 +202,20 @@ uint32_t ShimTask_getExecStartTick(void);
 #endif //TEST_TASK_MONITOR
 uint32_t ShimTask_getExecutingTask(void);
 
+/* For the platform's SD driver to call on every pass of its waits on the card:
+ * for it to be ready, and for the data of a sector it reads (a log's write
+ * reads FAT and directory sectors too). A card can hold the main loop for tens
+ * to hundreds of milliseconds in a single write, and on a platform whose
+ * samples are completed by a read in the main loop (Shimmer3's I2C and SPI
+ * sensors), every sample due meanwhile was lost. While TASK_SDWRITE is the task
+ * running and sensing is on, this runs the sampling tasks that are queued (the
+ * pre-sample starts and the gather) and drains the sample ring into whichever
+ * SD buffers are free. It never touches the card or the buffer being written.
+ * Returns 1 if it did any work, so the caller can count that pass against its
+ * timeout without adding its usual delay; 0 at once otherwise, so it costs
+ * nothing outside a log. Main loop only: never call it from an interrupt. */
+uint8_t ShimTask_serviceSamplingWhileSdBusy(void);
+
 void ShimTask_setStartLoggingIfReady(void);
 void ShimTask_setStartStreamingIfReady(void);
 void ShimTask_setStartStreamingAndLoggingIfReady(void);
