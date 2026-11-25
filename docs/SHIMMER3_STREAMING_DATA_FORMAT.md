@@ -61,6 +61,12 @@ logging, so a parser written from this document reads both.
 >   `hal_*.c` drivers for the LSM6DSV, LIS2DW12, LIS2MDL, LIS3MDL, ADXL371,
 >   BMP390 and BMP581. Cross-checked against the Java type strings at
 >   `Shimmer-Java-Android-API` @ `dffb582c` (`ShimmerObject.java`).
+> - **Held readings on Shimmer3R (§8.1):** `shimmer3r-firmware` @ `22cc6466`
+>   (DEV-1561) — `Core/Src/spi.c` (`SpiSens_holdLastSample`, `SpiSens_sensorNext`)
+>   and `Core/Src/i2c.c` (`lis2mdlHoldLastMag`). The v1.01.027 figures are bench
+>   measurements on that release, unit 5307, wide-range accelerometer at byte 6 =
+>   `0x62`: at 256 Hz a 30 s undocked BLE stream and SD log together, at 204.8
+>   and 128 Hz BLE streams.
 
 > **How to read this document.** **S3** = Shimmer3 (MSP430, LogAndStream);
 > **S3R** = Shimmer3R (STM32U5). Channel IDs are **shared numbers with
@@ -1190,7 +1196,7 @@ well formed. Three configuration faults look exactly like this:
 
 | What is seen | Cause |
 |---|---|
-| The same reading repeated across several packets, timestamps advancing normally, 0% packet loss, CRCs valid | The sensor's output rate is **below** the packet rate, so the firmware reads the same conversion more than once |
+| The same reading repeated across several packets, timestamps advancing normally, 0% packet loss, CRCs valid | The sensor's output rate is **below** the packet rate. The firmware reads the same conversion more than once, or, on Shimmer3R, repeats the part's last reading on a tick with nothing new (below) |
 | All-zero data on every channel of one sensor, unchanged across reconnections | That sensor's output rate is set to its **power-down** code while its channels are enabled |
 | Zeros, or an unpowered front end's noise, on GSR / PPG / bridge-amp / skin-temp while the IMU channels are fine; CRCs valid; unchanged across reconnections | The expansion-board power bit (InfoMem byte 9 bit 0) is off. The firmware does not derive it from the channel enables — [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.7 |
 
@@ -1200,6 +1206,35 @@ legitimate reading. The rate invariant, the per-sensor rate tables, and how a
 host is supposed to keep them coherent are in
 [SHIMMER3_CONFIGURATION_INFOMEM.md](SHIMMER3_CONFIGURATION_INFOMEM.md) §10.6;
 the expansion rail is §10.7 of the same document.
+
+**On Shimmer3R, six parts are read only when they have a new sample.** The
+LSM6DSV, the LIS2DW12 wide-range accelerometer, the LIS2MDL magnetometer and the
+BMP390/BMP581 check their data-ready line once it is switched on, which the
+driver does when the packet rate is above the part's output rate. The LIS3MDL
+and the ADXL371 always check. On a tick with nothing new, the packet repeats the
+part's last reading (`SpiSens_holdLastSample` in `Core/Src/spi.c`,
+`lis2mdlHoldLastMag` in `Core/Src/i2c.c`). Only the first packets of a session,
+before the part's first conversion, can still be zero.
+
+**Firmware up to v1.01.027 repeated the reading for only three of them.**
+
+- **The pressure sensor and both magnetometers** held their last reading
+  (DEV-818).
+- **The LSM6DSV, the LIS2DW12 and the ADXL371** left the slot unwritten, so it
+  carried what the packet ring held there:
+  - zero in the first 1024 packets of a session;
+  - then the reading from exactly 1024 packets earlier.
+- **Stream and SD log carry the same bytes.**
+- **A stored configuration reaches it through the LIS2DW12 in a low-power
+  mode,** which delivers 200 Hz at most. Above that packet rate, about
+  1 − 200/f of packets are affected. On v1.01.027 a bench unit measured:
+  - 21.2% at 256 Hz;
+  - 1.6% at 204.8 Hz;
+  - none at 128 Hz.
+- **In motion it shows as spikes on the wide-range accelerometer alone,** while
+  the low-noise accelerometer stays clean.
+
+DEV-1561 made all six hold.
 
 Worth knowing before investigating a "corrupt stream" report: if the packet
 structure validates and only the *values* look wrong, the radio is not the place
