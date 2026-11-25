@@ -381,10 +381,9 @@ static void test_reverse_array(void)
 }
 
 /*
- * ShimUtil_rangesOverlap - which calibration blocks, and whether the MAC, a
- * Bluetooth InfoMem write touched (DEV-1562). Half-open ranges: two ranges
- * that only meet at an edge share no byte, and an empty range touches
- * nothing, even inside another.
+ * ShimUtil_rangesOverlap - which calibration blocks a Bluetooth InfoMem write
+ * touched (DEV-1562). Half-open ranges: two ranges that only meet at an edge
+ * share no byte, and an empty range touches nothing, even inside another.
  */
 static void test_ranges_overlap(void)
 {
@@ -404,9 +403,11 @@ static void test_ranges_overlap(void)
   /* Empty ranges */
   expectU("an empty write inside a block", ShimUtil_rangesOverlap(60, 0, 55, 21), 0);
   expectU("an empty block", ShimUtil_rangesOverlap(0, 128, 60, 0), 0);
-  /* The MAC (224-229) against the last 64-byte chunk of the second page */
-  expectU("chunk 192-255 and the MAC", ShimUtil_rangesOverlap(192, 64, 224, 6), 1);
-  expectU("chunk 128-191 and the MAC", ShimUtil_rangesOverlap(128, 64, 224, 6), 0);
+  /* The alt accel block (133-153) against the second page's 64-byte chunks */
+  expectU("chunk 128-191 and the alt accel block",
+      ShimUtil_rangesOverlap(128, 64, 133, 21), 1);
+  expectU("chunk 192-255 and the alt accel block",
+      ShimUtil_rangesOverlap(192, 64, 133, 21), 0);
   /* No 16-bit wrap: start + length past 0xFFFF on the MSP430 */
   expectU("a range ending past 0xFFFF",
       ShimUtil_rangesOverlap(0xFFF0, 0x20, 0x0005, 4), 0);

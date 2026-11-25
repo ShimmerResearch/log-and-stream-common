@@ -1621,12 +1621,9 @@ void ShimBt_processCmd(void)
         {
           ShimConfig_storedConfigSet((uint8_t *) &args[3], infomemOffset, infomemLength);
 
-          /* Always overwrite MAC ID, in whichever chunk carries its bytes. It
-           * was only restored on a chunk starting at 128, so a 64-byte chunk
-           * at 192 stored the host's bytes (DEV-1562). */
-          if (ShimUtil_rangesOverlap(infomemOffset, infomemLength,
-                  NV_MAC_ADDRESS, sizeof(ShimConfig_getStoredConfig()->macAddr)))
+          if (infomemOffset == (INFOMEM_SEG_C_ADDR_MSP430 - INFOMEM_OFFSET_MSP430))
           {
+            /* Always overwrite MAC ID */
             memcpy(&ShimConfig_getStoredConfig()->macAddr[0],
                 ShimBt_macIdBytesPtrGet(), 6);
           }

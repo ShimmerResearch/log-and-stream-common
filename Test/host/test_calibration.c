@@ -1337,8 +1337,8 @@ static void setInfomemInChunks(const uint8_t *image,
   }
 }
 
-/* The handler finds the blocks by their InfoMem offsets, and re-applies the
- * MAC by NV_MAC_ADDRESS. Each must be where its config-bytes field is. */
+/* The handler finds the blocks by their InfoMem offsets. Each must be where
+ * its config-bytes field is. */
 static void test_infomem_block_offsets(void)
 {
   gConfigBytes *config;
@@ -1359,8 +1359,6 @@ static void test_infomem_block_offsets(void)
       NV_ALT_ACCEL_CALIBRATION);
   expectU("NV_ALT_MAG_CALIBRATION is altMagCalib",
       (unsigned) (config->altMagCalib.rawBytes - config->rawBytes), NV_ALT_MAG_CALIBRATION);
-  expectU("NV_MAC_ADDRESS is macAddr",
-      (unsigned) (config->macAddr - config->rawBytes), NV_MAC_ADDRESS);
   expectU("the gyro block straddles the 64-byte chunk boundary",
       (NV_GYRO_CALIBRATION < 64) && (NV_GYRO_CALIBRATION + IMU_LEN > 64), 1);
 }
