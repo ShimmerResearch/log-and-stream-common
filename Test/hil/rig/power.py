@@ -23,6 +23,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -117,17 +118,27 @@ class HubPower(Power):
             self.hub.close()
 
 
-class ManualPower(Power):
-    """For a bench without a hub: the operator is the switch."""
+def console_ask(text: str, detail: str = "") -> None:
+    """A request to the operator at a console: printed, then Enter. Under pytest
+    use conftest's hil_ask instead, which speaks it and reads stdin past the
+    capture."""
+    input(f"\n>>> {text}{f': {detail}' if detail else ''}, then press Enter ")
 
-    def __init__(self, prompt=input, out=print):
-        self.prompt, self.out = prompt, out
+
+class ManualPower(Power):
+    """For a bench without a hub: the operator is the switch.
+
+    `ask(text, detail)` as OperatorDock's: conftest passes its hil_ask, since a
+    bare input() under pytest's capture fails at once."""
+
+    def __init__(self, ask=console_ask):
+        self.ask = ask
 
     def on(self, port, label):
-        self.prompt(f"\n>>> Connect USB-C to {label} (dock it), then press Enter ")
+        self.ask(f"Dock {label}", "connect its USB-C")
 
     def off(self, port, label):
-        self.prompt(f"\n>>> Disconnect USB-C from {label} (undock it), then press Enter ")
+        self.ask(f"Undock {label}", "disconnect its USB-C")
 
 
 def listing(items) -> str:
@@ -147,31 +158,45 @@ class OperatorDock(Power):
     calls find them already out, or already back. So the operator is asked
     twice, at the start and the end, rather than once per unit.
 
-    `ask(text)` puts a request to the operator and returns once it is done
-    (conftest's hil_ask: spoken aloud, printed, then Enter). A unit counts as
-    out from just before its request, as shared_log counts a hub port, so a
-    request cut short is still followed by the one to put the units back.
+    `ask(text, detail)` puts a request to the operator and returns once it is
+    done (conftest's hil_ask: `text` spoken aloud, both printed, then Enter).
+    The spoken part is short, "Undock the units" or "Dock the units", and the
+    printed detail names them and their slots. A unit counts as out from just
+    before its request, as shared_log counts a hub port, so a request cut short
+    is still followed by the one to put the units back.
+
+    The group's units call off() and on() at the same time, from shared_log's
+    threads. A call that finds its unit in a request another call made waits
+    until the operator has answered it. Returning at once gave that unit only
+    its own short wait for the slot to empty, counted from the request rather
+    than from the answer (bench, 24 Nov 2026).
     """
 
     def __init__(self, ask, group):
         self.ask, self.group = ask, group
         self.out: dict[str, int | None] = {}      # unit name -> its own slot, for those taken out
+        self._asking = threading.Lock()
 
     def off(self, port, label):
-        if label in self.out:
-            return
-        units = {u.name: u.base6_slot for u in self.group() if u.name not in self.out}
-        if label not in units:
-            units = {label: None}           # not in the group: asked for on its own
-        self.out.update(units)
-        self.ask(f"Take {listing(units)} out of the Base6")
+        with self._asking:
+            if label in self.out:
+                return
+            units = {u.name: u.base6_slot for u in self.group() if u.name not in self.out}
+            if label not in units:
+                units = {label: None}           # not in the group: asked for on its own
+            self.out.update(units)
+            self.ask(f"Undock the {'units' if len(units) > 1 else 'unit'}",
+                     f"take {listing(units)} out of the Base6")
 
     def on(self, port, label):
-        if label not in self.out:
-            return
-        where = [f"{n} in slot {s}" if s else n for n, s in self.out.items()]
-        self.ask(f"Put {'it' if len(where) == 1 else 'them'} back in the Base6: {listing(where)}")
-        self.out.clear()
+        with self._asking:
+            if label not in self.out:
+                return
+            where = [f"{n} in slot {s}" if s else n for n, s in self.out.items()]
+            several = len(where) > 1
+            self.ask(f"Dock the {'units, each in its own slot' if several else 'unit'}",
+                     f"put {'them' if several else 'it'} back in the Base6: {listing(where)}")
+            self.out.clear()
 
 
 def speak(text: str) -> None:
