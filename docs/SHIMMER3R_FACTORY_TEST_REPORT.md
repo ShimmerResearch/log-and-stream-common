@@ -186,6 +186,15 @@ Passes when the daughter-card identity is set, failing with
 `FAIL: not set` otherwise. See
 [SHIMMER3_EEPROM_MEMORY_MAP.md](SHIMMER3_EEPROM_MEMORY_MAP.md) §3.
 
+A pass prints the board's name and its SR number, revision and internal
+revision, e.g. `S3R_TEST_0003 - PASS: Shimmer3R GSR+ (SR48-8-2)`. The Shimmer3R
+reuses the Shimmer3's board IDs (SR48 is the GSR+ on both), so the platform
+half of the name comes from the hardware ID, not the board ID. Firmware built
+before that was done printed the Shimmer3 name for the same board
+(`PASS: Shimmer3 GSR+ (SR48-8-2)`), so a report reading "Shimmer3" from an
+older build is still a Shimmer3R: its `S3R_TEST_` numbering says so. A
+Shimmer3's own report is unchanged.
+
 An unset model makes several later tests report "not applicable for this model"
 rather than failing, so **this test failing invalidates much of the rest of the
 report**.

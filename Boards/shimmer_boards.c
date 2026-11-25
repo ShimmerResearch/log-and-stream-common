@@ -18,7 +18,8 @@
 
 uint8_t hwId;
 daughter_card_id_page daughterCardIdPage;
-char daughtCardIdStr[26];
+/* Longest name: "Shimmer3R Bridge Amplifier", 26 characters plus the NUL. */
+char daughtCardIdStr[27];
 #if defined(SHIMMER3)
 uint8_t wrAccelAndMagInUse, gyroInUse;
 #endif
@@ -153,46 +154,56 @@ void ShimBrd_parseDaughterCardId(void)
 {
   memset(daughtCardIdStr, 0x00, sizeof(daughtCardIdStr));
 
+  /* The Shimmer3R reuses the Shimmer3's board IDs (SR31 is the IMU on both), so
+   * the board ID alone cannot say which platform it is on: the hardware ID
+   * does. A Shimmer3 keeps its names exactly as they were, because it also
+   * gives this string to its RN4678 as the BLE model name and checks the
+   * module against it. */
+  const char *platform = (hwId == HW_ID_SHIMMER3R) ? "Shimmer3R" : "Shimmer3";
+  const char *board;
+
   uint8_t srId = daughterCardIdPage.expansion_brd.exp_brd_id;
   switch (srId)
   {
     case SHIMMER3_IMU:
-      sprintf(daughtCardIdStr, "Shimmer3 IMU");
+      board = "IMU";
       break;
     case EXP_BRD_GSR:
     case EXP_BRD_GSR_UNIFIED:
-      sprintf(daughtCardIdStr, "Shimmer3 GSR+");
+      board = "GSR+";
       break;
     case EXP_BRD_EXG:
     case EXP_BRD_EXG_UNIFIED:
-      sprintf(daughtCardIdStr, "Shimmer3 ExG");
+      board = "ExG";
       break;
     case EXP_BRD_BR_AMP:
     case EXP_BRD_BR_AMP_UNIFIED:
-      sprintf(daughtCardIdStr, "Shimmer3 Bridge Amplifier");
+      board = "Bridge Amplifier";
       break;
     case EXP_BRD_PROTO3_MINI:
-      sprintf(daughtCardIdStr, "Shimmer3 Proto3 Mini");
+      board = "Proto3 Mini";
       break;
     case EXP_BRD_PROTO3_DELUXE:
-      sprintf(daughtCardIdStr, "Shimmer3 Proto3 Deluxe");
+      board = "Proto3 Deluxe";
       break;
     case EXP_BRD_ADXL377_ACCEL_200G:
-      sprintf(daughtCardIdStr, "Shimmer3 200G Accel");
+      board = "200G Accel";
       break;
     case EXP_BRD_H3LIS331DL_ACCEL_HIGH_G:
-      sprintf(daughtCardIdStr, "Shimmer3 100G Accel");
-      break;
-    case SHIMMER4_SDK:
-      sprintf(daughtCardIdStr, "Shimmer4 SDK");
+      board = "100G Accel";
       break;
     case SHIMMER_ECG_MD:
-      sprintf(daughtCardIdStr, "Shimmer3 ECG MD");
+      board = "ECG MD";
       break;
+    case SHIMMER4_SDK:
+      /* A platform of its own, whichever firmware reads it. */
+      snprintf(daughtCardIdStr, sizeof(daughtCardIdStr), "Shimmer4 SDK");
+      return;
     default:
-      sprintf(daughtCardIdStr, "SR%d", srId);
-      break;
+      snprintf(daughtCardIdStr, sizeof(daughtCardIdStr), "SR%d", srId);
+      return;
   }
+  snprintf(daughtCardIdStr, sizeof(daughtCardIdStr), "%s %s", platform, board);
 }
 
 shimmer_expansion_brd *ShimBrd_getDaughtCardId(void)
