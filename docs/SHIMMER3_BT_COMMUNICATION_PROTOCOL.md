@@ -401,19 +401,25 @@ block at a time, and CTS holds the module off only once the DMA's interrupt
 runs. Until then the module keeps sending, so the second byte after a block
 overruns the first in `UCA1RXBUF`. The interrupt must start within about 6 µs at
 the RN4678 V1.23's 1 Mbps, and about 18 µs at the V1.00.5's 460800. While the
-device samples, two interrupts run long enough to make it late:
+device samples, three interrupts run long enough to make it late:
 - the sample timer's, the highest-priority maskable interrupt, which runs for
   tens of microseconds;
-- the ADC completion's, served before the receive on the shared DMA vector.
+- the ADC completion's, served before the receive on the shared DMA vector;
+- the I2C interrupt's, which polls in place for a START or STOP to go out. A
+  one-byte read's START goes out with its address byte, and a board whose
+  sensors are read with a one-byte status check each sample (the ICM-20948's
+  magnetometer) does one every sample.
 
 On the bench, logging at 512 Hz, 7 (V1.23) and 4 (V1.00.5) of 46 connections
-lost their `%RFCOMM_OPEN%` this way.
+lost their `%RFCOMM_OPEN%` this way. With the first two interrupts held off
+(below), every overrun that remained came straight after the I2C interrupt.
 
 Later firmware does two things about it:
 - **It holds the module off with CTS while those interrupts run**
-  (`BT_rxIsrHold` in `Shimmer_Driver/RN4X/RN4X.h`). A string that arrives then
-  waits instead of losing bytes. This applies on an RN4678 once the module is
-  set up.
+  (`BT_rxIsrHold` in `Shimmer_Driver/RN4X/RN4X.h`; for the I2C interrupt, only
+  while it polls, `I2C_waitSentRxHeld` in `Shimmer_Driver/5xx_HAL/hal_I2C.c`). A
+  string that arrives then waits instead of losing bytes. This applies on an
+  RN4678 once the module is set up.
 - **It no longer reads a `%RFCOMM_CLOSE%` that lost its `_` as an open.**
   `%RFCOMMCLOSE%` is as long as `%RFCOMM_OPEN%` and ends in `%` where that does.
   Firmware up to v1.01.011 tested only that `%`, so it took the string for an
