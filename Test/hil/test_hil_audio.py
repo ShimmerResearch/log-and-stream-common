@@ -223,6 +223,21 @@ class AudioFiles(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in self.s.audio.iterdir()), ["000.AFP"])
         self.assertEqual(sa.remove_raw(self.s.data), [])
 
+    def test_remove_raw_keeps_only_the_header(self):
+        """A failed row keeps the WAV's header, no samples, and identity() still
+        reads its clocks from it (DEV-1588)."""
+        first, n, _ = good_geometry()
+        raw = wav_bytes(2, first, n)
+        self.s.write("000.WAV", raw)
+        keep = self.s.root / "kept"
+        self.assertEqual(sa.remove_raw(self.s.data, keep, "s3r-x_row_"), ["000.WAV"])
+        self.assertFalse((self.s.audio / "000.WAV").exists())
+        hdr = (keep / "s3r-x_row_000.WAV.hdr").read_bytes()
+        self.assertEqual(hdr, raw[:sa.HEADER])
+        whole, kept = sa.identity(raw), sa.identity(hdr)
+        self.assertEqual((kept.first_ticks, kept.last_ticks, kept.count),
+                         (whole.first_ticks, whole.last_ticks, whole.count))
+
 
 class DataHeader(unittest.TestCase):
     def test_from_file(self):

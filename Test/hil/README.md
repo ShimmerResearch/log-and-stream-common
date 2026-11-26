@@ -84,13 +84,13 @@ the firmware checkouts the model may read, and a spending cap
 ## Checking an open defect
 
 `tests/test_defects.py` holds checks that reproduce defects already filed, one
-report item per ticket (`defect.dev1297_reads_midstream` and so on). Each fails
+report item per ticket (`defect.dev1327_mag_rate_220hz` and so on). Each fails
 while its defect is there, so they carry the `defect` marker, which no release
 tier selects:
 
 ```
 python -m pytest Test/hil/tests/test_defects.py -m defect -rA
-python -m pytest Test/hil/tests/test_defects.py -m defect -k dev1297 --unit s3-rn42-615
+python -m pytest Test/hil/tests/test_defects.py -m defect -k dev1327 --unit s3-rn42-615
 ```
 
 What a check changes on a unit it puts back before the next one starts. When a
@@ -116,7 +116,9 @@ fix makes its check pass, move the check into its platform's tier, and into
    needs the unit not connected to any other host.
 4. The run sets each unit's configuration up itself, and puts the unit's own
    back after the last test (`rig/btmode.py`). A unit that cannot be put back
-   fails the run.
+   fails the run. A unit the run cannot reach at the start fails its own items
+   only, and the other units run. That means its dock doesn't answer, or its
+   port or drive is gone or never came.
    - **Every Shimmer3R starts from the baseline** (`rig/baseline.py`,
      DEV-1463): the firmware's default configuration, with the unit's own
      calibration, name, MAC, Bluetooth baud and PIN bytes, and TCXO bit. It is

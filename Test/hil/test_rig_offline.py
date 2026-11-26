@@ -2589,14 +2589,14 @@ class InStreamReplies(unittest.TestCase):
         st = self.run_stream(self.VBATT, 0, skip_after_reply=True)
         gaps = bt.gap_positions(st.ts, self.DIVIDER)
         self.assertEqual(gaps, [(5, 1)])
-        mod = _defects_module()
+        mod = _fleet_module()
         if mod is None:
             self.skipTest("needs pytest")
         lost = mod.losses_by_reply(gaps, st.instream)
         self.assertEqual(lost, {bt.VBATT_RSP: 1, bt.STATUS_RSP: 0, None: 0})
 
     def test_a_gap_away_from_any_reply_is_elsewhere(self):
-        mod = _defects_module()
+        mod = _fleet_module()
         if mod is None:
             self.skipTest("needs pytest")
         self.assertEqual(mod.losses_by_reply([(40, 2)], [(bt.VBATT_RSP, 5), (bt.STATUS_RSP, 20)]),
@@ -2616,20 +2616,6 @@ class GapPositions(unittest.TestCase):
         # 4096 Hz: 22 is the slot of 16, 6 ticks late, as the stamp at 24 shows.
         self.assertEqual(bt.gap_positions([0, 8, 22, 24, 32], 8), [])
         self.assertEqual(bt.gap_positions([0, 8, 24, 32, 46, 48], 8), [(2, 1)])
-
-
-def _defects_module():
-    """tests/test_defects.py, which imports pytest; None without it."""
-    import importlib.util
-    if "_defects" in sys.modules:
-        return sys.modules["_defects"]
-    if importlib.util.find_spec("pytest") is None:
-        return None
-    spec = importlib.util.spec_from_file_location("_defects", HERE / "tests" / "test_defects.py")
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = mod                     # its dataclass looks itself up there
-    spec.loader.exec_module(mod)
-    return mod
 
 
 class DockArgLengths(unittest.TestCase):
@@ -2764,17 +2750,18 @@ class S3FleetSeeds(unittest.TestCase):
         self.run_mag_seeds(bytes(range(21)))
 
 
-class S3FlashRestoreCheck(unittest.TestCase):
-    """DEV-1511: flash_slot writes the saved InfoMem back after the flash. Firmware
-    newer than v1.01.009 corrects bytes 232 and 233 (and the two bits that follow
-    byte 232) on that write, which is not a failed restore."""
+class S3FlashFake:
+    """flash_slot against a faked Base6, BSL and dock, for the tests below."""
 
     OLD = bytes([0x11] * 217 + [0x25, 0x01] + [0x22] * 13 + [0xFF, 0xFF] + [0x33] * 150)
 
-    def flash(self, firmware):
+    def flash(self, firmware, clock=lambda ticks: ticks):
         """flash_slot with the Base6, BSL and dock faked. `firmware(written)` is
-        what the new firmware makes of the restore write."""
-        stored = {"im": self.OLD}
+        what the new firmware makes of the restore write; `clock(set_ticks)` is
+        what the unit's clock reads after a set, or raises. The dock calls, in
+        order, are in self.calls."""
+        stored = {"im": self.OLD, "ticks": 0}
+        self.calls = calls = []
 
         class Dock:
             def version(self):
@@ -2784,10 +2771,19 @@ class S3FlashRestoreCheck(unittest.TestCase):
                 return "000666AABBCC"
 
             def read_infomem(self):
+                calls.append("read_infomem")
                 return stored["im"]
 
             def write_infomem(self, im):
+                calls.append("write_infomem")
                 stored["im"] = firmware(bytes(im))
+
+            def set_rwc(self, ticks):
+                calls.append("set_rwc")
+                stored["ticks"] = clock(ticks)
+
+            def current_ticks(self):
+                return stored["ticks"]
 
         @contextmanager
         def open_when_ready(port, **kw):
@@ -2811,12 +2807,18 @@ class S3FlashRestoreCheck(unittest.TestCase):
         b[offset] = value
         return bytes(b)
 
+
+class S3FlashRestoreCheck(S3FlashFake, unittest.TestCase):
+    """DEV-1511: flash_slot writes the saved InfoMem back after the flash. Firmware
+    newer than v1.01.009 corrects bytes 232 and 233 (and the two bits that follow
+    byte 232) on that write, which is not a failed restore."""
+
     def test_the_audio_mode_correction_is_reported_not_raised(self):
         # 67A0, 18 Nov 2026: v1.01.009 -> main, byte 233 0xFF read back as 0x00
         res, lines = self.flash(lambda im: self.setting(im, 233, 0x00))
         self.assertEqual(res["corrected"], [{"offset": 233, "written": 0xFF, "read_back": 0x00}])
         self.assertIn("corrected InfoMem byte 233 0xff -> 0x00", "\n".join(lines))
-        self.assertIn("InfoMem restored", lines[-1])
+        self.assertIn("InfoMem restored", lines[-2])
 
     def test_the_button_mode_and_the_bits_that_follow_it(self):
         def firmware(im):
@@ -2846,6 +2848,42 @@ class S3FlashRestoreCheck(unittest.TestCase):
     def test_a_correction_beside_a_real_difference_still_fails(self):
         with self.assertRaisesRegex(s3_flash.S3FlashError, r"differs at offsets \[5\]"):
             self.flash(lambda im: self.setting(self.setting(im, 233, 0x00), 5, 0x00))
+
+
+class S3FlashSetsTheClock(S3FlashFake, unittest.TestCase):
+    """The flash resets the MCU, which clears a Shimmer3's real-world clock, and
+    nothing else on the bench sets it again. flash_slot sets it to the PC's time
+    once InfoMem is back."""
+
+    def test_the_clock_is_set_to_the_pc_s_time_after_the_infomem_check(self):
+        t0 = time.time()
+        res, lines = self.flash(lambda im: im)
+        # A dock clock set clears rtcSetByBt (byte 217 bit 7), so it must come
+        # after the read-back the restore check judges.
+        self.assertEqual(self.calls, ["read_infomem", "write_infomem", "read_infomem", "set_rwc"])
+        self.assertIsNone(res["clock_problem"])
+        self.assertLess(abs(res["clock_offset_s"]), 1.0)
+        self.assertGreaterEqual(res["clock_offset_s"] + time.time(), t0 - 1.0)
+        self.assertIn("clock set to the PC's time", lines[-1])
+
+    def test_a_clock_that_does_not_take_is_logged_not_raised(self):
+        res, lines = self.flash(lambda im: im, clock=lambda ticks: 0)
+        self.assertIn("from the PC's time just after the set", res["clock_problem"])
+        self.assertIn("clock NOT set", lines[-1])
+        self.assertIn("InfoMem restored", lines[-2])
+
+    def test_a_dock_that_fails_the_set_is_logged_not_raised(self):
+        def clock(ticks):
+            raise s3_flash.dock.DockError("no reply")
+        res, lines = self.flash(lambda im: im, clock=clock)
+        self.assertIsNone(res["clock_offset_s"])
+        self.assertIn("the dock failed: no reply", res["clock_problem"])
+        self.assertIn("clock NOT set", lines[-1])
+
+    def test_a_failed_restore_sets_no_clock(self):
+        with self.assertRaises(s3_flash.S3FlashError):
+            self.flash(lambda im: self.setting(im, 0, 0x00))
+        self.assertNotIn("set_rwc", self.calls)
 
 
 class S3RestorePartOfInfoMem(unittest.TestCase):
@@ -3020,6 +3058,182 @@ class Base6Refusals(unittest.TestCase):
     def test_a_query_that_goes_unanswered_is_asked_again(self):
         b = self.dock(**{"SDQ$": [self.NONE, (b"Q,111100\r\n", 0.2)]})
         self.assertEqual(b.occupied(), [1, 2, 3, 4])
+
+
+# --- the Shimmer3R release matrix's aside items -------------------------------------------
+
+def _s3r_release_module():
+    """tests/test_s3r_release.py, which imports pytest; None without it."""
+    import importlib.util
+    if "_s3r_release" in sys.modules:
+        return sys.modules["_s3r_release"]
+    if importlib.util.find_spec("pytest") is None or _toml is None:
+        return None
+    spec = importlib.util.spec_from_file_location("_s3r_release", HERE / "tests" / "test_s3r_release.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("HIL_MATRIX", None)
+        spec.loader.exec_module(mod)
+    return mod
+
+
+@unittest.skipIf(_s3r_release_module() is None, "needs pytest and a TOML reader")
+class S3rReleaseAsideNamesTheUnit(unittest.TestCase):
+    """release.sd_log_start and release.stop_ack collect notes from every unit
+    into one item, so each note says which unit and row it came from."""
+
+    def aside(self):
+        recorded = []
+        col = types.SimpleNamespace(record=lambda *a: recorded.append(a))
+        request = types.SimpleNamespace(config=types.SimpleNamespace(_hil_collector=col))
+        return _s3r_release_module()._Aside(request, "audio_fp_1024hz_both", "s3r-7a62"), recorded
+
+    def test_a_start_of_log_loss_names_the_unit_and_the_row(self):
+        aside, recorded = self.aside()
+        aside.log_start(79)
+        self.assertEqual(recorded, [("release.sd_log_start", "fail",
+                                     "s3r-7a62: audio_fp_1024hz_both: 79 samples lost in the first 1 s")])
+
+    def test_an_unacked_stop_names_the_unit_and_the_row(self):
+        aside, recorded = self.aside()
+        aside.stop(types.SimpleNamespace(stop_ack=False, after_stop=0), hung=True)
+        self.assertEqual(recorded[0][2], "s3r-7a62: audio_fp_1024hz_both: no ACK, link silent afterwards, "
+                                         "reconnected (0 packets after the stop)")
+
+    def test_a_clean_row_adds_no_note(self):
+        aside, recorded = self.aside()
+        aside.log_start(0)
+        aside.stop(types.SimpleNamespace(stop_ack=True, after_stop=0), hung=False)
+        self.assertEqual(recorded, [("release.sd_log_start", "pass", None), ("release.stop_ack", "pass", None)])
+
+
+# --- the session setup: one unit out of reach -----------------------------------------------
+
+def _have_pytest() -> bool:
+    import importlib.util
+    return importlib.util.find_spec("pytest") is not None
+
+
+@unittest.skipUnless(_have_pytest(), "conftest.py needs pytest")
+class OneUnitOutOfReach(unittest.TestCase):
+    """A unit whose dock does not answer when the session sets the units up fails
+    its own items, and the other units run. It used to error the whole session."""
+
+    def setUp(self):
+        import conftest
+        self.conftest = conftest
+        self.units = [types.SimpleNamespace(name=n) for n in ("s3-a", "s3-b", "s3-c")]
+
+    def item(self, unit, item_id="fleet.bt_stream"):
+        marker = types.SimpleNamespace(args=(item_id,), kwargs={}) if item_id else None
+        return types.SimpleNamespace(callspec=types.SimpleNamespace(params={"unit": unit}),
+                                     get_closest_marker=lambda name, m=marker: m if name == "hil" else None)
+
+    def test_the_other_units_are_still_set_up(self):
+        enabled, said = [], []
+
+        class Mode:
+            def enable(self, unit):
+                if unit.name == "s3-b":
+                    raise dock.DockError("COM14: no answer after 10 attempts")
+                enabled.append(unit.name)
+
+        failed = self.conftest._enable_units(Mode(), self.units, said.append)
+        self.assertEqual(enabled, ["s3-a", "s3-c"])
+        self.assertEqual(list(failed), ["s3-b"])
+        self.assertIn("DockError: COM14: no answer", failed["s3-b"])
+        self.assertEqual(len(said), 1)
+        self.assertTrue(said[0].startswith("s3-b: session setup could not reach it"))
+
+    def test_a_port_or_drive_that_never_came_is_out_of_reach_too(self):
+        class Mode:
+            def enable(self, unit):
+                if unit.name == "s3-a":
+                    raise TimeoutError("USB CDC port for 204E did not appear within 90 s")
+
+        failed = self.conftest._enable_units(Mode(), self.units, lambda text: None)
+        self.assertEqual(list(failed), ["s3-a"])
+
+    def test_anything_else_still_stops_the_run(self):
+        """A configuration that reads back changed is a finding, not a unit out of reach."""
+        from rig.btmode import BtModeError
+
+        class Mode:
+            def enable(self, unit):
+                raise BtModeError("s3-a: InfoMem read back differs at byte 9")
+
+        with self.assertRaises(BtModeError):
+            self.conftest._enable_units(Mode(), self.units, lambda text: None)
+
+    def test_only_the_unreached_units_items_fail_at_setup(self):
+        config = types.SimpleNamespace(_hil_setup_failed={"s3-b": "session setup could not reach it: x"})
+        a, b, _ = self.units
+        self.assertIsNone(self.conftest._setup_failure(config, self.item(a)))
+        self.assertEqual(self.conftest._setup_failure(config, self.item(b)), "session setup could not reach it: x")
+        self.assertIsNone(self.conftest._setup_failure(config, self.item(b, item_id=None)))
+
+    def test_shared_work_leaves_the_unreached_unit_out(self):
+        a, b, c = self.units
+        config = types.SimpleNamespace(_hil_setup_failed={"s3-b": "x"}, getoption=lambda name: None)
+        session = types.SimpleNamespace(items=[self.item(u, "soak.long_log") for u in (a, b, c)])
+        request = types.SimpleNamespace(config=config, session=session)
+        with mock.patch.object(self.conftest, "_missing", lambda cfg, unit, needs: set()):
+            units = self.conftest.hil_units.__wrapped__(request)("soak.long_log")
+        self.assertEqual([u.name for u in units], ["s3-a", "s3-c"])
+
+
+# --- smoke.sd_clock_set_midlog: a clock step judged from the stamps -----------------------
+
+def _s3r_smoke_module():
+    """tests/test_s3r_smoke.py, which imports pytest; None without it."""
+    import importlib.util
+    if "_s3r_smoke" in sys.modules:
+        return sys.modules["_s3r_smoke"]
+    if importlib.util.find_spec("pytest") is None:
+        return None
+    spec = importlib.util.spec_from_file_location("_s3r_smoke", HERE / "tests" / "test_s3r_smoke.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@unittest.skipIf(_s3r_smoke_module() is None, "needs pytest")
+class ClockSetMidlogLog(unittest.TestCase):
+    """The log's stamps say whether a clock set reached it, and the host's open
+    time says whether its end is missing. Its length alone said neither."""
+
+    PERIOD = 640                    # 51.2 Hz
+    PROBE = 3 * 32768               # midstream.PROBE_S
+
+    def log(self, records, step=0):
+        span = (records - 1) * self.PERIOD + step if records else 0
+        return types.SimpleNamespace(header=types.SimpleNamespace(divider=self.PERIOD), records=records,
+                                     span_ticks=span, max_gap_ticks=self.PERIOD + step if step else 0)
+
+    def problems(self, fc, open_s):
+        return _s3r_smoke_module()._clock_set_log_problems(fc, open_s)
+
+    def test_a_clean_log_that_ran_long_passes(self):
+        """The bench's case: 597 records on one grid, 11.64 s, read as a step before."""
+        self.assertEqual(self.problems(self.log(597), open_s=11.70), [])
+
+    def test_a_set_that_reached_the_log_shows_as_one_step_of_its_size(self):
+        got = self.problems(self.log(512, step=self.PROBE), open_s=10.40)
+        self.assertEqual(len(got), 1)
+        self.assertIn("one step of 3.02 s", got[0])
+        self.assertIn("the set stepped the log's stamps", got[0])
+
+    def test_a_gap_unlike_the_set_is_left_to_the_timing_checks(self):
+        self.assertEqual(self.problems(self.log(512, step=10 * self.PERIOD), open_s=10.40), [])
+
+    def test_a_log_that_stopped_early_has_its_end_missing(self):
+        got = self.problems(self.log(1), open_s=10.40)
+        self.assertEqual(got, ["the records cover 0.02 s of a log the host held open 10.40 s: the end is missing"])
+
+    def test_a_short_start_up_is_not_a_missing_end(self):
+        self.assertEqual(self.problems(self.log(520), open_s=10.70), [])
 
 
 if __name__ == "__main__":

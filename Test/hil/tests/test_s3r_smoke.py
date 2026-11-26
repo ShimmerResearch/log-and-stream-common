@@ -524,6 +524,31 @@ def midstream_session(unit, cdc, power, hil_note, plan: midstream.Plan) -> None:
 
 
 MIDLOG_SECONDS = 5.0            # logged either side of the clock set
+MIDLOG_SHORT_S = 0.75           # records may cover this much less than the host held the log open
+
+
+def _clock_set_log_problems(fc, open_s: float) -> list[str]:
+    """What the SD log of smoke.sd_clock_set_midlog says about the clock set.
+
+    A set that reached the running log steps its stamps by midstream.PROBE_S,
+    so it shows in the stamps themselves: one step about that size. Judging it
+    from the log's length instead failed a clean log that ran long. Bluetooth
+    exchanges in the middle of the log decide how long the host holds it open,
+    and on the bench one such log ran 11.66 s with every record on one grid.
+    So the length is judged against `open_s`, the host's own time from the
+    START_LOGGING ACK to the STOP_LOGGING ACK, and only for a missing end.
+    """
+    out = []
+    period = fc.header.divider
+    probe = midstream.PROBE_S * bt.TICKS_PER_S
+    if fc.max_gap_ticks and abs(fc.max_gap_ticks - probe) < probe / 2:
+        out.append(f"one step of {fc.max_gap_ticks / bt.TICKS_PER_S:.2f} s in the log's stamps, the size of the "
+                   f"{midstream.PROBE_S:+.1f} s clock set: the set stepped the log's stamps")
+    covered_s = (fc.span_ticks + period) / bt.TICKS_PER_S if fc.records else 0.0
+    if covered_s < open_s - MIDLOG_SHORT_S:
+        out.append(f"the records cover {covered_s:.2f} s of a log the host held open {open_s:.2f} s: "
+                   f"the end is missing")
+    return out
 
 
 @pytest.mark.hil("smoke.sd_clock_set_midlog", needs=["shimmer3r", "usb", "bt", "hub_port"])
@@ -556,6 +581,7 @@ def test_sd_clock_set_midlog(unit, power, hil_note):
         with bt.BtLink(port) as link:
             link.set_rwc(midstream.host_ticks())
             link.simple(bt.START_LOGGING)
+            t_open = time.monotonic()
             link.wait_status(bt.STATUS_LOGGING, True, 10)
             time.sleep(MIDLOG_SECONDS)
             link.set_rwc(midstream.host_ticks(midstream.PROBE_S))
@@ -565,6 +591,7 @@ def test_sd_clock_set_midlog(unit, power, hil_note):
                                 f"a set asking for {midstream.PROBE_S:+.1f} s: the set reached the running log")
             time.sleep(MIDLOG_SECONDS)
             link.simple(bt.STOP_LOGGING)
+            open_s = time.monotonic() - t_open
             link.wait_status(bt.STATUS_SENSING, False, 15)
             clock_problems, clock_note = midstream.clock_after_stop(link, midstream.PROBE_S)
             problems += clock_problems
@@ -578,16 +605,12 @@ def test_sd_clock_set_midlog(unit, power, hil_note):
     assert files and files[0].name == "000", f"{new[0]}: no data file 000 ({[f.name for f in files]})"
     fc = sdfile.check(files[0])
     problems += _timing_problems(fc, fc.header.divider)
+    problems += _clock_set_log_problems(fc, open_s)
     covered_s = (fc.span_ticks + fc.header.divider) / bt.TICKS_PER_S
-    if covered_s > 2 * MIDLOG_SECONDS + midstream.PROBE_S / 2:
-        problems.append(f"the records span {covered_s:.2f} s of a {2 * MIDLOG_SECONDS:.0f} s log: "
-                        f"the clock set stepped the log's stamps")
-    elif covered_s < 2 * MIDLOG_SECONDS - LOG_TAIL_S:
-        problems.append(f"the records cover {covered_s:.2f} s of a {2 * MIDLOG_SECONDS:.0f} s log: "
-                        f"the end is missing")
     assert not problems, "; ".join(problems)
-    hil_note(f"{new[0].parent.name}/{new[0].name}: {fc.records} records over {covered_s:.2f} s, on one grid; "
-             f"clock {during:+.3f} s while logging after a {midstream.PROBE_S:+.1f} s set; {clock_note}")
+    hil_note(f"{new[0].parent.name}/{new[0].name}: {fc.records} records over {covered_s:.2f} s, on one grid, "
+             f"open {open_s:.2f} s; clock {during:+.3f} s while logging after a {midstream.PROBE_S:+.1f} s set; "
+             f"{clock_note}")
 
 
 INQUIRY_SECONDS = 60.0
