@@ -237,11 +237,18 @@ A record is one landmark, a u32:
   15-20 and 9-14.
 - **Its time** is the chunk's Shimmer clock plus *t1* × 256 samples of audio
   clock. Over one chunk the two clocks' drift is under a millisecond.
-- **A chunk's clock can be a few ticks late.** It comes from the stamp of the
-  128 ms block its first sample is in, and that block's interrupt waits for the
-  sensors' (§4): on the bench, at 1024 Hz with every sensor on, a median
-  0.7 ticks and at most 4 ticks (0.12 ms) off a line through all the chunks.
-  For alignment finer than that, fit a line through the file's chunk clocks.
+- **A chunk's clock is within one sample of its audio.** It comes from the
+  stamp of the 128 ms block its first sample is in. That block's interrupt can
+  wait for the sensors' (§4), so the stamp takes off the samples GPDMA has
+  already moved into the next block: it is less than one sample (2 ticks) after
+  the block's end, however late the interrupt ran. On the bench, at 512 Hz with
+  every sensor on, chunks were at most 2.1 ticks off a line through them all,
+  and −1.5 to +3.1 ticks off the WAV's clock, whose first and last sample times
+  carry the same error of up to a sample (two 5-minute logs, 146 chunks).
+  - **Up to v1.01.028** the stamp was the interrupt's own clock, so now and then
+    a chunk came out up to 9 ticks (0.27 ms) late, alone among its neighbours
+    (DEV-1588). In those files, fit a line through the chunk clocks and drop
+    the chunks well off it.
 - **Recomputing the hashes on a PC** from the same samples gives the same
   hashes, bit for bit, only with the firmware's single-precision `logf`
   (newlib's). Another maths library moves the odd borderline peak: on the bench,
@@ -300,6 +307,12 @@ and RM0456, not measured against a sound level:
   Nothing is copied at interrupt level.
 - The interrupt is at priority 2 and the ADF's at 7, both below the RTC
   sampling interrupt at 1, so recording never delays a sensor sample.
+- **The stamp is the block's end, not the interrupt's.** Being below the
+  sensors' interrupts, the block interrupt is sometimes taken a fraction of a
+  millisecond late. It reads the clock and the channel's remaining byte count
+  (BNDT) together, with interrupts masked, and takes off the samples GPDMA has
+  already moved into the next block, 2.048 ticks each (DEV-1588). The mask lasts
+  under a microsecond, well inside one tick.
 - On the bench, 70 minutes of 1024 Hz logging with every sensor on lost no
   samples, recording raw audio (mode 3) or raw audio and the fingerprint
   (mode 2). With the fingerprint, 11 sample stamps in 4.3 million were more

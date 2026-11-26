@@ -40,8 +40,12 @@ HEADER_TS_BITS = 40
 # The audio clock runs from the 16 MHz crystal, the Shimmer clock from the
 # 32 kHz one: -23 and +56 ppm apart on two bench units (§3.1).
 MAX_PPM = 300
-# A chunk's measured clock off the line through all of them: at most 4 ticks
-# on the bench at 1024 Hz with every sensor on (§3.2).
+# A chunk's measured clock off the line through all of them, and off the WAV's
+# clock. Each stamp is within one sample (2 ticks) of its block's end (§3.2,
+# §4): on the bench at 512 Hz with every sensor on, at most 2.1 ticks off the
+# line and 3.1 off the WAV, whose own end stamps carry the same error. Up to
+# v1.01.028 a late block interrupt put the odd chunk up to 9 ticks late, which
+# this limit fails (DEV-1588).
 CHUNK_CLOCK_TICKS = 8
 # Where the audio sits against the data file (§1): the first sample 0.36-0.48 s
 # after its initial timestamp, and capture stops when logging does.
