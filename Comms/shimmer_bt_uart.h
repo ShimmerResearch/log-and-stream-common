@@ -407,6 +407,7 @@ void ShimBt_resetBtRxVariablesOnConnect(void);
 void ShimBt_resetBtRxBuffs(void);
 #if defined(SHIMMER3)
 uint8_t ShimBt_dmaConversionDone(void);
+uint8_t ShimBt_rxDropStaleStatusString(void);
 #elif defined(SHIMMER3R)
 uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff);
 #endif
