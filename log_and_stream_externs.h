@@ -149,6 +149,12 @@ extern uint8_t isBtDeviceRn41orRN42(void);
 extern uint8_t isBtDeviceRn41(void);
 extern uint8_t isBtDeviceRn42(void);
 extern uint8_t isBtDeviceRn4678(void);
+/* GET_MPU9150_MAG_SENS_ADJ_VALS: the MPU-9x50 compass's three factory
+ * sensitivity-adjustment bytes, into buf. The I2C bus is off while nothing is
+ * sensing, so the platform starts it (and the timer its transfers time out on)
+ * for the read and stops it again; while sensing, it leaves the bus and an
+ * awake MPU as they are. */
+extern void I2C_readMpu9150MagSensAdj(uint8_t *buf);
 #endif //SHIMMER3
 
 #endif /* SHIMMER_EXTERNS_H_ */
