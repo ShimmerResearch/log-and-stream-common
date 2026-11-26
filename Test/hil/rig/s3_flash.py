@@ -11,7 +11,12 @@ re-writes InfoMem after flashing for the same reason. Here:
   4. write InfoMem back and read it back - identical except for the bit the
      firmware sets on every write (byte 230 bit 0, flagWriteCfgToSd), and the
      fields a newer firmware corrects (FIRMWARE_CORRECTED_BITS), which are
-     logged and returned as corrections.
+     logged and returned as corrections;
+  5. set the real-world clock to the PC's time, as Consensys does when a unit
+     docks. The flash resets the MCU, which clears the clock, so without this
+     every flashed unit would sit on the dock showing "clock not set" and
+     stamp its logs from 1981. A clock that does not take is logged and
+     returned, not raised: the tests still judge the firmware.
 """
 
 from __future__ import annotations
@@ -21,8 +26,10 @@ from pathlib import Path
 
 from . import dock, msp430_bsl
 from .base6 import Base6
+from .s3_config import TICKS_PER_S
 
 SELF_SET_BITS = [(230, 0x01)]
+CLOCK_TOL_S = 2.0   # how far from the PC's time a just-set clock may read
 
 # Fields that ShimConfig_checkAndCorrectConfig() rewrites in firmware newer than
 # v1.01.009, which corrects none of them. Restoring an image saved under older
@@ -106,8 +113,31 @@ def flash_slot(base6: Base6, slot: int, image: Path, backup_dir: Path,
         log(f"slot {slot}: v{after.text} corrected InfoMem "
             + ", ".join(f"byte {i} 0x{a:02x} -> 0x{b:02x}" for i, a, b in corrected))
     log(f"slot {slot}: now v{after.text}, InfoMem restored")
+    # After the InfoMem check, not before: a clock set over the dock clears
+    # rtcSetByBt (byte 217 bit 7), which the restore check would see.
+    clock_offset_s, clock_problem = set_clock(base6)
+    if clock_problem:
+        log(f"slot {slot}: clock NOT set: {clock_problem}")
+    else:
+        log(f"slot {slot}: clock set to the PC's time ({clock_offset_s:+.2f} s)")
     return {**result, "mac": mac, "before": before.text, "after": after.text, "backup": str(backup),
-            "corrected": [{"offset": i, "written": a, "read_back": b} for i, a, b in corrected]}
+            "corrected": [{"offset": i, "written": a, "read_back": b} for i, a, b in corrected],
+            "clock_offset_s": clock_offset_s, "clock_problem": clock_problem}
+
+
+def set_clock(base6: Base6) -> tuple[float | None, str | None]:
+    """Set the selected unit's real-world clock to the PC's time over the dock and
+    read it back. Returns (seconds from the PC's time, None), or (the reading or
+    None, what went wrong)."""
+    try:
+        with dock.open_when_ready(base6.uart_port) as d:
+            d.set_rwc(int(time.time() * TICKS_PER_S))
+            offset_s = d.current_ticks() / TICKS_PER_S - time.time()
+    except (dock.DockError, OSError) as e:   # serial.SerialException is an OSError
+        return None, f"the dock failed: {e}"
+    if abs(offset_s) > CLOCK_TOL_S:
+        return offset_s, f"it reads {offset_s:+.1f} s from the PC's time just after the set"
+    return offset_s, None
 
 
 RESTORE_ATTEMPTS = 3

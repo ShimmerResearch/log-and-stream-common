@@ -2750,17 +2750,18 @@ class S3FleetSeeds(unittest.TestCase):
         self.run_mag_seeds(bytes(range(21)))
 
 
-class S3FlashRestoreCheck(unittest.TestCase):
-    """DEV-1511: flash_slot writes the saved InfoMem back after the flash. Firmware
-    newer than v1.01.009 corrects bytes 232 and 233 (and the two bits that follow
-    byte 232) on that write, which is not a failed restore."""
+class S3FlashFake:
+    """flash_slot against a faked Base6, BSL and dock, for the tests below."""
 
     OLD = bytes([0x11] * 217 + [0x25, 0x01] + [0x22] * 13 + [0xFF, 0xFF] + [0x33] * 150)
 
-    def flash(self, firmware):
+    def flash(self, firmware, clock=lambda ticks: ticks):
         """flash_slot with the Base6, BSL and dock faked. `firmware(written)` is
-        what the new firmware makes of the restore write."""
-        stored = {"im": self.OLD}
+        what the new firmware makes of the restore write; `clock(set_ticks)` is
+        what the unit's clock reads after a set, or raises. The dock calls, in
+        order, are in self.calls."""
+        stored = {"im": self.OLD, "ticks": 0}
+        self.calls = calls = []
 
         class Dock:
             def version(self):
@@ -2770,10 +2771,19 @@ class S3FlashRestoreCheck(unittest.TestCase):
                 return "000666AABBCC"
 
             def read_infomem(self):
+                calls.append("read_infomem")
                 return stored["im"]
 
             def write_infomem(self, im):
+                calls.append("write_infomem")
                 stored["im"] = firmware(bytes(im))
+
+            def set_rwc(self, ticks):
+                calls.append("set_rwc")
+                stored["ticks"] = clock(ticks)
+
+            def current_ticks(self):
+                return stored["ticks"]
 
         @contextmanager
         def open_when_ready(port, **kw):
@@ -2797,12 +2807,18 @@ class S3FlashRestoreCheck(unittest.TestCase):
         b[offset] = value
         return bytes(b)
 
+
+class S3FlashRestoreCheck(S3FlashFake, unittest.TestCase):
+    """DEV-1511: flash_slot writes the saved InfoMem back after the flash. Firmware
+    newer than v1.01.009 corrects bytes 232 and 233 (and the two bits that follow
+    byte 232) on that write, which is not a failed restore."""
+
     def test_the_audio_mode_correction_is_reported_not_raised(self):
         # 67A0, 18 Nov 2026: v1.01.009 -> main, byte 233 0xFF read back as 0x00
         res, lines = self.flash(lambda im: self.setting(im, 233, 0x00))
         self.assertEqual(res["corrected"], [{"offset": 233, "written": 0xFF, "read_back": 0x00}])
         self.assertIn("corrected InfoMem byte 233 0xff -> 0x00", "\n".join(lines))
-        self.assertIn("InfoMem restored", lines[-1])
+        self.assertIn("InfoMem restored", lines[-2])
 
     def test_the_button_mode_and_the_bits_that_follow_it(self):
         def firmware(im):
@@ -2832,6 +2848,42 @@ class S3FlashRestoreCheck(unittest.TestCase):
     def test_a_correction_beside_a_real_difference_still_fails(self):
         with self.assertRaisesRegex(s3_flash.S3FlashError, r"differs at offsets \[5\]"):
             self.flash(lambda im: self.setting(self.setting(im, 233, 0x00), 5, 0x00))
+
+
+class S3FlashSetsTheClock(S3FlashFake, unittest.TestCase):
+    """The flash resets the MCU, which clears a Shimmer3's real-world clock, and
+    nothing else on the bench sets it again. flash_slot sets it to the PC's time
+    once InfoMem is back."""
+
+    def test_the_clock_is_set_to_the_pc_s_time_after_the_infomem_check(self):
+        t0 = time.time()
+        res, lines = self.flash(lambda im: im)
+        # A dock clock set clears rtcSetByBt (byte 217 bit 7), so it must come
+        # after the read-back the restore check judges.
+        self.assertEqual(self.calls, ["read_infomem", "write_infomem", "read_infomem", "set_rwc"])
+        self.assertIsNone(res["clock_problem"])
+        self.assertLess(abs(res["clock_offset_s"]), 1.0)
+        self.assertGreaterEqual(res["clock_offset_s"] + time.time(), t0 - 1.0)
+        self.assertIn("clock set to the PC's time", lines[-1])
+
+    def test_a_clock_that_does_not_take_is_logged_not_raised(self):
+        res, lines = self.flash(lambda im: im, clock=lambda ticks: 0)
+        self.assertIn("from the PC's time just after the set", res["clock_problem"])
+        self.assertIn("clock NOT set", lines[-1])
+        self.assertIn("InfoMem restored", lines[-2])
+
+    def test_a_dock_that_fails_the_set_is_logged_not_raised(self):
+        def clock(ticks):
+            raise s3_flash.dock.DockError("no reply")
+        res, lines = self.flash(lambda im: im, clock=clock)
+        self.assertIsNone(res["clock_offset_s"])
+        self.assertIn("the dock failed: no reply", res["clock_problem"])
+        self.assertIn("clock NOT set", lines[-1])
+
+    def test_a_failed_restore_sets_no_clock(self):
+        with self.assertRaises(s3_flash.S3FlashError):
+            self.flash(lambda im: self.setting(im, 0, 0x00))
+        self.assertNotIn("set_rwc", self.calls)
 
 
 class S3RestorePartOfInfoMem(unittest.TestCase):
