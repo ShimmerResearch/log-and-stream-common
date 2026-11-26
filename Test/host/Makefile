@@ -65,7 +65,8 @@ INCLUDES := -I . \
 STANDALONE_SUITES := test_swcrc test_packet_ring test_util test_sd_pressure_id \
                      test_leds_phase test_sd_card_id test_autostop test_cat24c16 \
                      test_event_record test_button_gesture test_button_log_mode \
-                     test_audio_mode test_audio_file test_audio_level
+                     test_audio_mode test_audio_file test_audio_level \
+                     test_bt_stale_str
 
 # Suites built once per SD write-buffer count. That count is a compile-time
 # constant because the buffers are a fixed array, so covering more than one
@@ -102,6 +103,7 @@ SRC_test_cat24c16    := test_cat24c16.c $(REPO)/EEPROM/cat24c16.c
 SRC_test_sd_write_buf := test_sd_write_buf.c \
                         $(REPO)/SDCard/shimmer_sd_write_buf.c
 SRC_test_leds_phase  := test_leds_phase.c $(REPO)/LEDs/shimmer_leds_phase.c
+SRC_test_bt_stale_str := test_bt_stale_str.c
 SRC_test_event_record := test_event_record.c $(REPO)/Events/shimmer_event_record.c \
                         $(REPO)/CRC/shimmer_swCrc.c
 SRC_test_button_gesture := test_button_gesture.c \
@@ -167,6 +169,7 @@ SRC_test_platform_seam := $(REPO)/Platform/platform_api.c \
 INC_test_swcrc       := -I $(REPO)/CRC
 INC_test_packet_ring := -I $(REPO)
 INC_test_util        := -I . -I $(REPO)
+INC_test_bt_stale_str := -I . -I $(REPO)
 INC_test_sd_write_buf := -I . -I $(REPO)
 INC_test_sd_pressure_id := -I . -I $(REPO)
 INC_test_sd_card_id  := -I . -I $(REPO)

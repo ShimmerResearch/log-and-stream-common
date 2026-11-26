@@ -360,12 +360,40 @@ following bytes to `RN4678_parseStatusString` rather than to the command parser.
 no legitimate host command collides with it. It does, however, mean that on a
 Shimmer3 with status strings enabled, a host that transmits arbitrary bytes while
 trying to resynchronise can put the parser into status-string mode and stall it
-until the expected number of bytes arrives. There is no receive timeout to wait
-out (see [§2.3](#23-framing-guarantees-per-transport), point 4): the parser
-leaves status-string mode only when it has the bytes the matched prefix asks
-for, or drops the string when it would grow past the longest one the module
-sends (`BT_STAT_STR_LEN_LARGEST`). Reconnecting resets it
-([§8.1](#81-what-a-connect-and-a-disconnect-reset)).
+until the expected number of bytes arrives. Up to v1.01.011 there is no receive
+timeout to wait out (see [§2.3](#23-framing-guarantees-per-transport), point 4):
+the parser leaves status-string mode only when it has the bytes the matched
+prefix asks for, or drops the string when it would grow past the longest one the
+module sends (`BT_STAT_STR_LEN_LARGEST`). Reconnecting does not reset it on an
+RN4678 classic link, whose connect is announced only by a status string on this
+same path ([§8.1](#81-what-a-connect-and-a-disconnect-reset)). Later firmware
+drops a status string that gains no byte for about 0.2 s, so a host that pauses
+that long is read from a clean state again.
+
+**A lost byte can leave the parser out of step with the module (Shimmer3).**
+A status string that loses a byte (to a UART overrun while the device is busy
+logging, for one) is not recognised. The parser asks for bytes that belong to
+the next string, so a string's closing `%` can be read in command position,
+where it opens a status string the module never sent. That string takes the
+start of the module's next real one. The real one's remaining letters are parsed
+as commands, and its own closing `%` opens the next phantom. Each connection's
+strings end the same way, so the module's `%RFCOMM_OPEN%` is never recognised
+again and the host's bytes go into the phantom strings. The device stays silent
+across reconnects and docking until it is reset: firmware up to v1.01.011 has no
+way out of this. On the bench, a single byte lost from `%RFCOMM_CLOSE%` was
+enough.
+
+Later firmware recovers in two ways:
+- **Re-sync.** No status string has a `%` among its first seven characters
+  except the one it opens with. So a `%` found there marks where the string
+  really starts, and `RN4678_parseStatusString` restarts the string at it.
+- **Stale strings are dropped.** A string the module has stopped sending is
+  dropped within about 0.2 s ([§2.3](#23-framing-guarantees-per-transport),
+  point 4).
+
+A string damaged in this way still costs the connection it was announcing. If
+`%RFCOMM_OPEN%` itself loses a byte, that connection is not seen and its replies
+are not sent, but the next connection is.
 
 **Status strings during a configuration write (Shimmer3).** The module sends a
 status string whenever its link changes, not only in reply to the host. The
@@ -575,6 +603,15 @@ implementation's error handling.
    until a response arrives - up to 131 bytes, the longest command's arguments
    (`SET_INFOMEM_COMMAND` with a 128-byte payload) - knowing that the stuck
    command then runs with those bytes as its arguments.
+
+   One exception on Shimmer3, after v1.01.011: a module status string left
+   open is dropped. Ten times a second the blink timer looks for a status
+   string that has gained no byte since the last look. The module sends each
+   string back to back, so it never leaves one like that
+   (`ShimBt_rxDropStaleStatusString`, `Comms/shimmer_bt_stale_str.h`). The
+   module is held off with CTS for a final look, then the receive is re-armed
+   for one byte. A host's command arguments are never dropped this way, since
+   they come over the air and can pause.
 5. **`DUMMY_COMMAND` (0xB5) is the only completely inert byte.** It is consumed
    with no response and no side effect ([§7.12](#712-control-and-test)), which
    makes it the safe choice for padding. It is not a resynchronisation marker —

@@ -181,6 +181,14 @@ def _new_session(root: Path, before: set) -> Path:
     return files[0]
 
 
+def _wav_header_dir(request) -> Path:
+    """Where a failed row keeps its WAV headers: wav-headers/ beside the report,
+    or under Test/hil/out/ for a run that writes none (an experiment)."""
+    report = request.config.getoption("--hil-report")
+    base = Path(report).resolve().parent if report else MATRIX.parents[1] / "out"
+    return base / "wav-headers"
+
+
 def _check_log(path: Path, cfg: S3rConfig, inq, seconds, unit, aside):
     """Calibration comes from the file's own header, as an SD parser would take it."""
     fc = sdfile.check(path, keep=True)
@@ -240,16 +248,18 @@ class _Aside:
     hide whatever else a row finds: sample loss in the first second of an SD
     log, and a stream stop that goes unACKed or leaves the link silent. Each
     row records them here as release.sd_log_start and release.stop_ack, which
-    the report aggregates worst-first like any item.
+    the report aggregates worst-first like any item. Each note names the unit
+    and the row, as test_s3_release._Aside's do: an item's notes from several
+    units are joined into one, so a note without its unit can't be traced.
     """
 
-    def __init__(self, request, row_id):
+    def __init__(self, request, row_id, unit_name):
         self.col = request.config._hil_collector
-        self.row = row_id
+        self.who = f"{unit_name}: {row_id}"
 
     def log_start(self, lost: int):
         self.col.record("release.sd_log_start", "fail" if lost else "pass",
-                        f"{self.row}: {lost} samples lost in the first {LOG_START_S:.0f} s" if lost else None)
+                        f"{self.who}: {lost} samples lost in the first {LOG_START_S:.0f} s" if lost else None)
 
     def stop(self, st, hung: bool):
         bad = []
@@ -258,13 +268,13 @@ class _Aside:
         if hung:
             bad.append("link silent afterwards, reconnected")
         self.col.record("release.stop_ack", "fail" if bad else "pass",
-                        f"{self.row}: {', '.join(bad)} ({st.after_stop} packets after the stop)" if bad else None)
+                        f"{self.who}: {', '.join(bad)} ({st.after_stop} packets after the stop)" if bad else None)
 
 
 @pytest.mark.parametrize("row", ROWS, ids=[r["id"] for r in ROWS])
 @pytest.mark.hil("release.{row}", needs=["shimmer3r", "usb", "bt"])
 def test_row(row, unit, rig, power, original_config, request, hil_note):
-    aside = _Aside(request, row["id"])
+    aside = _Aside(request, row["id"], unit.name)
     if row["mode"] != "stream" and "hub_port" not in rig.capabilities(unit):
         pytest.skip("logging rows need the unit's USB on a switchable hub port")
 
@@ -347,6 +357,7 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
             power.on(unit.hub_port, unit.name)
         root = s3r_usb.wait_drive(unit.usb_serial, 90)
         path = _new_session(root, before)
+        checked = False
         try:
             fc, lp, note = _check_log(path, cfg, inq, row["seconds"], unit, aside)
             probs += [f"log: {p}" for p in lp]
@@ -361,10 +372,17 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
             ep, enote = _check_events(path, root, cfg, fc)
             probs += [f"events: {p}" for p in ep]
             notes.append(enote)
+            checked = not probs
         finally:
-            removed = s3r_audio.remove_raw(path)
+            # A failed row keeps each WAV's header (clocks and counts, no sound),
+            # so its timing can be looked at again after the WAV is deleted
+            keep = None if checked else _wav_header_dir(request)
+            removed = s3r_audio.remove_raw(path, keep, f"{unit.name}_{row['id']}_")
         if removed:
-            notes.append(f"deleted from the card: {', '.join(removed)}")
+            notes.append(f"deleted from the card: {', '.join(removed)}"
+                         + (f"; headers kept in {keep}" if keep else ""))
+            if keep:
+                print(f"{unit.name} {row['id']}: WAV headers kept in {keep}")
         if st is not None:
             # Same opening window as the log: start-of-log loss belongs to
             # release.sd_log_start, not to every row that also streams.

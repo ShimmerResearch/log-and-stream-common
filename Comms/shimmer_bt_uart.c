@@ -20,6 +20,7 @@
 #include "5xx_HAL/hal_RTC.h"
 #include "RN4X/RN4678.h"
 #include "RN4X/RN4X.h"
+#include "shimmer_bt_stale_str.h"
 
 #elif defined(SHIMMER3R) || defined(SHIMMER4_SDK)
 #include "BMP3/BMP3_SensorAPI/bmp3_defs.h"
@@ -263,6 +264,53 @@ void ShimBt_resetBtRxVariablesOnConnect(void)
   }
 #endif
 }
+
+#if defined(SHIMMER3)
+/* Drop a status string the module has stopped sending. One left open (see
+ * shimmer_bt_stale_str.h) takes the start of the module's next status string,
+ * the connect's "%RFCOMM_OPEN%" for one, or the host's next command. The rest
+ * of that string is then parsed as commands, and its closing '%' opens the
+ * next such string, so the parser can stay out of step with the module, and
+ * the device silent, across every later connection until it is reset. The
+ * receive DMA stays armed throughout, waiting for bytes that are not coming.
+ *
+ * Called from the 10 Hz blink timer interrupt. The module is held off with CTS
+ * for the last look, so no byte lands while the string is dropped; one already
+ * in flight is left in UCA1RXBUF and taken as the first byte of the re-armed
+ * receive. Only status strings are dropped: a host's command arguments come
+ * over the air and can pause. Returns 1 if it dropped one. */
+uint8_t ShimBt_rxDropStaleStatusString(void)
+{
+  static ShimBtStaleStr_t watch;
+  uint16_t dmaCtl = DMA2CTL;
+  uint16_t remaining = DMA2SZ;
+  uint8_t isOpen = (gAction == RN4678_STATUS_STRING_SEPARATOR) && waitingForArgs
+      && (dmaCtl & DMAEN) && !(dmaCtl & DMAIFG) && !areBtSetupCommandsRunning();
+  uint8_t wasClearToSend;
+
+  if (!ShimBt_staleStatusStrTick(&watch, isOpen, remaining, RN4678_getStatusStrIndex()))
+  {
+    return 0;
+  }
+
+  wasClearToSend = BT_rxPause();
+  if (DMA2SZ != remaining || (DMA2CTL & (DMAIFG | DMAEN)) != DMAEN)
+  {
+    /* A byte arrived after all: the string is live */
+    BT_rxResume(wasClearToSend);
+    return 0;
+  }
+
+  DMA2_disable();
+  gAction = ACK_COMMAND_PROCESSED - 1U;
+  waitingForArgs = 0;
+  waitingForArgsLength = 0;
+  RN4678_dropStatusString();
+  DMA2_repeatTransfer((uint16_t *) &UCA1RXBUF, (uint16_t *) btRxBuff, 1U);
+  setDmaWaitingForResponse(1U);
+  return 1;
+}
+#endif
 
 void ShimBt_resetBtRxBuffs(void)
 {

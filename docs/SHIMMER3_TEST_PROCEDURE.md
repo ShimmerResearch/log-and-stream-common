@@ -1465,6 +1465,9 @@ the button on, no auto-stop, and bytes 232 and 233 at 0.
 - **A read-back that differs stops the run.** The calibration the firmware
   recomputes for the configured ranges, and `flagWriteCfgToSd`, are allowed
   to differ.
+- **A unit the run cannot reach fails its own items only.** That means its dock
+  doesn't answer, or its port or drive is gone or never came. The other units
+  run, and the reason heads each of the unit's items in the report.
 - **The unit is reset only if its own configuration had SD sync or
   `bluetoothDisable` set**, the one setting the firmware reads at boot.
 - **The unit's own InfoMem goes back at the end of the run.**
@@ -1532,7 +1535,7 @@ The **smoke** tier, Shimmer3R over USB-C:
 | `smoke.sd_log` | Undock, log 15 s by Bluetooth command, re-dock; the new session's header matches the inquiry, and the records have no lost samples |
 | `smoke.sd_start_midstream` | Undocked, six 2 s SD logs started and stopped inside one 256 Hz stream, link CRC on, each started with `START_LOGGING` alone, as hosts start a log on a live stream. The clock is set before the stream, never during it: no host software sends `SET_RWC` mid-stream. The stream's stamps must never step back or sideways: no stamp at or behind the one before, no move of the sampling grid, no lost or duplicate samples, jitter within a quarter period. Each problem is reported with the cycle it followed. A status query must show logging, and the card must hold one new session per cycle. The same session with `SET_RWC` before every other start is `smoke.sd_clock_set_midstream` |
 | `smoke.sd_clock_set_midstream` | `smoke.sd_start_midstream` with `SET_RWC` before every other start, as the reference host once did before every log start; the plain cycles stay in as the control. The last of those asks for the host's time plus 3 s. The stream's stamps must never step back or sideways: no stamp at or behind the one before, no move of the sampling grid, no lost or duplicate samples, jitter within a quarter period. Each problem is reported with the cycle it followed, and with how many clock-set and plain starts disturbed the stream. Once the stream has stopped, the clock must read the host's time plus 3 s within 0.25 s: a set made while sensing takes effect at the stop (DEV-1539). The clock is then set to the host's time and must read it. A status query must show logging, and the card must hold one new session per cycle |
-| `smoke.sd_clock_set_midlog` | Undocked, the clock set to the host's time, then a 10 s SD log by Bluetooth command with a `SET_RWC` 5 s in, asking for the host's time plus 3 s: a host connecting to a unit that is already logging, and setting its clock. While the log runs, `GET_RWC` must still read the host's time within 0.25 s; after the stop, the host's time plus 3 s; then the clock is put back. Re-docked, the new session's records must sit on one grid, with no lost or duplicate samples, jitter within a quarter period, and span the log's 10 s, not 13 (DEV-1539) |
+| `smoke.sd_clock_set_midlog` | Undocked, the clock set to the host's time, then a 10 s SD log by Bluetooth command with a `SET_RWC` 5 s in, asking for the host's time plus 3 s: a host connecting to a unit that is already logging, and setting its clock. While the log runs, `GET_RWC` must still read the host's time within 0.25 s; after the stop, the host's time plus 3 s; then the clock is put back. Re-docked, the new session's records must sit on one grid, with no lost or duplicate samples, jitter within a quarter period, and no step the size of the 3 s set (DEV-1539). They must also cover the time the host held the log open, from the `START_LOGGING` ACK to the `STOP_LOGGING` ACK, to within 0.75 s. That time, not the nominal 10 s, is the reference, because the Bluetooth exchanges mid-log decide how long it runs |
 | `smoke.sd_inquiry_midlog` | §5.6.7, the DEV-1363 regression case (§7), and the one smoke item on the required list. 1024 Hz with every sensor the board has fitted; undocked, `START_LOGGING`, then `INQUIRY` every 0.25 s for 60 s, then stop and re-dock. The new session must have no lost or duplicate samples, jitter within a quarter period, and its whole 60 s; every inquiry must report the layout the log started with. A gap of `TIMEOUT_100_MS / divider + 2` samples (104 at 1024 Hz, a 3,360-tick step) is named as the packet ring's fail-safe. The note says how many inquiries went out. A clean log after fewer than 120 is `not_covered`: v1.01.024 lost samples on about one inquiry in 17, so fewer could miss it by luck. InfoMem is saved to disk and put back |
 | `smoke.bt_throughput` | §5.5 against this unit's baseline (below): the data-rate test's bytes per second, with no counter gaps and its stop obeyed and ACKed; then samples delivered per second of a 1024 Hz stream with LN accel, gyro, mag, WR accel and VBatt. Lost samples are the figure, not a defect, but every byte must frame, no stamp may repeat or step back, and none may be more than a quarter period off its slot. First, the IF820 must report the version that the unit's `radio` in `rig.toml` names, and the test build too when `radio` names one, because `radio` picks the baseline. A test build reported but not named, or named but not reported, goes into the note (`Test/hil/README.md`, Throughput baselines) |
 | `smoke.ble_throughput` | As `smoke.bt_throughput`, over BLE (the IF820's CYSPP service, data as notifications), against this unit's BLE baseline. `not_covered` when the unit's EEPROM has BLE off (`bleEnabled`, EEPROM memory map §4.2) |
@@ -1704,8 +1707,12 @@ logs. Each row is its own item, `release.<row>`:
   A row with audio off must leave no `audio/` directory for its session.
   Nothing recomputes the fingerprint; the bench recorder's tools do that. A WAV
   records the bench room, so the test reads it where it lies on the card and
-  then deletes it. A row that fails before the card is read leaves its WAV
-  there.
+  then deletes it. A row that fails first copies each WAV's 512-byte header to
+  `wav-headers/` beside the report (under `Test/hil/out/` for a run with no
+  report), as `<unit>_<row>_000.WAV.hdr`. The header holds the file's clocks and
+  counts and none of its sound, so the chunk clocks can be checked against the
+  WAV's clock again later. The .AFP and data file stay on the card. A row that
+  fails before the card is read leaves its WAV there.
 - **The sound level** ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8). Every row
   writes configuration byte 233 bit 4: the row's `sound_level`, or 0. Four
   `level_*` rows turn it on:
@@ -1729,7 +1736,9 @@ logs. Each row is its own item, `release.<row>`:
 Two observations are kept as their own items so they do not fail every row
 they touch: `release.sd_log_start` (samples lost in the first second of a log)
 and `release.stop_ack` (a stream stop that goes unACKed, or leaves the link
-silent until a reconnect).
+silent until a reconnect). Each of their notes starts with the unit and the
+row, for example `s3r-7a62: audio_fp_1024hz_both: 79 samples lost in the first
+1 s`, because one item gathers them from every unit.
 
 On **Shimmer3** the matrix is `Test/hil/matrix/s3_release.toml`, 13 rows run on
 each Base6 unit, one per shipped radio. `run_rc.py --tier release` picks it for
