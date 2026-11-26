@@ -23,7 +23,8 @@ two generations' very different LED hardware.
 >   well as the dock, and `Test/host/test_leds.c` pins it.
 > - **Platform firmware:** `shimmer3-firmware` @ `7d86034` — `main.c` (boot
 >   stages, the Bluetooth baud ladder, the blink timer,
->   `triggerShimmerErrorState`), `hal_FactoryTest.c`, `hal_CAT24C16.c`.
+>   `triggerShimmerErrorState`), `hal_FactoryTest.c`, `hal_CAT24C16.c`. The
+>   CTS wake and second `$$$` in the baud ladder postdate `7d86034`.
 >   `shimmer3r-firmware` @ `24a609a3` — `Core/Src/main.c` (boot stages, the
 >   Bluetooth retries, `JumpToBootloaderIfRequired`), `Core/Src/tim.c`
 >   (`platform_ledTickShift`, `ledBlinkTimerCallback`), `Core/Src/spi.c`,
@@ -484,8 +485,12 @@ The two generations draw the sensor-bus pattern differently:
 > baud rate,** and the sweep runs throughout. The two generations then part
 > ways:
 >
-> - **Shimmer3** retries for about 66 s: twelve baud rates, 5 s each, with a
->   0.5 s restart between (`InitialiseBt`, `main.c`). It then sets
+> - **Shimmer3** retries for about 84 s: twelve baud rates, 5 s each, with a
+>   0.5 s restart between (`InitialiseBt`, `main.c`). Within each attempt,
+>   once `$$$` has gone 1.5 s without a reply, the firmware wakes the radio by
+>   raising CTS and sends `$$$` again, and adds those 1.5 s back to the
+>   attempt. A radio that never answers therefore takes 6.5 s per attempt.
+>   After the last attempt the firmware sets
 >   `BOOT_STAGE_BLUETOOTH_FAILURE` and halts in low-power mode. The blink timer
 >   keeps running, so the yellow flash continues until the unit is reset.
 > - **Shimmer3R** retries for about 27 s: five attempts of 5 s at four baud
@@ -605,7 +610,7 @@ switched-off device shows nothing at all, charging or not (§1).
 | Lower green, yellow, red, yellow, green …, 0.5 s per step; upper off | Booting normally. The sweep repeats until boot completes |
 | Lower red fast (S3); lower yellow and red alternating, no off phase (S3R) | Sensor-bus stage taking over 1 s. On Shimmer3R it includes the SD card hand-over |
 | Lower green fast; upper off | Configuration stage taking over 2 s, usually the SD card |
-| Lower yellow fast (S3) | The radio did not respond after about 66 s of retries. Halted until reset |
+| Lower yellow fast (S3) | The radio did not respond after about 84 s of retries. Halted until reset |
 | Lower purple, 0.2 s on and 0.2 s off, half brightness; upper off (S3R) | Button held at power-up. At 3 s the unit enters its bootloader |
 
 **Both LEDs**
