@@ -2374,6 +2374,19 @@ MPU before reading them.
 
 > `Comms/shimmer_bt_uart.c:2125-2151`.
 
+✅ **Fixed: an idle unit now answers this command.**
+- **The defect:** the read runs over I2C, which is powered off while nothing is
+  sensing. On earlier firmware an idle unit sent nothing back, not even the ACK,
+  and stopped answering Bluetooth and the dock until it was reset.
+- **The fix:**
+  - The platform (`I2C_readMpu9150MagSensAdj()`, declared in
+    `log_and_stream_externs.h`) now starts the bus and its timeout timer for
+    the read, then stops them again.
+  - While sensing, it leaves the bus running. An MPU that was awake for the
+    gyro or alt accel stays awake, and one that was asleep goes back to sleep.
+- **One cost while sensing:** the read takes the compass through power-down
+  and fuse-ROM mode, so one alt mag sample can be stale.
+
 ✅ **Fixed in the command-handler fixes: on a board without an MPU-9x50 this
 command now NACKs.** The rest of this note describes the earlier behaviour,
 which fielded units may still have and which an unframed host must still guard
@@ -3661,7 +3674,7 @@ re-establish them every time the link comes up.
 
 | Reset on connect | Reset on disconnect | Detail |
 |---|---|---|
-| Receive parser | Receive parser (Shimmer3) | `gAction` set to an unsupported value, `waitingForArgs` cleared (`ShimBt_resetBtRxVariablesOnConnect`, `Comms/shimmer_bt_uart.c:203-209`). On Shimmer3 the receive DMA is also re-armed for one byte, if it was armed, so a command the old link left half-received does not take the new link's first bytes as its arguments; firmware up to v1.01.006 left it counting. Shimmer3 also does this on a disconnect, because on a classic link with status strings the connect is announced only by a status string, which a DMA still counting would swallow. A status string the module is part-way through is left to finish, since the module sends it without a break |
+| Receive parser | Receive parser (Shimmer3) | `gAction` set to an unsupported value, `waitingForArgs` cleared (`ShimBt_resetBtRxVariablesOnConnect`, `Comms/shimmer_bt_uart.c:203-209`). On Shimmer3 the receive DMA is also re-armed for one byte, if it was armed, so a command the old link left half-received does not take the new link's first bytes as its arguments; firmware up to v1.01.006 left it counting. Shimmer3 also does this on a disconnect, because on a classic link with status strings the connect is announced only by a status string, which a DMA still counting would swallow. A status string the module is part-way through is left to finish, since the module sends it without a break. A byte that completes the armed transfer while the DMA is being stopped is still serviced: firmware up to v1.01.011 masked its interrupt there and left the receive off for good, which on an RN4678 classic link made the device silent to every later connection until reset |
 | — | CRC mode | Forced to `CRC_OFF` (`:2618`) |
 | — | ACK prefix for pushes | Back to on (`ShimBt_resetBtResponseVars`, `:2620`) |
 | — | Streaming | Stopped unconditionally (`:2609`) |
