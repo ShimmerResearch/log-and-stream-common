@@ -753,7 +753,8 @@ decides what a slow open costs:
   (DEV-1098), so a slow open delays the first sample and loses none. The initial
   timestamp then comes before the first record, by at least the 65 ms
   `TICKS_TO_SKIP` window: the first record is the first sample taken that long
-  after the first tick.
+  after the first tick. On a Shimmer3R it came 154 ms before at 1024 Hz and
+  185 ms before at 51.2 Hz.
 - **A log added to a sensing session that is already running**, such as a
   stream, opens its file with the timer running, as every log did before
   DEV-1098. The samples taken meanwhile wait in the ring and are written first,

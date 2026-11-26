@@ -107,8 +107,9 @@ SPAN_SLACK_S = 2.0              # the final record against the data file's last 
 DATA_LEAD_MAX_S = 30.0
 # Since DEV-1098 a log that starts sensing opens its file first, so the first
 # sample comes after the open. The gap is the time to start the sensors and
-# the timer, then the 65 ms TICKS_TO_SKIP window and up to one sample period
-# (~0.1 s at 51.2 Hz, the matrices' lowest rate). Before DEV-1098 the same
+# the timer, then the 65 ms TICKS_TO_SKIP window and up to one sample period.
+# On a Shimmer3R (undock start, 26 Nov 2026) it measured 154 ms at 1024 Hz and
+# 185 ms at 51.2 Hz, the matrices' lowest rate. Before DEV-1098 the same
 # happened in a trial folder of few sessions, whose folder is made at once: up
 # to 50 ms after at 51.2 Hz on the bench (18-63 sessions; 0.46-0.59 s the other
 # way in a folder of about 600). The lead is then negative, and may be by this
