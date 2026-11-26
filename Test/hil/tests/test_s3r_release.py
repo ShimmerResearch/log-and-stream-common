@@ -248,16 +248,18 @@ class _Aside:
     hide whatever else a row finds: sample loss in the first second of an SD
     log, and a stream stop that goes unACKed or leaves the link silent. Each
     row records them here as release.sd_log_start and release.stop_ack, which
-    the report aggregates worst-first like any item.
+    the report aggregates worst-first like any item. Each note names the unit
+    and the row, as test_s3_release._Aside's do: an item's notes from several
+    units are joined into one, so a note without its unit can't be traced.
     """
 
-    def __init__(self, request, row_id):
+    def __init__(self, request, row_id, unit_name):
         self.col = request.config._hil_collector
-        self.row = row_id
+        self.who = f"{unit_name}: {row_id}"
 
     def log_start(self, lost: int):
         self.col.record("release.sd_log_start", "fail" if lost else "pass",
-                        f"{self.row}: {lost} samples lost in the first {LOG_START_S:.0f} s" if lost else None)
+                        f"{self.who}: {lost} samples lost in the first {LOG_START_S:.0f} s" if lost else None)
 
     def stop(self, st, hung: bool):
         bad = []
@@ -266,13 +268,13 @@ class _Aside:
         if hung:
             bad.append("link silent afterwards, reconnected")
         self.col.record("release.stop_ack", "fail" if bad else "pass",
-                        f"{self.row}: {', '.join(bad)} ({st.after_stop} packets after the stop)" if bad else None)
+                        f"{self.who}: {', '.join(bad)} ({st.after_stop} packets after the stop)" if bad else None)
 
 
 @pytest.mark.parametrize("row", ROWS, ids=[r["id"] for r in ROWS])
 @pytest.mark.hil("release.{row}", needs=["shimmer3r", "usb", "bt"])
 def test_row(row, unit, rig, power, original_config, request, hil_note):
-    aside = _Aside(request, row["id"])
+    aside = _Aside(request, row["id"], unit.name)
     if row["mode"] != "stream" and "hub_port" not in rig.capabilities(unit):
         pytest.skip("logging rows need the unit's USB on a switchable hub port")
 

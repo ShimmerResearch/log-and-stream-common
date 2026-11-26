@@ -3060,6 +3060,54 @@ class Base6Refusals(unittest.TestCase):
         self.assertEqual(b.occupied(), [1, 2, 3, 4])
 
 
+# --- the Shimmer3R release matrix's aside items -------------------------------------------
+
+def _s3r_release_module():
+    """tests/test_s3r_release.py, which imports pytest; None without it."""
+    import importlib.util
+    if "_s3r_release" in sys.modules:
+        return sys.modules["_s3r_release"]
+    if importlib.util.find_spec("pytest") is None or _toml is None:
+        return None
+    spec = importlib.util.spec_from_file_location("_s3r_release", HERE / "tests" / "test_s3r_release.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("HIL_MATRIX", None)
+        spec.loader.exec_module(mod)
+    return mod
+
+
+@unittest.skipIf(_s3r_release_module() is None, "needs pytest and a TOML reader")
+class S3rReleaseAsideNamesTheUnit(unittest.TestCase):
+    """release.sd_log_start and release.stop_ack collect notes from every unit
+    into one item, so each note says which unit and row it came from."""
+
+    def aside(self):
+        recorded = []
+        col = types.SimpleNamespace(record=lambda *a: recorded.append(a))
+        request = types.SimpleNamespace(config=types.SimpleNamespace(_hil_collector=col))
+        return _s3r_release_module()._Aside(request, "audio_fp_1024hz_both", "s3r-7a62"), recorded
+
+    def test_a_start_of_log_loss_names_the_unit_and_the_row(self):
+        aside, recorded = self.aside()
+        aside.log_start(79)
+        self.assertEqual(recorded, [("release.sd_log_start", "fail",
+                                     "s3r-7a62: audio_fp_1024hz_both: 79 samples lost in the first 1 s")])
+
+    def test_an_unacked_stop_names_the_unit_and_the_row(self):
+        aside, recorded = self.aside()
+        aside.stop(types.SimpleNamespace(stop_ack=False, after_stop=0), hung=True)
+        self.assertEqual(recorded[0][2], "s3r-7a62: audio_fp_1024hz_both: no ACK, link silent afterwards, "
+                                         "reconnected (0 packets after the stop)")
+
+    def test_a_clean_row_adds_no_note(self):
+        aside, recorded = self.aside()
+        aside.log_start(0)
+        aside.stop(types.SimpleNamespace(stop_ack=True, after_stop=0), hung=False)
+        self.assertEqual(recorded, [("release.sd_log_start", "pass", None), ("release.stop_ack", "pass", None)])
+
+
 # --- the session setup: one unit out of reach -----------------------------------------------
 
 def _have_pytest() -> bool:
