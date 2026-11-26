@@ -178,6 +178,43 @@ uint8_t ShimSens_shouldStopStreaming(void)
       || (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_STOP));
 }
 
+/* Starts an SD log: its auto-stop, the logging flags, its data file and, when
+ * enabled, SD sync. */
+static void ShimSens_startSdLog(void)
+{
+  /* Auto-stop first: the blink-timer interrupt checks it as soon as sdLogging
+   * is set, so it must not find it half set up */
+  ShimSens_maxExperimentLengthSecsSet(ShimConfig_experimentLengthMaxInMinutesGet());
+  ShimSens_currentExperimentLengthReset();
+
+  shimmerStatus.sdLogging = 1;
+  sensing.isFileCreated = 0;
+  sensing.newSdFileTsFlag = NEW_SD_FILE_TS_PENDING_UPDATE;
+  shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
+
+  gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
+
+#if TEST_LOG_WITH_USB && defined(SHIMMER3R)
+  /* A log started while a stream is already running skips the hand-over
+   * in ShimSens_startSensing(), which only runs when a sensing session begins.
+   * Take the card from USB here too, so fileInit() never works on FatFs's
+   * pre-USB view. */
+  if (shimmerStatus.usbPluggedIn && (shimmerStatus.sdOwner != SD_OWNER_MCU))
+  {
+    USB_deinit();
+    Board_sd2Mcu();
+  }
+#endif
+
+  ShimSdDataFile_fileInit();
+
+  if (shimmerStatus.sdSyncEnabled)
+  {
+    ShimSdSync_start(configBytesPtr->masterEnable,
+        ShimConfig_experimentLengthEstimatedInSecGet());
+  }
+}
+
 void ShimSens_startSensing(void)
 {
   shimmerStatus.configuring = 1;
@@ -186,6 +223,7 @@ void ShimSens_startSensing(void)
       && ShimSens_checkStartLoggingConditions();
   uint8_t streamPendingStart = (shimmerStatus.btstreamCmd == BT_STREAM_CMD_STATE_START)
       && ShimSens_checkStartStreamingConditions();
+  uint8_t sdLogStarted = 0;
 
   if ((sdLogPendingStart || streamPendingStart) && !shimmerStatus.sensing)
   {
@@ -261,6 +299,21 @@ void ShimSens_startSensing(void)
 #endif
     }
 #endif
+
+    /* Open the log's file before sampling starts (DEV-1098). Nothing drains
+     * the packet ring while the file opens, and opening can take seconds:
+     * numbering the session reads every session folder in the trial, and
+     * making its folder reads the FAT upward from FatFs's free-cluster hint,
+     * which a host's write over USB can leave low (SD_CARD_FORMAT §7.1). With
+     * the timer already running, a slow open overflowed the ring and the log
+     * lost a run of samples about 1 s in. Opened first, a slow open only
+     * delays the first sample. */
+    if (sdLogPendingStart)
+    {
+      ShimSens_startSdLog();
+      sdLogStarted = 1;
+    }
+
     ShimSens_stepInit();
 
     if (sensing.nbrMcuAdcChans && ShimBrd_areMcuAdcsUsedForSensing())
@@ -279,39 +332,12 @@ void ShimSens_startSensing(void)
 #endif
   }
 
-  //If the conditions are met, start logging to SD card.
-  if (sdLogPendingStart)
+  /* A log added to a sensing session that is already running, such as a
+   * stream, still opens its file with the timer running: the ring holds the
+   * samples taken meanwhile, and a slow open can still overflow it. */
+  if (sdLogPendingStart && !sdLogStarted)
   {
-    /* Auto-stop first: the blink-timer interrupt checks it as soon as sdLogging
-     * is set, so it must not find it half set up */
-    ShimSens_maxExperimentLengthSecsSet(ShimConfig_experimentLengthMaxInMinutesGet());
-    ShimSens_currentExperimentLengthReset();
-
-    shimmerStatus.sdLogging = 1;
-    sensing.isFileCreated = 0;
-    sensing.newSdFileTsFlag = NEW_SD_FILE_TS_PENDING_UPDATE;
-    shimmerStatus.sdlogCmd = SD_LOG_CMD_STATE_IDLE;
-
-    gConfigBytes *configBytesPtr = ShimConfig_getStoredConfig();
-
-#if TEST_LOG_WITH_USB && defined(SHIMMER3R)
-    /* A log started while a stream is already running skips the hand-over
-     * above, which only runs when a sensing session begins. Take the card from
-     * USB here too, so fileInit() never works on FatFs's pre-USB view. */
-    if (shimmerStatus.usbPluggedIn && (shimmerStatus.sdOwner != SD_OWNER_MCU))
-    {
-      USB_deinit();
-      Board_sd2Mcu();
-    }
-#endif
-
-    ShimSdDataFile_fileInit();
-
-    if (shimmerStatus.sdSyncEnabled)
-    {
-      ShimSdSync_start(configBytesPtr->masterEnable,
-          ShimConfig_experimentLengthEstimatedInSecGet());
-    }
+    ShimSens_startSdLog();
   }
   //If the conditions are met, start streaming to BT.
   if (streamPendingStart)

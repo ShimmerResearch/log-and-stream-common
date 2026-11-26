@@ -557,9 +557,10 @@ void ShimSdDataFile_writeToCard(void)
     splitAllowed = 0;
   }
 #endif
-  /* Signed: on Shimmer3R splitTs is a record's own time, and the first records
-   * in a file - the backlog sampled while it was being created - are older
-   * than sdFileCrTs. Unsigned, that negative age wrapped to "far over an hour"
+  /* Signed: on Shimmer3R splitTs is a record's own time, and a file's first
+   * records can be older than sdFileCrTs: after an hourly split, and in a log
+   * added to a running stream, they are the backlog sampled while the file was
+   * being created. Unsigned, that negative age wrapped to "far over an hour"
    * and split every file as soon as it was opened. An hour of ticks fits an
    * int32_t many times over, and on Shimmer3 (splitTs = latestTs, never older)
    * this is the same test as before. */

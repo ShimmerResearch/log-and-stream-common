@@ -741,10 +741,32 @@ The initial timestamp in the header is therefore captured *before* the header
 is written but *after* the configuration snapshot — the header describes the
 configuration in force at file creation, which cannot change while logging.
 
-`fileInit` runs after the sample timer has started (`ShimSens_startSensing`),
-so the samples taken meanwhile wait in the packet ring. If the file takes longer
-to open than the ring can hold, the rest are lost, as one gap after the first
-sample. What makes it slow is in §7.1.
+Opening a log's first file can take seconds. Numbering the session reads every
+session folder in the trial (about 4 s for 531), and making the session folder
+reads the FAT from FatFs's free-cluster hint (§7.1). Nothing drains the packet
+ring while the file opens, so where `fileInit` runs against the sample timer
+decides what a slow open costs:
+
+- **A log that starts sensing** opens its file first. That covers a log started
+  by command, at undock or by the button, and `START_SDBT`.
+  `ShimSens_startSensing` runs `fileInit` before it starts the sample timer
+  (DEV-1098), so a slow open delays the first sample and loses none. The initial
+  timestamp then comes before the first record, by at least the 65 ms
+  `TICKS_TO_SKIP` window: the first record is the first sample taken that long
+  after the first tick.
+- **A log added to a sensing session that is already running**, such as a
+  stream, opens its file with the timer running, as every log did before
+  DEV-1098. The samples taken meanwhile wait in the ring and are written first,
+  so the first records are older than the initial timestamp. If the open
+  outlasts the ring (1,022 packets on Shimmer3R: 998 ms at 1024 Hz), the rest
+  are lost as one gap. On Shimmer3R that gap comes `1022 - ceil(2130 /
+  divider)` records into the file, 955 at 1024 Hz, because the ring filled
+  before anything drained it.
+- **A file opened at the hourly split** (§4.1) is stamped at the split. The
+  buffers still queued for it hold records sampled before then.
+
+So a parser must not assume either order. Place the first record's 24-bit stamp
+on the wrap of the initial timestamp nearest it, not on the one before.
 
 ## 5. `sdlog.cfg`
 
@@ -939,10 +961,12 @@ sector. Each card read covers one 512-byte FAT sector, which is 128 clusters.
 hint back to them. Both FatFs releases do this (R0.08b and R0.12c, "Reuse the
 cluster hole" in `f_open`). These two files are among the first on a card, so
 the next cluster to be allocated is found only after a read through every
-cluster in use. That cluster is the next log's session directory, made after
-sampling has started (§4.3). Before the change, every log after a
+cluster in use. That cluster is the next log's session directory, made as the
+log opens its first file (§4.3). Before the change, every log after a
 configuration write paid for this, because the configuration write rewrites
-`sdlog.cfg`.
+`sdlog.cfg`. The measurements below were made while the file still opened after
+sampling had started, so the read cost samples. Since DEV-1098 a log that
+starts sensing pays it as a later first sample instead.
 
 Measured on Shimmer3R, 512 Hz with every sensor on (DEV-1429, 2026-11-11). The
 FAT sectors read were worked out from each card's FAT, and the read cost about
@@ -964,7 +988,18 @@ hint, because it saves its own value in FSINFO. Windows set it to cluster 1908
 of a well-used card after appending to `sdlog.cfg`, and the next log paid the
 same read once (0.84 s on a 32 KB-cluster card). After creating and deleting a
 file on a card with no free clusters below its used region, Windows left the
-hint where it was. The firmware does not guard against this case.
+hint where it was.
+
+A delete can cost the same. On a Shimmer3R card with 4 KB clusters, 14% used,
+from which the test harness had been deleting WAV files, every log after
+Windows wrote and deleted a 1 MB file opened 0.95-0.99 s later than the logs
+with no write before them: 5 of 5 against none (DEV-1098, 2026-11-26). That is
+the time a read of every FAT sector in use takes on that card. The hint's value
+was not read.
+
+The firmware does not guard against a host's hint. A log that starts sensing
+pays for it with a later first sample, and a log added to a running stream
+with lost samples (§4.3).
 
 ## Still unverified / not found in code
 
