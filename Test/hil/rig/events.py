@@ -97,16 +97,23 @@ TICKS_PER_S = evf.TICKS_PER_S
 MAX_QUIET_S = 125.0
 HEARTBEAT_BY_S = 130.0          # a log this long has had a heartbeat
 SPAN_SLACK_S = 2.0              # the final record against the data file's last sample
-# A data file's first samples can come from before it opened: sampling starts at
-# the start command, and the file opens once its session folder is numbered and
-# made, which takes seconds in a trial folder of hundreds of sessions (about 4 s
-# for 531). Those samples are buffered and written first. The event file starts
-# at the open (§4.3), so its span is measured against the data file's from there.
+# A data file's first samples can come from before it opened. A log added to a
+# running stream opens its file with sampling running, as every log did before
+# DEV-1098 (SD_CARD_FORMAT §4.3), once its session folder is numbered and made.
+# That takes seconds in a trial folder of hundreds of sessions (about 4 s for
+# 531). The samples taken meanwhile are buffered and written first. The event
+# file starts at the open (§4.3), so its span is measured against the data
+# file's from there.
 DATA_LEAD_MAX_S = 30.0
-# In a trial folder of few sessions the folder is made at once, so the file can
-# open before the first sample: up to 50 ms after it at 51.2 Hz on the bench
-# (18-63 sessions; 0.46-0.59 s the other way in a folder of about 600). The lead
-# is then negative, and may be by this much.
+# Since DEV-1098 a log that starts sensing opens its file first, so the first
+# sample comes after the open. The gap is the time to start the sensors and
+# the timer, then the 65 ms TICKS_TO_SKIP window and up to one sample period.
+# On a Shimmer3R (undock start, 26 Nov 2026) it measured 154 ms at 1024 Hz and
+# 185 ms at 51.2 Hz, the matrices' lowest rate. Before DEV-1098 the same
+# happened in a trial folder of few sessions, whose folder is made at once: up
+# to 50 ms after at 51.2 Hz on the bench (18-63 sessions; 0.46-0.59 s the other
+# way in a folder of about 600). The lead is then negative, and may be by this
+# much.
 DATA_LAG_MAX_S = 0.25
 TS24 = 1 << 24                  # a data sample's stamp: the RTC's low 24 bits
 

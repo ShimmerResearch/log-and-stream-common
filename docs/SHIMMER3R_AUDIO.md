@@ -44,14 +44,24 @@ recorder is queued. `TASK_AUDIO` then:
 3. powers the microphone and starts capture.
 
 The first 256 ms of capture are dropped while the microphone starts and the
-filters settle. In two bench runs the first audio sample came 0.36 and 0.48 s
-after the data file's initial timestamp, which is 0.73 and 0.85 s after its first
-sample: the data file's packet ring holds samples taken before the file opened.
-That depends on how long the session folder takes to make. In a trial folder of
-few sessions the file can open first, and at 51.2 Hz the first sample then came up
-to 50 ms after the initial timestamp, so place the first sample's 24-bit stamp on
-the wrap of the initial timestamp nearest it, not on the one before. Each file's
-header says exactly when.
+filters settle. In two bench runs before DEV-1098 the first audio sample came
+0.36 and 0.48 s after the data file's initial timestamp. That was 0.73 and 0.85 s
+after the data file's first sample, because the file then opened after sampling
+had started and its packet ring held the samples taken meanwhile.
+
+The data file's first sample can be on either side of its initial timestamp:
+
+- **A log that starts sensing** has opened its file first since DEV-1098
+  ([SHIMMER3_SD_CARD_FORMAT.md](SHIMMER3_SD_CARD_FORMAT.md) §4.3), so its first
+  sample comes after the initial timestamp.
+- **Before DEV-1098, in a trial folder of few sessions,** the folder was made at
+  once, and the first sample came up to 50 ms after the initial timestamp at
+  51.2 Hz.
+- **A log added to a running stream** still opens with sampling running, so its
+  first samples come before.
+
+So place the first sample's 24-bit stamp on the wrap of the initial timestamp
+nearest it, not on the one before. Each file's header says exactly when.
 
 Logging stopping, by any route, stops capture at once. Everything captured is
 written to the WAV, a fingerprint chunk already analysed is written, and the
