@@ -24,7 +24,8 @@ two generations' very different LED hardware.
 > - **Platform firmware:** `shimmer3-firmware` @ `7d86034` — `main.c` (boot
 >   stages, the Bluetooth baud ladder, the blink timer,
 >   `triggerShimmerErrorState`), `hal_FactoryTest.c`, `hal_CAT24C16.c`. The
->   CTS wake and second `$$$` in the baud ladder postdate `7d86034`.
+>   CTS wakes and the extra 115200 attempts in the baud ladder postdate
+>   `7d86034`.
 >   `shimmer3r-firmware` @ `24a609a3` — `Core/Src/main.c` (boot stages, the
 >   Bluetooth retries, `JumpToBootloaderIfRequired`), `Core/Src/tim.c`
 >   (`platform_ledTickShift`, `ledBlinkTimerCallback`), `Core/Src/spi.c`,
@@ -490,6 +491,10 @@ The two generations draw the sensor-bus pattern differently:
 >   once `$$$` has gone 1.5 s without a reply, the firmware wakes the radio by
 >   raising CTS and sends `$$$` again, and adds those 1.5 s back to the
 >   attempt. A radio that never answers therefore takes 6.5 s per attempt.
+>   When the EEPROM records an RN41 or RN42 from an earlier start, the radio
+>   is also woken before the first `$$$`, and 115200 baud is tried twice more
+>   before the other rates: an RN41 or RN42 starts at its stored rate, which
+>   the firmware leaves at 115200. That makes fourteen attempts, about 98 s.
 >   After the last attempt the firmware sets
 >   `BOOT_STAGE_BLUETOOTH_FAILURE` and halts in low-power mode. The blink timer
 >   keeps running, so the yellow flash continues until the unit is reset.
@@ -610,7 +615,7 @@ switched-off device shows nothing at all, charging or not (§1).
 | Lower green, yellow, red, yellow, green …, 0.5 s per step; upper off | Booting normally. The sweep repeats until boot completes |
 | Lower red fast (S3); lower yellow and red alternating, no off phase (S3R) | Sensor-bus stage taking over 1 s. On Shimmer3R it includes the SD card hand-over |
 | Lower green fast; upper off | Configuration stage taking over 2 s, usually the SD card |
-| Lower yellow fast (S3) | The radio did not respond after about 84 s of retries. Halted until reset |
+| Lower yellow fast (S3) | The radio did not respond after about 84 s of retries, or about 98 s for a recorded RN41 or RN42. Halted until reset |
 | Lower purple, 0.2 s on and 0.2 s off, half brightness; upper off (S3R) | Button held at power-up. At 3 s the unit enters its bootloader |
 
 **Both LEDs**
