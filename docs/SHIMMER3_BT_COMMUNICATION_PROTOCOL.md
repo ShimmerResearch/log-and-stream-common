@@ -414,7 +414,7 @@ On the bench, logging at 512 Hz, 7 (V1.23) and 4 (V1.00.5) of 46 connections
 lost their `%RFCOMM_OPEN%` this way. With the first two interrupts held off
 (below), every overrun that remained came straight after the I2C interrupt.
 
-Later firmware does two things about it:
+Later firmware does three things about it:
 - **It holds the module off with CTS while those interrupts run**
   (`BT_rxIsrHold` in `Shimmer_Driver/RN4X/RN4X.h`; for the I2C interrupt, only
   while it polls, `I2C_waitSentRxHeld` in `Shimmer_Driver/5xx_HAL/hal_I2C.c`). A
@@ -425,6 +425,17 @@ Later firmware does two things about it:
   Firmware up to v1.01.011 tested only that `%`, so it took the string for an
   open and marked itself connected to a host that had gone. It now matches the
   whole `_OPEN%`, and takes `%RFCOMMCLOSE%` as the close it is.
+- **It re-arms the receive before it clears the status-string buffer.** A
+  status string's opening `%` arrives with the receive armed for one byte, and
+  the module goes on sending the rest of the string. The receive interrupt used
+  to clear the 28-byte string buffer first, which takes about 12 µs, and armed
+  for the rest only about 25 µs after it started. At 1 Mbps the second byte
+  after the `%` has landed by then, so the first one survived only if the module
+  had already stopped for CTS. The interrupt now arms first, about 11 µs in.
+  The byte waiting in `UCA1RXBUF` is then taken before the next one lands,
+  whatever the module does, as long as the interrupt starts within about 9 µs
+  (about 32 µs at 460800). Times are from the disassembly at 24 MHz, not
+  measured.
 
 **Status strings during a configuration write (Shimmer3).** The module sends a
 status string whenever its link changes, not only in reply to the host. The

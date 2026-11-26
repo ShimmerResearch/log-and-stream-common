@@ -925,11 +925,21 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
             break;
 #if defined(SHIMMER3)
           case RN4678_STATUS_STRING_SEPARATOR:
-            RN4678_startOfNewStatusString();
+            /* The module sends a status string without a break, so its next
+             * byte is already on the way. Arm for the rest first, and clear
+             * the string buffer after: the clear takes longer than a byte at
+             * the RN4678's 1 Mbps, and until the receive is armed the byte
+             * after this one can overrun the one waiting in UCA1RXBUF. The
+             * receive fills btRxBuff, not the string buffer, and its interrupt
+             * cannot run before this one returns. Return here, as the arm
+             * below the switch would rewrite DMA2SZ of a running channel.
+             * Minus 1 because we've already received 1 x
+             * RN4678_STATUS_STRING_SEPARATOR. */
+            setDmaWaitingForResponse(BT_STAT_STR_LEN_SMALLEST - 1U);
             gAction = data;
-            /* Minus 1 because we've already received 1 x RN4678_STATUS_STRING_SEPARATOR */
             waitingForArgs = BT_STAT_STR_LEN_SMALLEST - 1U;
-            break;
+            RN4678_startOfNewStatusString();
+            return 0;
 #endif
           case ACK_COMMAND_PROCESSED:
             /* Wait for command byte */
