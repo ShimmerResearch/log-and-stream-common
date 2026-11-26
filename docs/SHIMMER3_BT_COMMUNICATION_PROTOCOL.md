@@ -91,9 +91,9 @@ BLE, and over the dock's serial link.
 >   defect is read at `shimmer3-firmware` @ `LogAndStream_Shimmer3_v1.01.011`
 >   and the `log-and-stream-common` revision it pins, `a666403`, which has the
 >   task order (`TaskList/shimmer_taskList.{h,c}`). How often a reply cost a
->   packet is a bench measurement, not a reading of source. Until the platform
->   half reaches a release, "later firmware" describes that revision, not a
->   released firmware.
+>   packet, before and after the change, is a bench measurement (26 Nov 2026),
+>   not a reading of source. Until the platform half reaches a release, "later
+>   firmware" describes that revision, not a released firmware.
 > - **Status strings during a configuration write, and the receive reset
 >   ([§2.1](#21-classic-bluetooth-spp), [§2.3](#23-framing-guarantees-per-transport)
 >   point 4, [§8.1](#81-what-a-connect-and-a-disconnect-reset),
@@ -1562,18 +1562,19 @@ reply was still going out, and was dropped.
   keeps the sample.
 - **How often:** on the bench, between 5% and 8% of `GET_STATUS_COMMAND` and
   `GET_VBATT_COMMAND` replies cost a packet, on RN4678 v1.00.5 over classic at
-  256 Hz. Units on RN42 and on RN4678 v1.23.0 lost none.
+  256 Hz. Over BLE, where a group is larger, about two replies in three did.
+  Units on RN42 and on RN4678 v1.23.0 lost none.
 
-Later firmware puts the packet in the ring behind the reply. A reply long
-enough to fill a group while it is going out, a calibration dump for example,
-can still cost one.
+Later firmware puts the packet in the ring behind the reply. On the bench it
+lost no packet in 690 replies over classic and 690 over BLE, at 256 Hz on
+RN4678 v1.00.5. A reply long enough to fill a group while it is going out, a
+calibration dump for example, can still cost one.
 
 > `shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.c`: `BT_write_rn4678_with_buf()`
 > for the refusal and the grouping, `calculateClassicBtTxSampleSetBufferSize()`
 > for the classic group, and `updateBtWriteFunctionPtr()` for which module takes
 > which path. Read at the revisions listed for it under "Verified against"
-> above. The change has not yet run on a unit; see
-> [Still unverified](#still-unverified--not-found-in-code).
+> above.
 
 A disconnect stops streaming unconditionally, whether or not the host asked
 (`ShimBt_handleBtRfCommStateChange`, `:2608-2609`), and on Shimmer3 records a
@@ -4107,13 +4108,6 @@ them.
   How late a frame arrives while a fast stream fills the transmit
   ring, on Shimmer3 above all, where the queue is 4 and the ring 256 bytes, is
   not derivable from source. **Needs bench observation.**
-- **The Shimmer3 change that stops a reply costing a data packet
-  ([§6.3](#63-interleaving)) has not yet run on a unit.** It removes the
-  refusal for a transfer in progress from `BT_write_rn4678_with_buf()` in
-  `shimmer3-firmware`, and was in review when written. The loss before it is
-  bench-measured; that the change ends it is from source. **Needs bench
-  observation** on an RN4678 v1.00.5 unit, at 256 Hz for the replies and at a
-  high rate for the data path under load.
 - **The Shimmer3R two-byte status over BLE.** The second byte is compiled in
   under `#if defined(SHIMMER3R)` and carries `usbPluggedIn`. That it survives BLE
   fragmentation intact — i.e. that no host stack truncates a 4- or 5-byte
