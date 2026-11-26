@@ -181,6 +181,14 @@ def _new_session(root: Path, before: set) -> Path:
     return files[0]
 
 
+def _wav_header_dir(request) -> Path:
+    """Where a failed row keeps its WAV headers: wav-headers/ beside the report,
+    or under Test/hil/out/ for a run that writes none (an experiment)."""
+    report = request.config.getoption("--hil-report")
+    base = Path(report).resolve().parent if report else MATRIX.parents[1] / "out"
+    return base / "wav-headers"
+
+
 def _check_log(path: Path, cfg: S3rConfig, inq, seconds, unit, aside):
     """Calibration comes from the file's own header, as an SD parser would take it."""
     fc = sdfile.check(path, keep=True)
@@ -347,6 +355,7 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
             power.on(unit.hub_port, unit.name)
         root = s3r_usb.wait_drive(unit.usb_serial, 90)
         path = _new_session(root, before)
+        checked = False
         try:
             fc, lp, note = _check_log(path, cfg, inq, row["seconds"], unit, aside)
             probs += [f"log: {p}" for p in lp]
@@ -361,10 +370,17 @@ def test_row(row, unit, rig, power, original_config, request, hil_note):
             ep, enote = _check_events(path, root, cfg, fc)
             probs += [f"events: {p}" for p in ep]
             notes.append(enote)
+            checked = not probs
         finally:
-            removed = s3r_audio.remove_raw(path)
+            # A failed row keeps each WAV's header (clocks and counts, no sound),
+            # so its timing can be looked at again after the WAV is deleted
+            keep = None if checked else _wav_header_dir(request)
+            removed = s3r_audio.remove_raw(path, keep, f"{unit.name}_{row['id']}_")
         if removed:
-            notes.append(f"deleted from the card: {', '.join(removed)}")
+            notes.append(f"deleted from the card: {', '.join(removed)}"
+                         + (f"; headers kept in {keep}" if keep else ""))
+            if keep:
+                print(f"{unit.name} {row['id']}: WAV headers kept in {keep}")
         if st is not None:
             # Same opening window as the log: start-of-log loss belongs to
             # release.sd_log_start, not to every row that also streams.
