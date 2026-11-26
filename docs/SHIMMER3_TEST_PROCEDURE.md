@@ -1704,8 +1704,12 @@ logs. Each row is its own item, `release.<row>`:
   A row with audio off must leave no `audio/` directory for its session.
   Nothing recomputes the fingerprint; the bench recorder's tools do that. A WAV
   records the bench room, so the test reads it where it lies on the card and
-  then deletes it. A row that fails before the card is read leaves its WAV
-  there.
+  then deletes it. A row that fails first copies each WAV's 512-byte header to
+  `wav-headers/` beside the report (under `Test/hil/out/` for a run with no
+  report), as `<unit>_<row>_000.WAV.hdr`. The header holds the file's clocks and
+  counts and none of its sound, so the chunk clocks can be checked against the
+  WAV's clock again later. The .AFP and data file stay on the card. A row that
+  fails before the card is read leaves its WAV there.
 - **The sound level** ([SHIMMER3R_AUDIO.md](SHIMMER3R_AUDIO.md) §8). Every row
   writes configuration byte 233 bit 4: the row's `sound_level`, or 0. Four
   `level_*` rows turn it on:

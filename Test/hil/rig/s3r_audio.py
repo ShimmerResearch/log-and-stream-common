@@ -14,6 +14,7 @@ here recomputes the fingerprint: that needs the algorithm on the PC.
 
 A WAV records whoever is near the bench. It is read where it lies on the card,
 nothing of its sound is kept, and remove_raw() deletes it once it is checked.
+A failed row keeps only its 512-byte header, which has no sound in it.
 """
 
 from __future__ import annotations
@@ -400,11 +401,20 @@ def _clock_checks(name, first, last, samples, data: DataFile,
     return p
 
 
-def remove_raw(data_path: Path) -> list:
+def remove_raw(data_path: Path, keep_headers: Path | None = None, prefix: str = "") -> list:
     """Delete the session's WAVs from the card, as they hold whatever the bench
-    room said. Returns the names removed."""
+    room said. Returns the names removed.
+
+    With keep_headers (a directory), each WAV's 512-byte header is first copied
+    there as <prefix><name>.hdr. The header holds the file's clocks and counts
+    and none of its sound, so the WAV's side of the timing checks can still be
+    redone once the WAV is gone (DEV-1588): identity() reads it."""
     adir = audio_dir(data_path)
     gone = sorted(adir.glob("*.WAV")) if adir.is_dir() else []
     for w in gone:
+        if keep_headers is not None:
+            keep_headers.mkdir(parents=True, exist_ok=True)
+            with w.open("rb") as f:
+                (keep_headers / f"{prefix}{w.name}.hdr").write_bytes(f.read(HEADER))
         w.unlink()
     return [w.name for w in gone]
