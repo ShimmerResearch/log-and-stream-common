@@ -1465,6 +1465,9 @@ the button on, no auto-stop, and bytes 232 and 233 at 0.
 - **A read-back that differs stops the run.** The calibration the firmware
   recomputes for the configured ranges, and `flagWriteCfgToSd`, are allowed
   to differ.
+- **A unit the run cannot reach fails its own items only.** That means its dock
+  doesn't answer, or its port or drive is gone or never came. The other units
+  run, and the reason heads each of the unit's items in the report.
 - **The unit is reset only if its own configuration had SD sync or
   `bluetoothDisable` set**, the one setting the firmware reads at boot.
 - **The unit's own InfoMem goes back at the end of the run.**

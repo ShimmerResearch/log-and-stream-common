@@ -87,6 +87,7 @@ def pytest_configure(config):
                                        "in no release tier")
     config._hil_collector = hil_report.Collector()
     config._hil_waivers = _waivers(config)
+    config._hil_setup_failed = {}       # unit name -> why _bench_config could not reach it
 
 
 # Processes known to distort a run on this kind of bench. STM32CubeIDE scans
@@ -296,13 +297,49 @@ def _bench_config(request):
     mode = BtMode(*bench_routes(request.getfixturevalue("rig")), log=_say(request.config),
                   baseline=baseline)
     try:
-        for unit in units.values():
-            mode.enable(unit)
+        request.config._hil_setup_failed.update(_enable_units(mode, units.values(), _say(request.config)))
         yield
     finally:
         problems = mode.restore()
         if problems:
             pytest.fail("; ".join(problems), pytrace=False)
+
+
+def _enable_units(mode, units, say) -> dict[str, str]:
+    """mode.enable() each unit; return {unit name: why} for the ones it could not reach.
+
+    One unit that does not answer its dock fails its own items only
+    (pytest_runtest_setup) and the other units run. Raised out of the session
+    fixture instead, it errored every item of every unit: a Shimmer3 left hung
+    on its Base6 dock emptied a whole soak tier and a throughput rerun for all
+    four radios (bench, 25-26 Nov 2026).
+
+    Only a unit out of reach is set aside: a dock that does not answer, or a
+    port or drive that is gone or never came (OSError covers TimeoutError and
+    a host service stall). Anything else, such as a configuration that reads
+    back changed, still stops the run.
+    """
+    from rig.dock import DockError      # imports pyserial, which conftest itself does not need
+
+    failed = {}
+    for unit in units:
+        try:
+            mode.enable(unit)
+        except (DockError, OSError) as e:
+            failed[unit.name] = f"session setup could not reach it: {type(e).__name__}: {e}"
+            say(f"{unit.name}: {failed[unit.name]} - its items fail, the other units run")
+    return failed
+
+
+def _setup_failure(config, item) -> str | None:
+    """Why this item fails before it starts: its unit could not be reached when
+    the session set the units up (_enable_units), or None."""
+    if not _item(item)[0]:
+        return None
+    unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
+    if unit is None:
+        return None
+    return getattr(config, "_hil_setup_failed", {}).get(unit.name)
 
 
 def _locate_shimmer3s(request):
@@ -457,6 +494,11 @@ def pytest_runtest_setup(item):
     if reason:
         item._hil_not_covered = reason
         pytest.skip(reason)
+    # Before any of the item's own fixtures touch the unit. The session's first
+    # item is set up together with _bench_config, so it meets the unit itself.
+    failure = _setup_failure(item.config, item)
+    if failure:
+        pytest.fail(failure, pytrace=False)
 
 
 @pytest.fixture(scope="session")
@@ -465,15 +507,15 @@ def hil_units(request):
 
     For tests whose units share one piece of work, as soak.long_log's share one
     log. The work then covers exactly the units whose own tests will run: the
-    ones collected and selected, not left out by --unit, and with what they
-    need on this bench (pytest_runtest_setup).
+    ones collected and selected, not left out by --unit, with what they need on
+    this bench, and reached by the session's setup (pytest_runtest_setup).
     """
     def units(item_id: str) -> list:
         out, seen = [], set()
         for item in request.session.items:
             unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
             if (unit is None or unit.name in seen or _item(item)[0] != item_id
-                    or _not_covered(request.config, item)):
+                    or _not_covered(request.config, item) or _setup_failure(request.config, item)):
                 continue
             seen.add(unit.name)
             out.append(unit)
@@ -555,6 +597,8 @@ def _bt_modules(request, _bench_config):
             return d.bt_version()
 
     def lacks(unit):
+        if unit.name in cfg._hil_setup_failed:      # not worth another round of dock attempts
+            return cfg._hil_setup_failed[unit.name]
         missing = _missing(cfg, unit, RADIO_ROUTE[unit.platform])
         return f"bench lacks: {', '.join(sorted(missing))}" if missing else None
 
