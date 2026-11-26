@@ -617,3 +617,131 @@ def test_sd_start_midstream(unit, base6, hil_note):
         pytest.skip(f"docked in a Base6, which cannot undock one slot, so no log started: the unit "
                     f"{how}. Clean across the commands: {summary}; {clock_note}")
     hil_note(f"{summary}; {clock_note}")
+
+
+# --- Battery and status reads answered mid-stream -------------------------------
+
+READS_DIVIDER = 128                         # 256 Hz, LN accel only, 1-byte CRC: the Java HIL's setup
+READS_SENSORS = {"ln_accel"}
+READS_CRC = 1
+READS_STREAM_S = 60.0
+READS_LEAD_S = 2.0
+READ_EVERY_S = 0.5                          # a battery read, then a status read a quarter period later
+
+
+def reads_plan(seconds: float) -> list[midstream.Action]:
+    out, t, i = [], READS_LEAD_S, 1
+    while t + READ_EVERY_S < seconds:
+        out.append(midstream.Action(t, "vbatt", i, bytes([bt.GET_VBATT])))
+        out.append(midstream.Action(t + READ_EVERY_S / 2, "status", i, bytes([bt.GET_STATUS])))
+        t += READ_EVERY_S
+        i += 1
+    return out
+
+
+def losses_by_reply(gaps: list[tuple[int, int]], instream: list[tuple[int, int]]) -> dict:
+    """Samples lost next to each kind of in-stream reply, and elsewhere.
+
+    A reply framed after packet n-1 sits where sample n would be; a sample the
+    reply cost is never sent, so the gap shows at packet n. One packet either
+    side is allowed for the order the radio delivers them in.
+    """
+    out = {bt.VBATT_RSP: 0, bt.STATUS_RSP: 0, None: 0}
+    for idx, lost in gaps:
+        op = next((op for op, n in instream if n - 1 <= idx <= n + 1), None)
+        out[op if op in out else None] += lost
+    return out
+
+
+def reads_midstream(unit, base6, hil_note, connect) -> None:
+    """Stream for a minute at 256 Hz with a battery read every half second and
+    a status read between them, about 115 of each, over the link connect()
+    opens; no sample may be lost and every read must be answered. The rate and
+    channels are set over the dock and put back, as fleet.bt_stream does.
+
+    The Java HIL found Shimmer3s on an RN4678 skipping the sample at the reply:
+    on the RN4678's grouped write path a reply starts a transfer at once, and
+    firmware up to v1.01.011 refused the next data packet while it ran
+    (BT protocol §6.3). Every gap is attributed to the reply next to it, if any.
+    """
+    base6.select(unit.base6_slot)
+    with dock.open_when_ready(base6.uart_port) as d:
+        original = bytes(d.read_infomem(0, bt.INFOMEM_CONFIG_BYTES))
+        cfg = S3Config(original)
+        cfg.divider = READS_DIVIDER
+        cfg.set_sensors(READS_SENSORS)
+        d.write_infomem(cfg.bytes()[:10], offset=0)
+    plan = reads_plan(READS_STREAM_S)
+    error = None
+    try:
+        with connect() as link:
+            inq = link.inquiry()
+            assert inq.divider == READS_DIVIDER, f"inquiry reports divider {inq.divider} after setting it"
+            link.status_len()                    # asked with CRC off, so its reply has no CRC bytes
+            link.set_crc(READS_CRC)
+            st = link.stream(READS_STREAM_S, inq, keep=True, actions=plan)
+            # A sensing Shimmer3 turns its dock UART off: name a stop not acted
+            # on here, not as a dock timeout in the restore.
+            link.wait_status(bt.STATUS_SENSING, False, timeout_s=5)
+            link.set_crc(0)
+    except BaseException as e:
+        error = e
+        raise
+    finally:
+        retries = restore_infomem(base6, original[:10], error)
+        if retries:
+            hil_note(f"configuration restore needed {len(retries)} retries: {'; '.join(retries)}")
+
+    sent = {k: sum(a.kind == k for a in plan) for k in ("vbatt", "status")}
+    answered = {k: sum(op == rsp for op, _ in st.instream) for k, rsp in
+                (("vbatt", bt.VBATT_RSP), ("status", bt.STATUS_RSP))}
+    lost = losses_by_reply(bt.gap_positions(st.ts, inq.divider), st.instream)
+    summary = (f"{st.packets} packets at {inq.rate_hz:.0f} Hz; battery reads {answered['vbatt']}/{sent['vbatt']} "
+               f"answered, {lost[bt.VBATT_RSP]} samples lost next to them; status reads "
+               f"{answered['status']}/{sent['status']}, {lost[bt.STATUS_RSP]} lost; {lost[None]} lost elsewhere")
+    hil_note(summary)
+    problems = []
+    if st.resyncs or st.crc_errors:
+        problems.append(f"{st.resyncs} framing resyncs, {st.crc_errors} CRC errors (first: {st.misframes[:1]})")
+    if st.gaps:
+        problems.append(f"{st.gaps} gaps, {st.missing} samples lost")
+    # Every battery read has one reply. Status frames can outnumber the reads:
+    # the firmware also pushes one of its own when its state changes.
+    if answered["vbatt"] != sent["vbatt"] or answered["status"] < sent["status"]:
+        problems.append(f"replies {answered}, reads sent {sent}")
+    assert not problems, f"{summary}: " + "; ".join(problems)
+
+
+@pytest.mark.hil("fleet.reads_midstream", needs=["shimmer3", "bt", "dock"])
+def test_reads_midstream(unit, base6, hil_note):
+    """Battery and status reads answered while streaming over classic cost no samples."""
+    reads_midstream(unit, base6, hil_note, lambda: open_bt(unit))
+
+
+@pytest.mark.hil("fleet.ble_reads_midstream", needs=["shimmer3", "bt", "ble", "dock"])
+def test_ble_reads_midstream(unit, base6, hil_note):
+    """fleet.reads_midstream over BLE, on a Shimmer3 with an RN4678.
+
+    Over BLE every RN4678 takes the grouped write path, whatever its module
+    firmware, and a group is up to BLE_MTU_SIZE bytes, so a reply sends a long
+    backlog: before the fix about two replies in three cost a sample. An RN41
+    or RN42 has no BLE side and is not_covered, as is a unit whose EEPROM has
+    BLE off. The link waits BLE_SETTLE_S, as fleet.ble_throughput does.
+    """
+    base6.select(unit.base6_slot)
+    with dock.open_when_ready(base6.uart_port) as d:
+        radio = d.radio_settings()
+    if not dock.ble_enabled(radio):
+        pytest.skip(f"{unit.name}: BLE is off in its EEPROM (radio settings byte 2 = {radio[2]:#04x}, "
+                    "bleEnabled clear)")
+
+    def connect() -> bt.BtLink:
+        ser = ble.BleSerial(unit.mac, profile=ble.profile_for(unit.radio))
+        try:
+            time.sleep(BLE_SETTLE_S)
+        except BaseException:
+            ser.close()
+            raise
+        return bt.BtLink(ser=ser)
+
+    reads_midstream(unit, base6, hil_note, connect)

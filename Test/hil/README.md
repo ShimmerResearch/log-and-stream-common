@@ -84,13 +84,13 @@ the firmware checkouts the model may read, and a spending cap
 ## Checking an open defect
 
 `tests/test_defects.py` holds checks that reproduce defects already filed, one
-report item per ticket (`defect.dev1297_reads_midstream` and so on). Each fails
+report item per ticket (`defect.dev1327_mag_rate_220hz` and so on). Each fails
 while its defect is there, so they carry the `defect` marker, which no release
 tier selects:
 
 ```
 python -m pytest Test/hil/tests/test_defects.py -m defect -rA
-python -m pytest Test/hil/tests/test_defects.py -m defect -k dev1297 --unit s3-rn42-615
+python -m pytest Test/hil/tests/test_defects.py -m defect -k dev1327 --unit s3-rn42-615
 ```
 
 What a check changes on a unit it puts back before the next one starts. When a

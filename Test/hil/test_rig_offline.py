@@ -2589,14 +2589,14 @@ class InStreamReplies(unittest.TestCase):
         st = self.run_stream(self.VBATT, 0, skip_after_reply=True)
         gaps = bt.gap_positions(st.ts, self.DIVIDER)
         self.assertEqual(gaps, [(5, 1)])
-        mod = _defects_module()
+        mod = _fleet_module()
         if mod is None:
             self.skipTest("needs pytest")
         lost = mod.losses_by_reply(gaps, st.instream)
         self.assertEqual(lost, {bt.VBATT_RSP: 1, bt.STATUS_RSP: 0, None: 0})
 
     def test_a_gap_away_from_any_reply_is_elsewhere(self):
-        mod = _defects_module()
+        mod = _fleet_module()
         if mod is None:
             self.skipTest("needs pytest")
         self.assertEqual(mod.losses_by_reply([(40, 2)], [(bt.VBATT_RSP, 5), (bt.STATUS_RSP, 20)]),
@@ -2616,20 +2616,6 @@ class GapPositions(unittest.TestCase):
         # 4096 Hz: 22 is the slot of 16, 6 ticks late, as the stamp at 24 shows.
         self.assertEqual(bt.gap_positions([0, 8, 22, 24, 32], 8), [])
         self.assertEqual(bt.gap_positions([0, 8, 24, 32, 46, 48], 8), [(2, 1)])
-
-
-def _defects_module():
-    """tests/test_defects.py, which imports pytest; None without it."""
-    import importlib.util
-    if "_defects" in sys.modules:
-        return sys.modules["_defects"]
-    if importlib.util.find_spec("pytest") is None:
-        return None
-    spec = importlib.util.spec_from_file_location("_defects", HERE / "tests" / "test_defects.py")
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = mod                     # its dataclass looks itself up there
-    spec.loader.exec_module(mod)
-    return mod
 
 
 class DockArgLengths(unittest.TestCase):
