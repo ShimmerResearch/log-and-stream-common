@@ -116,7 +116,9 @@ fix makes its check pass, move the check into its platform's tier, and into
    needs the unit not connected to any other host.
 4. The run sets each unit's configuration up itself, and puts the unit's own
    back after the last test (`rig/btmode.py`). A unit that cannot be put back
-   fails the run.
+   fails the run. A unit the run cannot reach at the start fails its own items
+   only, and the other units run. That means its dock doesn't answer, or its
+   port or drive is gone or never came.
    - **Every Shimmer3R starts from the baseline** (`rig/baseline.py`,
      DEV-1463): the firmware's default configuration, with the unit's own
      calibration, name, MAC, Bluetooth baud and PIN bytes, and TCXO bit. It is

@@ -3060,5 +3060,80 @@ class Base6Refusals(unittest.TestCase):
         self.assertEqual(b.occupied(), [1, 2, 3, 4])
 
 
+# --- the session setup: one unit out of reach -----------------------------------------------
+
+def _have_pytest() -> bool:
+    import importlib.util
+    return importlib.util.find_spec("pytest") is not None
+
+
+@unittest.skipUnless(_have_pytest(), "conftest.py needs pytest")
+class OneUnitOutOfReach(unittest.TestCase):
+    """A unit whose dock does not answer when the session sets the units up fails
+    its own items, and the other units run. It used to error the whole session."""
+
+    def setUp(self):
+        import conftest
+        self.conftest = conftest
+        self.units = [types.SimpleNamespace(name=n) for n in ("s3-a", "s3-b", "s3-c")]
+
+    def item(self, unit, item_id="fleet.bt_stream"):
+        marker = types.SimpleNamespace(args=(item_id,), kwargs={}) if item_id else None
+        return types.SimpleNamespace(callspec=types.SimpleNamespace(params={"unit": unit}),
+                                     get_closest_marker=lambda name, m=marker: m if name == "hil" else None)
+
+    def test_the_other_units_are_still_set_up(self):
+        enabled, said = [], []
+
+        class Mode:
+            def enable(self, unit):
+                if unit.name == "s3-b":
+                    raise dock.DockError("COM14: no answer after 10 attempts")
+                enabled.append(unit.name)
+
+        failed = self.conftest._enable_units(Mode(), self.units, said.append)
+        self.assertEqual(enabled, ["s3-a", "s3-c"])
+        self.assertEqual(list(failed), ["s3-b"])
+        self.assertIn("DockError: COM14: no answer", failed["s3-b"])
+        self.assertEqual(len(said), 1)
+        self.assertTrue(said[0].startswith("s3-b: session setup could not reach it"))
+
+    def test_a_port_or_drive_that_never_came_is_out_of_reach_too(self):
+        class Mode:
+            def enable(self, unit):
+                if unit.name == "s3-a":
+                    raise TimeoutError("USB CDC port for 204E did not appear within 90 s")
+
+        failed = self.conftest._enable_units(Mode(), self.units, lambda text: None)
+        self.assertEqual(list(failed), ["s3-a"])
+
+    def test_anything_else_still_stops_the_run(self):
+        """A configuration that reads back changed is a finding, not a unit out of reach."""
+        from rig.btmode import BtModeError
+
+        class Mode:
+            def enable(self, unit):
+                raise BtModeError("s3-a: InfoMem read back differs at byte 9")
+
+        with self.assertRaises(BtModeError):
+            self.conftest._enable_units(Mode(), self.units, lambda text: None)
+
+    def test_only_the_unreached_units_items_fail_at_setup(self):
+        config = types.SimpleNamespace(_hil_setup_failed={"s3-b": "session setup could not reach it: x"})
+        a, b, _ = self.units
+        self.assertIsNone(self.conftest._setup_failure(config, self.item(a)))
+        self.assertEqual(self.conftest._setup_failure(config, self.item(b)), "session setup could not reach it: x")
+        self.assertIsNone(self.conftest._setup_failure(config, self.item(b, item_id=None)))
+
+    def test_shared_work_leaves_the_unreached_unit_out(self):
+        a, b, c = self.units
+        config = types.SimpleNamespace(_hil_setup_failed={"s3-b": "x"}, getoption=lambda name: None)
+        session = types.SimpleNamespace(items=[self.item(u, "soak.long_log") for u in (a, b, c)])
+        request = types.SimpleNamespace(config=config, session=session)
+        with mock.patch.object(self.conftest, "_missing", lambda cfg, unit, needs: set()):
+            units = self.conftest.hil_units.__wrapped__(request)("soak.long_log")
+        self.assertEqual([u.name for u in units], ["s3-a", "s3-c"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
