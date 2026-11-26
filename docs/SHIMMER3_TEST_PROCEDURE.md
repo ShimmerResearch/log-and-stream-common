@@ -1733,7 +1733,9 @@ logs. Each row is its own item, `release.<row>`:
 Two observations are kept as their own items so they do not fail every row
 they touch: `release.sd_log_start` (samples lost in the first second of a log)
 and `release.stop_ack` (a stream stop that goes unACKed, or leaves the link
-silent until a reconnect).
+silent until a reconnect). Each of their notes starts with the unit and the
+row, for example `s3r-7a62: audio_fp_1024hz_both: 79 samples lost in the first
+1 s`, because one item gathers them from every unit.
 
 On **Shimmer3** the matrix is `Test/hil/matrix/s3_release.toml`, 13 rows run on
 each Base6 unit, one per shipped radio. `run_rc.py --tier release` picks it for
