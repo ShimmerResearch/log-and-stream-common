@@ -2303,11 +2303,11 @@ void ShimBt_sendRsp(void)
         //Mag sensitivity adj feature is not present in ICM-20948
         if (ShimBrd_isGyroInUseMpu9x50())
         {
-          MPU9150_init();
-          MPU9150_wake(1);
-          MPU9150_wake(0);
+          /* The platform powers the I2C bus for the read when nothing is
+           * sensing. Reading with the bus off never completes, and the unit
+           * stops answering. */
           *(resPacket + packet_length++) = MPU9150_MAG_SENS_ADJ_VALS_RESPONSE;
-          MPU9150_getMagSensitivityAdj(resPacket + packet_length);
+          I2C_readMpu9150MagSensAdj(resPacket + packet_length);
           packet_length += 3;
         }
         else

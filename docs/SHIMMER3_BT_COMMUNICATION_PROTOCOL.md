@@ -2312,6 +2312,19 @@ MPU before reading them.
 
 > `Comms/shimmer_bt_uart.c:2125-2151`.
 
+✅ **Fixed: an idle unit now answers this command.**
+- **The defect:** the read runs over I2C, which is powered off while nothing is
+  sensing. On earlier firmware an idle unit sent nothing back, not even the ACK,
+  and stopped answering Bluetooth and the dock until it was reset.
+- **The fix:**
+  - The platform (`I2C_readMpu9150MagSensAdj()`, declared in
+    `log_and_stream_externs.h`) now starts the bus and its timeout timer for
+    the read, then stops them again.
+  - While sensing, it leaves the bus running. An MPU that was awake for the
+    gyro or alt accel stays awake, and one that was asleep goes back to sleep.
+- **One cost while sensing:** the read takes the compass through power-down
+  and fuse-ROM mode, so one alt mag sample can be stale.
+
 ✅ **Fixed in the command-handler fixes: on a board without an MPU-9x50 this
 command now NACKs.** The rest of this note describes the earlier behaviour,
 which fielded units may still have and which an unframed host must still guard
