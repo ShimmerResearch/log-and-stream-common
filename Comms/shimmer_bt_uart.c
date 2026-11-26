@@ -252,11 +252,25 @@ void ShimBt_resetBtRxVariablesOnConnect(void)
    * ran out. Re-arm it for one byte at the buffer start. Only a
    * DMA that is armed is touched; one that is off stays off, for the caller
    * to arm as before. If a transfer has just completed, the channel is off
-   * and its ISR is pending, and that re-arms from the reset state itself. */
+   * and its ISR is pending, and that re-arms from the reset state itself.
+   *
+   * A transfer can also complete after the DMAEN test and before the disable,
+   * when the module is sending as this runs - on a disconnect the connection
+   * pin reports, it is often in the middle of its status strings. The
+   * disable masks the channel's interrupt (DMA2_disable() clears DMAIE), so
+   * that completion would never be serviced: the DMA would stay off, with CTS
+   * holding the module, for good, since on an RN4678 classic link only a
+   * status string on this same path announces the next connect. Unmask it
+   * instead, and its ISR takes the byte from the reset state, as when the
+   * byte lands before the test. */
   if (!isStatusStrInProgress && (DMA2CTL & DMAEN))
   {
     DMA2AndCtsDisable();
-    if (!(DMA2CTL & DMAIFG))
+    if (DMA2CTL & DMAIFG)
+    {
+      DMA2CTL |= DMAIE;
+    }
+    else
     {
       DMA2_repeatTransfer((uint16_t *) &UCA1RXBUF, (uint16_t *) btRxBuff, 1U);
       setDmaWaitingForResponse(1U);
