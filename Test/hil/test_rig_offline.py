@@ -3135,5 +3135,58 @@ class OneUnitOutOfReach(unittest.TestCase):
         self.assertEqual([u.name for u in units], ["s3-a", "s3-c"])
 
 
+# --- smoke.sd_clock_set_midlog: a clock step judged from the stamps -----------------------
+
+def _s3r_smoke_module():
+    """tests/test_s3r_smoke.py, which imports pytest; None without it."""
+    import importlib.util
+    if "_s3r_smoke" in sys.modules:
+        return sys.modules["_s3r_smoke"]
+    if importlib.util.find_spec("pytest") is None:
+        return None
+    spec = importlib.util.spec_from_file_location("_s3r_smoke", HERE / "tests" / "test_s3r_smoke.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@unittest.skipIf(_s3r_smoke_module() is None, "needs pytest")
+class ClockSetMidlogLog(unittest.TestCase):
+    """The log's stamps say whether a clock set reached it, and the host's open
+    time says whether its end is missing. Its length alone said neither."""
+
+    PERIOD = 640                    # 51.2 Hz
+    PROBE = 3 * 32768               # midstream.PROBE_S
+
+    def log(self, records, step=0):
+        span = (records - 1) * self.PERIOD + step if records else 0
+        return types.SimpleNamespace(header=types.SimpleNamespace(divider=self.PERIOD), records=records,
+                                     span_ticks=span, max_gap_ticks=self.PERIOD + step if step else 0)
+
+    def problems(self, fc, open_s):
+        return _s3r_smoke_module()._clock_set_log_problems(fc, open_s)
+
+    def test_a_clean_log_that_ran_long_passes(self):
+        """The bench's case: 597 records on one grid, 11.64 s, read as a step before."""
+        self.assertEqual(self.problems(self.log(597), open_s=11.70), [])
+
+    def test_a_set_that_reached_the_log_shows_as_one_step_of_its_size(self):
+        got = self.problems(self.log(512, step=self.PROBE), open_s=10.40)
+        self.assertEqual(len(got), 1)
+        self.assertIn("one step of 3.02 s", got[0])
+        self.assertIn("the set stepped the log's stamps", got[0])
+
+    def test_a_gap_unlike_the_set_is_left_to_the_timing_checks(self):
+        self.assertEqual(self.problems(self.log(512, step=10 * self.PERIOD), open_s=10.40), [])
+
+    def test_a_log_that_stopped_early_has_its_end_missing(self):
+        got = self.problems(self.log(1), open_s=10.40)
+        self.assertEqual(got, ["the records cover 0.02 s of a log the host held open 10.40 s: the end is missing"])
+
+    def test_a_short_start_up_is_not_a_missing_end(self):
+        self.assertEqual(self.problems(self.log(520), open_s=10.70), [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
