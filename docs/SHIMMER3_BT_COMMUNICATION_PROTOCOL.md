@@ -393,7 +393,38 @@ Later firmware recovers in two ways:
 
 A string damaged in this way still costs the connection it was announcing. If
 `%RFCOMM_OPEN%` itself loses a byte, that connection is not seen and its replies
-are not sent, but the next connection is.
+are not sent, but the next connection is. The commands the host sends on it are
+still carried out ([§8.4](#84-timeouts-and-error-recovery)).
+
+**Why bytes are lost while sensing (Shimmer3).** The receive DMA is armed for one
+block at a time, and CTS holds the module off only once the DMA's interrupt
+runs. Until then the module keeps sending, so the second byte after a block
+overruns the first in `UCA1RXBUF`. The interrupt must start within about 6 µs at
+the RN4678 V1.23's 1 Mbps, and about 18 µs at the V1.00.5's 460800. While the
+device samples, three interrupts run long enough to make it late:
+- the sample timer's, the highest-priority maskable interrupt, which runs for
+  tens of microseconds;
+- the ADC completion's, served before the receive on the shared DMA vector;
+- the I2C interrupt's, which polls in place for a START or STOP to go out. A
+  one-byte read's START goes out with its address byte, and a board whose
+  sensors are read with a one-byte status check each sample (the ICM-20948's
+  magnetometer) does one every sample.
+
+On the bench, logging at 512 Hz, 7 (V1.23) and 4 (V1.00.5) of 46 connections
+lost their `%RFCOMM_OPEN%` this way. With the first two interrupts held off
+(below), every overrun that remained came straight after the I2C interrupt.
+
+Later firmware does two things about it:
+- **It holds the module off with CTS while those interrupts run**
+  (`BT_rxIsrHold` in `Shimmer_Driver/RN4X/RN4X.h`; for the I2C interrupt, only
+  while it polls, `I2C_waitSentRxHeld` in `Shimmer_Driver/5xx_HAL/hal_I2C.c`). A
+  string that arrives then waits instead of losing bytes. This applies on an
+  RN4678 once the module is set up.
+- **It no longer reads a `%RFCOMM_CLOSE%` that lost its `_` as an open.**
+  `%RFCOMMCLOSE%` is as long as `%RFCOMM_OPEN%` and ends in `%` where that does.
+  Firmware up to v1.01.011 tested only that `%`, so it took the string for an
+  open and marked itself connected to a host that had gone. It now matches the
+  whole `_OPEN%`, and takes `%RFCOMMCLOSE%` as the close it is.
 
 **Status strings during a configuration write (Shimmer3).** The module sends a
 status string whenever its link changes, not only in reply to the host. The
@@ -3793,6 +3824,14 @@ reach its SD card while docked. Shimmer3R can, so the read proceeds there.
   after writing it.** A connection-parameter status string from the radio that
   arrives during the flash write desynchronises the parser
   ([§2.1](#21-classic-bluetooth-spp)).
+- **A command that timed out may still have run (Shimmer3 with an RN4678).**
+  A connection whose `%RFCOMM_OPEN%` the firmware missed carries out the host's
+  commands but sends no replies ([§2.1](#21-classic-bluetooth-spp)). It
+  happens up to v1.01.011, mostly while the device is logging. Before
+  repeating a command that changes state, such as `START_LOGGING_COMMAND` or
+  `STOP_LOGGING_COMMAND`, reconnect and read `GET_STATUS_COMMAND`. Firmware
+  that refuses a log start it cannot carry out NACKs a repeated start that has
+  already run.
 - **Correlate replies by response opcode, not by counting ACKs.** Unsolicited
   status pushes carry a leading `0xFF` by default
   ([§5.4](#54-in-stream-responses)), and 0x5D on unsupported hardware emits a
