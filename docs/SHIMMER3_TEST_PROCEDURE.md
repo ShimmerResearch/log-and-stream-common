@@ -1783,6 +1783,19 @@ four ways:
   `rig.toml` says a row does not fit, that row is `not_covered` on that unit,
   with the figures. The MCU has a ceiling of its own, about 950 Hz with 13
   channels (DEV-1308), so the 1024 Hz rows carry only the LN accel.
+- **Loss the radio refused is reported, not failed.** After each stream the
+  row reads `GET_BT_TX_COUNTERS_COMMAND` (BT_COMMUNICATION_PROTOCOL §7.12),
+  which counts every data packet the firmware refused, and why. An RN4678
+  module can hold RTS, its flow-control line, for 0.25–0.8 s, several
+  kilobytes at these rates. The firmware refuses samples meanwhile, and no MCU
+  queue can hold that much.
+  - **When it passes:** every sample the stream lost was refused while the
+    module held RTS, nothing was refused for any other reason, and every packet
+    the firmware queued arrived. The loss is then the radio's, the note says
+    how many samples and the longest hold, and the loss does not fail the row.
+  - **Anything else still fails:** a refusal for a full queue or a held reply,
+    a packet queued and never received, or more lost than the radio refused.
+  - **Older firmware:** without the counters, every loss fails as before.
 
 The checks after the stream are the Shimmer3R tier's:
 
@@ -1835,7 +1848,7 @@ compared, and each item still fails if anything happened.
 | `soak.long_log` | Shimmer3R, undocked, logging at 256 Hz for 75 min × scale. Every Shimmer3R logs at the same time: each is configured and undocked, the logs are started over Bluetooth one unit at a time, and after one wait each is stopped, re-docked and has its InfoMem put back. Each unit is still judged on its own. The session's files are checked as one recording, and each file must join the next at exactly one sample period across the hourly rollover |
 | `soak.long_log` (Shimmer3, `--attended`) | The same log on every Base6 Shimmer3 at once: 256 Hz, low-noise accel, gyro, mag and VBatt, 75 min × scale. The Base6 cannot undock a slot, so the operator takes every unit out with one spoken request and puts them back with another. Each unit is configured over the dock with the button and single touch off, so leaving the dock starts its log (CONFIGURATION_INFOMEM §8.1-§8.3), and with no auto-stop. Bluetooth confirms each log is running and stops it after the wait. Each card is read through the Base6's card reader, and the session found by name: every unit logs into one new trial folder, `HIL_longlog_<config time>`, because a Shimmer3 without its clock set dates its files 1981. The session is copied off the card and checked as the Shimmer3R's is. A Shimmer3 file does not list its channels, so the record layout comes from the header's sensor bitmaps, and the header must also show the log's rate and sensors and span the whole wait. Units are found by MAC wherever they were put back, and the operator is asked to move any not in its own slot. A move is an undock, and the log's configuration is still in the unit, so it may write a short session of its own. The log's session is then the lowest-numbered new one, and the rest are noted, not judged. Two new sessions on a unit that was not asked to move still fail |
 | `soak.dock_cycles` | Repeated hub-port undock/re-dock. Every cycle, the CDC port, the dock protocol and the SD drive must return; re-enumeration time is recorded. A cycle whose dock exchange failed inside a host service stall (§10.4) is counted apart and noted, not failed |
-| `soak.bt_reconnect` | On every unit, connect → status → 3 s stream at 51.2 Hz → stop → status → close, repeated. Counts connect failures, stops without an ACK, links left silent, and lost samples. On Shimmer3, two failed connects in a row trigger a reset through the Base6 and a retry, and the count records whether the reset brought Bluetooth back |
+| `soak.bt_reconnect` | On every unit, connect → status → 3 s stream at 51.2 Hz → stop → status → close, repeated. Counts connect failures, stops without an ACK, links left silent, and lost samples. On Shimmer3, two failed connects in a row trigger a reset through the Base6 and a retry, and the count records whether the reset brought Bluetooth back. A cycle whose loss the radio's RTS holds account for, by the release tier's rule, is counted as `radio_held` and reported, not failed |
 | `soak.long_stream` | A long Shimmer3R stream at 256 Hz: lost samples, duplicates, resyncs, jitter, and whether the stop is ACKed |
 
 Only the long logs share time. A unit logging undocked needs nothing from the
