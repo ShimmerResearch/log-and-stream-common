@@ -830,6 +830,7 @@ uint8_t ShimBt_dmaConversionDone(uint8_t *rxBuff)
           case GET_ALT_MAG_CALIBRATION_COMMAND:
           case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
           case GET_EVENT_CHANNEL_STATUS_COMMAND:
+          case GET_BT_TX_COUNTERS_COMMAND:
           case RESET_BT_ERROR_COUNTS:
 #if defined(SHIMMER3R)
           case GET_AUDIO_STATUS_COMMAND:
@@ -1100,6 +1101,7 @@ void ShimBt_processCmd(void)
       case GET_ALT_MAG_CALIBRATION_COMMAND:
       case GET_ALT_MAG_SAMPLING_RATE_COMMAND:
       case GET_EVENT_CHANNEL_STATUS_COMMAND:
+      case GET_BT_TX_COUNTERS_COMMAND:
 #if defined(SHIMMER3R)
       case GET_AUDIO_STATUS_COMMAND:
 #endif
@@ -2416,6 +2418,12 @@ void ShimBt_sendRsp(void)
         *(resPacket + packet_length++) = DEVICE_VER;
         break;
       }
+      case GET_BT_TX_COUNTERS_COMMAND:
+      {
+        *(resPacket + packet_length++) = BT_TX_COUNTERS_RESPONSE;
+        packet_length += ShimBt_txCountersFill(&resPacket[packet_length]);
+        break;
+      }
       case GET_FW_VERSION_COMMAND:
       {
         *(resPacket + packet_length++) = FW_VERSION_RESPONSE;
@@ -3298,6 +3306,140 @@ void ShimBt_loadTxBufForDataRateTest(void)
    * a phantom gap in the counter sequence. */
   btDataRateTestCounter = counter;
 #endif
+}
+
+/* Bluetooth transmit counters (GET_BT_TX_COUNTERS_COMMAND).
+ *
+ * A streamed data packet the firmware cannot queue for the radio is dropped
+ * from the stream (it is still in the SD log). These count each one, and why:
+ * whether the radio module was holding RTS, its flow-control line, at the
+ * time, or the queue was full, or a command reply was held. They also time
+ * every span the module held RTS. A host or a test can then tell samples the
+ * radio would not take from samples the firmware lost by itself.
+ *
+ * RTS edges reach ShimBt_txCountRts() from the platform's RTS interrupt
+ * (Shimmer3). Without one (Shimmer3R) the RTS fields stay 0 and every refusal
+ * is counted as full or reply. Reset when sensing starts. */
+#define BT_TX_RTS_TAIL_TICKS 262U /* 8 ms: a refusal this soon after RTS falls is the hold's backlog */
+#define BT_TX_SPAN_4MS       131U
+#define BT_TX_SPAN_64MS      2097U
+#define BT_TX_SPAN_256MS     8389U
+
+static struct
+{
+  uint32_t accepted;
+  uint32_t refusedRts;
+  uint32_t refusedFull;
+  uint32_t refusedReply;
+  uint32_t rtsRises;
+  uint32_t rtsHighTicks;
+  uint32_t rtsChangeTime; /* RTC_get32() at the last RTS edge */
+  uint16_t rtsMaxTicks;
+  uint16_t maxRunRefused;
+  uint16_t runRefused;
+  uint16_t rtsSpans[4];   /* < 4 ms, < 64 ms, < 256 ms, longer */
+  uint8_t rtsHigh;
+} btTxCounters;
+
+void ShimBt_txCountersReset(void)
+{
+  uint8_t high = btTxCounters.rtsHigh;
+  memset(&btTxCounters, 0, sizeof(btTxCounters));
+  btTxCounters.rtsHigh = high;
+  /* An RTS span already running counts from now; otherwise no backlog. */
+  btTxCounters.rtsChangeTime = RTC_get32() - (high ? 0U : BT_TX_RTS_TAIL_TICKS);
+}
+
+void ShimBt_txCountAccepted(void)
+{
+  btTxCounters.accepted++;
+  btTxCounters.runRefused = 0U;
+}
+
+void ShimBt_txCountRefused(void)
+{
+  if (btTxCounters.rtsHigh || (RTC_get32() - btTxCounters.rtsChangeTime) < BT_TX_RTS_TAIL_TICKS)
+  {
+    btTxCounters.refusedRts++;
+  }
+  else if (gBtReplyPendingLen != 0U)
+  {
+    btTxCounters.refusedReply++;
+  }
+  else
+  {
+    btTxCounters.refusedFull++;
+  }
+  if (++btTxCounters.runRefused > btTxCounters.maxRunRefused)
+  {
+    btTxCounters.maxRunRefused = btTxCounters.runRefused;
+  }
+}
+
+void ShimBt_txCountRts(uint8_t high)
+{
+  uint32_t now, span;
+
+  high = high ? 1U : 0U;
+  if (high == btTxCounters.rtsHigh)
+  {
+    return; /* a repeated edge: no change of state */
+  }
+  now = RTC_get32();
+  if (high)
+  {
+    btTxCounters.rtsRises++;
+  }
+  else
+  {
+    span = now - btTxCounters.rtsChangeTime;
+    btTxCounters.rtsHighTicks += span;
+    if (span > btTxCounters.rtsMaxTicks)
+    {
+      btTxCounters.rtsMaxTicks = (span > 0xFFFFU) ? 0xFFFFU : (uint16_t) span;
+    }
+    btTxCounters.rtsSpans[(span < BT_TX_SPAN_4MS)       ? 0U
+            : (span < BT_TX_SPAN_64MS)                  ? 1U
+            : (span < BT_TX_SPAN_256MS)                 ? 2U
+                                                        : 3U]++;
+  }
+  btTxCounters.rtsHigh = high;
+  btTxCounters.rtsChangeTime = now;
+}
+
+static uint8_t ShimBt_put32(uint8_t *buf, uint32_t v)
+{
+  buf[0] = v & 0xFF;
+  buf[1] = (v >> 8) & 0xFF;
+  buf[2] = (v >> 16) & 0xFF;
+  buf[3] = (v >> 24) & 0xFF;
+  return 4U;
+}
+
+/* BT_TX_COUNTERS_LEN bytes, little-endian: accepted, refused while RTS was
+ * held, refused full, refused for a reply, RTS rises, RTS-high time in ticks
+ * (uint32 each); the longest RTS-high span in ticks (saturating), the most
+ * packets refused in a row (uint16 each); RTS-high spans under 4 ms, 64 ms,
+ * 256 ms and longer (uint16 each). */
+uint8_t ShimBt_txCountersFill(uint8_t *buf)
+{
+  uint8_t n = 0U, i;
+  n += ShimBt_put32(&buf[n], btTxCounters.accepted);
+  n += ShimBt_put32(&buf[n], btTxCounters.refusedRts);
+  n += ShimBt_put32(&buf[n], btTxCounters.refusedFull);
+  n += ShimBt_put32(&buf[n], btTxCounters.refusedReply);
+  n += ShimBt_put32(&buf[n], btTxCounters.rtsRises);
+  n += ShimBt_put32(&buf[n], btTxCounters.rtsHighTicks);
+  buf[n++] = btTxCounters.rtsMaxTicks & 0xFF;
+  buf[n++] = btTxCounters.rtsMaxTicks >> 8;
+  buf[n++] = btTxCounters.maxRunRefused & 0xFF;
+  buf[n++] = btTxCounters.maxRunRefused >> 8;
+  for (i = 0U; i < 4U; i++)
+  {
+    buf[n++] = btTxCounters.rtsSpans[i] & 0xFF;
+    buf[n++] = btTxCounters.rtsSpans[i] >> 8;
+  }
+  return n;
 }
 
 #if defined(SHIMMER3R)

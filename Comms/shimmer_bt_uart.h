@@ -267,6 +267,11 @@
  * (hal_CYW20820.c) routes those to the EZ-Serial parser, not the Shimmer
  * command parser. Hence SD_LIST_DIR_COMMAND sits at 0xCC, not 0xC0. */
 #define SD_LIST_DIR_COMMAND                           0xCC
+/* What happened to each streamed data packet since sensing last started, and
+ * how long the radio module held RTS: ShimBt_txCountersFill(). */
+#define GET_BT_TX_COUNTERS_COMMAND                    0xCD
+#define BT_TX_COUNTERS_RESPONSE                       0xCE
+#define BT_TX_COUNTERS_LEN                            36U
 #define SD_LIST_DIR_RESPONSE                          0xC1
 #define SD_FILE_STAT_COMMAND                          0xC2
 #define SD_FILE_STAT_RESPONSE                         0xC3
@@ -471,6 +476,12 @@ uint8_t ShimBt_writeToTxBufAndSend(uint8_t *buf, uint16_t len, btResponseType re
  * read it after a bench run (DEV-1098). */
 extern volatile uint32_t btTxSensorDataDropped;
 #endif
+
+void ShimBt_txCountersReset(void);
+void ShimBt_txCountAccepted(void);
+void ShimBt_txCountRefused(void);
+void ShimBt_txCountRts(uint8_t high);
+uint8_t ShimBt_txCountersFill(uint8_t *buf);
 uint8_t ShimBt_assembleStatusBytes(uint8_t *bufPtr);
 
 uint8_t ShimBt_isCmdAllowedWhileSdSyncing(uint8_t command);
