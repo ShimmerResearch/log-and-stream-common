@@ -60,20 +60,21 @@ def pytest_addoption(parser):
     g.addoption("--keep-unit-config", action="store_true",
                 help="start each unit from its own configuration instead of the baseline "
                      "(rig/baseline.py); the report records which (default: the baseline)")
-    g.addoption("--waive", action="append", default=[], metavar="ITEM=ISSUE",
+    g.addoption("--waive", action="append", default=[], metavar="ITEM[@UNIT]=ISSUE",
                 help="accept a known failure or gap of ITEM under issue ISSUE (e.g. "
                      "smoke.sd_log=ABC-123): the key goes into the item's result if it does not "
-                     "pass, as a sign-off's waiver does. Repeatable.")
+                     "pass, as a sign-off's waiver does. ITEM@UNIT accepts it on that unit only, and "
+                     "applies when every unit that did not pass the item is named. Repeatable.")
 
 
 def _waivers(config) -> dict[str, str]:
     out = {}
     for w in config.getoption("--waive"):
-        item, sep, key = w.partition("=")
-        item, key = item.strip(), key.strip().upper()
-        if not sep or not item or not hil_gate.WAIVER_RE.fullmatch(key):
-            raise pytest.UsageError(f"--waive {w}: expected ITEM=ISSUE, e.g. smoke.sd_log=ABC-123")
-        out[item] = key
+        try:
+            key, issue = hil_report.parse_waiver(w)
+        except ValueError as e:
+            raise pytest.UsageError(f"--waive {e}")
+        out[key] = issue
     return out
 
 
@@ -534,18 +535,18 @@ def pytest_runtest_makereport(item, call):
     unit = item.callspec.params.get("unit") if hasattr(item, "callspec") else None
     who = unit.name if unit else "-"
     if rep.when == "setup" and rep.skipped:
-        col.record(item_id, "not_covered", f"{who}: {getattr(item, '_hil_not_covered', 'skipped')}")
+        col.record(item_id, "not_covered", f"{who}: {getattr(item, '_hil_not_covered', 'skipped')}", unit=who)
     elif rep.failed:
         msg = str(rep.longrepr.reprcrash.message) if hasattr(rep.longrepr, "reprcrash") else str(rep.longrepr)
-        col.record(item_id, "fail", f"{who}: {msg.splitlines()[0][:200] if msg else 'failed'}")
+        col.record(item_id, "fail", f"{who}: {msg.splitlines()[0][:200] if msg else 'failed'}", unit=who)
     elif rep.when == "call" and rep.skipped:
         # A test that decides at run time it cannot check something has not
         # checked it.
         reason = rep.longrepr[2] if isinstance(rep.longrepr, tuple) else "skipped"
-        col.record(item_id, "not_covered", f"{who}: {reason}")
+        col.record(item_id, "not_covered", f"{who}: {reason}", unit=who)
     elif rep.when == "call" and rep.passed:
         note = getattr(item, "_hil_note", None)
-        col.record(item_id, "pass", f"{who}: {note}" if note else None)
+        col.record(item_id, "pass", f"{who}: {note}" if note else None, unit=who)
 
 
 @pytest.fixture
@@ -666,8 +667,9 @@ def pytest_sessionfinish(session, exitstatus):
     path = hil_report.write(rep, Path(out))
     used = {r["id"] for r in rep["results"] if r.get("waiver")}
     for item, key in sorted(cfg._hil_waivers.items()):
-        if tr and item not in used:
-            tr.write_line(f"hil: --waive {item}={key} not used: the item passed, or was not run")
+        if tr and item.partition("@")[0] not in used:
+            tr.write_line(f"hil: --waive {item}={key} not used: the item passed, was not run, or did not "
+                          f"pass on a unit no waiver names")
     if tr:
         counts = {}
         for r in rep["results"]:

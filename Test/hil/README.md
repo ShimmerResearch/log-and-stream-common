@@ -11,6 +11,8 @@ python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022            # flash, r
 python Test/hil/run_rc.py LogAndStream_Shimmer3R_v1.01.022 --upload   # ...and attach it to the pre-release
 python Test/hil/run_rc.py <tag> --no-flash                           # the unit already runs the candidate
 python Test/hil/run_rc.py <tag> --waive smoke.sd_log=ABC-123        # accept a known failure under an issue
+python Test/hil/run_rc.py <tag> --waive release.imu_256hz@s3-a=ABC-1  # ...on that unit only
+python Test/hil/hil_report.py waive <report> --waive smoke.sd_log=ABC-123  # ...decided after the run
 python Test/hil/run_rc.py <tag> --manual-power                       # dock and undock by hand when prompted
 ```
 
@@ -45,6 +47,20 @@ A failure in the report blocks the release, required item or not, unless it
 carries a waiver. `--waive ITEM=ISSUE` puts the issue key into that item's
 result when it fails or is not covered, as a manual sign-off's waiver does, and
 the gate lists it as waived. A waiver for an item that passed is not used.
+
+`ITEM=ISSUE` waives the item on every unit. `ITEM@UNIT=ISSUE` waives it on that
+unit only. That's what a known fault of one radio or board needs, because a
+whole-item waiver would also cover a regression on another unit. The item is
+waived only when every unit that did not pass it is named, all under one issue,
+since the gate takes one key per item. Each result lists its units' statuses
+under `units`, so the reader can see which units a waiver covers.
+
+A waiver decided after the run goes in with
+`python Test/hil/hil_report.py waive <report> --waive ITEM[@UNIT]=ISSUE --by <name>`.
+It follows the same rules. It keeps the original beside the report as
+`<name>.before-waivers.json`, and records each waiver it adds, with who and
+when, under `run.waived_after_run`. A per-unit waiver needs the `units`
+statuses, so on a report written before they existed only `ITEM=ISSUE` applies.
 
 Output goes to `Test/hil/out/<tag>/<time>/`: the image, `build-info.json`, the
 pytest log and `hil-report-<bench>.json`.

@@ -96,6 +96,116 @@ class Waivers(unittest.TestCase):
             self.report({"a.fails": "accepted"})
 
 
+class UnitWaivers(unittest.TestCase):
+    """ITEM@UNIT: a waiver held to the units it was given for."""
+
+    def report(self, waivers, rn42="pass"):
+        c = hil_report.Collector()
+        c.record("release.row", "fail", "s3-rn4678-1005: lost 34 samples", unit="s3-rn4678-1005")
+        c.record("release.row", rn42, "s3-rn42-615: ...", unit="s3-rn42-615")
+        c.record("release.row", "pass", None, unit="s3-rn4678-123")
+        return c.report(platform="shimmer3", commit=SHA, firmware_version="1.01.013",
+                        bench="b", operator="o", waivers=waivers)["results"][0]
+
+    def test_each_units_status_is_listed(self):
+        r = self.report({})
+        self.assertEqual(r["units"], {"s3-rn4678-1005": "fail", "s3-rn4678-123": "pass", "s3-rn42-615": "pass"})
+
+    def test_a_waiver_for_the_unit_that_failed_applies(self):
+        self.assertEqual(self.report({"release.row@s3-rn4678-1005": "DEV-1379"})["waiver"], "DEV-1379")
+
+    def test_it_does_not_cover_another_unit_failing_the_same_item(self):
+        r = self.report({"release.row@s3-rn4678-1005": "DEV-1379"}, rn42="fail")
+        self.assertNotIn("waiver", r, "an RN42 failure must not ride on the RN4678's waiver")
+
+    def test_a_waiver_for_a_unit_that_passed_does_nothing(self):
+        self.assertNotIn("waiver", self.report({"release.row@s3-rn4678-123": "DEV-1379"}))
+
+    def test_a_whole_item_waiver_still_covers_every_unit(self):
+        self.assertEqual(self.report({"release.row": "DEV-1379"}, rn42="fail")["waiver"], "DEV-1379")
+
+    def test_units_waived_under_different_issues_leave_it_unwaived(self):
+        """The gate takes one key per item."""
+        r = self.report({"release.row@s3-rn4678-1005": "DEV-1379", "release.row@s3-rn42-615": "DEV-1"},
+                        rn42="fail")
+        self.assertNotIn("waiver", r)
+
+    def test_parse(self):
+        self.assertEqual(hil_report.parse_waiver("release.row@s3-rn4678-1005=dev-1379"),
+                         ("release.row@s3-rn4678-1005", "DEV-1379"))
+        self.assertEqual(hil_report.parse_waiver("smoke.sd_log=ABC-1"), ("smoke.sd_log", "ABC-1"))
+        for bad in ("release.row@=DEV-1", "=DEV-1", "release.row=accepted", "release.row"):
+            with self.assertRaises(ValueError, msg=bad):
+                hil_report.parse_waiver(bad)
+
+
+class WaiveAfterRun(unittest.TestCase):
+    """hil_report.py waive: waivers decided after the run, written into the report."""
+
+    def old_report(self):
+        """As written before per-unit statuses existed: no "units"."""
+        return {"schema": hil_gate.REPORT_SCHEMA, "kind": "automated", "platform": "shimmer3", "commit": SHA,
+                "firmware_version": "1.01.013", "bench": "b", "operator": "o", "created": "2026-11-27T22:45:35Z",
+                "results": [{"id": "release.row", "status": "fail", "note": "s3-rn4678-1005: lost"},
+                            {"id": "release.ok", "status": "pass"}]}
+
+    def new_report(self, rn42="pass"):
+        r = self.old_report()
+        r["results"][0]["units"] = {"s3-rn4678-1005": "fail", "s3-rn42-615": rn42}
+        return r
+
+    def test_a_whole_item_waiver_is_written_and_recorded(self):
+        rep = self.old_report()
+        done = hil_report.waive(rep, {"release.row": "DEV-1379"}, by="mark", at="2026-11-28T12:00:00Z")
+        self.assertEqual(rep["results"][0]["waiver"], "DEV-1379")
+        self.assertEqual(rep["run"]["waived_after_run"], [{"item": "release.row", "issue": "DEV-1379",
+                                                           "as": ["release.row"], "by": "mark",
+                                                           "at": "2026-11-28T12:00:00Z"}])
+        self.assertEqual(done, ["release.row: waived under DEV-1379"])
+        self.assertEqual(hil_gate.validate_report("r", rep), [])
+
+    def test_a_unit_waiver_needs_per_unit_statuses(self):
+        rep = self.old_report()
+        done = hil_report.waive(rep, {"release.row@s3-rn4678-1005": "DEV-1379"}, by="mark")
+        self.assertNotIn("waiver", rep["results"][0])
+        self.assertIn("NOT waived", done[0])
+
+    def test_a_unit_waiver_applies_on_a_report_that_has_them(self):
+        rep = self.new_report()
+        hil_report.waive(rep, {"release.row@s3-rn4678-1005": "DEV-1379"}, by="mark")
+        self.assertEqual(rep["results"][0]["waiver"], "DEV-1379")
+
+    def test_and_does_not_cover_another_unit(self):
+        rep = self.new_report(rn42="fail")
+        hil_report.waive(rep, {"release.row@s3-rn4678-1005": "DEV-1379"}, by="mark")
+        self.assertNotIn("waiver", rep["results"][0])
+
+    def test_a_pass_and_an_existing_waiver_are_left_alone(self):
+        rep = self.old_report()
+        rep["results"][0]["waiver"] = "DEV-1"
+        done = hil_report.waive(rep, {"release.row": "DEV-1379", "release.ok": "DEV-1379"}, by="mark")
+        self.assertEqual(rep["results"][0]["waiver"], "DEV-1")
+        self.assertNotIn("waiver", rep["results"][1])
+        self.assertNotIn("run", rep)
+        self.assertIn("release.ok: passed, nothing to waive", done)
+
+    def test_an_item_the_report_lacks_is_named(self):
+        done = hil_report.waive(self.old_report(), {"soak.x": "DEV-1379"}, by="mark")
+        self.assertEqual(done, ["soak.x: no such item in this report"])
+
+    def test_the_command_keeps_the_original(self):
+        import json
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "hil-report-b.json"
+            path.write_text(json.dumps(self.old_report()), encoding="utf-8")
+            rc = hil_report.main(["waive", str(path), "--waive", "release.row=DEV-1379", "--by", "mark"])
+            self.assertEqual(rc, 0)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["results"][0]["waiver"], "DEV-1379")
+            backup = Path(d) / "hil-report-b.before-waivers.json"
+            self.assertNotIn("waiver", json.loads(backup.read_text(encoding="utf-8"))["results"][0])
+
+
 class Hardware(unittest.TestCase):
     """run.hardware: the host, the kit and the units a session tested."""
 
