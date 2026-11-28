@@ -3201,8 +3201,9 @@ def _s3r_smoke_module():
 
 @unittest.skipIf(_s3r_smoke_module() is None, "needs pytest")
 class ClockSetMidlogLog(unittest.TestCase):
-    """The log's stamps say whether a clock set reached it, and the host's open
-    time says whether its end is missing. Its length alone said neither."""
+    """The log's stamps say whether a clock set reached it and whether its end
+    is missing. Its length said neither, and against the host's open time it
+    also counted the start, which grows with the trial folder."""
 
     PERIOD = 640                    # 51.2 Hz
     PROBE = 3 * 32768               # midstream.PROBE_S
@@ -3212,28 +3213,68 @@ class ClockSetMidlogLog(unittest.TestCase):
         return types.SimpleNamespace(header=types.SimpleNamespace(divider=self.PERIOD), records=records,
                                      span_ticks=span, max_gap_ticks=self.PERIOD + step if step else 0)
 
-    def problems(self, fc, open_s):
-        return _s3r_smoke_module()._clock_set_log_problems(fc, open_s)
+    def problems(self, fc, end_s, open_s):
+        return _s3r_smoke_module()._clock_set_log_problems(fc, end_s, open_s)
 
     def test_a_clean_log_that_ran_long_passes(self):
         """The bench's case: 597 records on one grid, 11.64 s, read as a step before."""
-        self.assertEqual(self.problems(self.log(597), open_s=11.70), [])
+        self.assertEqual(self.problems(self.log(597), end_s=0.02, open_s=11.70), [])
 
     def test_a_set_that_reached_the_log_shows_as_one_step_of_its_size(self):
-        got = self.problems(self.log(512, step=self.PROBE), open_s=10.40)
+        got = self.problems(self.log(512, step=self.PROBE), end_s=0.02, open_s=10.40)
         self.assertEqual(len(got), 1)
         self.assertIn("one step of 3.02 s", got[0])
         self.assertIn("the set stepped the log's stamps", got[0])
 
     def test_a_gap_unlike_the_set_is_left_to_the_timing_checks(self):
-        self.assertEqual(self.problems(self.log(512, step=10 * self.PERIOD), open_s=10.40), [])
+        self.assertEqual(self.problems(self.log(512, step=10 * self.PERIOD), end_s=0.02, open_s=10.40), [])
 
     def test_a_log_that_stopped_early_has_its_end_missing(self):
-        got = self.problems(self.log(1), open_s=10.40)
-        self.assertEqual(got, ["the records cover 0.02 s of a log the host held open 10.40 s: the end is missing"])
+        got = self.problems(self.log(1), end_s=10.32, open_s=10.40)
+        self.assertEqual(got, ["the last record is 10.32 s before the STOP_LOGGING ACK, of a log the host held "
+                               "open 10.40 s: the end is missing"])
 
-    def test_a_short_start_up_is_not_a_missing_end(self):
-        self.assertEqual(self.problems(self.log(520), open_s=10.70), [])
+    def test_a_log_with_no_records_is_reported(self):
+        got = self.problems(self.log(0), end_s=None, open_s=10.40)
+        self.assertEqual(got, ["the log holds no records, though the host held it open 10.40 s"])
+
+    def test_a_slow_start_from_a_full_trial_folder_is_not_a_missing_end(self):
+        """The bench's case: 517 records over 10.10 s of an 11.05 s open, the first
+        0.87 s after the START ACK (782 sessions in the trial folder), the last
+        0.01 s before the STOP ACK."""
+        self.assertEqual(self.problems(self.log(517), end_s=0.01, open_s=11.05), [])
+
+    def test_unplaced_records_leave_the_end_unjudged(self):
+        """A clock read too far off is a problem of its own; it does not also fail the end."""
+        self.assertEqual(self.problems(self.log(517), end_s=None, open_s=11.05), [])
+
+
+@unittest.skipIf(_s3r_smoke_module() is None, "needs pytest")
+class ClockSetMidlogStamps(unittest.TestCase):
+    """A record's stamp, the low 24 bits of the device's clock, against the host's clock."""
+
+    T = 32768
+
+    def to_host(self, stamp, host_ticks, offset_s=0.0):
+        return _s3r_smoke_module()._stamp_to_host_s(stamp, host_ticks, offset_s)
+
+    def test_a_record_before_the_host_time_is_positive(self):
+        host = 1_795_000_000 * self.T
+        self.assertAlmostEqual(self.to_host((host - self.T // 2) % (1 << 24), host), 0.5)
+
+    def test_a_record_after_the_host_time_is_negative(self):
+        host = 1_795_000_000 * self.T
+        self.assertAlmostEqual(self.to_host((host + self.T) % (1 << 24), host), -1.0)
+
+    def test_the_24_bit_wrap_between_them(self):
+        host = (1 << 24) * 1000 + 100           # the host just past a wrap, the record 200 ticks before it
+        self.assertAlmostEqual(self.to_host((1 << 24) - 100, host), 200 / self.T)
+
+    def test_the_device_offset_is_allowed_for(self):
+        """A device clock 40 ms behind the host's stamps its records 40 ms early."""
+        host = 1_795_000_000 * self.T
+        stamp = (host - round(0.04 * self.T) - self.T // 4) % (1 << 24)
+        self.assertAlmostEqual(self.to_host(stamp, host, offset_s=-0.04), 0.25, places=3)
 
 
 if __name__ == "__main__":
