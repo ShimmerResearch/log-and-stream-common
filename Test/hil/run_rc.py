@@ -136,9 +136,10 @@ def main(argv=None) -> int:
     ap.add_argument("--upload", action="store_true", help="attach the report to the GitHub release")
     ap.add_argument("--triage", action="store_true",
                     help="if anything did not pass, ask Claude to triage it (triage.py; costs model usage)")
-    ap.add_argument("--waive", action="append", default=[], metavar="ITEM=ISSUE",
+    ap.add_argument("--waive", action="append", default=[], metavar="ITEM[@UNIT]=ISSUE",
                     help="accept a known failure or gap of ITEM under ISSUE, e.g. smoke.sd_log=ABC-123; "
-                         "the key goes into the report and the gate shows it (repeatable)")
+                         "the key goes into the report and the gate shows it. ITEM@UNIT accepts it on "
+                         "that unit only (repeatable)")
     ap.add_argument("pytest_args", nargs="*", help="extra pytest arguments, after --")
     a = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):

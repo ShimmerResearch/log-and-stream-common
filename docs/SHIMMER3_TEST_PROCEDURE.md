@@ -1437,7 +1437,14 @@ A test the bench cannot run is reported `not_covered` rather than passed, so
 the gate knows another bench must supply it. A known failure blocks the
 release like any other (§10.2, rule 3) unless it is accepted:
 `run_rc.py <tag> --waive <item>=<issue>` writes the issue key into that item's
-result, as a sign-off's waiver does (§10.1). Setup and layout are in
+result, as a sign-off's waiver does (§10.1). `--waive <item>@<unit>=<issue>`
+accepts it on that unit only, and the item counts as waived only when every
+unit that did not pass it is named under one issue. Use that for a known fault
+of one radio or board, so the waiver can't also hide a regression on another
+unit. Each result lists every unit's status under `units`. A waiver decided
+after the run goes in with `hil_report.py waive <report> --waive
+<item>[@<unit>]=<issue>`, under the same rules. It records who added the waiver
+and when under `run.waived_after_run`, and keeps the original report beside it. Setup and layout are in
 `Test/hil/README.md`.
 
 **Every Shimmer3R starts the run from one configuration** (DEV-1463). The smoke
