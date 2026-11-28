@@ -3277,5 +3277,51 @@ class ClockSetMidlogStamps(unittest.TestCase):
         self.assertAlmostEqual(self.to_host(stamp, host, offset_s=-0.04), 0.25, places=3)
 
 
+# --- GET_BT_TX_COUNTERS: stream loss the radio's RTS holds account for -------------------
+
+class TxCountersAttribution(unittest.TestCase):
+    """bt.radio_held_loss: the loss is the radio's flow control only when the
+    counters account for every lost sample and nothing else went missing."""
+
+    def counters(self, accepted=5000, rts=120, full=0, reply=0):
+        import struct as _struct
+        raw = _struct.pack("<6I2H4H", accepted, rts, full, reply, 2, 20000, 19000, rts, 0, 0, 0, 2)
+        return bt.TxCounters.parse(raw)
+
+    def stream(self, packets=5000, missing=120):
+        return types.SimpleNamespace(packets=packets, missing=missing, gaps=1 if missing else 0)
+
+    def test_the_reply_parses(self):
+        c = self.counters()
+        self.assertEqual((c.accepted, c.refused_rts, c.refused_full, c.refused_reply), (5000, 120, 0, 0))
+        self.assertEqual((c.rts_rises, c.rts_high_ticks, c.rts_max_ticks, c.max_run_refused), (2, 20000, 19000, 120))
+        self.assertEqual(c.rts_spans, (0, 0, 0, 2))
+
+    def test_loss_refused_while_the_radio_held_rts_is_the_radios(self):
+        note = bt.radio_held_loss(self.stream(), self.counters())
+        self.assertEqual(note, "120 samples refused while the radio held RTS: 2 holds, the longest 580 ms")
+
+    def test_a_refusal_for_a_full_queue_is_the_firmwares(self):
+        self.assertIsNone(bt.radio_held_loss(self.stream(), self.counters(full=1)))
+
+    def test_a_refusal_for_a_held_reply_is_the_firmwares(self):
+        self.assertIsNone(bt.radio_held_loss(self.stream(), self.counters(reply=1)))
+
+    def test_a_packet_queued_and_never_received_is_not_explained(self):
+        self.assertIsNone(bt.radio_held_loss(self.stream(packets=4999), self.counters()))
+
+    def test_more_lost_than_refused_is_not_explained(self):
+        """Samples gone before the radio path (a gather failure, say) never reach a refusal."""
+        self.assertIsNone(bt.radio_held_loss(self.stream(missing=150), self.counters(rts=120)))
+
+    def test_refusals_beyond_the_gaps_are_allowed(self):
+        """A refusal at the very start or end of a stream leaves no gap."""
+        self.assertIsNotNone(bt.radio_held_loss(self.stream(missing=118), self.counters(rts=120)))
+
+    def test_nothing_to_explain_without_loss_or_without_counters(self):
+        self.assertIsNone(bt.radio_held_loss(self.stream(missing=0), self.counters(rts=0)))
+        self.assertIsNone(bt.radio_held_loss(self.stream(), None))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

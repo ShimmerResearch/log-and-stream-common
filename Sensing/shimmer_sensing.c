@@ -230,6 +230,7 @@ void ShimSens_startSensing(void)
     shimmerStatus.sensing = 1;
     ShimSens_resetPacketBuffAll();
     ShimSens_configureChannels();
+    ShimBt_txCountersReset();
     if (ShimSens_getNumEnabledChannels() == 0)
     {
       shimmerStatus.configuring = 0;
@@ -774,11 +775,16 @@ static void ShimSens_routePacket(PACKETBufferTypeDef *slotPtr, uint8_t toSd)
     if (ShimBt_writeToTxBufAndSend(&dataBufferPtr[PACKET_HEADER_IDX],
             sensing.dataLen + crcMode, SENSOR_DATA))
     {
+      /* Refused - the radio holding RTS, the queue full or a reply held - so
+       * this sample is gone from the stream (it is still in the log). */
+      ShimBt_txCountRefused();
 #if defined(SHIMMER3R)
-      /* Refused - TX ring full or a reply held - so this sample is gone from
-       * the stream (it is still in the log). */
       btTxSensorDataDropped++;
 #endif
+    }
+    else
+    {
+      ShimBt_txCountAccepted();
     }
   }
 #endif

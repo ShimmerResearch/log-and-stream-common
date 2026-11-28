@@ -276,6 +276,16 @@ def test_dock_cycles(unit, power, hil_note):
 
 # --- Bluetooth reconnect loop -----------------------------------------------------
 
+# Counted and reported, but not failures: a cycle whose stream loss the radio's
+# RTS holds account for (bt.radio_held_loss).
+NOT_FAILURES = ("radio_held",)
+
+
+def _counts_note(counts: dict) -> str:
+    shown = {k: v for k, v in counts.items() if v}
+    return ", ".join(f"{k} {v}" for k, v in shown.items()) or "all clean"
+
+
 def _reconnect_loop(unit, n, reset=None) -> tuple[dict, list]:
     """N connect -> status -> 3 s stream -> stop -> status -> close cycles.
 
@@ -289,7 +299,7 @@ def _reconnect_loop(unit, n, reset=None) -> tuple[dict, list]:
     if not port:
         pytest.skip(f"no paired SPP port for {unit.mac}")
     counts = {"connect_failed": 0, "no_status": 0, "stream_loss": 0, "stop_unacked": 0,
-              "silent_after_stop": 0, "recovered_by_reset": 0, "dead_after_reset": 0}
+              "silent_after_stop": 0, "recovered_by_reset": 0, "dead_after_reset": 0, "radio_held": 0}
     first = []
     fails_in_row = 0
     for i in range(n):
@@ -333,10 +343,6 @@ def _reconnect_loop(unit, n, reset=None) -> tuple[dict, list]:
                 first.append(f"{i + 1}: no status reply on a fresh link")
                 continue
             st = link.stream(3, link.inquiry())
-            if st.gaps or st.dupes or st.resyncs:
-                counts["stream_loss"] += 1
-                first.append(f"{i + 1}: stream {st.missing} lost in {st.gaps} gaps, {st.dupes} dupes, "
-                             f"{st.resyncs} resyncs, largest step {st.max_gap_ticks} ticks")
             if not st.stop_ack:
                 counts["stop_unacked"] += 1
             try:
@@ -344,6 +350,17 @@ def _reconnect_loop(unit, n, reset=None) -> tuple[dict, list]:
             except bt.BtError:
                 counts["silent_after_stop"] += 1
                 first.append(f"{i + 1}: silent after stop ({st.after_stop} packets after it)")
+                tx = None
+            else:
+                tx = link.tx_counters()
+            held = bt.radio_held_loss(st, tx) if not (st.dupes or st.resyncs) else None
+            if held:
+                counts["radio_held"] += 1          # the radio's flow control, reported, not a failure
+                first.append(f"{i + 1}: {held}")
+            elif st.gaps or st.dupes or st.resyncs:
+                counts["stream_loss"] += 1
+                first.append(f"{i + 1}: stream {st.missing} lost in {st.gaps} gaps, {st.dupes} dupes, "
+                             f"{st.resyncs} resyncs, largest step {st.max_gap_ticks} ticks")
         finally:
             link.close()
         time.sleep(1)
@@ -354,8 +371,8 @@ def _reconnect_loop(unit, n, reset=None) -> tuple[dict, list]:
 def test_bt_reconnect_s3r(unit, hil_note):
     with s3r_config(unit, RECONNECT_RATE_HZ):
         counts, first = _reconnect_loop(unit, RECONNECTS)
-    bad = {k: v for k, v in counts.items() if v}
-    hil_note(f"{RECONNECTS} cycles at {RECONNECT_RATE_HZ} Hz: " + (", ".join(f"{k} {v}" for k, v in bad.items()) or "all clean"))
+    bad = {k: v for k, v in counts.items() if v and k not in NOT_FAILURES}
+    hil_note(f"{RECONNECTS} cycles at {RECONNECT_RATE_HZ} Hz: " + _counts_note(counts))
     assert not bad, f"{bad}; first: {first[:4]}"
 
 
@@ -365,8 +382,8 @@ def test_bt_reconnect_s3(unit, base6_if_any, hil_note):
     with s3_rate(unit, base6_if_any, RECONNECT_RATE_HZ):
         counts, first = _reconnect_loop(unit, RECONNECTS,
                                         reset=lambda: reset_slot(base6_if_any, unit.base6_slot))
-    bad = {k: v for k, v in counts.items() if v}
-    hil_note(f"{unit.radio}: {RECONNECTS} cycles: " + (", ".join(f"{k} {v}" for k, v in bad.items()) or "all clean"))
+    bad = {k: v for k, v in counts.items() if v and k not in NOT_FAILURES}
+    hil_note(f"{unit.radio}: {RECONNECTS} cycles: " + _counts_note(counts))
     assert not bad, f"{bad}; first: {first[:4]}"
 
 

@@ -298,11 +298,13 @@ def test_row(row, unit, rig, base6, saved, request, hil_note):
         link.set_crc(row["crc"])
         st = link.stream(row["seconds"], inq, keep=True)
         hung = not _answers_after_stop(link)
+        tx = None
         if not hung:
             # A sensing Shimmer3 turns its dock UART off: name a stop not acted
             # on here, not as a dock timeout in the next row's read-back.
             link.wait_status(bt.STATUS_SENSING, False, timeout_s=5)
             link.set_crc(0)
+            tx = link.tx_counters()
     aside.stop(st, hung)
     if hung:
         # The silent link is closed (which also resets the CRC mode, §3.3):
@@ -311,14 +313,16 @@ def test_row(row, unit, rig, base6, saved, request, hil_note):
             again.wait_status(bt.STATUS_SENSING, False, timeout_s=15)
 
     sensors = SETS[row["sensors"]]
-    probs = _inquiry_checks(inq, cfg, sensors) + _stream_checks(st, inq, cfg, row)
+    held = bt.radio_held_loss(st, tx)
+    probs = _inquiry_checks(inq, cfg, sensors) + _stream_checks(st, inq, cfg, row, radio_held=held is not None)
     chans = decode.split_channels(st.rows, inq.channels, bt.HW_SHIMMER3)
     sig, note = signals.check_rest(chans, calibs, cfg.rate_hz, mag_ceiling_hz=MAG_FLOOR_HZ, hw=bt.HW_SHIMMER3,
                                    defaults=cfg.default_calibrations(saved.records))
     probs += sig
     dlhc = " (mag X, Z, Y: LSM303DLHC)" if "mag" in sensors and list(inq.channels) == expected_channels(
         sensors, True) else ""
-    hil_note(f"{how}; {st.packets} pkts, {len(inq.channels)} channels{dlhc}, {budget}; {note}")
+    held_note = f"; {held}" if held else ""
+    hil_note(f"{how}; {st.packets} pkts, {len(inq.channels)} channels{dlhc}, {budget}{held_note}; {note}")
     assert not probs, "; ".join(probs)
 
 
@@ -347,16 +351,20 @@ def _inquiry_checks(inq, cfg: S3Config, sensors: set[str]) -> list[str]:
     return out
 
 
-def _stream_checks(st, inq, cfg: S3Config, row) -> list[str]:
+def _stream_checks(st, inq, cfg: S3Config, row, radio_held: bool = False) -> list[str]:
+    """radio_held: the radio module's RTS holds account for every sample the
+    stream lost (bt.radio_held_loss), so the loss, and the packets it took from
+    the count, are the radio's flow control and not a finding about the firmware."""
     out = []
     if st.resyncs:
         out.append(f"{st.resyncs} framing resyncs (first: {st.misframes[:1]})")
     if st.crc_errors:
         out.append(f"{st.crc_errors} CRC errors (mode {row['crc']})")
     expected = row["seconds"] * cfg.rate_hz
-    if st.packets < 0.8 * expected:
+    counted = st.packets + (st.missing if radio_held else 0)
+    if counted < 0.8 * expected:
         out.append(f"{st.packets} packets in {st.seconds:.1f} s, expected ~{expected:.0f}")
-    if st.gaps:
+    if st.gaps and not radio_held:
         out.append(f"{st.gaps} gaps, {st.missing} samples lost, largest step {st.max_gap_ticks} ticks")
     if st.dupes:
         out.append(f"{st.dupes} duplicate or backwards stamps")

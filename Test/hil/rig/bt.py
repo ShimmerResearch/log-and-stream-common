@@ -40,6 +40,8 @@ START_LOGGING, STOP_LOGGING = 0x92, 0x93
 START_SDBT, STOP_SDBT = 0x70, 0x97
 # Shimmer3R audio (docs/SHIMMER3R_AUDIO.md §5): the reply is 32 bytes.
 GET_AUDIO_STATUS, AUDIO_STATUS_RSP, AUDIO_STATUS_LEN = 0xBC, 0xBD, 32
+# What happened to each streamed data packet since sensing started (§7.12).
+GET_BT_TX_COUNTERS, BT_TX_COUNTERS_RSP, BT_TX_COUNTERS_LEN = 0xCD, 0xCE, 36
 
 # Configuration over Bluetooth, the way a host writes it (§7.5, §7.6, §7.8).
 GET_INFOMEM, INFOMEM_RSP, SET_INFOMEM = 0x8E, 0x8D, 0x8C
@@ -248,6 +250,43 @@ def gap_positions(ts: list[int], period: int) -> list[tuple[int, int]]:
     return out
 
 
+@dataclass
+class TxCounters:
+    """GET_BT_TX_COUNTERS' reply (§7.12): what happened to each data packet the
+    firmware offered the radio since sensing started, and the RTS holds."""
+    accepted: int
+    refused_rts: int        # while the radio module held RTS, or in the 8 ms after
+    refused_full: int       # RTS low: no room in the queue
+    refused_reply: int      # RTS low: a command reply was held
+    rts_rises: int
+    rts_high_ticks: int
+    rts_max_ticks: int      # saturates at 0xFFFF
+    max_run_refused: int
+    rts_spans: tuple        # holds under 4 ms, 64 ms, 256 ms, longer
+
+    @classmethod
+    def parse(cls, raw: bytes) -> "TxCounters":
+        v = struct.unpack("<6I2H4H", raw)
+        return cls(*v[:8], tuple(v[8:]))
+
+
+def radio_held_loss(st, tx: "TxCounters | None") -> str | None:
+    """Whether the radio module's RTS holds account for every sample a stream lost.
+
+    They do when every lost sample was refused while the module held RTS (or
+    just after), nothing was refused for any other reason, and every packet the
+    firmware queued arrived. Then the loss is the radio's flow control, not the
+    firmware's, and this returns a note saying so; otherwise None, as it does
+    without counters (older firmware) or with nothing lost. Refusals beyond the
+    loss are allowed: one at the very start or end of a stream leaves no gap."""
+    if tx is None or not st.missing:
+        return None
+    if tx.refused_full or tx.refused_reply or tx.accepted != st.packets or st.missing > tx.refused_rts:
+        return None
+    return (f"{st.missing} samples refused while the radio held RTS: {tx.rts_rises} holds, the longest "
+            f"{tx.rts_max_ticks / TICKS_PER_S * 1000:.0f} ms")
+
+
 class BtLink:
     def __init__(self, port: str | None = None, connect_timeout_s: float = 10.0, *, ser=None):
         # Opening an SPP port is what makes Windows page the device; it can take
@@ -377,6 +416,17 @@ class BtLink:
                 self.ser.reset_input_buffer()     # its CRC, if a mode is on
                 return bytes(buf[i + 3:i + 3 + n])
         raise BtError(f"no status reply within {timeout_s:.0f} s (got {bytes(buf[:24]).hex()})")
+
+    def tx_counters(self, timeout_s: float = 0.5) -> "TxCounters | None":
+        """GET_BT_TX_COUNTERS (§7.12), or None from firmware without it, which
+        ignores the byte, so no ACK comes. Read after the stream stops: the
+        counters cover the stream that ran since sensing started."""
+        try:
+            self.command(GET_BT_TX_COUNTERS, rsp=BT_TX_COUNTERS_RSP, attempts=1, ack_timeout_s=timeout_s)
+        except BtError:
+            self.ser.reset_input_buffer()
+            return None
+        return TxCounters.parse(self._read(BT_TX_COUNTERS_LEN))
 
     def audio_status(self) -> bytes:
         """GET_AUDIO_STATUS_COMMAND's 32-byte reply (SHIMMER3R_AUDIO §5); rig/s3r_audio.py reads it."""

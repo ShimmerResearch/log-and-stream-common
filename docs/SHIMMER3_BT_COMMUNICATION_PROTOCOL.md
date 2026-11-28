@@ -1103,6 +1103,8 @@ The **Notes** column carries comparison flags, all of which are statements about
 | `0xBB` | `EVENT_RECORD_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
 | `0xBC` | `GET_AUDIO_STATUS_COMMAND` | GET | 0 | `AUDIO_STATUS_RESPONSE` | 32 | S3R |  |  |  | FW_ONLY |
 | `0xBD` | `AUDIO_STATUS_RESPONSE` | RSP |  |  |  | S3R |  |  |  | FW_ONLY |
+| `0xCD` | `GET_BT_TX_COUNTERS_COMMAND` | GET | 0 | `BT_TX_COUNTERS_RESPONSE` | 36 | both |  |  |  | FW_ONLY |
+| `0xCE` | `BT_TX_COUNTERS_RESPONSE` | RSP |  |  |  | both |  |  |  | FW_ONLY |
 | `0xFE` | `NACK_COMMAND_PROCESSED` | ACK | 0 |  |  | both |  |  |  | FW_ONLY |
 | `0xFF` | `ACK_COMMAND_PROCESSED` | ACK | 1 |  |  | both |  |  |  | permitted while SD syncing |
 
@@ -1596,6 +1598,9 @@ take priority over data packets:
 
 A reply can therefore arrive late when the link is slow, but it arrives. A host
 should time out on the link, not on a single reply under load.
+
+`GET_BT_TX_COUNTERS_COMMAND` ([§7.12](#712-control-and-test)) counts every
+data packet refused, and why: the radio holding RTS, no room, or a held reply.
 
 The SD file transfer's data frames follow the same rule as data packets
 ([§7.13](#713-sd-file-transfer-shimmer3r)). Its status frames wait while a reply
@@ -3211,6 +3216,57 @@ Use `TEST_CONNECTION_COMMAND` ([§7.3](#73-device-status)) when you want an
 answer.
 
 ⚠️ **No Java constant exists for 0xB5** (`FW_ONLY`, [§4.1](#41-core)).
+
+#### `GET_BT_TX_COUNTERS_COMMAND` (0xCD)
+
+What happened to each streamed data packet since sensing last started. Any GET
+answers this, on both platforms, while streaming or not. A data packet the
+firmware cannot queue for the radio is dropped from the stream, though it is
+still in the SD log ([§6.3](#63-interleaving)). These counters say why each one
+was dropped, so a host or a test can tell samples the radio would not take
+from samples the firmware lost by itself.
+
+The response is `BT_TX_COUNTERS_RESPONSE` (0xCE) and 36 bytes, little-endian:
+
+| Bytes | Type | Field |
+|---|---|---|
+| 0–3 | uint32 | Data packets queued for the radio |
+| 4–7 | uint32 | Refused while the radio module held RTS, its flow-control line, or within 8 ms after it let go |
+| 8–11 | uint32 | Refused with RTS low: no room in the queue |
+| 12–15 | uint32 | Refused with RTS low: a command reply was held |
+| 16–19 | uint32 | Times the module raised RTS |
+| 20–23 | uint32 | Total time RTS was high, in 32768 Hz ticks |
+| 24–25 | uint16 | Longest RTS-high span, in ticks, saturating at 0xFFFF (2 s) |
+| 26–27 | uint16 | Most data packets refused in a row |
+| 28–29 | uint16 | RTS-high spans under 4 ms |
+| 30–31 | uint16 | RTS-high spans of 4–64 ms |
+| 32–33 | uint16 | RTS-high spans of 64–256 ms |
+| 34–35 | uint16 | RTS-high spans of 256 ms or longer |
+
+The first four fields cover every data packet: queued plus the three kinds of
+refusal is the number the firmware offered to the radio. A refusal within 8 ms
+of RTS falling counts as an RTS refusal, because the queue is still full of
+the hold's backlog then.
+
+**Only Shimmer3 times RTS.** Its RTS interrupt reports each edge. Shimmer3R
+has no such interrupt, so there the five RTS fields stay 0, and every refusal
+counts as no room or a held reply.
+
+All the counters reset when sensing starts, so read them after the stream
+stops to cover the whole of it. A span that runs on past the read is counted
+only when it ends.
+
+> `Comms/shimmer_bt_uart.c` (`ShimBt_txCountersFill()` and the counters before
+> it), `Sensing/shimmer_sensing.c` (where data packets are counted). On
+> Shimmer3, `shimmer3-firmware` `Shimmer_Driver/RN4X/RN4X.c`
+> (`BT_rtsInterrupt()`).
+
+**Seen on the bench.** An RN4678 Shimmer3 drops data packets only while the
+module holds RTS, and the module can hold it for 0.25–0.8 s. That is several
+kilobytes at streaming rates, and no MCU queue can hold that much.
+
+⚠️ **No Java constant exists for 0xCD or 0xCE** (`FW_ONLY`). Older firmware
+ignores the command byte, so gate it on `GET_FW_VERSION_COMMAND`.
 
 ### 7.13 SD file transfer (Shimmer3R)
 
