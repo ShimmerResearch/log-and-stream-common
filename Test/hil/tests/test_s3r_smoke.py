@@ -524,30 +524,51 @@ def midstream_session(unit, cdc, power, hil_note, plan: midstream.Plan) -> None:
 
 
 MIDLOG_SECONDS = 5.0            # logged either side of the clock set
-MIDLOG_SHORT_S = 0.75           # records may cover this much less than the host held the log open
+MIDLOG_END_S = 0.75             # the last record may come this much before the STOP_LOGGING ACK
+STAMP_WRAP = 1 << 24            # a record's stamp: the low 24 bits of the device's clock
 
 
-def _clock_set_log_problems(fc, open_s: float) -> list[str]:
+def _stamp_to_host_s(stamp: int, host_ticks: int, offset_s: float) -> float:
+    """Seconds from a record's stamp to the host's time `host_ticks`, signed.
+
+    The clock is set to the host's just before the log, so a stamp places its
+    record against the host's clock, give or take the device's offset
+    (midstream.clock_offset, the device minus the host). The stamp's 24 bits
+    wrap every 512 s, far longer than the log."""
+    device = (host_ticks + round(offset_s * bt.TICKS_PER_S)) % STAMP_WRAP
+    d = (device - stamp) % STAMP_WRAP
+    if d >= STAMP_WRAP // 2:
+        d -= STAMP_WRAP
+    return d / bt.TICKS_PER_S
+
+
+def _clock_set_log_problems(fc, end_s: float | None, open_s: float) -> list[str]:
     """What the SD log of smoke.sd_clock_set_midlog says about the clock set.
 
     A set that reached the running log steps its stamps by midstream.PROBE_S,
     so it shows in the stamps themselves: one step about that size. Judging it
-    from the log's length instead failed a clean log that ran long. Bluetooth
-    exchanges in the middle of the log decide how long the host holds it open,
-    and on the bench one such log ran 11.66 s with every record on one grid.
-    So the length is judged against `open_s`, the host's own time from the
-    START_LOGGING ACK to the STOP_LOGGING ACK, and only for a missing end.
+    from the log's length instead failed a clean log that ran long.
+
+    A missing end is judged from the stamps too: `end_s` is the time from the
+    last record to the host's STOP_LOGGING ACK. Comparing the log's length
+    with the host's open time, START_LOGGING ACK to STOP_LOGGING ACK, also
+    counted the start. A unit makes its session folder and opens the file
+    before the first sample, and that takes longer the more sessions the trial
+    folder already holds: on the bench, about 0.2 s with none and 0.9 s with
+    780, which failed a clean log. So the start is reported, not judged.
+    `end_s` is None when the device's clock was too far off to place the
+    records; that problem is reported on its own.
     """
     out = []
-    period = fc.header.divider
     probe = midstream.PROBE_S * bt.TICKS_PER_S
     if fc.max_gap_ticks and abs(fc.max_gap_ticks - probe) < probe / 2:
         out.append(f"one step of {fc.max_gap_ticks / bt.TICKS_PER_S:.2f} s in the log's stamps, the size of the "
                    f"{midstream.PROBE_S:+.1f} s clock set: the set stepped the log's stamps")
-    covered_s = (fc.span_ticks + period) / bt.TICKS_PER_S if fc.records else 0.0
-    if covered_s < open_s - MIDLOG_SHORT_S:
-        out.append(f"the records cover {covered_s:.2f} s of a log the host held open {open_s:.2f} s: "
-                   f"the end is missing")
+    if not fc.records:
+        out.append(f"the log holds no records, though the host held it open {open_s:.2f} s")
+    elif end_s is not None and end_s > MIDLOG_END_S:
+        out.append(f"the last record is {end_s:.2f} s before the STOP_LOGGING ACK, of a log the host held open "
+                   f"{open_s:.2f} s: the end is missing")
     return out
 
 
@@ -582,6 +603,7 @@ def test_sd_clock_set_midlog(unit, power, hil_note):
             link.set_rwc(midstream.host_ticks())
             link.simple(bt.START_LOGGING)
             t_open = time.monotonic()
+            host_start = midstream.host_ticks()
             link.wait_status(bt.STATUS_LOGGING, True, 10)
             time.sleep(MIDLOG_SECONDS)
             link.set_rwc(midstream.host_ticks(midstream.PROBE_S))
@@ -591,6 +613,7 @@ def test_sd_clock_set_midlog(unit, power, hil_note):
                                 f"a set asking for {midstream.PROBE_S:+.1f} s: the set reached the running log")
             time.sleep(MIDLOG_SECONDS)
             link.simple(bt.STOP_LOGGING)
+            host_stop = midstream.host_ticks()
             open_s = time.monotonic() - t_open
             link.wait_status(bt.STATUS_SENSING, False, 15)
             clock_problems, clock_note = midstream.clock_after_stop(link, midstream.PROBE_S)
@@ -603,14 +626,19 @@ def test_sd_clock_set_midlog(unit, power, hil_note):
     assert len(new) == 1, f"expected one new session directory, found {len(new)}: {new}"
     files = sorted(p for p in (root / new[0]).iterdir() if p.is_file())
     assert files and files[0].name == "000", f"{new[0]}: no data file 000 ({[f.name for f in files]})"
-    fc = sdfile.check(files[0])
+    fc = sdfile.check(files[0], keep=True)
+    placed = fc.records and abs(during) <= midstream.CLOCK_TOL_S
+    end_s = _stamp_to_host_s(fc.ts[-1], host_stop, during) if placed else None
     problems += _timing_problems(fc, fc.header.divider)
-    problems += _clock_set_log_problems(fc, open_s)
+    problems += _clock_set_log_problems(fc, end_s, open_s)
     covered_s = (fc.span_ticks + fc.header.divider) / bt.TICKS_PER_S
+    trial = len(sdfile.trial_sessions(root, new[0].parent.name))
     assert not problems, "; ".join(problems)
+    start_s = -_stamp_to_host_s(fc.ts[0], host_start, during)
     hil_note(f"{new[0].parent.name}/{new[0].name}: {fc.records} records over {covered_s:.2f} s, on one grid, "
-             f"open {open_s:.2f} s; clock {during:+.3f} s while logging after a {midstream.PROBE_S:+.1f} s set; "
-             f"{clock_note}")
+             f"open {open_s:.2f} s; first record {start_s:.2f} s after the START_LOGGING ACK ({trial} sessions "
+             f"in the trial folder), last {end_s:.2f} s before the STOP_LOGGING ACK; clock {during:+.3f} s while "
+             f"logging after a {midstream.PROBE_S:+.1f} s set; {clock_note}")
 
 
 INQUIRY_SECONDS = 60.0
