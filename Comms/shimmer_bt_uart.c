@@ -3320,7 +3320,8 @@ void ShimBt_loadTxBufForDataRateTest(void)
  * RTS edges reach ShimBt_txCountRts() from the platform's RTS interrupt
  * (Shimmer3). Without one (Shimmer3R) the RTS fields stay 0 and every refusal
  * is counted as full or reply. Reset when sensing starts. */
-#define BT_TX_RTS_TAIL_TICKS 262U /* 8 ms: a refusal this soon after RTS falls is the hold's backlog */
+/* 8 ms: a refusal this soon after RTS falls is the hold's backlog */
+#define BT_TX_RTS_TAIL_TICKS 262U
 #define BT_TX_SPAN_4MS       131U
 #define BT_TX_SPAN_64MS      2097U
 #define BT_TX_SPAN_256MS     8389U
@@ -3337,7 +3338,7 @@ static struct
   uint16_t rtsMaxTicks;
   uint16_t maxRunRefused;
   uint16_t runRefused;
-  uint16_t rtsSpans[4];   /* < 4 ms, < 64 ms, < 256 ms, longer */
+  uint16_t rtsSpans[4]; /* < 4 ms, < 64 ms, < 256 ms, longer */
   uint8_t rtsHigh;
 } btTxCounters;
 
@@ -3398,10 +3399,10 @@ void ShimBt_txCountRts(uint8_t high)
     {
       btTxCounters.rtsMaxTicks = (span > 0xFFFFU) ? 0xFFFFU : (uint16_t) span;
     }
-    btTxCounters.rtsSpans[(span < BT_TX_SPAN_4MS)       ? 0U
-            : (span < BT_TX_SPAN_64MS)                  ? 1U
-            : (span < BT_TX_SPAN_256MS)                 ? 2U
-                                                        : 3U]++;
+    btTxCounters.rtsSpans[(span < BT_TX_SPAN_4MS) ? 0U :
+            (span < BT_TX_SPAN_64MS)              ? 1U :
+            (span < BT_TX_SPAN_256MS)             ? 2U :
+                                                    3U]++;
   }
   btTxCounters.rtsHigh = high;
   btTxCounters.rtsChangeTime = now;
