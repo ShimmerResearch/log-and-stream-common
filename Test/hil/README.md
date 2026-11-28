@@ -58,7 +58,7 @@ under `units`, so the reader can see which units a waiver covers.
 A waiver decided after the run goes in with
 `python Test/hil/hil_report.py waive <report> --waive ITEM[@UNIT]=ISSUE --by <name>`.
 It follows the same rules. It keeps the original beside the report as
-`<name>.before-waivers.json`, and records each waiver it adds, with who and
+`<name>.json.before-waivers` (not `.json`, so nothing takes it for a report), and records each waiver it adds, with who and
 when, under `run.waived_after_run`. A per-unit waiver needs the `units`
 statuses, so on a report written before they existed only `ITEM=ISSUE` applies.
 

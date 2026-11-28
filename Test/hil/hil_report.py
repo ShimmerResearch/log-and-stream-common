@@ -237,7 +237,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Add waivers decided after a run to a HIL report.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     w = sub.add_parser("waive", help="write issue keys into results that did not pass, keeping the original "
-                                     "beside it as <name>.before-waivers.json")
+                                     "beside it as <name>.json.before-waivers, which no report pattern picks up")
     w.add_argument("reports", nargs="+", type=Path)
     w.add_argument("--waive", action="append", required=True, metavar="ITEM[@UNIT]=ISSUE")
     w.add_argument("--by", default=getpass.getuser(), help="who decided (default: this user)")
@@ -259,7 +259,7 @@ def main(argv=None) -> int:
         for line in done:
             print(f"  {line}")
         if any(" waived under " in line for line in done):
-            backup = path.with_name(path.stem + ".before-waivers.json")
+            backup = path.with_name(path.name + ".before-waivers")     # not *.json: never taken for a report
             if not backup.exists():
                 shutil.copy2(path, backup)
             write(rep, path)

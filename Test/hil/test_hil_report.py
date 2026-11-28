@@ -202,7 +202,7 @@ class WaiveAfterRun(unittest.TestCase):
             rc = hil_report.main(["waive", str(path), "--waive", "release.row=DEV-1379", "--by", "mark"])
             self.assertEqual(rc, 0)
             self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["results"][0]["waiver"], "DEV-1379")
-            backup = Path(d) / "hil-report-b.before-waivers.json"
+            backup = Path(d) / "hil-report-b.json.before-waivers"
             self.assertNotIn("waiver", json.loads(backup.read_text(encoding="utf-8"))["results"][0])
 
 
